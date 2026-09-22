@@ -1,0 +1,183 @@
+/* B06 calendar: private 930ad0c globals.css date-jump selectors, with shared tokens. */
+.date-section-title {
+  position: relative;
+}
+
+.date-jump-control {
+  position: static;
+  margin-left: auto;
+}
+
+.date-jump-trigger,
+.date-jump-header button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--muted);
+}
+
+.date-jump-trigger {
+  width: 28px;
+  height: 28px;
+}
+
+.date-jump-trigger:hover,
+.date-jump-trigger.active {
+  border-color: var(--hairline);
+  background: var(--canvas);
+  color: var(--primary-active);
+}
+
+.date-jump-popover {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 8px);
+  right: 0;
+  left: 0;
+  width: auto;
+  padding: 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  background: var(--canvas);
+  box-shadow: var(--popover-shadow);
+  color: var(--body);
+}
+
+.date-jump-header {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 30px;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.date-jump-header button {
+  width: 30px;
+  height: 30px;
+  border-color: var(--hairline);
+}
+
+.date-jump-header button:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary-active);
+}
+
+.date-jump-header button:disabled {
+  opacity: 0.35;
+}
+
+.date-jump-header input {
+  min-width: 0;
+  width: 100%;
+  height: 30px;
+  padding: 0 7px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: center;
+}
+
+.date-jump-weekdays,
+.date-jump-calendar {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 3px;
+}
+
+.date-jump-weekdays {
+  margin-bottom: 4px;
+}
+
+.date-jump-weekdays span {
+  color: var(--muted-soft);
+  font-size: 10px;
+  font-weight: 500;
+  text-align: center;
+}
+
+.date-jump-calendar {
+  position: relative;
+  min-height: 174px;
+}
+
+.date-jump-day,
+.date-jump-spacer {
+  min-width: 0;
+  height: 26px;
+}
+
+.date-jump-day {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--body);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+button.date-jump-day:hover {
+  border-color: color-mix(in srgb, var(--primary) 55%, var(--hairline));
+  background: var(--surface-card);
+  color: var(--ink);
+}
+
+.date-jump-day > span {
+  position: absolute;
+  right: 4px;
+  bottom: 3px;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--primary);
+}
+
+.date-jump-day.active {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, var(--canvas));
+  color: var(--ink);
+}
+
+.date-jump-day.today:not(.active) {
+  border-color: var(--hairline);
+}
+
+.date-jump-day.unavailable {
+  color: var(--muted-soft);
+  font-weight: 400;
+  opacity: 0.42;
+}
+
+.date-jump-calendar[aria-busy="true"] > :not(.date-jump-loading) {
+  opacity: 0.22;
+}
+
+.date-jump-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.date-jump-footer {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--hairline-soft);
+  color: var(--muted-soft);
+  font-size: 11px;
+  text-align: center;
+}

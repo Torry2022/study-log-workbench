@@ -18,6 +18,7 @@
     "@codemirror/view": "6.43.0",
     "@lezer/highlight": "1.2.3",
     "@uiw/react-codemirror": "4.25.10",
+    "diff": "8.0.4",
     "katex": "0.17.0",
     "lucide-react": "0.468.0",
     "mermaid": "11.17.2",

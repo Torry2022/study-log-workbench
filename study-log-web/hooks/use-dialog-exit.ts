@@ -4,8 +4,25 @@ import { useCallback, useEffect, useRef } from "react";
 
 const DIALOG_EXIT_DURATION_MS = 160;
 const modalStack: HTMLElement[] = [];
+const inertLocks = new WeakMap<HTMLElement, { count: number; previous: boolean }>();
 let lastPointerControl: HTMLElement | null = null;
 let interactionSubscribers = 0;
+let bodyScrollLocks = 0;
+let previousBodyOverflow = "";
+
+/** Nested dialogs may unmount in either order, especially on session expiry. */
+export function lockBodyScroll(): () => void {
+  if (bodyScrollLocks++ === 0) {
+    previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+  }
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    if (--bodyScrollLocks === 0) document.body.style.overflow = previousBodyOverflow;
+  };
+}
 
 function rememberPointerControl(event: PointerEvent) {
   lastPointerControl = event.target instanceof Element
@@ -21,12 +38,13 @@ export function containModalFocus(container: HTMLElement, onEscape?: () => void)
   const previousFocus = lastPointerControl?.isConnected && !container.contains(lastPointerControl)
     ? lastPointerControl
     : document.activeElement instanceof HTMLElement ? document.activeElement : null;
-  const isolated: Array<[HTMLElement, boolean]> = [];
+  const isolated: HTMLElement[] = [];
   let branch: HTMLElement = container;
   while (branch.parentElement && branch !== document.body) {
     for (const sibling of branch.parentElement.children) {
       if (sibling !== branch && sibling instanceof HTMLElement && !sibling.classList.contains("mobile-overlay-backdrop")) {
-        isolated.push([sibling, sibling.inert]);
+        const lock = inertLocks.get(sibling) || { count: 0, previous: sibling.inert };
+        lock.count++; inertLocks.set(sibling, lock); isolated.push(sibling);
         sibling.inert = true;
       }
     }
@@ -55,11 +73,17 @@ export function containModalFocus(container: HTMLElement, onEscape?: () => void)
     }
   }
   document.addEventListener("keydown", keydown, true);
+  let released = false;
   return () => {
+    if (released) return;
+    released = true;
     cancelAnimationFrame(frame);
     document.removeEventListener("keydown", keydown, true);
     modalStack.splice(modalStack.indexOf(container), 1);
-    for (const [element, inert] of isolated) element.inert = inert;
+    for (const element of isolated) {
+      const lock = inertLocks.get(element)!;
+      if (--lock.count === 0) { element.inert = lock.previous; inertLocks.delete(element); }
+    }
     if (previousFocus?.isConnected && !previousFocus.closest('[inert]') &&
         (!modalStack.length || modalStack.at(-1)?.contains(previousFocus))) previousFocus.focus({ preventScroll: true });
   };

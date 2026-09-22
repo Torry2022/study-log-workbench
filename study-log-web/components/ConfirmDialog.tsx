@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { X } from "lucide-react";
-import { useDialogExit } from "@/hooks/use-dialog-exit";
+import { lockBodyScroll, useDialogExit } from "@/hooks/use-dialog-exit";
 
 export type ConfirmationOptions = {
   title: string;
@@ -49,8 +49,7 @@ export function ConfirmDialog({
   useEffect(() => {
     if (!open) return;
     returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    const unlockScroll = lockBodyScroll();
     window.requestAnimationFrame(() => cancelRef.current?.focus());
 
     function handleKeyDown(event: globalThis.KeyboardEvent) {
@@ -78,7 +77,7 @@ export function ConfirmDialog({
     document.addEventListener("keydown", handleKeyDown);
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
-      document.body.style.overflow = previousOverflow;
+      unlockScroll();
       window.requestAnimationFrame(() => returnFocusRef.current?.focus());
     };
   }, [open, requestExit]);

@@ -1,6 +1,6 @@
 # 架构
 
-当前仅有 Web 工程。`study-log-web/app` 使用 Next.js App Router 提供 `/study-log` 入口。
+`study-log-web/app` 使用 Next.js App Router 提供 `/study-log` 入口。根布局在首次绘制前初始化主题；基础CSS注册三个本地字体族，原始字体与许可证作为静态资源提供。
 
 未接入实例存储、认证、AI 或检索。页面没有数据读写。实现新增模块时，在这里记录其职责、状态归属、接口和数据流。
 

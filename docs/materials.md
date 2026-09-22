@@ -8,4 +8,4 @@ PDF 仅提取文本，不执行 OCR；扫描件没有可用文本时明确提示
 
 除上传和文本限制，PDF最多500页；Office ZIP最多2048条目、单条实际解压16 MiB、累计64 MiB。检查实际解压大小，不只相信ZIP声明；拒绝宏、加密、异常路径、重复条目及XML实体声明。
 
-生产构建外置 PDF.js 与 Mammoth，并追踪 PDF worker、字体和字符映射。`ops/materials-smoke.mjs 实例绝对路径 本机URL` 以真实五种格式检查HTTP入口，且核对资料未写入。已在复制到仓库外的独立 standalone 产物中完成验证，避免从开发机父目录借用依赖。浏览器材料区的验收另见实施状态。
+生产构建外置 PDF.js 与 Mammoth，并追踪 PDF worker、字体和字符映射。`node ops/materials-smoke.mjs 实例绝对路径 本机URL` 以真实五种格式检查HTTP入口。构建后运行 `node ops/materials-smoke.mjs --standalone`，会将产物复制到仓库外的临时目录，创建独立合成实例并启动服务，核对五格式、资源完整性、鉴权和资料未写入，最后停止服务并清理本次临时目录。此检查已通过，避免从开发机父目录借用依赖。浏览器材料区的验收另见实施状态。

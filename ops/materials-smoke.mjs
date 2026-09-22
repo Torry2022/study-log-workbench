@@ -1,8 +1,65 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
+import os from "node:os";
+import net from "node:net";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { parseEnv } from "node:util";
 import { archive, slide, docx, pdf } from "./material-fixtures.mjs";
+import { initialize, withInstanceLock } from "./instance.mjs";
+
+// Exercise the built artifact outside the source tree, so missing dependencies cannot resolve from its parent.
+async function verifyStandalone() {
+  const repo = fileURLToPath(new URL("..", import.meta.url));
+  const temporary = await fs.mkdtemp(path.join(os.tmpdir(), "workbench-materials-standalone-"));
+  const app = path.join(temporary, "app"), instance = path.join(temporary, "synthetic-instance");
+  try {
+    await fs.cp(path.join(repo, "study-log-web", ".next-build-cache", "standalone"), app, { recursive: true, dereference: true });
+    const realApp = await fs.realpath(app);
+    for (const resource of ["legacy/build/pdf.mjs", "legacy/build/pdf.worker.mjs", "standard_fonts/LiberationSans-Regular.ttf", "cmaps/Adobe-GB1-UCS2.bcmap"]) {
+      const relative = path.relative(realApp, await fs.realpath(path.join(app, "node_modules", "pdfjs-dist", resource)));
+      assert.ok(!relative.startsWith("..") && !path.isAbsolute(relative), "PDF resource escaped standalone directory");
+    }
+    await initialize(instance);
+    const environment = parseEnv(await fs.readFile(path.join(instance, ".env"), "utf8"));
+    const port = await new Promise(resolve => {
+      const listener = net.createServer();
+      listener.listen(0, "127.0.0.1", () => { const port = listener.address().port; listener.close(() => resolve(port)); });
+    });
+    const base = `http://127.0.0.1:${port}/study-log`;
+    await withInstanceLock(path.join(instance, "data"), async () => {
+      const server = spawn(process.execPath, ["server.js"], { cwd: app, windowsHide: true, stdio: ["ignore", "pipe", "pipe"], env: {
+        PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, TEMP: process.env.TEMP, TMP: process.env.TMP, ...environment,
+        LOG_ROOT: path.join(instance, "data"), BACKUP_ROOT: path.join(instance, "backups"), NODE_ENV: "production", PORT: String(port), HOSTNAME: "127.0.0.1"
+      } });
+      let logs = "";
+      server.stdout.on("data", chunk => { logs += chunk; }); server.stderr.on("data", chunk => { logs += chunk; });
+      const closed = new Promise(resolve => server.once("exit", resolve));
+      try {
+        let ready = false;
+        for (let attempt = 0; attempt < 100; attempt++) {
+          try { if ((await fetch(`${base}/api/capabilities`)).status === 401) { ready = true; break; } } catch {}
+          if (server.exitCode !== null) break;
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+        assert.ok(ready, `Standalone did not start: ${logs}`);
+        const before = await fs.readdir(path.join(instance, "data"));
+        const smoke = spawn(process.execPath, [fileURLToPath(import.meta.url), instance, base], { cwd: repo, stdio: "inherit", windowsHide: true });
+        assert.equal(await new Promise(resolve => smoke.once("exit", resolve)), 0, "Standalone HTTP smoke failed");
+        assert.deepEqual(await fs.readdir(path.join(instance, "data")), before);
+        assert.deepEqual(await fs.readdir(path.join(instance, "backups")), []);
+        console.log("PASS relocated standalone runtime, worker/fonts/cmaps, isolated instance; no log/backup files created");
+      } finally { server.kill(); await closed; }
+    });
+  } finally {
+    assert.equal(path.dirname(temporary), path.resolve(os.tmpdir()));
+    assert.ok(path.basename(temporary).startsWith("workbench-materials-standalone-"));
+    await fs.rm(temporary, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+  }
+}
+
+if (process.argv[2] === "--standalone") { await verifyStandalone(); process.exit(0); }
 
 const [root, base = "http://127.0.0.1:3566/study-log"] = process.argv.slice(2);
 if (!root || !path.isAbsolute(root) || !["127.0.0.1", "localhost", "[::1]"].includes(new URL(base).hostname)) throw new Error("Explicit synthetic instance and loopback URL required");

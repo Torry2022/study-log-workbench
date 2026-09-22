@@ -35,6 +35,14 @@
 - favorite包括date/month、原headingText/headingId、resolvedHeadingId、groupIds、level、createdAt/updatedAt、exists、sectionPreview（最多180字符）及sectionSearchText（最多12000字符）。解析原文时按标题ID与文字优先，再按同文字回退；原标题改名或删除仍保留收藏，exists为false。小节边界使用AST，不把围栏或引用里的伪标题当边界。
 - 收藏仅持久化于显式实例data下的`.study-log-favorites.json`。实例内修改串行执行，通过同目录唯一临时文件、sync与rename原子替换；写入/替换失败保留旧JSON，损坏JSON或结构错误明确失败，不静默重建空集合。拒绝实例根或收藏文件符号链接。参数问题400，存储问题500且不回传路径。此队列不提供跨进程并发写入支持。
 
+## 随记
+
+- `/api/notes` 各方法先认证且不缓存。GET返回 `{notes,years,tags}`；列表按updatedAt倒序，记录含id/title/body/insight/sources/tags/recordedAt/createdAt/updatedAt/year/version/displayTitle，年份/标签筛选项为 `{value,count}`。空实例返回空数组。
+- POST接受 `{title?,body,insight?,sources?,tags?,recordedAt}` 返回 `{note}`。正文非空，标题最多120字符，来源最多30项、标签最多20项；记录时间按Asia/Shanghai解释，接受本地 `YYYY-MM-DDTHH:mm[:ss]` 或显式 `+08:00`，拒绝无效日期和未来时间。
+- PATCH接受以上字段加 `{id,baseVersion}` 返回 `{note}`；DELETE接受JSON `{id,baseVersion}` 返回 `{ok:true}`。两者必须提供当前非空版本，旧版本409 `NOTE_CONFLICT`，不存在404；不因缺少版本而无条件覆盖。
+- 正文和个人理解不能包含根级H2或字段保留H3标题，围栏/引用/列表里的示例不受此限制。权威资料为年度Markdown，更新仅重写目标记录；写前备份位于实例 `backups/notes/`。
+- 请求格式错误400；存储格式或读写失败500且不回传路径。跨年中断标记存在时503 `NOTES_RECOVERY_REQUIRED`，停止正常随记读写。[恢复说明](notes-storage.md)解释标记、备份及核验顺序。跨年是两次原子替换加失败回滚，不是跨文件单次原子事务。
+
 ## 日块写入
 
 - `PUT /api/logs/day` 先认证，接收 `{date,content,baseVersion,mode?:"replace"|"append"}`，返回 `{day:完整DayEntry}`。默认替换；append只向该日正文追加请求片段，同样参与版本比较，不绕过冲突校验。界面普通保存仍使用replace。

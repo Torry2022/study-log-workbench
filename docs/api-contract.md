@@ -68,6 +68,14 @@
 
 整批校验通过后才创建文件；日志写入显式实例 `data/assets/`，随记写入 `data/assets/notes/YYYY/`，逐级拒绝符号链接/联接。服务端生成时间戳加UUID文件名，并独占创建，不使用用户文件名作为磁盘路径、不覆盖已有附件。成功返回 `{assets:[{fileName,path,markdown}]}`，日志 `path` 为 `./assets/文件名`，随记为相对年度随记文件的 `../assets/notes/YYYY/文件名`。失败尽量清理本批创建且身份仍可确认的文件，文件系统错误500不包含绝对路径。成功上传后若编辑器未保存，附件仍保留；不提供自动清理或远程对象存储。
 
+## 资料导出
+
+`GET /api/export?scope=day|file|all|notes[&date=YYYY-MM-DD]` 先认证，成功返回ZIP、`Content-Disposition`的UTF-8文件名、`no-store`及`X-Export-Warning-Count`。day/file必须提供合法日期；day导出该日Markdown，file导出其所在完整年/月文件，all导出全部源日志，notes导出年度随记并去除真正记录的元数据注释。代码示例里的注释保持原样。
+
+各范围仅打包相关Markdown及其引用的本地图片，导出副本中的API或绝对站内图片地址改为可离线解析的相对地址。all不包含随记、会话、收藏或配置；原实例不被修改。此接口导出已保存资料，不包含编辑器草稿，也不是整实例备份。
+
+仅缺失附件允许继续：计入警告数量，并在ZIP内加入`导出说明.txt`。目录越界或链接附件拒绝400；其他读取错误500，源文件在导出期间变化409，日块不存在404，随记待恢复503。错误不回传本机路径。
+
 ## 日块备份
 
 - `GET /api/backups?date=YYYY-MM-DD&cursor=...` 返回 `{backup:{write:[{id,kind:"write",createdAt,sizeBytes,fileName}],nextCursor}}`；cursor可省略。按内容去重，最多最近20个不同日块版本，每请求最多读取64个候选文件；nextCursor非空时可继续。物理备份不因列表上限而删除。

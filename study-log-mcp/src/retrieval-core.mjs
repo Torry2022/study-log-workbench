@@ -190,6 +190,15 @@ function lexicalScore(chunk, queryTerms, corpus) {
   return { score, matchedTerms };
 }
 
+export function cosineSimilarity(left, right) {
+  if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length || !left.length) return 0;
+  let dot = 0, leftNorm = 0, rightNorm = 0;
+  for (let index = 0; index < left.length; index++) {
+    dot += left[index] * right[index]; leftNorm += left[index] ** 2; rightNorm += right[index] ** 2;
+  }
+  return leftNorm && rightNorm ? dot / Math.sqrt(leftNorm * rightNorm) : 0;
+}
+
 function findBoundaryOverlap(left, right) {
   const maximum = Math.min(CHUNK_OVERLAP_CHARS, left.length, right.length);
   for (let length = maximum; length >= MIN_OVERLAP_CHARS; length -= 1) {

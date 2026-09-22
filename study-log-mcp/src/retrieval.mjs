@@ -1,12 +1,17 @@
 import { RRF_K, MIN_RELATIVE_FUSION_SCORE, MIN_CONTEXT_CHARS, DEFAULT_CONTEXT_CHARS, MAX_CONTEXT_CHARS, hash, makeSnippet, tokenizeOccurrences, countTerms, buildLexicalCorpus, lexicalScore, normalizeDate, filterBlocksByDateRange, normalizeStrategy, sectionKey, mergeSectionMatches, rankLiteralSections, orderMatchesForStrategy, normalizedContent, isNearDuplicateContent, buildSectionChunks } from "./retrieval-core.mjs";
 import { SourceError } from "./paths.mjs";
+import { cosineSimilarity } from "./retrieval-core.mjs";
+import { EmbeddingClient, RerankClient, ProviderError, checkCancelled } from "./providers.mjs";
+import { VectorIndex, IndexError } from "./vector-index.mjs";
 export { buildSectionChunks, tokenize } from "./retrieval-core.mjs";
 
 function validateInput(input, options) {
+  checkCancelled(options.signal);
   if (typeof input !== "string" || !input.trim() || input.length > 60000) throw new SourceError("Retrieval input must contain 1 to 60000 characters.", "INVALID_ARGUMENT");
   if (options.matchMode !== undefined && !["hybrid", "literal"].includes(options.matchMode)) throw new SourceError("Unknown match mode.", "INVALID_ARGUMENT");
   if (options.literalQuery !== undefined && (typeof options.literalQuery !== "string" || options.literalQuery.length > 60000)) throw new SourceError("Invalid literal query.", "INVALID_ARGUMENT");
   normalizeStrategy(options.strategy);
+  if (options.rerank !== undefined && typeof options.rerank !== "boolean") throw new SourceError("rerank must be boolean.", "INVALID_ARGUMENT");
   for (const key of ["maxResults", "maxChunks", "maxChars"]) {
     if (options[key] !== undefined && (typeof options[key] !== "number" || !Number.isFinite(options[key]))) throw new SourceError("Expected a finite numeric limit.", "INVALID_ARGUMENT");
   }
@@ -202,5 +207,77 @@ export class KeywordRetriever {
         matchMode: literalQuery ? "literal" : "hybrid"
       }
     };
+  }
+}
+
+export class HybridRetriever extends KeywordRetriever {
+  constructor(options = {}) {
+    super();
+    this.embeddingClient = options.embeddingClient || new EmbeddingClient(options.embedding);
+    this.rerankClient = options.rerankClient || new RerankClient(options.reranker);
+    this.rerankEnabled = options.rerankEnabled ?? process.env.RERANK_ENABLED === "true";
+    if (typeof this.rerankEnabled !== "boolean") throw new SourceError("rerankEnabled must be boolean.", "INVALID_ARGUMENT");
+    this.index = new VectorIndex(options);
+  }
+
+  buildRankedMatches(chunks, input, vectors = null, queryVector = null) {
+    const lexical = super.buildRankedMatches(chunks, input);
+    if (!vectors || !queryVector) return lexical;
+    const byId = new Map(lexical.map(match => [match.chunk.id, match]));
+    const semantic = chunks.map(chunk => ({ chunk, score: cosineSimilarity(queryVector, vectors[chunk.id]) }))
+      .sort((a, b) => b.score - a.score).slice(0, 100);
+    semantic.forEach((item, index) => {
+      const match = byId.get(item.chunk.id) || { chunk: item.chunk, keywordScore: 0, matchedTerms: [], score: 0 };
+      match.semanticScore = item.score; match.score += 1 / (RRF_K + index + 1); byId.set(item.chunk.id, match);
+    });
+    return [...byId.values()].sort((a, b) => b.score - a.score || b.chunk.date.localeCompare(a.chunk.date));
+  }
+
+  async rankChunks(blocks, input, options = {}) {
+    checkCancelled(options.signal);
+    const chunks = buildSectionChunks(blocks), strategy = normalizeStrategy(options.strategy);
+    let ranked = this.buildRankedMatches(chunks, input);
+    const retrieval = { mode: "lexical_fallback", strategy, model: null, dimensions: null, indexUpdatedAt: null };
+    if (!chunks.length) retrieval.reason = "empty_source";
+    else if (!this.embeddingClient.enabled) retrieval.reason = `embedding_${this.embeddingClient.issue || "not_configured"}`;
+    else {
+      try {
+        const index = await this.index.sync(chunks, this.embeddingClient, { signal: options.signal });
+        const [query] = await this.embeddingClient.embed([input], { signal: options.signal });
+        if (!Array.isArray(query) || query.length !== this.embeddingClient.dimensions || query.some(value => !Number.isFinite(value))) throw new ProviderError("invalid_response", "Invalid query vector.");
+        const vectors = Object.fromEntries(Object.entries(index.chunks).map(([id, item]) => [id, item.vector]));
+        ranked = this.buildRankedMatches(chunks, input, vectors, query);
+        Object.assign(retrieval, { mode: "hybrid", model: this.embeddingClient.model, dimensions: this.embeddingClient.dimensions, indexUpdatedAt: index.updatedAt });
+      } catch (error) {
+        checkCancelled(options.signal);
+        retrieval.reason = error instanceof ProviderError ? `embedding_${error.code}` : error instanceof IndexError && error.code === "instance_identity_unavailable" ? error.code : "index_unavailable";
+      }
+    }
+    if (strategy === "timeline_summary") {
+      const found = new Set(ranked.map(match => match.chunk.id));
+      for (const chunk of chunks) if (!found.has(chunk.id)) ranked.push({ chunk, keywordScore: 0, semanticScore: 0, matchedTerms: [], score: 0 });
+    }
+    let selected = strategy === "timeline_summary" ? ranked : this.filterWeakMatches(ranked, strategy === "relevance" ? MIN_RELATIVE_FUSION_SCORE : 0.4);
+    if (options.rerank ?? this.rerankEnabled) {
+      let rerank = { status: "skipped", model: this.rerankClient.model || null, candidateCount: 0, latencyMs: 0 };
+      if (strategy !== "relevance") rerank.reason = "strategy_not_supported";
+      else if (!this.rerankClient.enabled) rerank.reason = this.rerankClient.issue || "not_configured";
+      else if (!selected.length) rerank.reason = "no_candidates";
+      else {
+        const candidates = selected.slice(0, 30), started = Date.now();
+        try {
+          const results = await this.rerankClient.rerank(input, candidates.map(match => match.chunk.embeddingText), { signal: options.signal });
+          selected = [...results.map(result => ({ ...candidates[result.index], rerankScore: result.score })), ...selected.slice(candidates.length)];
+          rerank = { status: "applied", model: this.rerankClient.model, candidateCount: candidates.length, latencyMs: Date.now() - started };
+        } catch (error) {
+          checkCancelled(options.signal);
+          rerank = { ...rerank, status: "fallback", candidateCount: candidates.length, latencyMs: Date.now() - started,
+            reason: error instanceof ProviderError ? error.code : "rerank_failed" };
+        }
+      }
+      retrieval.rerank = rerank;
+    }
+    checkCancelled(options.signal);
+    return { ranked: orderMatchesForStrategy(selected, strategy), retrieval };
   }
 }

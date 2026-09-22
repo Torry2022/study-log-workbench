@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { SourceError, resolveRoots, assertSafePath, readSourceText } from "./paths.mjs";
 import { LOG_FILE_PATTERN, assertDate, assertMonth, parseDayBlocks } from "./markdown-source.mjs";
-import { KeywordRetriever } from "./retrieval.mjs";
+import { HybridRetriever } from "./retrieval.mjs";
 export { resolveLogRoot } from "./paths.mjs";
 
 function limit(value, fallback, minimum, maximum) {
@@ -19,7 +19,7 @@ export class StudyLogStore {
     const roots = resolveRoots({ logRoot, indexRoot: options.indexRoot });
     this.logRoot = roots.logRoot;
     this.indexRoot = roots.indexRoot;
-    this.retriever = options.retriever || new KeywordRetriever();
+    this.retriever = options.retriever || new HybridRetriever({ ...options.retrieval, logRoot: this.logRoot, indexRoot: this.indexRoot });
   }
 
   async listLogFiles() {

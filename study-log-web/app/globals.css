@@ -319,4 +319,3 @@ button:disabled {
   --safe-area-left: env(safe-area-inset-left, 0px);
   --safe-area-right: env(safe-area-inset-right, 0px);
 }
-

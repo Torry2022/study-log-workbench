@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import "./login.css";
 
 const themeInitializer = `
 (() => {

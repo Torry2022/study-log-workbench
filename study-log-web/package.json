@@ -3,21 +3,26 @@
   "version": "0.1.0-dev",
   "private": true,
   "scripts": {
-    "dev": "next dev -H 127.0.0.1 -p 3560",
-    "start": "next start -H 127.0.0.1 -p 3560",
+    "test": "node --experimental-strip-types --test scripts/*.test.mjs",
+    "dev": "node ../ops/run-web.mjs dev",
+    "start": "node ../ops/run-web.mjs start",
     "typecheck": "tsc --noEmit",
     "build": "next build"
   },
   "dependencies": {
+    "lucide-react": "0.468.0",
     "next": "15.5.25",
     "react": "19.2.6",
     "react-dom": "19.2.6"
   },
   "devDependencies": {
+    "@playwright/test": "1.61.1",
     "@types/node": "^22.10.2",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
     "typescript": "^5.7.2"
   },
-  "overrides": { "postcss": "8.5.28" }
+  "overrides": {
+    "postcss": "8.5.28"
+  }
 }

@@ -1,0 +1,10 @@
+{
+  "name": "study-log-mcp",
+  "version": "0.1.0-dev",
+  "private": true,
+  "description": "Read-only retrieval for one explicitly configured Markdown study-log instance.",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": { "test": "node --test test/*.test.mjs" },
+  "dependencies": { "remark-parse": "11.0.0", "unified": "11.0.5" }
+}

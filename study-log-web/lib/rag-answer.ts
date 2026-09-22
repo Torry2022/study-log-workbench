@@ -92,6 +92,10 @@ function replaceCitationLabels(answer: string, replace: (sourceId: string) => st
   });
 }
 
+export function stripRagCitationLabels(answer: string): string {
+  return replaceCitationLabels(answer, () => "");
+}
+
 export function normalizeRagAnswer(
   answer: string,
   sources: RagCitation[],

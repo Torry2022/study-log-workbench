@@ -36,7 +36,9 @@ export async function readUploadForm(request: Request): Promise<FormData> {
 /** Validate the entire batch before creating directories or writing any bytes. */
 export async function uploadAssets(dataRoot: string, form: FormData): Promise<UploadedAsset[]> {
   const scope = form.get("scope");
-  if (scope !== null && scope !== "logs") throw new AssetUploadInputError("暂不支持此附件分类");
+  if (scope !== null && scope !== "logs" && scope !== "notes") throw new AssetUploadInputError("不支持此附件分类");
+  const year = form.get("year");
+  if (scope === "notes" && (typeof year !== "string" || !/^[1-9]\d{3}$/.test(year))) throw new AssetUploadInputError("随记图片需要有效的四位年份");
   const entries = form.getAll("file");
   if (!entries.length || entries.length > MAX_IMAGE_COUNT) throw new AssetUploadInputError(`每次请选择 1 至 ${MAX_IMAGE_COUNT} 张图片`);
   const files: { file: File; extension: string }[] = [];
@@ -51,11 +53,15 @@ export async function uploadAssets(dataRoot: string, form: FormData): Promise<Up
   if (!path.isAbsolute(dataRoot)) throw new InvalidAssetPath();
   await checkAssetPath(dataRoot);
   if (!(await fs.lstat(dataRoot)).isDirectory()) throw new InvalidAssetPath();
-  const directory = path.join(dataRoot, "assets");
-  try { await fs.mkdir(directory); }
-  catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
-  await checkAssetPath(directory);
-  if (!(await fs.lstat(directory)).isDirectory()) throw new InvalidAssetPath();
+  let directory = dataRoot;
+  for (const segment of scope === "notes" ? ["assets", "notes", year as string] : ["assets"]) {
+    await checkAssetPath(directory);
+    directory = path.join(directory, segment);
+    try { await fs.mkdir(directory); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
+    await checkAssetPath(directory);
+    if (!(await fs.lstat(directory)).isDirectory()) throw new InvalidAssetPath();
+  }
   const created: { filePath: string; ino: bigint }[] = [];
   const assets: UploadedAsset[] = [];
   try {
@@ -72,7 +78,7 @@ export async function uploadAssets(dataRoot: string, form: FormData): Promise<Up
         await handle.writeFile(new Uint8Array(await file.arrayBuffer()));
         await handle.sync();
       } finally { await handle.close(); }
-      const markdownPath = `./assets/${fileName}`;
+      const markdownPath = scope === "notes" ? `../assets/notes/${year}/${fileName}` : `./assets/${fileName}`;
       assets.push({ fileName, path: markdownPath, markdown: `![${fileName.slice(0, -extension.length)}](${markdownPath})` });
     }
     return assets;

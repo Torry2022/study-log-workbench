@@ -63,7 +63,7 @@ test("supports product image MIME types including sandboxed SVG without re-encod
 
 test("preflights the whole batch: bad late file, empty, oversized, count and unsupported scope write nothing", async t => {
   const { data } = await fixture(t);
-  const notes = form(image()); notes.set("scope", "notes"); notes.set("year", "2026");
+  const notes = form(image()); notes.set("scope", "unknown");
   const candidates = [form(), form(...Array.from({ length: 11 }, () => image())),
     form(image(), image("bad.txt", "text", "text/plain")), form(image(), "not a file"),
     form(image(), image("empty.png", "")),
@@ -75,6 +75,34 @@ test("preflights the whole batch: bad late file, empty, oversized, count and uns
   const [result] = await upload.uploadAssets(data, form(image("limit.png", new Uint8Array(MAX_IMAGE_BYTES))));
   assert.equal((await fs.stat(path.join(data, "assets", result.fileName))).size, MAX_IMAGE_BYTES);
   assert.equal((await upload.uploadAssets(data, form(...Array.from({ length: 10 }, () => image())))).length, 10);
+});
+
+test("note images retain year-relative Markdown and authenticated asset reading", async t => {
+  const { data } = await fixture(t);
+  const input = form(image()); input.set("scope", "notes");
+  for (const year of ["", "../2026", "0000", "26", "2026/elsewhere"]) {
+    input.set("year", year);
+    await assert.rejects(upload.uploadAssets(data, input), upload.AssetUploadInputError);
+    assert.deepEqual(await fs.readdir(data), []);
+  }
+  input.set("year", "2026");
+  const [asset] = await upload.uploadAssets(data, input);
+  assert.equal(asset.path, `../assets/notes/2026/${asset.fileName}`);
+  const response = await readAssetResponse(data, ["notes", "2026", asset.fileName]);
+  assert.equal(response.status, 200);
+  assert.equal(await response.text(), "synthetic image");
+  assert.deepEqual((await fs.readdir(path.join(data, "assets"))).sort(), ["notes"]);
+});
+
+test("note year directories cannot follow a junction into another instance", async t => {
+  const { root, data } = await fixture(t);
+  const outside = path.join(root, "outside-notes");
+  await fs.mkdir(outside);
+  await fs.mkdir(path.join(data, "assets", "notes"), { recursive: true });
+  await fs.symlink(outside, path.join(data, "assets", "notes", "2026"), process.platform === "win32" ? "junction" : "dir");
+  const input = form(image()); input.set("scope", "notes"); input.set("year", "2026");
+  await assert.rejects(upload.uploadAssets(data, input), boundary.InvalidAssetPath);
+  assert.deepEqual(await fs.readdir(outside), []);
 });
 
 test("refuses linked data/assets roots without writing another instance", async t => {

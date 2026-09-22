@@ -49,9 +49,9 @@
 
 `GET /api/assets/...` 先认证，再解析显式实例下的附件路径。拒绝目录联接、符号链接、路径越界和Windows备用数据流；打开后复核路径与文件身份。图片返回对应MIME及`nosniff`，SVG使用禁止脚本的sandbox；不缓存认证资料。
 
-`POST /api/assets/upload` 先认证，接收 multipart/form-data 的多个 `file`，`scope` 可省略或为 `logs`。每批1–10张，每张非空且不超过20 MiB；支持PNG/JPEG/WebP/GIF/BMP/SVG的MIME和扩展名，检查文件元数据，不解码或重编码图片。整个请求体最多201 MiB（含表单开销），实际流超过限制也拒绝；大小超限413，类型/数量/格式错误400。
+`POST /api/assets/upload` 先认证，接收 multipart/form-data 的多个 `file`，`scope` 可省略或为 `logs`；随记传 `scope=notes` 及四位 `year`（1000–9999）。每批1–10张，每张非空且不超过20 MiB；支持PNG/JPEG/WebP/GIF/BMP/SVG的MIME和扩展名，检查文件元数据，不解码或重编码图片。整个请求体最多201 MiB（含表单开销），实际流超过限制也拒绝；大小超限413，类型/数量/格式错误400。
 
-整批校验通过后才创建文件；仅写入显式实例 `data/assets/`，拒绝实例根及附件目录符号链接/联接。服务端生成时间戳加UUID文件名，并独占创建，不使用用户文件名作为磁盘路径、不覆盖已有附件。成功返回 `{assets:[{fileName,path,markdown}]}`，其中 `path` 为 `./assets/文件名`，可直接写入日志Markdown。失败尽量清理本批创建且身份仍可确认的文件，文件系统错误500不包含绝对路径。成功上传后若编辑器未保存，附件仍保留；本批不提供自动清理、随记上传或远程对象存储。
+整批校验通过后才创建文件；日志写入显式实例 `data/assets/`，随记写入 `data/assets/notes/YYYY/`，逐级拒绝符号链接/联接。服务端生成时间戳加UUID文件名，并独占创建，不使用用户文件名作为磁盘路径、不覆盖已有附件。成功返回 `{assets:[{fileName,path,markdown}]}`，日志 `path` 为 `./assets/文件名`，随记为相对年度随记文件的 `../assets/notes/YYYY/文件名`。失败尽量清理本批创建且身份仍可确认的文件，文件系统错误500不包含绝对路径。成功上传后若编辑器未保存，附件仍保留；不提供自动清理或远程对象存储。
 
 ## 日块备份
 

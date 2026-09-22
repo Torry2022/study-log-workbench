@@ -60,12 +60,21 @@ export async function initialize(root) {
       await fs.mkdir(path.join(root, name), { recursive: true, mode: 0o700 });
     }
     await writeNew(identityFile, JSON.stringify({ schemaVersion: 1, id: crypto.randomUUID() }, null, 2) + "\n");
+    const prompts = path.join(data, "prompts");
+    await assertNoLinks(prompts);
+    await fs.mkdir(prompts, { recursive: true, mode: 0o700 });
+    for (const name of ["generation", "highlighting", "extraction"]) {
+      const target = path.join(prompts, `${name}.md`);
+      await assertNoLinks(target);
+      const source = new URL(`../prompts/${name}.md`, import.meta.url);
+      await writeNew(target, await fs.readFile(source));
+    }
     const envFile = path.join(root, ".env");
     await assertNoLinks(envFile);
     await writeNew(envFile, [
       `APP_PASSWORD=${crypto.randomBytes(18).toString("base64url")}`,
       `SESSION_SECRET=${crypto.randomBytes(36).toString("base64url")}`,
-      "COOKIE_SECURE=false", ""
+      "COOKIE_SECURE=false", "CHAT_API_URL=", "CHAT_MODEL=", "CHAT_API_KEY=", ""
     ].join("\n"));
     return { initialized: true, credentialsFile: envFile };
   });

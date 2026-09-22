@@ -3,6 +3,8 @@ import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { getLogRoot } from "@/lib/config";
+import { inspectChatConfig } from "@/lib/ai-config";
+import { inspectWritingPrompts } from "@/lib/ai-prompts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,6 +18,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       instanceId: instance.id,
       apiContractVersion: 1,
+      aiConfiguration: { provider: inspectChatConfig(), templates: await inspectWritingPrompts() },
       features: {
         aiWriting: { supported: false, configured: false },
         rag: { supported: false, configured: false }

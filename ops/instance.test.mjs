@@ -7,6 +7,22 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { initialize, withInstanceLock } from "./instance.mjs";
 
+test("instance prompts are neutral editable copies and reinitialization preserves user templates", async t => {
+  const root = await fixture(t);
+  await initialize(root);
+  const prompts = path.join(root, "data", "prompts");
+  for (const name of ["generation", "highlighting", "extraction"]) {
+    const installed = await fs.readFile(path.join(prompts, `${name}.md`), "utf8");
+    assert.equal(installed, await fs.readFile(new URL(`../prompts/${name}.md`, import.meta.url), "utf8"));
+  }
+  const target = path.join(prompts, "generation.md");
+  await fs.writeFile(target, "synthetic user template");
+  await initialize(root);
+  assert.equal(await fs.readFile(target, "utf8"), "synthetic user template");
+  const environment = await fs.readFile(path.join(root, ".env"), "utf8");
+  assert.match(environment, /CHAT_API_URL=\nCHAT_MODEL=\nCHAT_API_KEY=\n/);
+});
+
 async function fixture(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "workbench-init-test-"));
   t.after(() => {

@@ -7,6 +7,8 @@ export const INVALID_DAY_CONTENT_ERROR_CODE = "invalid_day_content";
 
 export interface MarkdownRootHeading {
   text: string;
+  level: number;
+  line: number;
   start: number;
   end: number;
 }
@@ -26,20 +28,22 @@ export function stripTrailingStructuralSeparator(markdown: string): string {
   return trimmed.replace(/(?:\r?\n)+[ \t]*---[ \t]*$/, "").trimEnd();
 }
 
-export function findRootAtxHeadings(markdown: string, depth: 2 | 3): MarkdownRootHeading[] {
+export function findRootAtxHeadings(markdown: string, depth?: 2 | 3 | 4 | 5 | 6): MarkdownRootHeading[] {
   const headings: MarkdownRootHeading[] = [];
   // Root headings describe days/sections; code, lists and quotes do not.
   for (const node of markdownParser.parse(markdown).children) {
-    if (node.type !== "heading" || node.depth !== depth || !node.position) continue;
+    if (node.type !== "heading" || node.depth < 2 || (depth && node.depth !== depth) || !node.position) continue;
     const offset = node.position.start.offset;
     const end = node.position.end.offset;
     if (offset === undefined || end === undefined) continue;
     const start = offset === 0 ? 0 : markdown.lastIndexOf("\n", offset - 1) + 1;
     const line = markdown.slice(start, end);
-    const headingMatch = line.match(/^ {0,3}(#{2,3})(?!#)[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$/);
-    if (!headingMatch || headingMatch[1].length !== depth) continue;
+    const headingMatch = line.match(/^ {0,3}(#{2,6})(?!#)[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$/);
+    if (!headingMatch) continue;
     headings.push({
       text: headingMatch[2].trim(),
+      level: node.depth,
+      line: node.position.start.line,
       start,
       end: start + line.length
     });

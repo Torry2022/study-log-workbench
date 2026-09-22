@@ -1,34 +1,12 @@
 import fs from "node:fs/promises";
 import { constants } from "node:fs";
 import path from "node:path";
+import { checkAssetPath as checkPath, InvalidAssetPath, validAssetSegments as validSegments } from "./asset-path.ts";
 
 const contentTypes: Record<string, string> = {
   ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
   ".webp": "image/webp", ".gif": "image/gif", ".svg": "image/svg+xml", ".bmp": "image/bmp"
 };
-
-class InvalidAssetPath extends Error {}
-
-function validSegments(segments: string[]): boolean {
-  return segments.length > 0 && segments.every(segment => typeof segment === "string" &&
-    segment.length > 0 && segment !== "." && segment !== ".." &&
-    !/[\\/:\u0000-\u001f\u007f]/.test(segment) && !/[. ]$/.test(segment));
-}
-
-// Check the data root and assets root themselves, not only a realpath-relative child:
-// accepting a symlinked assets root would authorize another instance's entire directory.
-async function checkPath(file: string): Promise<void> {
-  let current = path.parse(file).root;
-  const parts = file.slice(current.length).split(path.sep).filter(Boolean);
-  for (let index = 0; index < parts.length; index++) {
-    current = path.join(current, parts[index]);
-    const stat = await fs.lstat(current);
-    if (stat.isSymbolicLink()) throw new InvalidAssetPath();
-    if (index < parts.length - 1 && !stat.isDirectory()) {
-      throw Object.assign(new Error(), { code: "ENOTDIR" });
-    }
-  }
-}
 
 function errorResponse(status: number, message: string): Response {
   return Response.json({ error: message }, { status, headers: {

@@ -42,9 +42,15 @@ try {
     await page.getByRole("alert").filter({ hasText: "密码错误" }).waitFor();
     await page.getByLabel("访问密码").fill(environment.APP_PASSWORD);
     await page.getByRole("button", { name: "登录", exact: true }).click();
-    await page.getByRole("button", { name: "退出登录", exact: true }).waitFor();
+    await page.locator(".workspace").waitFor();
     await page.reload();
-    await page.getByRole("button", { name: "退出登录", exact: true }).click();
+    await page.locator(".workspace").waitFor();
+    if (width === 390) {
+      await page.getByRole("button", { name: "更多设置", exact: true }).click();
+      await page.getByRole("button", { name: "退出登录", exact: true }).click();
+    } else {
+      await page.getByRole("button", { name: "退出", exact: true }).click();
+    }
     await page.getByRole("button", { name: "登录", exact: true }).waitFor();
     assert.deepEqual(errors, []);
     results.push({ name, metrics, login: "passed", refresh: "passed", logout: "passed", errors });

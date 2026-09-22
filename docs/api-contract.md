@@ -94,6 +94,14 @@
 
 接口不读取或写入该日日志。客户端审阅后应用前须再次核对日期和原文快照；应用只进入编辑草稿。鉴权、取消、配置错误和上游失败沿用生成接口的状态码与安全错误，不返回模型服务凭据或原始错误正文。
 
+## 随记候选与分类建议
+
+`POST /api/notes/candidates` 接收 `{documents: ExtractedDocument[]}`（先调用材料解析，最多5份、合计160,000字符/2,000片段、JSON请求2 MiB）。返回 `{result:{candidates,documents,warnings,model}}`，最多12条候选，候选 `id` 是可直接用于批量保存的 UUID；含标题/正文/个人理解/来源/标签、明示或归纳类型，以及来自所给材料实际片段的依据。依据证明的是所提交材料中的文字，不代表已核实外部来源。提取不写随记。
+
+`POST /api/notes/batch` 接收 `{notes:[{clientId,title,body,insight,sources,tags,recordedAt}]}`，每批1–20条、请求4 MiB；返回 `{notes:StudyNote[]}`，与输入顺序一致。全批校验后统一写入。相同 UUID 与相同规范化业务内容重试返回原记录，不重复备份；同 UUID 不同内容返回409 `NOTE_CONFLICT`。跨年份失败走随记存储的回滚/恢复标记，不宣称多文件原子事务。客户端应核对返回记录身份后清稿，未确认时保留原批次重试。
+
+`POST /api/taxonomy/suggest` 接收 `{items:[{tag,sources?}]}`，最多200个标签，按50个分批请求；仅从实例已保存领域中选择，返回 `{suggestions,warnings,model,snapshotVersion}`。只有“其他”领域时不请求模型。建议不写分类；客户端核验快照后审核应用到草稿，再调用既有版本化分类保存接口。
+
 ## 日块备份
 
 - `GET /api/backups?date=YYYY-MM-DD&cursor=...` 返回 `{backup:{write:[{id,kind:"write",createdAt,sizeBytes,fileName}],nextCursor}}`；cursor可省略。按内容去重，最多最近20个不同日块版本，每请求最多读取64个候选文件；nextCursor非空时可继续。物理备份不因列表上限而删除。

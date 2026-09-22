@@ -200,8 +200,8 @@ export async function listDays(month: string): Promise<DaySummary[]> {
     .map(toDaySummary);
 }
 
-export async function listSavedDayContents(): Promise<Array<{ date: string; content: string }>> {
-  return (await readBlocks()).map(({ date, content }) => ({ date, content }));
+export async function listSavedDayContents(): Promise<Array<{ date: string; content: string; fileName: string }>> {
+  return (await readBlocks()).map(({ date, content, fileName }) => ({ date, content, fileName }));
 }
 
 

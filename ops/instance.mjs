@@ -16,15 +16,38 @@ export async function assertNoLinks(target) {
   }
 }
 
-export async function withInstanceLock(data, operation) {
+export async function acquireInstanceLock(data, operation = "maintenance") {
+  if (!data || !path.isAbsolute(data)) throw new Error("实例锁需要明确的数据绝对路径");
+  await assertNoLinks(data);
+  if (!(await fs.stat(data)).isDirectory()) throw new Error("实例数据路径必须是目录");
   const lock = path.join(data, ".instance-operation.lock");
-  try { await fs.mkdir(lock); }
+  try { await fs.mkdir(lock, { mode: 0o700 }); }
   catch (error) {
     if (error.code === "EEXIST") throw new Error("实例正在运行、维护或存在待检查的遗留锁");
     throw error;
   }
+  const identity = await fs.lstat(lock);
+  const ownerFile = path.join(lock, "owner.json"), ownerId = crypto.randomUUID();
+  // A failed owner write leaves the new lock for inspection: never remove a
+  // directory whose ownership could not be fully established.
+  await fs.writeFile(ownerFile, JSON.stringify({ ownerId, operation, pid: process.pid, startedAt: new Date().toISOString() }), { flag: "wx", mode: 0o600 });
+  let released = false;
+  return async () => {
+    if (released) return;
+    await assertNoLinks(lock);
+    await assertNoLinks(ownerFile);
+    const current = await fs.lstat(lock), ownerStat = await fs.lstat(ownerFile);
+    if (!ownerStat.isFile() || ownerStat.size > 4096 || current.ino !== identity.ino || current.dev !== identity.dev || JSON.parse(await fs.readFile(ownerFile, "utf8")).ownerId !== ownerId) throw new Error("实例锁归属已变化；保留锁，请停机检查");
+    await fs.unlink(ownerFile);
+    await fs.rmdir(lock);
+    released = true;
+  };
+}
+
+export async function withInstanceLock(data, operation) {
+  const release = await acquireInstanceLock(data);
   try { return await operation(); }
-  finally { await fs.rmdir(lock); }
+  finally { await release(); }
 }
 
 async function writeNew(file, contents) {

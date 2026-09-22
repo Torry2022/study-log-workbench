@@ -4,7 +4,22 @@
   "private": true,
   "description": "Read-only retrieval for one explicitly configured Markdown study-log instance.",
   "type": "module",
-  "engines": { "node": ">=22" },
-  "scripts": { "test": "node --test test/*.test.mjs" },
-  "dependencies": { "remark-parse": "11.0.0", "unified": "11.0.5" }
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/server.mjs",
+    "start:http": "node src/http-server.mjs",
+    "test": "node --test test/*.test.mjs",
+    "smoke": "node --test test/protocol.test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/node": "2.0.0",
+    "@modelcontextprotocol/server": "2.0.0",
+    "remark-parse": "11.0.0",
+    "unified": "11.0.5"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.0.0"
+  }
 }

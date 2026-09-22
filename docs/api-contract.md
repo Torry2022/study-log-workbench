@@ -26,6 +26,15 @@
 
 返回 `{results:[{date,month,fileName,headings,matches}]}`，每个命中日块一项，日期倒序，`matches`按原文顺序最多5行并去除行首尾空白，`headings`保留真实三级标题并去除可选数字编号。`fileName`和正文来自同次权威源文件读取，保留真实年/月文件名。非法范围/大小写参数400，资料读取失败500且不暴露文件路径；响应不缓存。
 
+## 小节收藏与分组
+
+- 所有 `/api/favorites` 方法先认证且禁止缓存。GET返回 `{favorites,groups}`，来自同一收藏JSON快照；收藏按创建时间倒序，分组按order升序。空实例两个数组均为空，不预置个人分组。
+- POST接收 `{date,headingText,headingId,level:3}` 返回 `{favorite}`；相同日期、标题和标题ID重复收藏保持同一id与createdAt。只支持真实产品已有的三级小节收藏，date负责定位原日块，不提供整日收藏。
+- POST `{action:"createGroup",name}` 返回 `{group}`，同名复用已有组。PATCH `{action:"renameGroup",groupId,name}` 改名，拒绝与其他组重名；PATCH `{id,groupIds:string[]}` 更新多组归属，去重并忽略已经不存在的组，返回 `{favorite}`。
+- DELETE `?id=...` 取消收藏；DELETE `?groupId=...` 删除分组并解除归属，保留收藏，均返回 `{ok:true}`。两个删除目标不能同时提供。
+- favorite包括date/month、原headingText/headingId、resolvedHeadingId、groupIds、level、createdAt/updatedAt、exists、sectionPreview（最多180字符）及sectionSearchText（最多12000字符）。解析原文时按标题ID与文字优先，再按同文字回退；原标题改名或删除仍保留收藏，exists为false。小节边界使用AST，不把围栏或引用里的伪标题当边界。
+- 收藏仅持久化于显式实例data下的`.study-log-favorites.json`。实例内修改串行执行，通过同目录唯一临时文件、sync与rename原子替换；写入/替换失败保留旧JSON，损坏JSON或结构错误明确失败，不静默重建空集合。拒绝实例根或收藏文件符号链接。参数问题400，存储问题500且不回传路径。此队列不提供跨进程并发写入支持。
+
 ## 日块写入
 
 - `PUT /api/logs/day` 先认证，接收 `{date,content,baseVersion,mode?:"replace"|"append"}`，返回 `{day:完整DayEntry}`。默认替换；append只向该日正文追加请求片段，同样参与版本比较，不绕过冲突校验。界面普通保存仍使用replace。

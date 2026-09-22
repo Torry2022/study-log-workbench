@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import "./login.css";
+import "katex/dist/katex.min.css";
 
 const themeInitializer = `
 (() => {

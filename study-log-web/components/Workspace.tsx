@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSession } from "./AuthGate";
 import { WorkspaceChrome } from "./WorkspaceChrome";
 import { LogReader } from "./LogReader";
@@ -12,6 +12,8 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { BackupDialog } from "./BackupDialog";
 import { requestJson } from "@/lib/client-http";
 import type { DayEntry } from "@/lib/types";
+import type { SearchSelection } from "./SearchBox";
+import { clearSearchSessionHistory } from "@/hooks/use-search-history";
 import type { WorkspaceMode } from "./LogReader";
 import "@/app/editing-workspace.css";
 
@@ -28,6 +30,13 @@ export function Workspace() {
   const [backupOpen, setBackupOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [operationError, setOperationError] = useState("");
+  const [searchSelection, setSearchSelection] = useState<SearchSelection | null>(null);
+  const clearSearch = useCallback(() => setSearchSelection(null), []);
+  const selectDate = useCallback(async (date: string, heading = "") => {
+    const accepted = await logs.selectDate(date, heading);
+    if (accepted) setSearchSelection(null);
+    return accepted;
+  }, [logs.selectDate]);
   beforeLeave.current = async () => {
     if (!active) return false;
     if (draft.busy || deleting || backupOpen) return false;
@@ -51,7 +60,7 @@ export function Workspace() {
   const exit = async () => {
     if (!(await beforeLeave.current())) return;
     setSessionError("");
-    try { await logout(); } catch { setSessionError("退出失败，请重试"); }
+    try { await logout(); clearSearchSessionHistory(); } catch { setSessionError("退出失败，请重试"); }
   };
   const acceptExternal = (day: DayEntry) => { draft.acceptExternal(day); logs.acceptSaved(day); setOperationError(""); };
   const deleteCurrent = async () => {
@@ -70,11 +79,13 @@ export function Workspace() {
     selectedMonth={logs.selection.month} selectedDate={logs.selection.date}
     loading={logs.navigationLoading} error={logs.navigationError || sessionError} readingMode={reading}
     theme={theme} themePreference={preference} onTheme={chooseTheme}
-    onMonth={logs.selectMonth} onDate={logs.selectDate} onRetry={logs.retry}
+    onMonth={month => { clearSearch(); logs.selectMonth(month); }} onDate={selectDate} onRetry={logs.retry}
+    onSearchChange={clearSearch} onSearchSelect={async result => { if (!(await logs.selectDate(result.date))) return false; setMode("preview"); setReading(false); setSearchSelection(result); return true; }}
     onNewDate={date => { void logs.selectDate(date).then(accepted => { if (accepted) setMode("source"); }); }} onLogout={() => void exit()}>
     <LogReader active={active} day={logs.day} date={logs.selection.date} heading={logs.selection.heading}
       scrollTarget={logs.scrollTarget} navigationRevision={logs.navigationRevision} loading={logs.loading} error={logs.error} theme={theme}
-      reading={reading} onReading={value => { if (value) setMode("preview"); setReading(value); }} onRetry={logs.retry} onNavigate={logs.selectDate}
+      reading={reading} onReading={value => { if (value) setMode("preview"); setReading(value); }} onRetry={logs.retry} onNavigate={selectDate}
+      search={searchSelection?.date === logs.selection.date ? searchSelection : null}
       editing={{ mode, onMode: setMode, documentDate: draft.draft?.date || "", body: draft.draft?.body || "", dirty: draft.dirty,
         busy: draft.busy || deleting, locked: deleting, error: operationError || draft.error, conflict: draft.conflict, saved: draft.saved, resetRevision: draft.resetRevision,
         onChange: draft.change, onSave: () => { if (!deleting && !backupOpen) void draft.save(); }, onReload: () => void reload(),

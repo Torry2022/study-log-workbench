@@ -7,6 +7,8 @@ import { withBasePath } from "@/lib/base-path";
 import { useMobileViewport } from "@/hooks/use-mobile-viewport";
 import { DateJump } from "./DateJump";
 import { isValidLogDate, isFutureLogDate, todayInShanghai } from "@/lib/study-date";
+import { SearchBox, type SearchSelection } from "./SearchBox";
+import { lockBodyScroll } from "@/hooks/use-dialog-exit";
 import "@/app/workspace.css";
 
 export interface WorkspaceChromeProps {
@@ -26,6 +28,8 @@ export interface WorkspaceChromeProps {
   onTheme: (theme: "system" | "light" | "dark") => void;
   onLogout: () => void;
   onRetry: () => void;
+  onSearchSelect: (result: SearchSelection) => Promise<boolean>;
+  onSearchChange: () => void;
   children: ReactNode;
 }
 
@@ -38,10 +42,10 @@ const themes = [
 
 /** Presentation and navigation only; authentication and document state belong to Workspace. */
 export function WorkspaceChrome({ active, months, days, selectedMonth, selectedDate, loading, error,
-  theme, themePreference = "system", readingMode = false, onMonth, onDate, onNewDate, onTheme, onLogout, onRetry, children }: WorkspaceChromeProps) {
+  theme, themePreference = "system", readingMode = false, onMonth, onDate, onNewDate, onTheme, onLogout, onRetry, onSearchSelect, onSearchChange, children }: WorkspaceChromeProps) {
   const [compact, setCompact] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
-  const [panel, setPanel] = useState<"navigation" | "account" | null>(null);
+  const [panel, setPanel] = useState<"navigation" | "account" | "search" | null>(null);
   const [monthsExpanded, setMonthsExpanded] = useState(false);
   const [query, setQuery] = useState("");
   const [customDate, setCustomDate] = useState(todayInShanghai());
@@ -50,6 +54,7 @@ export function WorkspaceChrome({ active, months, days, selectedMonth, selectedD
   const dateJumpSequence = useRef(0);
   const sidebar = useRef<HTMLElement>(null);
   const account = useRef<HTMLElement>(null);
+  const globalSearch = useRef<HTMLDivElement>(null);
   const themeButton = useRef<HTMLButtonElement>(null);
   const themeMenu = useRef<HTMLDivElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
@@ -99,17 +104,16 @@ export function WorkspaceChrome({ active, months, days, selectedMonth, selectedD
     });
   }
 
-  function openPanel(value: "navigation" | "account") {
+  function openPanel(value: "navigation" | "account" | "search") {
     returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setPanel(value);
   }
 
   useEffect(() => {
     if (!drawerOpen) return;
-    const dialog = panel === "navigation" ? sidebar.current : account.current;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const frame = requestAnimationFrame(() => dialog?.querySelector<HTMLButtonElement>("button")?.focus());
+    const dialog = panel === "navigation" ? sidebar.current : panel === "search" ? globalSearch.current : account.current;
+    const unlockScroll = lockBodyScroll();
+    const frame = requestAnimationFrame(() => dialog?.querySelector<HTMLElement>(panel === "search" ? "input" : "button")?.focus());
     const keydown = (event: KeyboardEvent) => {
       if (event.key === "Escape") { event.preventDefault(); setPanel(null); return; }
       if (event.key !== "Tab" || !dialog) return;
@@ -125,7 +129,7 @@ export function WorkspaceChrome({ active, months, days, selectedMonth, selectedD
     };
     document.addEventListener("keydown", keydown);
     return () => {
-      cancelAnimationFrame(frame); document.body.style.overflow = previousOverflow;
+      cancelAnimationFrame(frame); unlockScroll();
       document.removeEventListener("keydown", keydown);
       const target = returnFocus.current;
       if (target?.isConnected && target.getClientRects().length) target.focus();
@@ -150,15 +154,19 @@ export function WorkspaceChrome({ active, months, days, selectedMonth, selectedD
   }
 
   return <main className={`app-shell view-log public-reading-shell${readingMode ? " reading-mode" : ""}${keyboardOpen ? " mobile-keyboard-open" : ""}`}>
-    <header className="topbar" inert={drawerOpen}>
+    <header className="topbar" inert={drawerOpen && panel !== "search"}>
       <div className="mobile-topbar">
         <button className="mobile-topbar-button" type="button" onClick={() => openPanel("navigation")} aria-label="打开日志导航" aria-expanded={panel === "navigation"}><Menu size={20} /></button>
         <div className="mobile-topbar-title"><strong>学习日志</strong></div>
-        <div className="mobile-topbar-actions"><button className="mobile-topbar-button" type="button" onClick={() => openPanel("account")} aria-label="更多设置"><MoreHorizontal size={20} /></button></div>
+        <div className="mobile-topbar-actions"><button className="mobile-topbar-button" type="button" onClick={() => openPanel("search")} aria-label="全局搜索"><Search size={19} /></button><button className="mobile-topbar-button" type="button" onClick={() => openPanel("account")} aria-label="更多设置"><MoreHorizontal size={20} /></button></div>
       </div>
       <div className="brand">
         <span className="brand-mark theme-logo" aria-hidden="true"><img className="theme-logo-light" src={withBasePath("/app-logo-light.svg")} alt="" /><img className="theme-logo-dark" src={withBasePath("/app-logo-dark.svg")} alt="" /></span>
         <div><strong>学习日志工作台</strong><span>{selectedDate || "记录与回顾每天的技术学习"}</span></div>
+      </div>
+      <div ref={globalSearch} className={`workspace-global-search${panel === "search" ? " mobile-search-active" : ""}`} inert={compact && panel !== "search"} role={compact && panel === "search" ? "dialog" : undefined} aria-modal={compact && panel === "search" ? true : undefined} aria-label={compact && panel === "search" ? "搜索全部日志" : undefined}>
+        <div className="mobile-search-header"><button type="button" aria-label="关闭搜索" onClick={() => setPanel(null)}><ChevronLeft size={20} /></button><strong>搜索全部日志</strong></div>
+        <SearchBox active={active && (!compact || panel === "search")} onQueryChange={onSearchChange} onSelect={async result => { const accepted = await onSearchSelect(result); if (accepted && compact) setPanel(null); return accepted; }} />
       </div>
       <div className="topbar-actions">
         <div className="theme-menu" ref={themeMenu} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setThemeOpen(false); }}>

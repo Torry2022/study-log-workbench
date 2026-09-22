@@ -963,9 +963,9 @@
 }
 
 
-/* Public read-only shell: the not-yet-migrated search and inspector columns are absent. */
+/* Public workspace has one shared global search and no inspector column yet. */
 .public-reading-shell { --mobile-topbar-height: calc(44px + var(--safe-area-top)); --mobile-bottom-occupied: 0px; }
-.public-reading-shell > .topbar { grid-template-columns: minmax(180px, 1fr) auto; }
+.public-reading-shell > .topbar { grid-template-columns: minmax(180px, 1fr) minmax(220px, 2fr) auto; }
 .public-reading-shell .sidebar-section.grow { grid-template-rows: auto auto minmax(0, 1fr); }
 .public-reading-shell .sidebar-search input { width: 100%; min-width: 0; border: 1px solid var(--hairline); border-radius: var(--radius-md); color: var(--ink); }
 .public-reading-shell .nav-item { border: 0; background: transparent; color: var(--body); text-align: left; }

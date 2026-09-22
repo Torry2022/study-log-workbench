@@ -17,6 +17,7 @@ import { insertAtRange, type InsertionRange } from "@/lib/editor-insertion";
 import { InternalLinkDialog } from "./InternalLinkDialog";
 import { findInternalLinkHeading } from "@/lib/internal-links";
 import { requestLogJson } from "@/lib/client-http";
+import type { SearchSelection } from "./SearchBox";
 import "@/app/reader.css";
 
 export type WorkspaceMode = "preview" | "source" | "split";
@@ -30,6 +31,7 @@ interface Editing {
 }
 interface Props {
   editing: Editing;
+  search: SearchSelection | null;
   active: boolean;
   navigationRevision: number;
   day: DayEntry | null; date: string; heading: string; scrollTarget: number | null;
@@ -38,7 +40,7 @@ interface Props {
   onNavigate: (date: string, heading?: string) => Promise<boolean>;
 }
 
-export function LogReader({ editing, active, navigationRevision, day, date, heading, scrollTarget, loading, error, theme, reading, onReading, onRetry, onNavigate }: Props) {
+export function LogReader({ editing, search, active, navigationRevision, day, date, heading, scrollTarget, loading, error, theme, reading, onReading, onRetry, onNavigate }: Props) {
   const content = useMemo(() => editing.documentDate === date ? editing.body : day ? toEditableDayBody(day.date, day.content) : "", [editing.documentDate, editing.body, date, day]);
   const headings = useMemo(() => buildMarkdownOutline(content), [content]);
   const [outlineOpen, setOutlineOpen] = useState(false);
@@ -166,6 +168,14 @@ export function LogReader({ editing, active, navigationRevision, day, date, head
     restore(); return () => cancelAnimationFrame(frame);
   }, [date, loading, editorReady, mode, returnPoint, linkPosition.restore]);
   useEffect(() => {
+    if (!search || !ready || !editorReady || mode !== "preview") return;
+    const frame = requestAnimationFrame(() => {
+      const hit = preview.current?.querySelector<HTMLElement>(search.scope === "heading" ? "h3 .search-hit-highlight" : ".search-hit-highlight");
+      if (hit) window.scrollTo({ top: Math.max(0, window.scrollY + hit.getBoundingClientRect().top - (toolbar.current?.getBoundingClientRect().bottom || 0) - 12), behavior: "instant" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [search, ready, editorReady, mode, navigationRevision]);
+  useEffect(() => {
     if (!ready) return;
     let frame = 0;
     const update = () => {
@@ -212,7 +222,7 @@ export function LogReader({ editing, active, navigationRevision, day, date, head
     {(editing.error || editing.dirty || editing.saved) && <div className="editor-save-status" role={editing.error ? "alert" : "status"}>{editing.error || (editing.dirty ? "有未保存修改" : "已保存")}{editing.dirty && <button className="button secondary" type="button" disabled={editing.busy} onClick={editing.onDiscard}>放弃修改</button>}{editing.conflict && <button className="button secondary" type="button" onClick={editing.onReload}>重新读取</button>}</div>}
     <div className="reader-preview-pane" style={{ display: mode === "source" ? "none" : undefined }}>
     {loading ? <div className="preview-loading" role="status">正在读取日志…</div> : error ? <div className="preview-empty" role="alert"><p>{error}</p><button className="button secondary" onClick={onRetry}>重试</button></div> : !day?.exists && !content.trim() ? <div className="preview-empty"><p>{date ? "这一天暂无学习日志" : "暂无学习日志，请从左侧选择日期"}</p></div> : <div className={`preview-workspace${headings.length && mode === "preview" ? " has-outline" : ""}`}>
-      <div className="preview-pane"><MarkdownPreview active={active} containerRef={preview} content={content} headings={headings} themeMode={theme} onInternalLink={openInternalLink} />
+      <div className="preview-pane"><MarkdownPreview active={active} containerRef={preview} content={content} headings={headings} themeMode={theme} textHighlight={search || undefined} onInternalLink={openInternalLink} />
         {!reading && <button className="button preview-reading-mode-entry" type="button" aria-label="进入阅读模式" onClick={() => changeReading(true)}><Maximize2 size={18} /></button>}
       </div>{headings.length > 0 && mode === "preview" && renderOutline(false)}
     </div>}

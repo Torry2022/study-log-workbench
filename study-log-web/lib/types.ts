@@ -25,5 +25,10 @@ export interface SaveDayInput {
   date: string;
   content: string;
   baseVersion: string | null;
-  mode?: "replace";
+  mode?: "replace" | "append";
+}
+
+export interface DeleteDayInput {
+  date: string;
+  baseVersion: string;
 }

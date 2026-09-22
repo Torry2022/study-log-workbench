@@ -22,7 +22,8 @@
 
 ## 日块写入
 
-- `PUT /api/logs/day` 先认证，接收 `{date,content,baseVersion,mode?:"replace"}`，返回 `{day:完整DayEntry}`。不提供POST、追加或删除入口。
+- `PUT /api/logs/day` 先认证，接收 `{date,content,baseVersion,mode?:"replace"|"append"}`，返回 `{day:完整DayEntry}`。默认替换；append只向该日正文追加请求片段，同样参与版本比较，不绕过冲突校验。界面普通保存仍使用replace。
+- `DELETE /api/logs/day` 接收 `{date,baseVersion:非空字符串}`，版本不符或日块已消失返回409；成功返回 `{day:exists为false的空日块}`。只删除选中日，保留其他日原文和备份，不删除整个年月文件。
 - `baseVersion`字段必须存在，类型为非空字符串或null。null仅断言目标日块不存在，允许向已有月/年文件中插入新日；队列内若发现目标日已存在则409。字符串要求目标日仍存在，且整份源文件版本一致；日块已删除或别日改动导致版本变化都返回409，不自动覆盖。
 - GET空日仍返回`exists:false,version:null`；它不预留日期。保存以目标日实际所属源文件优先，其次已有月文件、已有年文件，均无才新建月文件；以保存响应的`fileName`为准。
 - 只修改目标日块，日期标题和结构分隔符由服务端维护；拒绝未来日期、畸形请求或正文中的根级二级标题，返回400。成功返回正文及版本来自同一写入快照，读取与写入均不缓存。
@@ -36,3 +37,11 @@
 `POST /api/assets/upload` 先认证，接收 multipart/form-data 的多个 `file`，`scope` 可省略或为 `logs`。每批1–10张，每张非空且不超过20 MiB；支持PNG/JPEG/WebP/GIF/BMP/SVG的MIME和扩展名，检查文件元数据，不解码或重编码图片。整个请求体最多201 MiB（含表单开销），实际流超过限制也拒绝；大小超限413，类型/数量/格式错误400。
 
 整批校验通过后才创建文件；仅写入显式实例 `data/assets/`，拒绝实例根及附件目录符号链接/联接。服务端生成时间戳加UUID文件名，并独占创建，不使用用户文件名作为磁盘路径、不覆盖已有附件。成功返回 `{assets:[{fileName,path,markdown}]}`，其中 `path` 为 `./assets/文件名`，可直接写入日志Markdown。失败尽量清理本批创建且身份仍可确认的文件，文件系统错误500不包含绝对路径。成功上传后若编辑器未保存，附件仍保留；本批不提供自动清理、随记上传或远程对象存储。
+
+## 日块备份
+
+- `GET /api/backups?date=YYYY-MM-DD&cursor=...` 返回 `{backup:{write:[{id,kind:"write",createdAt,sizeBytes,fileName}],nextCursor}}`；cursor可省略。按内容去重，最多最近20个不同日块版本，每请求最多读取64个候选文件；nextCursor非空时可继续。物理备份不因列表上限而删除。
+- `GET /api/backups/preview?date=...&kind=write&id=...` 返回 `{preview:{date,kind,id,fileName,historicalContent,currentContent,currentVersion,backupVersion}}`。backupVersion是历史日块内容摘要，预览用于比较，不修改资料。
+- `POST /api/backups/restore` 接收 `{date,kind:"write",id,baseVersion,backupVersion}`。baseVersion使用预览时的currentVersion，字段不可省略；已删除日可为null。双方版本任一变化返回409，须重新预览并确认。成功返回 `{day}`。
+- 恢复经过普通写入的串行队列、写前备份和原子替换，仅复制历史中的选中日。当前已有日保持实际所属文件；恢复缺失日优先回历史年月源文件，不覆盖其他日。损坏/重复日期备份拒绝恢复。
+- 以上入口均须认证；备份ID严格限制为所选日期对应的年/月文件名和备份格式，不接受路径。未找到版本404，参数400，文件系统错误500且不泄露路径；所有响应禁止缓存。当前仅实现本机写前备份，整实例恢复在后续批次实现。

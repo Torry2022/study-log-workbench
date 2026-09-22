@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { getBackupRoot, getLogRoot, LOG_FILE_PATTERN } from "./config.ts";
 import { findLevelTwoHeadings, findRootAtxHeadings, normalizeDayContent, stripTrailingStructuralSeparator } from "./day-content.ts";
-import type { DayEntry, DaySummary, MonthSummary, SaveDayInput } from "./types.ts";
+import type { DayEntry, DaySummary, MonthSummary, SaveDayInput, DeleteDayInput } from "./types.ts";
 import { assertLogDateIsNotFuture, isValidLogDate } from "./study-date.ts";
 
 
@@ -133,7 +133,11 @@ function parseBlocks(content: string, file: LogFile): ParsedBlock[] {
 export function extractDayBlockFromSource(content: string, fileName: string, date: string): string | null {
   assertDate(date);
   const file = { fileName, filePath: fileName };
-  return parseBlocks(content, file).find((block) => block.date === date)?.content || null;
+  const blocks = parseBlocks(content, file);
+  if (new Set(blocks.map(block => block.date)).size !== blocks.length) {
+    throw new LogWriteInputError("备份源文件包含重复日期，无法确认所选日块");
+  }
+  return blocks.find((block) => block.date === date)?.content || null;
 }
 
 
@@ -196,6 +200,10 @@ export async function listDays(month: string): Promise<DaySummary[]> {
     .map(toDaySummary);
 }
 
+export async function listSavedDayContents(): Promise<Array<{ date: string; content: string }>> {
+  return (await readBlocks()).map(({ date, content }) => ({ date, content }));
+}
+
 
 async function findDayBlock(date: string): Promise<ParsedBlock | null> {
   assertDate(date);
@@ -249,7 +257,7 @@ async function withWriteQueue<T>(root: string, operation: () => Promise<T>): Pro
   finally { release(); if (writeQueues.get(root) === current) writeQueues.delete(root); }
 }
 
-async function assertUnlinkedPath(target: string): Promise<void> {
+export async function assertUnlinkedPath(target: string): Promise<void> {
   let current = path.parse(target).root;
   for (const part of target.slice(current.length).split(path.sep).filter(Boolean)) {
     current = path.join(current, part);
@@ -304,24 +312,49 @@ async function sourceVersion(file: string): Promise<string | null> {
   return fileVersion(file, content, stat.mtimeMs);
 }
 
-export async function saveDay(input: SaveDayInput): Promise<DayEntry> {
+function assertMutationVersion(input: { date: string; baseVersion: string | null }): void {
   if (!input || typeof input !== "object" || !Object.hasOwn(input, "baseVersion") ||
     !(input.baseVersion === null || typeof input.baseVersion === "string" && input.baseVersion.length > 0) ||
-    typeof input.date !== "string" || !isValidLogDate(input.date) || typeof input.content !== "string" ||
-    (input.mode !== undefined && input.mode !== "replace")) {
-    throw new LogWriteInputError("需要有效日期、正文和 baseVersion（非空字符串或 null）；当前仅支持 replace");
+    typeof input.date !== "string" || !isValidLogDate(input.date)) {
+    throw new LogWriteInputError("需要有效日期和 baseVersion（非空字符串或 null）");
+  }
+}
+
+export async function saveDay(input: SaveDayInput, missingDaySourceFileName?: string): Promise<DayEntry> {
+  assertMutationVersion(input);
+  if (typeof input.content !== "string" || (input.mode !== undefined && input.mode !== "replace" && input.mode !== "append")) {
+    throw new LogWriteInputError("需要有效正文；mode 仅支持 replace 或 append");
+  }
+  // Only trusted backup metadata supplies this internal hint. Public writes
+  // pass one argument and cannot choose a source filename or filesystem path.
+  if (missingDaySourceFileName !== undefined && ![`${toMonth(input.date)}_学习日志.md`, `${input.date.slice(0, 4)}_学习日志.md`].includes(missingDaySourceFileName)) {
+    throw new LogWriteInputError("历史源文件与日块年月不匹配");
   }
   assertLogDateIsNotFuture(input.date);
   const normalized = normalizeDayContent(input.date, input.content);
+  return mutateDay(input.date, input.baseVersion, current => {
+    if (input.mode !== "append" || !current) return normalized;
+    const incoming = normalized.replace(/^##\s+\d{4}-\d{2}-\d{2}[^\S\r\n]*\r?\n/, "").trim();
+    return incoming ? `${current.content.trimEnd()}\n\n${incoming}` : current.content;
+  }, missingDaySourceFileName);
+}
+
+export async function deleteDay(input: DeleteDayInput): Promise<DayEntry> {
+  assertMutationVersion(input);
+  if (input.baseVersion === null) throw new LogWriteInputError("删除日块必须提供当前非空 baseVersion");
+  return mutateDay(input.date, input.baseVersion, () => null);
+}
+
+async function mutateDay(date: string, baseVersion: string | null, replacement: (current: ParsedBlock | undefined) => string | null, missingDaySourceFileName?: string): Promise<DayEntry> {
   const root = getLogRoot();
   const backupRoot = getBackupRoot();
   return withWriteQueue(root, async () => {
     await assertUnlinkedPath(root);
-    const blocks = await readBlocks(toMonth(input.date));
-    const existing = blocks.find(block => block.date === input.date);
-    const monthlyName = `${toMonth(input.date)}_学习日志.md`;
-    const yearlyName = `${input.date.slice(0, 4)}_学习日志.md`;
-    const fileName = existing?.fileName ||
+    const blocks = await readBlocks(toMonth(date));
+    const existing = blocks.find(block => block.date === date);
+    const monthlyName = `${toMonth(date)}_学习日志.md`;
+    const yearlyName = `${date.slice(0, 4)}_学习日志.md`;
+    const fileName = existing?.fileName || missingDaySourceFileName ||
       (await existingRegularFile(path.join(root, monthlyName)) ? monthlyName :
         await existingRegularFile(path.join(root, yearlyName)) ? yearlyName : monthlyName);
     const file: LogFile = { fileName, filePath: path.join(root, fileName) };
@@ -331,14 +364,17 @@ export async function saveDay(input: SaveDayInput): Promise<DayEntry> {
     const stat = present ? await fs.stat(file.filePath) : null;
     const version = stat ? fileVersion(file.filePath, source, stat.mtimeMs) : null;
     const currentBlocks = parseBlocks(source, file);
-    const currentDay = currentBlocks.find(block => block.date === input.date);
-    if (input.baseVersion === null ? Boolean(currentDay) : !currentDay || input.baseVersion !== version) {
+    const currentDay = currentBlocks.find(block => block.date === date);
+    if (baseVersion === null ? Boolean(currentDay) : !currentDay || baseVersion !== version) {
       throw new LogConflictError();
     }
-    const next = replaceOrInsert(source, file, input.date, normalized);
+    const normalized = replacement(currentDay);
+    const next = normalized === null
+      ? source.slice(0, currentDay!.start) + source.slice(currentDay!.end)
+      : replaceOrInsert(source, file, date, normalized);
     const nextBlocks = parseBlocks(next, file);
-    const updated = nextBlocks.find(block => block.date === input.date);
-    if (!updated || new Set(nextBlocks.map(block => block.date)).size !== nextBlocks.length) {
+    const updated = nextBlocks.find(block => block.date === date);
+    if ((normalized === null ? Boolean(updated) : !updated) || new Set(nextBlocks.map(block => block.date)).size !== nextBlocks.length) {
       throw new LogWriteInputError("日块结构无效，未写入源文件");
     }
     if (present) {
@@ -363,6 +399,10 @@ export async function saveDay(input: SaveDayInput): Promise<DayEntry> {
     } finally {
       if (!committed) await fs.unlink(temporary).catch(error => { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; });
     }
+    if (!updated) return {
+      date, month: toMonth(date), fileName: `${toMonth(date)}_学习日志.md`, headings: [], preview: "",
+      exists: false, content: `## ${date}\n\n`, version: null, updatedAt: null
+    };
     return { ...toDaySummary(updated), exists: true, content: updated.content,
       version: savedVersion, updatedAt: savedUpdatedAt };
   });

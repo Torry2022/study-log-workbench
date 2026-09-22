@@ -1,10 +1,10 @@
 import { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { getDay, saveDay, LogWriteInputError, LogConflictError } from "@/lib/log-store";
+import { getDay, saveDay, deleteDay, LogWriteInputError, LogConflictError } from "@/lib/log-store";
 import { logReadResponse } from "@/lib/log-read-response";
 import { InvalidDayContentError } from "@/lib/day-content";
 import { FutureLogDateError } from "@/lib/study-date";
-import type { SaveDayInput } from "@/lib/types";
+import type { SaveDayInput, DeleteDayInput } from "@/lib/types";
 
 export const runtime = "nodejs";
 
@@ -29,5 +29,20 @@ export async function PUT(request: NextRequest) {
       return Response.json({ error: error.message }, { status: 400, headers });
     }
     return Response.json({ error: "日志保存失败，原有资料未被确认更新，请检查实例存储后重试" }, { status: 500, headers });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  const unauthorized = requireAuth(request);
+  if (unauthorized) return unauthorized;
+  const headers = { "Cache-Control": "no-store" };
+  let body: DeleteDayInput;
+  try { body = await request.json(); }
+  catch { return Response.json({ error: "请求正文必须是有效 JSON" }, { status: 400, headers }); }
+  try { return Response.json({ day: await deleteDay(body) }, { headers }); }
+  catch (error) {
+    if (error instanceof LogConflictError) return Response.json({ error: error.message, code: "LOG_CONFLICT" }, { status: 409, headers });
+    if (error instanceof LogWriteInputError) return Response.json({ error: error.message }, { status: 400, headers });
+    return Response.json({ error: "日块删除失败，请检查实例存储后重试" }, { status: 500, headers });
   }
 }

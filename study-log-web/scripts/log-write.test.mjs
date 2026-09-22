@@ -91,7 +91,7 @@ test("rejects missing versions, invalid modes/dates/structure and future writes 
   for (const input of [null, {}, { date: "2026-01-01", content: "x" },
     { date: "2026-01-01", content: "x", baseVersion: "" },
     { date: "2026-02-30", content: "x", baseVersion: null },
-    { date: "2026-01-01", content: "x", baseVersion: null, mode: "append" }]) {
+    { date: "2026-01-01", content: "x", baseVersion: null, mode: "unsupported" }]) {
     await assert.rejects(saveDay(input), LogWriteInputError);
   }
   await assert.rejects(create("9999-01-01"), FutureLogDateError);

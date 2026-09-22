@@ -35,6 +35,13 @@
 - favorite包括date/month、原headingText/headingId、resolvedHeadingId、groupIds、level、createdAt/updatedAt、exists、sectionPreview（最多180字符）及sectionSearchText（最多12000字符）。解析原文时按标题ID与文字优先，再按同文字回退；原标题改名或删除仍保留收藏，exists为false。小节边界使用AST，不把围栏或引用里的伪标题当边界。
 - 收藏仅持久化于显式实例data下的`.study-log-favorites.json`。实例内修改串行执行，通过同目录唯一临时文件、sync与rename原子替换；写入/替换失败保留旧JSON，损坏JSON或结构错误明确失败，不静默重建空集合。拒绝实例根或收藏文件符号链接。参数问题400，存储问题500且不回传路径。此队列不提供跨进程并发写入支持。
 
+## 统计与手工分类
+
+- `GET /api/stats?month=YYYY-MM` 返回 `{stats}`，月份须合法；省略时选择最近有日志月份（空库为当前上海月份）。按权威日块与根级H3计数，包含所有活动，不内置个人排除或领域推断。领域/标签比例、活跃天数及上月变化均从这些条目计算；entries的headingIndex是日内真实H3序号，重复标题来源定位应使用此序号。
+- `GET /api/taxonomy` 返回 `{taxonomy,catalog}`。taxonomy含domains/mappings/updatedAt/version，空实例仅领域“其他”、空映射及null版本；catalog按历史标题整理标签、出现次数、月份和来源，提供显式映射标识。
+- `PUT /api/taxonomy` 接受 `{domains,mappings,baseVersion}` 返回 `{taxonomy}`。baseVersion必填，空文件用null，已有文件用读取的SHA256版本；旧版本409 `TAXONOMY_CONFLICT`。删除自定义领域后，其映射归入“其他”；不重建个人默认领域。
+- 以上均先认证、禁止缓存。参数400，存储错误500且隐藏路径。分类JSON位于显式实例data，读取与写入共用进程内队列；覆盖前在实例backups保留完整唯一备份，再通过临时文件sync和rename替换。分类建议属于后续AI能力，当前只有手工编辑。
+
 ## 随记
 
 - `/api/notes` 各方法先认证且不缓存。GET返回 `{notes,years,tags}`；列表按updatedAt倒序，记录含id/title/body/insight/sources/tags/recordedAt/createdAt/updatedAt/year/version/displayTitle，年份/标签筛选项为 `{value,count}`。空实例返回空数组。

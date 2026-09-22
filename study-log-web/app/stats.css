@@ -498,3 +498,18 @@
     padding: 24px 14px 48px;
   }
 }
+.taxonomy-ai-status { display: grid; gap: 8px; color: var(--muted); font-size: 13px; }
+.taxonomy-ai-status:empty { display: none; }
+.taxonomy-ai-status p { margin: 0; }
+.taxonomy-ai-status > button { justify-self: start; }
+.taxonomy-ai-review-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 12px 0; }
+.taxonomy-ai-choice { display: grid; gap: 6px; }
+.taxonomy-ai-choice label { display: flex; align-items: center; gap: 6px; }
+.taxonomy-ai-choice input[type="checkbox"] { width: 14px; height: 14px; accent-color: var(--primary); }
+.taxonomy-table.has-ai-review th:nth-child(1) { width: 27%; }
+.taxonomy-table.has-ai-review th:nth-child(2) { width: 6%; }
+.taxonomy-table.has-ai-review th:nth-child(3) { width: 18%; }
+.taxonomy-table.has-ai-review th:nth-child(4) { width: 22%; }
+.taxonomy-table.has-ai-review th:nth-child(5) { width: 12%; }
+.taxonomy-table.has-ai-review th:nth-child(6) { width: 15%; }
+@media (max-width: 760px) { .taxonomy-table.has-ai-review { min-width: 900px; } }

@@ -6,6 +6,7 @@ import { todayInShanghai } from "@/lib/study-date";
 import type { ConfirmationOptions } from "@/components/ConfirmDialog";
 import type { MonthSummary } from "@/lib/types";
 import type { MonthlyStats, Taxonomy, TaxonomyCatalogItem } from "@/lib/stats-types";
+import { useTaxonomySuggestions } from "./use-taxonomy-suggestions";
 
 interface Options {
   active: boolean; visible: boolean; routeMonth?: string;
@@ -37,6 +38,7 @@ export function useStats(options: Options) {
   const current = useRef({ options, taxonomy, savedTaxonomy, selectedMonth, busy });
   current.current = { options, taxonomy, savedTaxonomy, selectedMonth, busy };
   const dirty = !same(taxonomy, savedTaxonomy);
+  const ai = useTaxonomySuggestions({ active: options.active, visible: options.visible && view === "taxonomy", busy: busy || initialLoading, draft: taxonomy, saved: savedTaxonomy, onApply: setTaxonomy });
 
   useEffect(() => {
     if (validMonth(options.routeMonth)) setSelectedMonth(options.routeMonth!);
@@ -80,20 +82,21 @@ export function useStats(options: Options) {
     return () => { operation.current?.abort(); operation.current = null; setBusy(false); };
   }, [options.active, options.visible]);
   useEffect(() => {
-    if (!dirty) return;
+    if (!dirty && !ai.review) return;
     const protect = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
     window.addEventListener("beforeunload", protect);
     return () => window.removeEventListener("beforeunload", protect);
-  }, [dirty]);
+  }, [dirty, ai.review]);
 
   async function beforeLeave(): Promise<boolean> {
     const state = current.current;
     if (!state.options.active || operation.current) return false;
-    if (same(state.taxonomy, state.savedTaxonomy)) return true;
-    const accepted = await state.options.onConfirm({ title: "放弃未保存分类？", message: "当前领域与标签映射有未保存修改，离开后将丢弃这些修改。", confirmLabel: "放弃修改", tone: "danger" });
+    if (same(state.taxonomy, state.savedTaxonomy) && !ai.review) { ai.discard(); return true; }
+    const accepted = await state.options.onConfirm({ title: "放弃未保存分类？", message: "当前领域、标签映射或未应用的分类建议有修改，离开后将丢弃这些修改。", confirmLabel: "放弃修改", tone: "danger" });
     if (!accepted || !current.current.options.active) return false;
     setTaxonomy(current.current.savedTaxonomy); setConflict(false); setTaxonomyError("");
     current.current.taxonomy = current.current.savedTaxonomy;
+    ai.discard();
     return true;
   }
   async function changeMonth(month: string) {
@@ -131,7 +134,7 @@ export function useStats(options: Options) {
     } finally { if (operation.current === controller) { operation.current = null; setBusy(false); } }
   }
   return { view, months, selectedMonth, monthlyStats: monthlyStats?.month === selectedMonth ? monthlyStats : null,
-    taxonomy, savedTaxonomy, catalog, busy, loading, initialLoading, statsError, taxonomyError, conflict, feedback, dirty,
+    taxonomy, savedTaxonomy, catalog, busy, loading, initialLoading, statsError, taxonomyError, conflict, feedback, dirty, ai,
     active: options.active && options.visible, beforeLeave, changeMonth, showOverview, saveTaxonomy, reloadTaxonomy,
     showManager: () => setView("taxonomy"), setTaxonomy, dismissFeedback: () => setFeedback(""),
     refreshStats: () => setStatsRevision(value => value + 1),

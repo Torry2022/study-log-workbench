@@ -42,8 +42,9 @@ export function StudyStatsPage({ stats, onOpenEntry }: Props) {
       </> : <>
         {stats.dirty && <p className="stats-draft-status" role="status">分类有未保存修改</p>}
         <TaxonomyManager taxonomy={stats.taxonomy} savedTaxonomy={stats.savedTaxonomy} catalog={stats.catalog}
+          ai={stats.ai}
           busy={stats.busy || stats.initialLoading} onBack={() => void stats.showOverview()} onTaxonomyChange={stats.setTaxonomy}
-          onSave={() => void stats.saveTaxonomy()} onConfirmRemoveDomain={stats.confirmRemoveDomain} />
+          onSave={() => void stats.saveTaxonomy()} onReload={() => void stats.reloadTaxonomy()} onConfirmRemoveDomain={stats.confirmRemoveDomain} />
       </>}
     </section>
   </div>;

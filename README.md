@@ -6,7 +6,7 @@
 
 需要 Node.js 22.13 或更新版本。在 `study-log-web` 目录运行 `npm ci`，回到根目录运行 `npm run build`、`npm run typecheck`。
 
-先初始化实例，再运行 `npm run dev -- 实例绝对路径 3560`，访问 `http://127.0.0.1:3560/study-log`。已接通登录、日志阅读编辑、图片与内链、日块恢复、搜索和收藏；随记、统计及后续能力以实施状态为准。不会查找父目录中的日志。
+先初始化实例，再运行 `npm run dev -- 实例绝对路径 3560`，访问 `http://127.0.0.1:3560/study-log`。已接通登录、日志读写、图片与内链、日块恢复、搜索、收藏、随记、统计、导出，以及可选 AI 写作/标注/候选提取和分类建议。问答、历史及完整自部署仍在实施，以[实施状态](docs/implementation-status.md)为准。不会查找父目录中的日志。
 
 认证API测试可使用已初始化的合成实例启动：`node ops/run-web.mjs dev 实例绝对路径 3561`，访问 `http://127.0.0.1:3561/study-log`。启动器加载所选实例配置，不在终端显示密码；API流程可用 `node ops/auth-smoke.mjs 实例绝对路径` 验证。浏览器验证使用 `node ops/browser-auth.mjs 实例绝对路径 本机URL`，产物写入被忽略的 `artifacts/auth`。
 

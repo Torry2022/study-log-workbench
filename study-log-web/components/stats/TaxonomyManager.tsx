@@ -1,9 +1,10 @@
 "use client";
 
-import { ArrowLeft, LockKeyhole, Save, Search, Trash2 } from "lucide-react";
+import { ArrowLeft, LockKeyhole, Save, Search, Sparkles, Trash2 } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
 import { WorkspaceState } from "./WorkspaceState";
 import type { Taxonomy, TaxonomyCatalogItem } from "@/lib/stats-types";
+import type { TaxonomySuggestionsController } from "@/hooks/use-taxonomy-suggestions";
 
 const BUILT_IN_DOMAINS = new Set(["其他"]);
 
@@ -12,9 +13,11 @@ type TaxonomyManagerProps = {
   savedTaxonomy: Taxonomy;
   catalog: TaxonomyCatalogItem[];
   busy: boolean;
+  ai: TaxonomySuggestionsController;
   onBack: () => void;
   onTaxonomyChange: (taxonomy: Taxonomy) => void;
   onSave: () => void;
+  onReload: () => void;
   onConfirmRemoveDomain: (domain: string) => Promise<boolean>;
 };
 
@@ -23,9 +26,11 @@ export function TaxonomyManager({
   savedTaxonomy,
   catalog,
   busy,
+  ai,
   onBack,
   onTaxonomyChange,
   onSave,
+  onReload,
   onConfirmRemoveDomain
 }: TaxonomyManagerProps) {
   const [query, setQuery] = useState("");
@@ -33,15 +38,16 @@ export function TaxonomyManager({
   const [domain, setDomain] = useState("all");
   const [status, setStatus] = useState("all");
   const months = useMemo(() => [...new Set(catalog.flatMap((item) => item.months))].sort((a, b) => b.localeCompare(a)), [catalog]);
+  const suggestions = useMemo(() => new Map(ai.review?.suggestions.map(item => [item.tag, item]) || []), [ai.review]);
 
   const rows = useMemo(() => catalog.map((item) => {
     const currentExplicit = Object.hasOwn(taxonomy.mappings, item.tag) ? taxonomy.mappings[item.tag] : undefined;
     const savedExplicit = Object.hasOwn(savedTaxonomy.mappings, item.tag) ? savedTaxonomy.mappings[item.tag] : undefined;
     const currentDomain = currentExplicit || "其他";
     const dirty = currentExplicit !== savedExplicit;
-    const rowStatus = dirty ? "dirty" : currentExplicit ? "mapped" : "unclassified";
+    const rowStatus = suggestions.has(item.tag) ? "suggested" : dirty ? "dirty" : currentExplicit ? "mapped" : "unclassified";
     return { ...item, currentDomain, dirty, rowStatus };
-  }), [catalog, savedTaxonomy.mappings, taxonomy.mappings]);
+  }), [catalog, savedTaxonomy.mappings, suggestions, taxonomy.mappings]);
 
   const filteredRows = useMemo(() => {
     const keyword = query.trim().toLocaleLowerCase();
@@ -84,9 +90,30 @@ export function TaxonomyManager({
         <button className="button secondary" disabled={busy} onClick={onBack}><ArrowLeft size={15} />月度复盘</button>
         <div><h2>分类管理</h2><p>统一维护全部历史小标签的领域口径。</p></div>
         <div className="taxonomy-manager-actions">
-          <button className="button primary" disabled={busy} onClick={onSave}><Save size={15} />保存映射</button>
+          <button className="button secondary" disabled={busy || ai.phase !== "idle" || !ai.configured || Boolean(ai.inputProblem) || filteredRows.length === 0 || filteredRows.length > 200}
+            onClick={() => void ai.request(filteredRows)}><Sparkles size={15} />{ai.phase === "requesting" ? "分类中" : `AI 分类建议 (${filteredRows.length})`}</button>
+          <button className="button primary" disabled={busy || ai.phase === "applying"} onClick={onSave}><Save size={15} />保存映射</button>
         </div>
       </header>
+
+      <div className="taxonomy-ai-status" aria-live="polite">
+        {ai.configurationLoading && <p>正在读取 AI 配置…</p>}
+        {ai.configurationError && <p>{ai.configurationError}</p>}
+        {!ai.configured && <>{ai.configurationMessages.map(message => <p key={message}>{message}</p>)}<button type="button" className="button secondary" disabled={ai.configurationLoading} onClick={() => void ai.refreshConfiguration()}>刷新 AI 配置</button></>}
+        {ai.inputProblem && <p>{ai.inputProblem}</p>}
+        {filteredRows.length > 200 && <p>本次最多处理 200 个标签，请缩小筛选范围。</p>}
+        {ai.status && <p>{ai.status}</p>}
+        {ai.versionChanged && <button type="button" className="button secondary" disabled={busy || ai.phase !== "idle"} onClick={onReload}>重新读取分类</button>}
+        {ai.phase !== "idle" && <button type="button" className="button secondary" onClick={ai.cancel}>取消分类请求</button>}
+        {ai.review && <>
+          {ai.review.warnings.map(message => <p key={message}>{message}</p>)}
+          <div className="taxonomy-ai-review-actions">
+            <span>请核对建议领域；应用到草稿后仍需手动保存。</span>
+            <button type="button" className="button secondary" disabled={busy || ai.phase !== "idle" || !ai.review.suggestions.some(item => item.selected)} onClick={() => void ai.apply()}>应用建议到草稿</button>
+            <button type="button" className="button secondary" disabled={ai.phase !== "idle"} onClick={ai.discard}>放弃建议</button>
+          </div>
+        </>}
+      </div>
 
       <section className="taxonomy-domain-band">
         <div className="taxonomy-domain-list">
@@ -102,21 +129,28 @@ export function TaxonomyManager({
         <select value={month} onChange={(event) => setMonth(event.target.value)} aria-label="按月份筛选"><option value="all">全部月份</option>{months.map((item) => <option key={item} value={item}>{item}</option>)}</select>
         <select value={domain} onChange={(event) => setDomain(event.target.value)} aria-label="按领域筛选"><option value="all">全部领域</option>{taxonomy.domains.map((item) => <option key={item} value={item}>{item}</option>)}</select>
         <select value={status} onChange={(event) => setStatus(event.target.value)} aria-label="按状态筛选">
-          <option value="all">全部状态</option><option value="mapped">显式映射</option><option value="unclassified">未分类</option><option value="dirty">待保存</option>
+          <option value="all">全部状态</option><option value="mapped">显式映射</option><option value="unclassified">未分类</option><option value="suggested">AI 建议</option><option value="dirty">待保存</option>
         </select>
         <span>{filteredRows.length} / {catalog.length}</span>
       </div>
 
       <div className="taxonomy-table-wrap">
-        <table className="taxonomy-table">
-          <thead><tr><th>小标签</th><th>频次</th><th>领域</th><th>状态</th><th>出现月份</th></tr></thead>
+        <table className={ai.review ? "taxonomy-table has-ai-review" : "taxonomy-table"}>
+          <thead><tr><th>小标签</th><th>频次</th><th>领域</th>{ai.review && <th>AI 建议</th>}<th>状态</th><th>出现月份</th></tr></thead>
           <tbody>
             {filteredRows.map((row) => (
               <tr key={row.tag}>
                 <td><strong>{row.tag}</strong><small title={row.sources.join(" / ")}>{row.sources.join(" / ")}</small></td>
                 <td>{row.count}</td>
                 <td><select aria-label={`领域 ${row.tag}`} disabled={busy} value={row.currentDomain} onChange={(event) => updateMapping(row.tag, event.target.value)}>{taxonomy.domains.map((item) => <option key={item} value={item}>{item}</option>)}</select></td>
-                <td><span className={`taxonomy-row-status ${row.rowStatus}`}>{row.rowStatus === "dirty" ? "待保存" : row.rowStatus === "mapped" ? "显式映射" : "未分类"}</span></td>
+                {ai.review && <td>{suggestions.has(row.tag) ? <div className="taxonomy-ai-choice">
+                  <label><input type="checkbox" aria-label={`采纳建议 ${row.tag}`} checked={suggestions.get(row.tag)!.selected} disabled={ai.phase !== "idle"}
+                    onChange={event => ai.editSuggestion(row.tag, { selected: event.target.checked })} />采纳</label>
+                  <select aria-label={`建议领域 ${row.tag}`} disabled={ai.phase !== "idle"} value={suggestions.get(row.tag)!.domain}
+                    onChange={event => ai.editSuggestion(row.tag, { domain: event.target.value })}>{taxonomy.domains.map(item => <option key={item} value={item}>{item}</option>)}</select>
+                  {suggestions.get(row.tag)!.confidence && <small>置信度：{({ high: "高", medium: "中", low: "低" })[suggestions.get(row.tag)!.confidence!]}</small>}
+                </div> : "—"}</td>}
+                <td><span className={`taxonomy-row-status ${row.rowStatus}`}>{row.rowStatus === "suggested" ? "AI 建议" : row.rowStatus === "dirty" ? "待保存" : row.rowStatus === "mapped" ? "显式映射" : "未分类"}</span></td>
                 <td>{row.months.slice(0, 3).join("、")}{row.months.length > 3 ? ` 等 ${row.months.length} 月` : ""}</td>
               </tr>
             ))}

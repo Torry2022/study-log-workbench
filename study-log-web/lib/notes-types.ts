@@ -24,6 +24,7 @@ export interface StudyNoteInput {
   recordedAt: string;
 }
 export interface UpdateStudyNoteInput extends StudyNoteInput { id: string; baseVersion: string }
+export interface BatchStudyNoteInput extends StudyNoteInput { clientId: string }
 export class NoteInputError extends Error {}
 export class NoteFormatError extends Error {
   constructor() { super("随记源文件格式异常，请先核对 Markdown 文件，未覆盖资料"); }

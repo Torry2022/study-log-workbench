@@ -6,8 +6,8 @@ import { getBackupRoot, getLogRoot } from "./config.ts";
 import { compareNoteUpdates } from "./note-order.ts";
 import { normalizeNoteInput, noteVersion, parseNoteBlocks, toStudyNote, updateNotesMarkdown } from "./notes-markdown.ts";
 import { NoteConflictError, NoteFormatError, NoteInputError, NoteNotFoundError, NoteRecoveryError,
-  type StoredNote, type StudyNote, type StudyNoteFacet, type StudyNoteInput, type StudyNotesPayload, type UpdateStudyNoteInput } from "./notes-types.ts";
-export type { StudyNoteInput, UpdateStudyNoteInput } from "./notes-types.ts";
+  type StoredNote, type StudyNote, type StudyNoteFacet, type StudyNoteInput, type StudyNotesPayload, type UpdateStudyNoteInput, type BatchStudyNoteInput } from "./notes-types.ts";
+export type { StudyNoteInput, UpdateStudyNoteInput, BatchStudyNoteInput } from "./notes-types.ts";
 export { parseNotesMarkdown } from "./notes-markdown.ts";
 
 const FILE_PATTERN = /^(\d{4})_随记\.md$/;
@@ -186,6 +186,46 @@ export async function createStudyNote(input: StudyNoteInput): Promise<StudyNote>
     const snapshot = snapshotFor(await readSnapshots(root), next.recordedAt.slice(0, 4));
     await writeChanges(root, backupRoot, [{ before: snapshot, after: updateNotesMarkdown(snapshot.content || "", snapshot.year, next.id, next) }]);
     return toStudyNote(next);
+  });
+}
+function noteBusinessFields(note: StoredNote): string {
+  return JSON.stringify([note.title, note.body, note.insight, note.sources, note.tags, note.recordedAt]);
+}
+
+/** Client identities make an unchanged batch retry safe after a lost response; they never authorize an update. */
+export async function createStudyNotes(input: BatchStudyNoteInput[]): Promise<StudyNote[]> {
+  if (!Array.isArray(input) || input.length < 1 || input.length > 20) throw new NoteInputError("每次请保存 1 至 20 条随记");
+  const ids = new Set<string>();
+  const normalized = input.map(item => {
+    if (!item || typeof item !== "object" || typeof item.clientId !== "string" || !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(item.clientId)) {
+      throw new NoteInputError("每条批量随记都需要有效的 UUID clientId");
+    }
+    const id = item.clientId.toLowerCase();
+    if (ids.has(id)) throw new NoteInputError("同批随记的 clientId 不能重复");
+    ids.add(id);
+    return { ...normalizeNoteInput(item), id };
+  });
+  const root = path.join(getLogRoot(), "随记"), backupRoot = path.join(getBackupRoot(), "notes");
+  return withQueue(root, async () => {
+    const snapshots = await readSnapshots(root);
+    const existing = new Map(snapshots.flatMap(snapshot => snapshot.notes).map(note => [note.id, note]));
+    const changes = new Map<string, Change>();
+    const result: StudyNote[] = [];
+    for (const note of normalized) {
+      const prior = existing.get(note.id);
+      if (prior) {
+        if (noteBusinessFields(prior) !== noteBusinessFields(note)) throw new NoteConflictError();
+        result.push(toStudyNote(prior));
+        continue;
+      }
+      const year = note.recordedAt.slice(0, 4), before = snapshotFor(snapshots, year);
+      const content = changes.get(year)?.after ?? before.content ?? "";
+      // Validate the entire batch's Markdown in memory before staging any filesystem writes.
+      changes.set(year, { before, after: updateNotesMarkdown(content, year, note.id, note) });
+      result.push(toStudyNote(note));
+    }
+    if (changes.size) await writeChanges(root, backupRoot, [...changes.values()]);
+    return result;
   });
 }
 export async function updateStudyNote(input: UpdateStudyNoteInput): Promise<StudyNote> {

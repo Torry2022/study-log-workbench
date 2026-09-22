@@ -2,6 +2,7 @@
   "name": "study-log-web",
   "version": "0.1.0-dev",
   "private": true,
+  "engines": { "node": ">=22.13.0" },
   "scripts": {
     "test": "node --experimental-strip-types --test scripts/*.test.mjs",
     "dev": "node ../ops/run-web.mjs dev",
@@ -22,8 +23,10 @@
     "diff": "8.0.4",
     "katex": "0.17.0",
     "lucide-react": "0.468.0",
+    "mammoth": "1.12.3",
     "mermaid": "11.17.2",
     "next": "15.5.25",
+    "pdfjs-dist": "6.3.289",
     "react": "19.2.6",
     "react-dom": "19.2.6",
     "react-markdown": "9.1.0",

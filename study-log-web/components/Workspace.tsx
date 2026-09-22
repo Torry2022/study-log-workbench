@@ -14,6 +14,9 @@ import { requestJson } from "@/lib/client-http";
 import type { DayEntry } from "@/lib/types";
 import type { SearchSelection } from "./SearchBox";
 import { clearSearchSessionHistory } from "@/hooks/use-search-history";
+import { useFavorites } from "@/hooks/use-favorites";
+import { FavoritesModule } from "./FavoritesModule";
+import { FavoritesNavigation } from "./FavoritesNavigation";
 import type { WorkspaceMode } from "./LogReader";
 import "@/app/editing-workspace.css";
 
@@ -21,7 +24,10 @@ export function Workspace() {
   const { active, logout } = useSession();
   const beforeLeave = useRef<() => Promise<boolean>>(async () => true);
   const logs = useLogWorkspace(active, beforeLeave);
-  const draft = useLogDraft(logs.day, active, logs.acceptSaved);
+  const favorites = useFavorites(active);
+  const acceptSaved = useCallback((day: DayEntry) => { logs.acceptSaved(day); void favorites.reload(); }, [logs.acceptSaved, favorites.reload]);
+  const draft = useLogDraft(logs.day, active, acceptSaved);
+  const logView = logs.selection.view === "log";
   const { confirmation, confirm, resolveConfirmation } = useConfirmation();
   const [mode, setMode] = useState<WorkspaceMode>("preview");
   const { theme, preference, chooseTheme } = useTheme();
@@ -30,11 +36,12 @@ export function Workspace() {
   const [backupOpen, setBackupOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [operationError, setOperationError] = useState("");
+  const [missingFavorite, setMissingFavorite] = useState("");
   const [searchSelection, setSearchSelection] = useState<SearchSelection | null>(null);
   const clearSearch = useCallback(() => setSearchSelection(null), []);
   const selectDate = useCallback(async (date: string, heading = "") => {
     const accepted = await logs.selectDate(date, heading);
-    if (accepted) setSearchSelection(null);
+    if (accepted) { setSearchSelection(null); setMissingFavorite(""); }
     return accepted;
   }, [logs.selectDate]);
   beforeLeave.current = async () => {
@@ -48,21 +55,21 @@ export function Workspace() {
   useEffect(() => { if (!active) { resolveConfirmation(false); setBackupOpen(false); } }, [active, resolveConfirmation]);
   useEffect(() => { setOperationError(""); }, [logs.selection.date]);
   useEffect(() => {
-    if (!active) return;
+    if (!active || !logView) return;
     const save = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing || !(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== "s") return;
       event.preventDefault(); if (!backupOpen && !deleting && (draft.dirty || (logs.day && !logs.day.exists))) void draft.save();
     };
     window.addEventListener("keydown", save);
     return () => window.removeEventListener("keydown", save);
-  }, [active, draft.dirty, draft.save, logs.day, backupOpen, deleting]);
+  }, [active, logView, draft.dirty, draft.save, logs.day, backupOpen, deleting]);
   const reload = async () => { if (await beforeLeave.current()) { draft.reset(); logs.retry(); } };
   const exit = async () => {
     if (!(await beforeLeave.current())) return;
     setSessionError("");
     try { await logout(); clearSearchSessionHistory(); } catch { setSessionError("退出失败，请重试"); }
   };
-  const acceptExternal = (day: DayEntry) => { draft.acceptExternal(day); logs.acceptSaved(day); setOperationError(""); };
+  const acceptExternal = (day: DayEntry) => { draft.acceptExternal(day); acceptSaved(day); setOperationError(""); };
   const deleteCurrent = async () => {
     if (!active || draft.busy || deleting || !logs.day?.exists || !draft.draft) return;
     const date = logs.day.date;
@@ -76,20 +83,23 @@ export function Workspace() {
     finally { setDeleting(false); }
   };
   return <><WorkspaceChrome active={active} months={logs.months} days={logs.days}
+    view={logs.selection.view} onView={async view => { const accepted = await logs.selectView(view); if (accepted) { clearSearch(); setReading(false); if (view === "favorites") void favorites.reload(); } return accepted; }}
+    favoritesNavigation={<FavoritesNavigation favorites={favorites} active={active && !logView} />}
     selectedMonth={logs.selection.month} selectedDate={logs.selection.date}
-    loading={logs.navigationLoading} error={logs.navigationError || sessionError} readingMode={reading}
+    loading={logs.navigationLoading} error={logs.navigationError || sessionError} readingMode={reading && logView}
     theme={theme} themePreference={preference} onTheme={chooseTheme}
     onMonth={month => { clearSearch(); logs.selectMonth(month); }} onDate={selectDate} onRetry={logs.retry}
-    onSearchChange={clearSearch} onSearchSelect={async result => { if (!(await logs.selectDate(result.date))) return false; setMode("preview"); setReading(false); setSearchSelection(result); return true; }}
+    onSearchChange={clearSearch} onSearchSelect={async result => { if (!(await selectDate(result.date))) return false; setMode("preview"); setReading(false); setSearchSelection(result); return true; }}
     onNewDate={date => { void logs.selectDate(date).then(accepted => { if (accepted) setMode("source"); }); }} onLogout={() => void exit()}>
-    <LogReader active={active} day={logs.day} date={logs.selection.date} heading={logs.selection.heading}
+    <div className="workspace-view" hidden={!logView}><LogReader active={active && logView} favorites={favorites} day={logs.day} date={logs.selection.date} heading={logs.selection.heading}
       scrollTarget={logs.scrollTarget} navigationRevision={logs.navigationRevision} loading={logs.loading} error={logs.error} theme={theme}
       reading={reading} onReading={value => { if (value) setMode("preview"); setReading(value); }} onRetry={logs.retry} onNavigate={selectDate}
       search={searchSelection?.date === logs.selection.date ? searchSelection : null}
       editing={{ mode, onMode: setMode, documentDate: draft.draft?.date || "", body: draft.draft?.body || "", dirty: draft.dirty,
-        busy: draft.busy || deleting, locked: deleting, error: operationError || draft.error, conflict: draft.conflict, saved: draft.saved, resetRevision: draft.resetRevision,
+        busy: draft.busy || deleting, locked: deleting, error: operationError || draft.error || (missingFavorite === logs.selection.date ? "原收藏小节未找到，已打开所属日期。" : ""), conflict: draft.conflict, saved: draft.saved, resetRevision: draft.resetRevision,
         onChange: draft.change, onSave: () => { if (!deleting && !backupOpen) void draft.save(); }, onReload: () => void reload(),
-        onDiscard: () => { void beforeLeave.current(); }, onDelete: () => void deleteCurrent(), onBackups: () => { if (!draft.busy && !deleting) setBackupOpen(true); } }} />
+        onDiscard: () => { void beforeLeave.current(); }, onDelete: () => void deleteCurrent(), onBackups: () => { if (!draft.busy && !deleting) setBackupOpen(true); } }} /></div>
+    <div className="workspace-view" hidden={logView}><FavoritesModule favorites={favorites} active={active && !logView} onOpen={async (date, heading, missing) => { const accepted = await selectDate(date, heading); if (accepted) { setMode("preview"); setReading(false); if (missing) setMissingFavorite(date); } return accepted; }} /></div>
   </WorkspaceChrome>{backupOpen && active && <BackupDialog date={logs.selection.date} onClose={() => setBackupOpen(false)} onRestored={acceptExternal}
     beforeRestore={() => confirm({ title: "恢复此版本？", message: draft.dirty ? "恢复将替换当前日块，并放弃未保存修改；写入前会保留现有文件。" : "恢复将替换当前日块，其他日期保持不变；写入前会保留现有文件。", confirmLabel: "恢复", tone: "danger" })} />}
     {confirmation && active && <ConfirmDialog {...confirmation} onConfirm={() => resolveConfirmation(true)} onCancel={() => resolveConfirmation(false)} />}</>;

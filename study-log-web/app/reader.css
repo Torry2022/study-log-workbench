@@ -315,6 +315,13 @@
   border-radius: var(--radius-sm);
 }
 
+.outline-favorite {
+  width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center;
+  padding: 0; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--muted-soft);
+}
+.outline-favorite svg { display: block; }
+.outline-favorite:hover, .outline-favorite.active { color: var(--ink); }
+
 .outline-item {
   min-width: 0;
   height: 100%;

@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { BookOpen, CornerUpLeft, DatabaseBackup, Edit3, Eye, FileText, Link2, List, Maximize2, MoreHorizontal, RefreshCw, Save, Trash2, Upload, X } from "lucide-react";
+import { BookOpen, CornerUpLeft, DatabaseBackup, Edit3, Eye, FileText, Link2, List, Maximize2, MoreHorizontal, RefreshCw, Save, Star, Trash2, Upload, X } from "lucide-react";
 import { MarkdownPreview, type InternalLinkTarget } from "./MarkdownPreview";
 import { buildMarkdownOutline } from "@/lib/markdown-outline";
 import { toEditableDayBody } from "@/lib/day-content";
-import { containModalFocus } from "@/hooks/use-dialog-exit";
+import { containModalFocus, lockBodyScroll } from "@/hooks/use-dialog-exit";
 import type { DayEntry } from "@/lib/types";
 import { LogEditor } from "./LogEditor";
 import type { EditorView } from "@codemirror/view";
@@ -18,6 +18,10 @@ import { InternalLinkDialog } from "./InternalLinkDialog";
 import { findInternalLinkHeading } from "@/lib/internal-links";
 import { requestLogJson } from "@/lib/client-http";
 import type { SearchSelection } from "./SearchBox";
+import type { FavoritesController } from "@/hooks/use-favorites";
+import type { MarkdownHeading } from "@/lib/markdown-outline";
+import { FavoriteGroupDialog } from "./FavoriteGroupDialog";
+import { FavoriteRemovePopover, FavoriteSuccessNotice } from "./FavoriteFeedback";
 import "@/app/reader.css";
 
 export type WorkspaceMode = "preview" | "source" | "split";
@@ -32,6 +36,7 @@ interface Editing {
 interface Props {
   editing: Editing;
   search: SearchSelection | null;
+  favorites: FavoritesController;
   active: boolean;
   navigationRevision: number;
   day: DayEntry | null; date: string; heading: string; scrollTarget: number | null;
@@ -40,10 +45,29 @@ interface Props {
   onNavigate: (date: string, heading?: string) => Promise<boolean>;
 }
 
-export function LogReader({ editing, search, active, navigationRevision, day, date, heading, scrollTarget, loading, error, theme, reading, onReading, onRetry, onNavigate }: Props) {
+export function LogReader({ editing, search, favorites, active, navigationRevision, day, date, heading, scrollTarget, loading, error, theme, reading, onReading, onRetry, onNavigate }: Props) {
   const content = useMemo(() => editing.documentDate === date ? editing.body : day ? toEditableDayBody(day.date, day.content) : "", [editing.documentDate, editing.body, date, day]);
   const headings = useMemo(() => buildMarkdownOutline(content), [content]);
   const [outlineOpen, setOutlineOpen] = useState(false);
+  const [favoriteGroup, setFavoriteGroup] = useState("");
+  const [favoriteFeedback, setFavoriteFeedback] = useState<{ id: string; title: string; kind: "added" | "remove"; top: number; left: number } | null>(null);
+  const favoriteEpoch = useRef(0);
+  useEffect(() => {
+    favoriteEpoch.current++;
+    setFavoriteGroup(""); setFavoriteFeedback(null);
+    return () => { favoriteEpoch.current++; };
+  }, [active, date]);
+  const favoriteByHeading = useMemo(() => new Map(favorites.favorites.filter(item => item.date === date && item.exists).map(item => [item.resolvedHeadingId, item])), [favorites.favorites, date]);
+  async function toggleFavorite(item: MarkdownHeading, button: HTMLButtonElement) {
+    if (!active || favorites.busy || editing.dirty) return;
+    const rect = button.getBoundingClientRect();
+    const point = { top: rect.top + rect.height / 2, left: rect.left - 8 };
+    const favorite = favoriteByHeading.get(item.id);
+    if (favorite) { setFavoriteFeedback({ ...point, id: favorite.id, title: item.text, kind: "remove" }); return; }
+    const epoch = favoriteEpoch.current;
+    const saved = await favorites.add({ date, headingText: item.text, headingId: item.id, level: 3 });
+    if (saved && epoch === favoriteEpoch.current) setFavoriteFeedback({ ...point, id: saved.id, title: item.text, kind: "added" });
+  }
   const [actionsOpen, setActionsOpen] = useState(false);
   const actions = useRef<HTMLElement>(null);
   const [activeHeading, setActiveHeading] = useState("");
@@ -103,7 +127,7 @@ export function LogReader({ editing, search, active, navigationRevision, day, da
   }
   function changeReading(value: boolean) { position.capture(mode); restorePending.current = true; onReading(value); }
   useEffect(() => {
-    if (!restorePending.current) return;
+    if (!active || !restorePending.current) return;
     let frame = 0, attempts = 0;
     const restore = () => {
       editorView.current?.requestMeasure();
@@ -114,7 +138,7 @@ export function LogReader({ editing, search, active, navigationRevision, day, da
     };
     restore();
     return () => cancelAnimationFrame(frame);
-  }, [mode, reading, editorReady, position.restore]);
+  }, [active, mode, reading, editorReady, position.restore]);
 
   useEffect(() => { setOutlineOpen(false); setActionsOpen(false); }, [date, reading]);
   useEffect(() => { setLinkError(""); }, [date]);
@@ -123,20 +147,18 @@ export function LogReader({ editing, search, active, navigationRevision, day, da
   useEffect(() => {
     if (!actionsOpen || !actions.current) return;
     const release = containModalFocus(actions.current, () => setActionsOpen(false));
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => { release(); document.body.style.overflow = previous; };
+    const unlock = lockBodyScroll();
+    return () => { release(); unlock(); };
   }, [actionsOpen]);
   useEffect(() => {
     if (!outlineOpen || !outline.current) return;
     const release = containModalFocus(outline.current, () => setOutlineOpen(false));
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => { release(); document.body.style.overflow = previous; };
+    const unlock = lockBodyScroll();
+    return () => { release(); unlock(); };
   }, [outlineOpen]);
   useEffect(() => {
     const element = toolbar.current;
-    if (!element) return;
+    if (!active || !element) return;
     const update = () => {
       const reader = element.closest<HTMLElement>(".reader");
       reader?.style.setProperty("--reader-toolbar-height", `${element.offsetHeight}px`);
@@ -146,9 +168,9 @@ export function LogReader({ editing, search, active, navigationRevision, day, da
     observer.observe(element); update();
     window.addEventListener("resize", update);
     return () => { observer.disconnect(); window.removeEventListener("resize", update); };
-  }, [reading]);
+  }, [active, reading]);
   useEffect(() => {
-    if (!ready || !editorReady) return;
+    if (!active || !ready || !editorReady) return;
     const frame = requestAnimationFrame(() => {
       if (scrollTarget !== null) { window.scrollTo({ top: scrollTarget, behavior: "instant" }); return; }
       const target = findInternalLinkHeading(headings, heading);
@@ -157,26 +179,26 @@ export function LogReader({ editing, search, active, navigationRevision, day, da
       else window.scrollTo({ top: 0, behavior: "instant" });
     });
     return () => cancelAnimationFrame(frame);
-  }, [ready, editorReady, date, heading, scrollTarget, navigationRevision]);
+  }, [active, ready, editorReady, date, heading, scrollTarget, navigationRevision]);
   useEffect(() => {
-    if (!returning.current || !returnPoint || date !== returnPoint.date || loading || !editorReady) return;
+    if (!active || !returning.current || !returnPoint || date !== returnPoint.date || loading || !editorReady) return;
     let frame = 0, attempts = 0;
     const restore = () => { frame = requestAnimationFrame(() => {
       if (linkPosition.restore(mode) || ++attempts >= 6) { returning.current = false; setReturnPoint(null); }
       else restore();
     }); };
     restore(); return () => cancelAnimationFrame(frame);
-  }, [date, loading, editorReady, mode, returnPoint, linkPosition.restore]);
+  }, [active, date, loading, editorReady, mode, returnPoint, linkPosition.restore]);
   useEffect(() => {
-    if (!search || !ready || !editorReady || mode !== "preview") return;
+    if (!active || !search || !ready || !editorReady || mode !== "preview") return;
     const frame = requestAnimationFrame(() => {
       const hit = preview.current?.querySelector<HTMLElement>(search.scope === "heading" ? "h3 .search-hit-highlight" : ".search-hit-highlight");
       if (hit) window.scrollTo({ top: Math.max(0, window.scrollY + hit.getBoundingClientRect().top - (toolbar.current?.getBoundingClientRect().bottom || 0) - 12), behavior: "instant" });
     });
     return () => cancelAnimationFrame(frame);
-  }, [search, ready, editorReady, mode, navigationRevision]);
+  }, [active, search, ready, editorReady, mode, navigationRevision]);
   useEffect(() => {
-    if (!ready) return;
+    if (!active || !ready) return;
     let frame = 0;
     const update = () => {
       cancelAnimationFrame(frame);
@@ -189,7 +211,7 @@ export function LogReader({ editing, search, active, navigationRevision, day, da
     };
     update(); window.addEventListener("scroll", update, { passive: true });
     return () => { cancelAnimationFrame(frame); window.removeEventListener("scroll", update); };
-  }, [ready, headings]);
+  }, [active, ready, headings]);
 
   const outlineButton = <button className="mobile-toolbar-icon" type="button" aria-label="打开日志大纲" disabled={!headings.length || !ready} onClick={() => setOutlineOpen(true)}><List size={18} /></button>;
   const modes = [["preview", "浏览", Eye], ["source", "源码", Edit3], ["split", "分屏", FileText]] as const;
@@ -200,6 +222,7 @@ export function LogReader({ editing, search, active, navigationRevision, day, da
     <div className="preview-outline-inner"><div className="preview-outline-title">目录</div><div className="preview-outline-list">
       {headings.map(item => <div className={`outline-row${item.id === activeHeading ? " active" : ""}`} key={item.id} style={{ "--outline-indent": `${Math.max(0, item.level - (headings[0]?.level || 3)) * 12}px` } as CSSProperties}>
         <button className="outline-item" type="button" title={item.text} aria-current={item.id === activeHeading ? "location" : undefined} onClick={() => { setOutlineOpen(false); onNavigate(date, item.id); }}>{item.text}</button>
+        {item.level === 3 && <button className={`outline-favorite${favoriteByHeading.has(item.id) ? " active" : ""}`} type="button" disabled={!favorites.loaded || favorites.busy || editing.dirty} title={editing.dirty ? "保存修改后可收藏小节" : favoriteByHeading.has(item.id) ? "取消收藏" : "收藏小节"} aria-label={`${favoriteByHeading.has(item.id) ? "取消收藏" : "收藏章节"}：${item.text}`} aria-pressed={favoriteByHeading.has(item.id)} onClick={event => void toggleFavorite(item, event.currentTarget)}><Star size={14} fill={favoriteByHeading.has(item.id) ? "currentColor" : "none"} /></button>}
       </div>)}
     </div></div>
   </nav>;
@@ -216,6 +239,7 @@ export function LogReader({ editing, search, active, navigationRevision, day, da
     </div></div>
     <div className={`reader-content editing-workspace mode-${mode}`}>
     {linkError && <div className="editor-navigation-status" role="alert">{linkError}</div>}
+    {favorites.error && <div className="editor-navigation-status" role="alert">{favorites.error}<button className="button secondary" type="button" onClick={() => void favorites.reload()}>重试收藏</button></div>}
     {ready && heading && !findInternalLinkHeading(headings, heading) && <div className="editor-navigation-status" role="status">未找到目标小节，已打开该日日志。</div>}
     <input ref={imageInput} type="file" multiple accept={IMAGE_ACCEPT} hidden aria-label="选择日志图片" onChange={event => { const files = Array.from(event.target.files || []); event.target.value = ""; void attachments.upload(files); }} />
     {attachments.status && <div className="editor-attachment-status" role={attachments.failed ? "alert" : "status"}>{attachments.status}</div>}
@@ -233,6 +257,9 @@ export function LogReader({ editing, search, active, navigationRevision, day, da
       onDragOver={event => { if (Array.from(event.dataTransfer.items).some(item => item.type.startsWith("image/"))) event.preventDefault(); }}>
       {editorReady ? <LogEditor date={date} value={editing.body} active={active && !editing.locked && mode !== "preview"} onChange={editing.onChange} onSave={editing.onSave} onUpdate={attachments.update} onView={view => { editorView.current = view; }} /> : <div className="source-empty">{loading ? "正在读取日志…" : "选择日期以编辑学习日志"}</div>}
     </div></div>
+    {active && favoriteFeedback?.kind === "added" && <FavoriteSuccessNotice {...favoriteFeedback} onClose={() => setFavoriteFeedback(null)} onGroup={() => { setOutlineOpen(false); setFavoriteGroup(favoriteFeedback.id); }} />}
+    {active && favoriteFeedback?.kind === "remove" && <FavoriteRemovePopover {...favoriteFeedback} busy={favorites.busy} error={favorites.error} onClose={() => setFavoriteFeedback(null)} onConfirm={() => favorites.remove(favoriteFeedback.id)} />}
+    {active && favoriteGroup && <FavoriteGroupDialog favoriteId={favoriteGroup} favorites={favorites} onClose={() => setFavoriteGroup("")} />}
     {outlineOpen && <div className="reader-outline-modal mobile-panel-outline" onClick={() => setOutlineOpen(false)}><div onClick={event => event.stopPropagation()}>{renderOutline(true)}</div></div>}
     {actionsOpen && <div className="mobile-sheet-backdrop" onClick={() => setActionsOpen(false)}><section className="mobile-action-sheet" ref={actions} role="dialog" aria-modal="true" aria-label="日志操作" onClick={event => event.stopPropagation()}>
       <div className="mobile-sheet-header"><div><strong>日志操作</strong><span>{date}</span></div><button type="button" aria-label="关闭日志操作" onClick={() => setActionsOpen(false)}><X size={18} /></button></div>

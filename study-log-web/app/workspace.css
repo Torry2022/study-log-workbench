@@ -1,5 +1,13 @@
 /* WorkspaceChrome uses the established workspace layout and responsive rules. */
 
+.workspace-view:not([hidden]) { display: contents; }
+.mobile-bottom-nav { display: none; }
+.app-nav-link.active {
+  border-color: color-mix(in srgb, var(--primary) 42%, var(--hairline));
+  background: color-mix(in srgb, var(--primary) 10%, var(--canvas));
+  color: var(--ink);
+}
+
 /* Source: globals.css */
 
 
@@ -965,6 +973,23 @@
 
 /* Public workspace has one shared global search and no inspector column yet. */
 .public-reading-shell { --mobile-topbar-height: calc(44px + var(--safe-area-top)); --mobile-bottom-occupied: 0px; }
+@media (max-width: 1023px) {
+  .public-reading-shell { --mobile-bottom-nav-height: 64px; --mobile-bottom-occupied: calc(var(--mobile-bottom-nav-height) + var(--safe-area-bottom)); }
+  .mobile-bottom-nav {
+    position: fixed; right: 0; bottom: 0; left: 0; z-index: 65;
+    height: calc(var(--mobile-bottom-nav-height) + var(--safe-area-bottom));
+    display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr);
+    padding: 5px max(8px, var(--safe-area-right)) var(--safe-area-bottom) max(8px, var(--safe-area-left));
+    border-top: 1px solid var(--hairline);
+    background: color-mix(in srgb, var(--topbar-bg) 96%, transparent); backdrop-filter: blur(18px);
+  }
+  .mobile-bottom-nav button {
+    min-width: 0; min-height: 52px; display: grid; place-items: center; align-content: center; gap: 2px; padding: 0;
+    border: 0; border-radius: var(--radius-md); background: transparent; color: var(--muted); font-size: 10px; font-weight: 600;
+  }
+  .mobile-bottom-nav button.active { background: color-mix(in srgb, var(--primary) 10%, transparent); color: var(--primary-active); }
+  .mobile-keyboard-open .mobile-bottom-nav, .reading-mode .mobile-bottom-nav { display: none; }
+}
 .public-reading-shell > .topbar { grid-template-columns: minmax(180px, 1fr) minmax(220px, 2fr) auto; }
 .public-reading-shell .sidebar-section.grow { grid-template-rows: auto auto minmax(0, 1fr); }
 .public-reading-shell .sidebar-search input { width: 100%; min-width: 0; border: 1px solid var(--hairline); border-radius: var(--radius-md); color: var(--ink); }

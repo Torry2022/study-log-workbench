@@ -3,6 +3,9 @@ import { withBasePath } from "./base-path.ts";
 export const AUTH_EXPIRED_EVENT = "study-log:auth-expired";
 
 let workspaceRequests = new AbortController();
+export function workspaceRequestSignal(): AbortSignal {
+  return workspaceRequests.signal;
+}
 export function cancelWorkspaceRequests(): void {
   workspaceRequests.abort();
   workspaceRequests = new AbortController();
@@ -18,6 +21,39 @@ export class ApiRequestError extends Error {
     this.status = status;
     this.code = code;
   }
+}
+
+export async function requestDownload(url: string, init?: RequestInit): Promise<{ blob: Blob; fileName: string; warningCount: number }> {
+  const signal = init?.signal ? AbortSignal.any([init.signal, workspaceRequests.signal]) : workspaceRequests.signal;
+  signal.throwIfAborted();
+  const response = await fetch(withBasePath(url), { ...init, signal, cache: "no-store" });
+  signal.throwIfAborted();
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({})) as { error?: string; code?: string };
+    signal.throwIfAborted();
+    if (response.status === 401 && payload.error === "Unauthorized") {
+      window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+      throw new ApiRequestError("登录已过期，请重新登录", 401, payload.code || null);
+    }
+    throw new ApiRequestError(payload.error || `导出失败（状态码 ${response.status}）`, response.status, payload.code || null);
+  }
+  if (response.headers.get("content-type")?.split(";")[0].trim().toLowerCase() !== "application/zip") {
+    throw new Error("导出响应不是 ZIP 文件，请重试");
+  }
+  const disposition = response.headers.get("content-disposition") || "";
+  let fileName = /filename="([^"]+)"/i.exec(disposition)?.[1] || "study-log-export.zip";
+  const encoded = /filename\*=UTF-8''([^;\s]+)/i.exec(disposition)?.[1];
+  if (encoded) {
+    try { fileName = decodeURIComponent(encoded); } catch { /* Use the ASCII fallback. */ }
+  }
+  if (/[\\/\u0000-\u001f\u007f<>:"|?*]/.test(fileName) || !fileName.toLowerCase().endsWith(".zip") || fileName.startsWith(".")) {
+    fileName = "study-log-export.zip";
+  }
+  const warning = response.headers.get("x-export-warning-count") || "0";
+  const warningCount = /^\d+$/.test(warning) && Number.isSafeInteger(Number(warning)) ? Number(warning) : 0;
+  const blob = await response.blob();
+  signal.throwIfAborted();
+  return { blob, fileName, warningCount };
 }
 
 export async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {

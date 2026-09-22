@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
       aiConfiguration: { provider, templates },
       features: {
         aiWriting: { supported: true, configured: provider.configured && templates.generation.configured },
+        aiHighlighting: { supported: true, configured: provider.configured && templates.highlighting.configured },
         rag: { supported: false, configured: false }
       }
     }, { headers: { "Cache-Control": "no-store" } });

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { BarChart3, CalendarDays, ChevronLeft, ChevronRight, FileText, Lightbulb, LogOut, Menu, Monitor, Moon, MoreHorizontal, PanelRightOpen, Plus, Search, Star, Sun, Wand2, X } from "lucide-react";
+import { BarChart3, CalendarDays, ChevronLeft, ChevronRight, FileText, Highlighter, Lightbulb, LogOut, Menu, Monitor, Moon, MoreHorizontal, PanelRightOpen, Plus, Search, Star, Sun, Wand2, X } from "lucide-react";
 import type { WorkspaceView } from "@/hooks/use-log-workspace";
 import type { DaySummary, MonthSummary } from "@/lib/types";
 import { withBasePath } from "@/lib/base-path";
@@ -19,6 +19,8 @@ export interface WorkspaceChromeProps {
   onView: (view: WorkspaceView) => Promise<boolean>;
   moduleNavigation: (onNavigate: () => void) => ReactNode;
   inspector?: ReactNode;
+  inspectorTab: "writing" | "highlighting";
+  onInspectorTab: (tab: "writing" | "highlighting") => void;
   months: MonthSummary[];
   days: DaySummary[];
   selectedMonth: string;
@@ -47,7 +49,7 @@ const themes = [
 ] as const;
 
 /** Presentation and navigation only; authentication and document state belong to Workspace. */
-export function WorkspaceChrome({ active, view, onView, moduleNavigation, inspector, months, days, selectedMonth, selectedDate, loading, error,
+export function WorkspaceChrome({ active, view, onView, moduleNavigation, inspector, inspectorTab, onInspectorTab, months, days, selectedMonth, selectedDate, loading, error,
   theme, themePreference = "system", readingMode = false, onMonth, onDate, onNewDate, onTheme, onLogout, onRetry, onSearchSelect, onSearchChange, children }: WorkspaceChromeProps) {
   const [compact, setCompact] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
@@ -232,9 +234,9 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, inspec
       </aside>
       <section className="reader reader-preview" inert={drawerOpen}>{children}</section>
       {hasInspector && <aside ref={writingPanel} className={`writing-inspector${writingExpanded ? " expanded" : " collapsed"}${panel === "writing" ? " mobile-open" : ""}`} inert={compact && panel !== "writing"} role={compact ? "dialog" : undefined} aria-modal={compact && panel === "writing" ? true : undefined} aria-label="AI 工具">
-        {!compact && !writingExpanded && <div className="inspector-rail"><button className="rail-button" type="button" aria-label="展开右侧栏" title="展开右侧栏" onClick={() => setInspectorCollapsed(false)}><ChevronLeft size={18} /></button><button className="rail-button" type="button" aria-label="AI生成" title="AI生成" onClick={() => setInspectorCollapsed(false)}><Wand2 size={17} /></button></div>}
+        {!compact && !writingExpanded && <div className="inspector-rail"><button className="rail-button" type="button" aria-label="展开右侧栏" title="展开右侧栏" onClick={() => setInspectorCollapsed(false)}><ChevronLeft size={18} /></button><button className="rail-button" type="button" aria-label="AI生成" title="AI生成" onClick={() => { onInspectorTab("writing"); setInspectorCollapsed(false); }}><Wand2 size={17} /></button><button className="rail-button" type="button" aria-label="AI标注" title="AI标注" onClick={() => { onInspectorTab("highlighting"); setInspectorCollapsed(false); }}><Highlighter size={17} /></button></div>}
         <div className="writing-inspector-content" hidden={!writingExpanded}>
-          <div className="writing-inspector-heading"><strong><Wand2 size={16} />AI生成</strong><button className="collapse-button" type="button" aria-label={compact ? "关闭 AI 工具" : "折叠右侧栏"} onClick={() => compact ? setPanel(null) : setInspectorCollapsed(true)}>{compact ? <X size={19} /> : <ChevronRight size={16} />}</button></div>
+          <div className="writing-inspector-heading"><div className="inspector-tabs" role="group" aria-label="AI 工具类型"><button type="button" className={inspectorTab === "writing" ? "active" : ""} aria-pressed={inspectorTab === "writing"} onClick={() => onInspectorTab("writing")}><Wand2 size={16} />AI生成</button><button type="button" className={inspectorTab === "highlighting" ? "active" : ""} aria-pressed={inspectorTab === "highlighting"} onClick={() => onInspectorTab("highlighting")}><Highlighter size={16} />AI标注</button></div><button className="collapse-button" type="button" aria-label={compact ? "关闭 AI 工具" : "折叠右侧栏"} onClick={() => compact ? setPanel(null) : setInspectorCollapsed(true)}>{compact ? <X size={19} /> : <ChevronRight size={16} />}</button></div>
           {inspector}
         </div>
         {!compact && writingExpanded && <div className="inspector-resizer" role="separator" tabIndex={0} aria-label="调整右侧栏宽度" aria-orientation="vertical" aria-valuenow={inspectorWidth} aria-valuemin={320} aria-valuemax={720}

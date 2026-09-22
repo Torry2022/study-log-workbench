@@ -5,6 +5,9 @@
 .writing-inspector-content:not([hidden]) { height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr); }
 .writing-inspector-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 14px; border-bottom: 1px solid rgba(250,249,245,.1); }
 .writing-inspector-heading strong { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; }
+.inspector-tabs { display: flex; gap: 4px; }
+.inspector-tabs button { display: inline-flex; align-items: center; gap: 6px; padding: 8px; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--on-dark-soft); font-size: 13px; }
+.inspector-tabs button.active { background: var(--surface-dark-elevated); color: var(--on-dark); }
 .writing-inspector .collapse-button, .writing-inspector .rail-button { display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; padding: 0; border: 0; border-radius: var(--radius-md); color: var(--on-dark-soft); background: transparent; }
 .writing-inspector .collapse-button:hover, .writing-inspector .rail-button:hover { color: var(--on-dark); background: var(--surface-dark-elevated); }
 .writing-inspector .inspector-rail { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 14px 7px; }

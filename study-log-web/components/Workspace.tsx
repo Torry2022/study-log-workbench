@@ -26,6 +26,9 @@ import { ExportMenu } from "./ExportMenu";
 import { useExport } from "@/hooks/use-export";
 import { useWriting } from "@/hooks/use-writing";
 import { WritingPanel } from "./WritingPanel";
+import { useHighlighting } from "@/hooks/use-highlighting";
+import { HighlightPanel } from "./HighlightPanel";
+import { HighlightReviewDialog } from "./HighlightReviewDialog";
 import type { InternalLinkTarget } from "./MarkdownPreview";
 import { buildMarkdownOutline } from "@/lib/markdown-outline";
 import { assertEditableDayBody, toEditableDayBody } from "@/lib/day-content";
@@ -55,11 +58,17 @@ export function Workspace() {
   const [missingFavorite, setMissingFavorite] = useState("");
   const [navigationError, setNavigationError] = useState("");
   const [returnNoteId, setReturnNoteId] = useState("");
+  const [inspectorTab, setInspectorTab] = useState<"writing" | "highlighting">("writing");
   const writing = useWriting({ active, visible: logView, date: logs.selection.date, onConfirm: confirm, onApply: async (date, content) => {
     if (!active || !logView || draft.busy || deleting || backupOpen || logs.loading || draft.draft?.date !== date || logs.selection.date !== date) return false;
     const body = draft.draft.body ? `${draft.draft.body}\n\n${content}` : content;
     assertEditableDayBody(body);
     draft.replaceBody(body); setMode("source"); setReading(false); return true;
+  } });
+  const highlighting = useHighlighting({ active, visible: logView, date: logs.selection.date, content: draft.draft?.date === logs.selection.date ? draft.draft.body : "", onApply: async (date, original, content) => {
+    if (!active || !logView || draft.busy || deleting || backupOpen || logs.loading || draft.draft?.date !== date || logs.selection.date !== date || draft.draft.body !== original) return false;
+    assertEditableDayBody(content);
+    draft.replaceBody(content); setMode("source"); setReading(false); return true;
   } });
   const navigationState = useRef({ active, revision: logs.navigationRevision });
   navigationState.current = { active, revision: logs.navigationRevision };
@@ -154,7 +163,8 @@ export function Workspace() {
     }
   };
   return <><WorkspaceChrome active={active} months={logs.months} days={logs.days}
-    inspector={<WritingPanel writing={writing} themeMode={theme} />}
+    inspectorTab={inspectorTab} onInspectorTab={setInspectorTab}
+    inspector={inspectorTab === "writing" ? <WritingPanel writing={writing} themeMode={theme} /> : <HighlightPanel highlighting={highlighting} />}
     view={logs.selection.view} onView={async view => { const accepted = await logs.selectView(view); if (accepted) { clearSearch(); setReading(false); if (view === "favorites") void favorites.reload(); } return accepted; }}
     moduleNavigation={onNavigate => logs.selection.view === "favorites" ? <FavoritesNavigation favorites={favorites} active={active} /> : logs.selection.view === "stats" ? <StatsNavigation stats={stats} onNavigate={onNavigate} /> : logs.selection.view === "notes" ? <NotesNavigation notes={notes} onNavigate={onNavigate} /> : null}
     selectedMonth={logs.selection.month} selectedDate={logs.selection.date}
@@ -179,5 +189,6 @@ export function Workspace() {
     <div className="workspace-view" hidden={logs.selection.view !== "notes"}><NotesModule notes={notes} themeMode={theme} onOpenLogTarget={openNotesLogTarget} exportAction={<ExportMenu scopes={[{ scope: "notes", label: "全部随记" }]} onExport={exporting.run} busy={exporting.busy} disabled={!active} />} /></div>
   </WorkspaceChrome>{backupOpen && active && <BackupDialog date={logs.selection.date} onClose={() => setBackupOpen(false)} onRestored={acceptExternal}
     beforeRestore={() => confirm({ title: "恢复此版本？", message: draft.dirty ? "恢复将替换当前日块，并放弃未保存修改；写入前会保留现有文件。" : "恢复将替换当前日块，其他日期保持不变；写入前会保留现有文件。", confirmLabel: "恢复", tone: "danger" })} />}
+    <HighlightReviewDialog highlighting={highlighting} />
     {confirmation && active && <ConfirmDialog {...confirmation} onConfirm={() => resolveConfirmation(true)} onCancel={() => resolveConfirmation(false)} />}</>;
 }

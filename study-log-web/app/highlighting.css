@@ -1,0 +1,248 @@
+/* Mature highlight comparison and inspector styles, scoped to this feature. */
+
+
+.highlight-panel .highlight-helper {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid rgba(250, 249, 245, 0.12);
+  border-radius: var(--radius-md);
+  background: var(--surface-dark-soft);
+}
+
+.highlight-panel .highlight-helper h3 {
+  margin: 0;
+  color: var(--on-dark);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.highlight-panel .highlight-helper p {
+  margin: 0;
+  color: var(--on-dark-soft);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.highlight-review-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background: rgba(20, 20, 19, 0.58);
+}
+
+.highlight-review-overlay .diff-dialog {
+  width: min(1180px, 100%);
+  max-height: min(820px, calc(100vh - 56px));
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  background: var(--canvas);
+  box-shadow: var(--popover-shadow);
+}
+
+.highlight-review-overlay .diff-header,
+.highlight-review-overlay .diff-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.highlight-review-overlay .diff-header {
+  padding: 20px 20px 14px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.highlight-review-overlay .diff-header h3 {
+  margin: 3px 0 4px;
+  color: var(--ink);
+  font-family: Cormorant Garamond, Georgia, "Times New Roman", serif;
+  font-size: 30px;
+  font-weight: 500;
+  line-height: 1.05;
+}
+
+.highlight-review-overlay .diff-header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.highlight-review-overlay .diff-warnings {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 4px;
+  padding: 10px 28px 0;
+}
+
+.highlight-review-overlay .diff-warnings .status-line {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.highlight-review-overlay .diff-grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+  overflow: hidden;
+  padding: 14px 20px;
+}
+
+.highlight-review-overlay .diff-pane {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+}
+
+.highlight-review-overlay .diff-pane-title {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--hairline);
+  color: var(--body-strong);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.highlight-review-overlay .diff-pane pre {
+  min-height: 0;
+  margin: 0;
+  overflow: auto;
+  padding: 8px 0;
+  color: var(--body);
+  font-family: "JetBrains Mono", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: pre;
+}
+
+.highlight-review-overlay .diff-line {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  min-width: max-content;
+  padding: 0 12px 0 0;
+}
+
+.highlight-review-overlay .diff-line.changed {
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+}
+
+.highlight-review-overlay .diff-line-number {
+  padding-right: 10px;
+  color: var(--muted-soft);
+  text-align: right;
+  user-select: none;
+}
+
+.highlight-review-overlay .diff-line code {
+  color: inherit;
+  font: inherit;
+}
+
+.highlight-review-overlay .diff-bold-token {
+  display: inline-block;
+  margin: 0 1px;
+  padding: 0 3px;
+  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--primary) 22%, var(--surface-card));
+  color: var(--primary-active);
+  font-weight: 700;
+}
+
+.highlight-review-overlay .diff-actions {
+  justify-content: flex-end;
+  padding: 14px 20px 20px;
+  border-top: 1px solid var(--hairline);
+  background: var(--canvas);
+}
+
+.highlight-review-overlay .version-switch {
+  display: none;
+}
+
+.highlight-review-overlay .diff-dialog {
+  container: highlight-window / inline-size;
+}
+
+@container highlight-window (max-width: 800px) {
+  .highlight-review-overlay .version-switch { display: flex; margin: 8px 12px 0; flex-shrink: 0; }
+  .highlight-review-overlay .diff-grid { grid-template-columns: minmax(0, 1fr); }
+  .highlight-review-overlay .diff-grid[data-side="0"] .diff-pane:last-child,
+  .highlight-review-overlay .diff-grid[data-side="1"] .diff-pane:first-child { display: none; }
+}
+
+.highlight-review-overlay .version-switch button { flex: 1; min-height: 44px; }
+
+
+@media (max-width: 1023px) {
+
+  .highlight-review-overlay {
+    top: var(--mobile-viewport-top, 0px);
+    bottom: var(--mobile-viewport-bottom, 0px);
+    padding-left: var(--safe-area-left);
+    padding-right: var(--safe-area-right);
+  }
+
+  .highlight-review-overlay {
+    align-items: flex-end;
+    padding: 0 var(--safe-area-right) 0 var(--safe-area-left);
+  }
+
+  .highlight-review-overlay .diff-dialog {
+    width: 100%;
+    height: var(--mobile-viewport-height, 100dvh);
+    max-height: var(--mobile-viewport-height, 100dvh);
+    border: 0;
+    border-radius: 0;
+  }
+
+  .highlight-review-overlay .diff-header {
+    padding: max(14px, var(--safe-area-top)) 14px 12px;
+  }
+
+  .highlight-review-overlay .diff-header h3 {
+    font-size: 25px;
+  }
+
+  .highlight-review-overlay .diff-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .highlight-review-overlay .version-switch { display: flex; margin: 8px 12px 0; flex-shrink: 0; }
+  .highlight-review-overlay .diff-grid[data-side="0"] .diff-pane:last-child,
+  .highlight-review-overlay .diff-grid[data-side="1"] .diff-pane:first-child { display: none; }
+
+  .highlight-review-overlay .diff-actions {
+    flex-wrap: wrap;
+    padding: 10px 12px calc(12px + var(--safe-area-bottom));
+  }
+
+  .highlight-review-overlay .diff-actions .button {
+    flex: 1 1 120px;
+    min-height: 44px;
+  }
+}
+
+.highlight-review-overlay { z-index: 110; }
+.highlight-panel { min-height: 0; display: flex; flex-direction: column; gap: 12px; padding: 16px; overflow: auto; background: var(--surface-dark); color: var(--on-dark); }
+.highlight-panel .highlight-configuration { display: grid; gap: 8px; }
+.highlight-panel .button.secondary-on-dark { color: var(--on-dark-soft); background: var(--surface-dark-elevated); border-color: rgba(250,249,245,.12); }
+.highlight-panel .status-line, .highlight-review-overlay .status-line { margin: 0; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
+.highlight-panel .status-line.warning, .highlight-review-overlay .status-line.warning { color: var(--warning); }
+.highlight-panel .status-line.error, .highlight-review-overlay .status-line.error { color: var(--error); }
+.highlight-panel .status-line.pending { color: var(--accent-teal); }

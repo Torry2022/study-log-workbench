@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { initialize, withInstanceLock } from "./instance.mjs";
 
 async function fixture(t) {
@@ -56,4 +58,13 @@ test("rejects links into another instance", async t => {
   const link = path.join(root, "alias");
   await fs.symlink(target, link, process.platform === "win32" ? "junction" : "dir");
   await assert.rejects(initialize(link), /链接|联接/);
+});
+
+test("web launcher rejects malformed identities before starting the server", async t => {
+  const root = await fixture(t);
+  await initialize(root);
+  await fs.writeFile(path.join(root, "data/.instance.json"), JSON.stringify({ schemaVersion: 1, id: "not-a-uuid" }));
+  const result = spawnSync(process.execPath, [fileURLToPath(new URL("./run-web.mjs", import.meta.url)), "dev", root, "3569"], { encoding: "utf8", timeout: 3000 });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /实例身份无效/);
 });

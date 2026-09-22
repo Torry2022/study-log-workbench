@@ -16,8 +16,10 @@ try {
   await assertNoLinks(data);
   await assertNoLinks(path.join(root, ".env"));
   const environment = parseEnv(await fs.readFile(path.join(root, ".env"), "utf8"));
-  const identity = JSON.parse(await fs.readFile(path.join(data, ".instance.json"), "utf8"));
-  if (identity.schemaVersion !== 1 || typeof identity.id !== "string") throw new Error("实例身份无效");
+  const identityFile = path.join(data, ".instance.json");
+  await assertNoLinks(identityFile);
+  const identity = JSON.parse(await fs.readFile(identityFile, "utf8"));
+  if (identity.schemaVersion !== 1 || typeof identity.id !== "string" || !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(identity.id)) throw new Error("实例身份无效");
   for (const [name, minimum] of [["APP_PASSWORD", 12], ["SESSION_SECRET", 32]]) {
     if ((environment[name] || "").trim().length < minimum || /^(?:change-me|replace-|dev-session-secret)/i.test(environment[name])) throw new Error(`${name} 缺失或不安全`);
   }

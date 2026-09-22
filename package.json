@@ -5,6 +5,8 @@
   "license": "MIT",
   "engines": { "node": ">=22" },
   "scripts": {
+    "instance": "node ops/instance.mjs",
+    "test:ops": "node --test ops/*.test.mjs",
     "dev": "npm --prefix study-log-web run dev",
     "typecheck": "npm --prefix study-log-web run typecheck",
     "build": "npm --prefix study-log-web run build"

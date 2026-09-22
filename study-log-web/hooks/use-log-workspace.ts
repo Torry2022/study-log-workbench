@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { requestLogJson } from "@/lib/client-http";
 import { isValidLogDate } from "@/lib/study-date";
 import type { DayEntry, DaySummary, MonthSummary } from "@/lib/types";
@@ -27,12 +27,14 @@ function writeLocation(selection: Selection, replace = false) {
   if (selection.month) url.searchParams.set("month", selection.month);
   if (selection.date) url.searchParams.set("date", selection.date);
   if (selection.heading) url.searchParams.set("heading", selection.heading);
-  if (url.href !== window.location.href) window.history[replace ? "replaceState" : "pushState"](replace ? window.history.state : {}, "", url);
+  const index = Number.isInteger(window.history.state?.studyLogIndex) ? window.history.state.studyLogIndex : 0;
+  if (replace || url.href !== window.location.href) window.history[replace ? "replaceState" : "pushState"](
+    replace ? { ...window.history.state, studyLogIndex: index } : { studyLogIndex: index + 1 }, "", url);
 }
 
 const cancelled = (error: unknown, signal: AbortSignal) => signal.aborted || (error instanceof Error && error.name === "AbortError");
 
-export function useLogWorkspace(active: boolean) {
+export function useLogWorkspace(active: boolean, beforeLeave?: RefObject<() => Promise<boolean>>) {
   const [selection, setSelection] = useState<Selection>(empty);
   const [months, setMonths] = useState<MonthSummary[]>([]);
   const monthsRef = useRef<MonthSummary[]>([]);
@@ -41,24 +43,42 @@ export function useLogWorkspace(active: boolean) {
   const [errors, setErrors] = useState({ months: "", days: "", day: "" });
   const [loading, setLoading] = useState({ months: false, days: false, day: false });
   const [revision, setRevision] = useState(0);
+  const [listRevision, setListRevision] = useState(0);
   const [scrollTarget, setScrollTarget] = useState<number | null>(null);
   const [navigationRevision, setNavigationRevision] = useState(0);
+  const currentSelection = useRef(selection);
+  currentSelection.current = selection;
+  const acceptedIndex = useRef(0);
+  const navigationAttempt = useRef(0);
 
   useEffect(() => {
-    const restore = () => {
+    const restore = async (initial = false) => {
+      const attempt = ++navigationAttempt.current;
       const target = readLocation();
       if (!target.month) target.month = monthsRef.current[0]?.id || "";
+      if (!initial && target.date !== currentSelection.current.date && beforeLeave?.current) {
+        const accepted = await beforeLeave.current();
+        if (attempt !== navigationAttempt.current) return;
+        if (!accepted) {
+          const index = window.history.state?.studyLogIndex;
+          if (Number.isInteger(index) && index !== acceptedIndex.current) window.history.go(acceptedIndex.current - index);
+          else writeLocation(currentSelection.current, true);
+          return;
+        }
+      }
+      acceptedIndex.current = window.history.state?.studyLogIndex || 0;
       setSelection(target);
       setNavigationRevision(value => value + 1);
       const saved = window.history.state?.studyLogScrollY;
       setScrollTarget(Number.isFinite(saved) ? saved : null);
     };
-    restore();
+    void restore(true);
     const previous = window.history.scrollRestoration;
     window.history.scrollRestoration = "manual";
-    window.addEventListener("popstate", restore);
-    return () => { window.removeEventListener("popstate", restore); window.history.scrollRestoration = previous; };
-  }, []);
+    const onPopState = () => { void restore(); };
+    window.addEventListener("popstate", onPopState);
+    return () => { navigationAttempt.current++; window.removeEventListener("popstate", onPopState); window.history.scrollRestoration = previous; };
+  }, [beforeLeave]);
 
   useEffect(() => {
     if (!active) return;
@@ -74,7 +94,7 @@ export function useLogWorkspace(active: boolean) {
       .catch(error => { if (!cancelled(error, controller.signal)) setErrors(value => ({ ...value, months: error.message })); })
       .finally(() => { if (!controller.signal.aborted) setLoading(value => ({ ...value, months: false })); });
     return () => controller.abort();
-  }, [active, revision]);
+  }, [active, revision, listRevision]);
 
   useEffect(() => {
     if (!active || !selection.month) return;
@@ -95,7 +115,7 @@ export function useLogWorkspace(active: boolean) {
       .catch(error => { if (!cancelled(error, controller.signal)) setErrors(value => ({ ...value, days: error.message })); })
       .finally(() => { if (!controller.signal.aborted) setLoading(value => ({ ...value, days: false })); });
     return () => controller.abort();
-  }, [active, selection.month, revision]);
+  }, [active, selection.month, revision, listRevision]);
 
   useEffect(() => {
     if (!active) return;
@@ -112,22 +132,32 @@ export function useLogWorkspace(active: boolean) {
   }, [active, selection.date, revision]);
 
   useEffect(() => {
-    if (selection.month) writeLocation(selection, true);
+    if (selection.month) { writeLocation(selection, true); acceptedIndex.current = window.history.state.studyLogIndex; }
   }, [selection]);
 
-  const navigate = useCallback((next: Selection) => {
+  const navigate = useCallback(async (next: Selection) => {
+    const attempt = ++navigationAttempt.current;
+    if (next.date !== currentSelection.current.date && beforeLeave?.current && !(await beforeLeave.current())) return false;
+    if (attempt !== navigationAttempt.current) return false;
     window.history.replaceState({ ...window.history.state, studyLogScrollY: window.scrollY }, "");
     setScrollTarget(null);
     setNavigationRevision(value => value + 1);
     setSelection(next); writeLocation(next);
+    acceptedIndex.current = window.history.state?.studyLogIndex || 0;
+    return true;
+  }, [beforeLeave]);
+  const selectMonth = useCallback((month: string) => { void navigate({ month, date: "", heading: "" }); }, [navigate]);
+  const selectDate = useCallback((date: string, heading = "") => navigate({ month: date.slice(0, 7), date, heading }), [navigate]);
+  const acceptSaved = useCallback((saved: DayEntry) => {
+    if (saved.date === currentSelection.current.date) setDay(saved);
+    setListRevision(value => value + 1);
   }, []);
-  const selectMonth = (month: string) => navigate({ month, date: "", heading: "" });
-  const selectDate = (date: string, heading = "") => navigate({ month: date.slice(0, 7), date, heading });
   return {
     months, days, day: day?.date === selection.date ? day : null, selection, selectMonth, selectDate, scrollTarget, navigationRevision,
     navigationLoading: loading.months || loading.days,
     navigationError: errors.months || errors.days,
-    loading: loading.months || loading.days || loading.day,
+    acceptSaved,
+    loading: loading.day || (!selection.month && loading.months) || (!selection.date && loading.days),
     error: errors.months || errors.days || errors.day,
     retry: () => setRevision(value => value + 1)
   };

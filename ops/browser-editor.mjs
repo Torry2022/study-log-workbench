@@ -1,0 +1,31 @@
+﻿import fs from 'node:fs/promises';import path from 'node:path';import assert from 'node:assert/strict';import{parseEnv}from'node:util';import{createRequire}from'node:module';
+const require=createRequire(new URL('../study-log-web/package.json',import.meta.url));const{chromium,expect}=require('@playwright/test');
+const[root,base='http://127.0.0.1:3563/study-log']=process.argv.slice(2);if(!root||!path.isAbsolute(root)||!['localhost','127.0.0.1'].includes(new URL(base).hostname))throw Error('Local fixture required');
+const env=parseEnv(await fs.readFile(path.join(root,'.env'),'utf8'));const browser=await chromium.launch();const output=path.resolve('artifacts/editor');await fs.mkdir(output,{recursive:true});
+try{
+ const context=await browser.newContext({viewport:{width:1440,height:900}});const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ const login=async p=>{await p.getByLabel('访问密码').fill(env.APP_PASSWORD);await p.getByRole('button',{name:'登录',exact:true}).click();await p.locator('.workspace').waitFor();};
+ const source=async p=>{await p.getByRole('button',{name:'源码',exact:true}).filter({visible:true}).click();await expect(p.locator('.cm-content')).toBeVisible();};
+ const replace=async(p,text)=>{const editor=p.locator('.cm-content');await editor.click();await editor.press('Control+a');await p.keyboard.insertText(text);};
+ const save=async p=>{await p.getByRole('button',{name:'保存',exact:true}).filter({visible:true}).click();await expect(p.locator('.editor-save-status')).toHaveText('已保存',{timeout:60000});};
+ await page.goto(base+'?date=2026-01-15');await login(page);await source(page);
+ await expect(page.locator('.editor-date-line')).toContainText('2026-01-15');await expect(page.locator('.cm-content')).not.toContainText('## 2026-01-15');
+ await replace(page,'### 1. 编辑验收\n\n撤销测试');await page.keyboard.press('Control+z');await expect(page.locator('.cm-content')).not.toContainText('撤销测试');await page.keyboard.press('Control+y');await expect(page.locator('.cm-content')).toContainText('撤销测试');
+ await page.getByRole('button',{name:'浏览',exact:true}).filter({visible:true}).click();await expect(page.locator('.markdown-preview')).toContainText('撤销测试');await source(page);await page.keyboard.press('Control+z');await expect(page.locator('.cm-content')).not.toContainText('撤销测试');await page.keyboard.press('Control+y');
+ await page.keyboard.press('Control+f');await expect(page.locator('.cm-search')).toBeVisible();await page.keyboard.press('Escape');
+ await page.getByRole('button',{name:'分屏',exact:true}).click();await expect(page.locator('.cm-content')).toBeVisible();await expect(page.locator('.markdown-preview')).toContainText('撤销测试');await page.screenshot({path:path.join(output,'desktop-split.png')});
+ await page.locator('.day-item').filter({hasText:'2026-01-17'}).click();await expect(page.getByRole('alertdialog')).toBeVisible();await page.getByRole('alertdialog').getByRole('button',{name:'取消',exact:true}).click();await expect(page).toHaveURL(/date=2026-01-15/);await expect(page.locator('.cm-content')).toContainText('撤销测试');
+ await page.locator('.day-item').filter({hasText:'2026-01-17'}).click();await page.getByRole('alertdialog').getByRole('button',{name:'放弃修改',exact:true}).click();await expect(page.locator('.cm-content')).toContainText('文件版本');
+ await page.getByLabel('新建指定日期').fill('2026-01-20');await page.getByRole('button',{name:'新建',exact:true}).click();await expect(page.locator('.editor-date-line')).toContainText('2026-01-20');await replace(page,'### 1. 新日块\n\n合成写入');await save(page);
+ const stored=await page.request.get(base+'/api/logs/day?date=2026-01-20');const initial=(await stored.json()).day;assert.equal(initial.exists,true);assert.match(initial.content,/合成写入/);assert.ok(initial.version);
+ const second=await context.newPage();await second.goto(base+'?date=2026-01-20');await source(second);
+ await replace(page,'### 1. 新日块\n\n窗口一更新');await save(page);
+ await replace(second,'### 1. 新日块\n\n窗口二未保存');await second.getByRole('button',{name:'保存',exact:true}).filter({visible:true}).click();await expect(second.locator('.editor-save-status[role=alert]')).toBeVisible();await expect(second.locator('.cm-content')).toContainText('窗口二未保存');
+ await second.getByRole('button',{name:'重新读取',exact:true}).click();await second.getByRole('alertdialog').getByRole('button',{name:'放弃修改',exact:true}).click();await expect(second.locator('.cm-content')).toContainText('窗口一更新');await second.close();
+ await page.evaluate(()=>history.back());await expect(page.locator('.editor-date-line')).toContainText('2026-01-17');await replace(page,'### 1. 历史保护\n\n保留此稿');await page.evaluate(()=>history.back());await expect(page.getByRole('alertdialog')).toBeVisible();await page.getByRole('alertdialog').getByRole('button',{name:'取消',exact:true}).click();await expect(page).toHaveURL(/date=2026-01-17/);await expect(page.locator('.cm-content')).toContainText('保留此稿');
+ await page.evaluate(()=>window.dispatchEvent(new Event('study-log:auth-expired')));await login(page);await expect(page.locator('.cm-content')).toContainText('保留此稿');
+ await page.getByRole('button',{name:'放弃修改',exact:true}).filter({visible:true}).click();await page.getByRole('alertdialog').getByRole('button',{name:'放弃修改',exact:true}).click();await expect(page.locator('.cm-content')).toContainText('文件版本');
+ await page.setViewportSize({width:390,height:844});await source(page);await replace(page,'### 1. 手机编辑\n\n移动端合成内容');await page.screenshot({path:path.join(output,'mobile-source.png')});await save(page);
+ assert.deepEqual(errors,[]);const backups=await fs.readdir(path.join(root,'backups'));assert.ok(backups.filter(n=>n.endsWith('.bak')).length>=3);
+ console.log('Passed: editor modes/history/search, leave guard, create/save/readback, two-window conflict/reload, browser-back cancel, expired draft recovery, mobile save, unique backups');
+}finally{await browser.close();}

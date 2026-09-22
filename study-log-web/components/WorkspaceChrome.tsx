@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { CalendarDays, ChevronLeft, ChevronRight, FileText, LogOut, Menu, Monitor, Moon, MoreHorizontal, Search, Sun, X } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, FileText, LogOut, Menu, Monitor, Moon, MoreHorizontal, Plus, Search, Sun, X } from "lucide-react";
 import type { DaySummary, MonthSummary } from "@/lib/types";
 import { withBasePath } from "@/lib/base-path";
 import { useMobileViewport } from "@/hooks/use-mobile-viewport";
 import { DateJump } from "./DateJump";
+import { isValidLogDate, isFutureLogDate, todayInShanghai } from "@/lib/study-date";
 import "@/app/workspace.css";
 
 export interface WorkspaceChromeProps {
@@ -21,6 +22,7 @@ export interface WorkspaceChromeProps {
   readingMode?: boolean;
   onMonth: (month: string) => void;
   onDate: (date: string) => void;
+  onNewDate: (date: string) => void;
   onTheme: (theme: "system" | "light" | "dark") => void;
   onLogout: () => void;
   onRetry: () => void;
@@ -36,12 +38,13 @@ const themes = [
 
 /** Presentation and navigation only; authentication and document state belong to Workspace. */
 export function WorkspaceChrome({ active, months, days, selectedMonth, selectedDate, loading, error,
-  theme, themePreference = "system", readingMode = false, onMonth, onDate, onTheme, onLogout, onRetry, children }: WorkspaceChromeProps) {
+  theme, themePreference = "system", readingMode = false, onMonth, onDate, onNewDate, onTheme, onLogout, onRetry, children }: WorkspaceChromeProps) {
   const [compact, setCompact] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [panel, setPanel] = useState<"navigation" | "account" | null>(null);
   const [monthsExpanded, setMonthsExpanded] = useState(false);
   const [query, setQuery] = useState("");
+  const [customDate, setCustomDate] = useState(todayInShanghai());
   const [themeOpen, setThemeOpen] = useState(false);
   const [dateJumpRequest, setDateJumpRequest] = useState(0);
   const dateJumpSequence = useRef(0);
@@ -173,6 +176,7 @@ export function WorkspaceChrome({ active, months, days, selectedMonth, selectedD
           <button className="sidebar-rail-button" onClick={() => changeCollapsed(false)} aria-label="展开左侧栏" title="展开左侧栏"><ChevronRight size={18} /></button>
           <button className="sidebar-rail-button" onClick={() => changeCollapsed(false, "months")} aria-label="展开月份列表" title="月份"><CalendarDays size={17} /></button>
           <button className="sidebar-rail-button" onClick={() => changeCollapsed(false, "dates")} aria-label="展开日期列表" title="日期"><FileText size={17} /></button>
+          <button className="sidebar-rail-button" onClick={() => onNewDate(todayInShanghai())} aria-label="新建今日日志" title="新建今日日志"><Plus size={17} /></button>
         </div> : <>
           <div className="sidebar-section" data-log-section="months">
             <div className="sidebar-heading" ref={monthHeading} tabIndex={-1}><div className="section-title inline"><CalendarDays size={15} /><span>月份</span></div><button className="sidebar-collapse-button" onClick={() => changeCollapsed(true)} aria-label="折叠左侧栏" title="折叠左侧栏"><ChevronLeft size={16} /></button></div>
@@ -180,6 +184,11 @@ export function WorkspaceChrome({ active, months, days, selectedMonth, selectedD
             {compact && months.length > 6 && <button className="button secondary full" type="button" aria-expanded={monthsExpanded} onClick={() => setMonthsExpanded(value => !value)}>{monthsExpanded ? "收起月份" : `展开其余 ${months.length - 6} 个月份`}</button>}
           </div>
           <div className="sidebar-section grow" data-log-section="dates">
+            <button className="button secondary full" type="button" onClick={() => { onNewDate(todayInShanghai()); if (compact) setPanel(null); }}><Plus size={15} />今天</button>
+            <form className="date-create" onSubmit={event => { event.preventDefault(); if (!isValidLogDate(customDate) || isFutureLogDate(customDate)) return; onNewDate(customDate); if (compact) setPanel(null); }}>
+              <input type="date" value={customDate} max={todayInShanghai()} onChange={event => setCustomDate(event.target.value)} aria-label="新建指定日期" />
+              <button type="submit" disabled={!isValidLogDate(customDate) || isFutureLogDate(customDate)}><Plus size={14} />新建</button>
+            </form>
             <div className="section-title date-section-title"><span className="section-title-left"><FileText size={15} />日期</span><DateJump months={months} selectedDate={selectedDate} active={active && (!compact || panel === "navigation")} openRequest={dateJumpRequest} onDate={date => { onDate(date); if (compact) setPanel(null); }} /></div>
             <div className="sidebar-search"><Search size={14} /><input ref={dateSearch} value={query} onChange={event => setQuery(event.target.value)} placeholder="按标签定位日期" aria-label="按日期标签搜索日期" />{query && <button className="sidebar-search-clear" type="button" onClick={() => { setQuery(""); dateSearch.current?.focus(); }} aria-label="清空日期搜索"><X size={13} /></button>}</div>
             <div className="day-list" aria-busy={loading}>

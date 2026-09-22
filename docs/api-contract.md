@@ -11,3 +11,13 @@
 - 认证有效期7天。过期、错误签名、额外分段或错误受众不能访问受保护API。Cookie Secure由实例配置明确指定，本地HTTP初始化默认false；HTTPS部署应设true。
 
 配置及初始化错误不得包含密码、密钥或资料正文。实例身份不随服务重启改变。
+
+## 只读日块
+
+- `GET /api/logs/months` 返回 `{months:[{id,label,dayCount,firstDate,lastDate}]}`，按月倒序。
+- `GET /api/logs?month=YYYY-MM` 返回 `{days:[{date,month,fileName,headings,preview}]}`，按日期倒序；空月为空数组。
+- `GET /api/logs/day?date=YYYY-MM-DD` 返回 `{day:{...summary,exists,content,version,updatedAt}}`；不存在的日块返回 `exists:false`、日期标题及 `version:null`，不创建文件。
+- 所有读取需要认证，响应禁止缓存；无效日历日期或月份返回400。源文件日块必须属于文件名的年/月，日期不能重复；不合规资料明确读取失败，不猜测应选哪份。
+- 日块和版本哈希来自同一原文快照。源文件采用 `YYYY_学习日志.md` 或 `YYYY-MM_学习日志.md`；只识别根级ATX日期标题，代码、列表和引用中的示例不会分割日块，目录小节同样忽略代码示例。
+
+当前尚未接入写入API。

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
@@ -22,6 +22,8 @@ import type { FavoritesController } from "@/hooks/use-favorites";
 import type { MarkdownHeading } from "@/lib/markdown-outline";
 import { FavoriteGroupDialog } from "./FavoriteGroupDialog";
 import { FavoriteRemovePopover, FavoriteSuccessNotice } from "./FavoriteFeedback";
+import { ExportMenu } from "./ExportMenu";
+import type { ExportScope } from "@/hooks/use-export";
 import "@/app/reader.css";
 
 export type WorkspaceMode = "preview" | "source" | "split";
@@ -37,6 +39,7 @@ interface Props {
   editing: Editing;
   search: SearchSelection | null;
   favorites: FavoritesController;
+  exporting: { run: (scope: ExportScope) => Promise<boolean>; busy: boolean };
   active: boolean;
   navigationRevision: number;
   day: DayEntry | null; date: string; heading: string; scrollTarget: number | null;
@@ -45,7 +48,7 @@ interface Props {
   onNavigate: (date: string, heading?: string) => Promise<boolean>;
 }
 
-export function LogReader({ editing, search, favorites, active, navigationRevision, day, date, heading, scrollTarget, loading, error, theme, reading, onReading, onRetry, onNavigate }: Props) {
+export function LogReader({ editing, search, favorites, exporting, active, navigationRevision, day, date, heading, scrollTarget, loading, error, theme, reading, onReading, onRetry, onNavigate }: Props) {
   const content = useMemo(() => editing.documentDate === date ? editing.body : day ? toEditableDayBody(day.date, day.content) : "", [editing.documentDate, editing.body, date, day]);
   const headings = useMemo(() => buildMarkdownOutline(content), [content]);
   const [outlineOpen, setOutlineOpen] = useState(false);
@@ -89,6 +92,7 @@ export function LogReader({ editing, search, favorites, active, navigationRevisi
   const linkPosition = useReadingPosition({ editor: () => editorView.current, preview: () => preview.current,
     toolbarBottom: () => toolbar.current?.getBoundingClientRect().bottom || 0 });
   const ready = Boolean(day?.exists && !loading && !error);
+  const exportScopes = [{ scope: "day" as const, label: "当前日块", disabled: !ready }, { scope: "file" as const, label: "当前源文件", disabled: !ready }, { scope: "all" as const, label: "全部日志" }];
   const editorReady = Boolean(date && editing.documentDate === date);
   const mode = reading ? "preview" : editing.mode;
   const attachments = useEditorAttachments(date, active && !editing.locked && mode !== "preview", editing.resetRevision, () => editorView.current);
@@ -231,7 +235,7 @@ export function LogReader({ editing, search, favorites, active, navigationRevisi
     <div className="reader-toolbar-container" ref={toolbar}><div className={`reader-toolbar reader-toolbar-log${reading ? " reading-active" : ""}`}>
       <div className="reading-mode-toolbar"><div className="reading-mode-identity"><BookOpen size={18} /><h2>{date}</h2></div><div className="reading-mode-actions">{outlineButton}<button className="button secondary" type="button" onClick={() => changeReading(false)}>退出阅读</button></div></div>
       <div className="reader-log-identity"><span className="eyebrow">{day?.fileName || "Markdown"}</span><div className="reader-heading-row"><h2>{date || "未选择日期"}</h2></div></div>
-      <div className="reader-controls reader-log-controls">{returnPoint && <button className="button secondary" type="button" aria-label="返回链接前位置" onClick={() => void returnFromLink()}><CornerUpLeft size={15} /></button>}{mode !== "preview" && <div className="toolbar-actions editor-toolbar-actions">
+      <div className="reader-controls reader-log-controls"><ExportMenu scopes={exportScopes} onExport={exporting.run} busy={exporting.busy} disabled={!active} />{returnPoint && <button className="button secondary" type="button" aria-label="返回链接前位置" onClick={() => void returnFromLink()}><CornerUpLeft size={15} /></button>}{mode !== "preview" && <div className="toolbar-actions editor-toolbar-actions">
         <button className="button secondary" type="button" disabled={!editorReady || attachments.busy} onClick={openLink}><Link2 size={15} />内部链接</button>
         <button className="button secondary" type="button" disabled={!editorReady || attachments.busy} onClick={() => imageInput.current?.click()}><Upload size={15} />插入图片</button>
       </div>}<button className="button secondary icon-only" type="button" aria-label="备份与恢复" title="备份与恢复" disabled={!date || editing.busy} onClick={editing.onBackups}><DatabaseBackup size={16} /></button><button className="button secondary icon-only" type="button" aria-label="删除当前日块" title="删除当前日块" disabled={!day?.exists || editing.busy} onClick={editing.onDelete}><Trash2 size={16} /></button><div className="reader-mode-actions">{modeButtons()}<select className="log-mode-select" value={mode} aria-label="工作区模式" onChange={event => changeMode(event.target.value as WorkspaceMode)}>{modes.map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></div><div className="reader-outline-access">{outlineButton}</div>{saveButton()}</div>
@@ -264,6 +268,7 @@ export function LogReader({ editing, search, favorites, active, navigationRevisi
     {actionsOpen && <div className="mobile-sheet-backdrop" onClick={() => setActionsOpen(false)}><section className="mobile-action-sheet" ref={actions} role="dialog" aria-modal="true" aria-label="日志操作" onClick={event => event.stopPropagation()}>
       <div className="mobile-sheet-header"><div><strong>日志操作</strong><span>{date}</span></div><button type="button" aria-label="关闭日志操作" onClick={() => setActionsOpen(false)}><X size={18} /></button></div>
       <div className="mobile-sheet-grid">
+        <ExportMenu variant="items" scopes={exportScopes.map(item => ({ ...item, label: `导出${item.label}` }))} busy={exporting.busy} disabled={!active} onExport={scope => { setActionsOpen(false); return exporting.run(scope); }} />
         <button type="button" disabled={!date || editing.busy} onClick={() => { setActionsOpen(false); editing.onBackups(); }}><DatabaseBackup size={18} />备份与恢复</button>
         <button type="button" disabled={!day?.exists || editing.busy} onClick={() => { setActionsOpen(false); editing.onDelete(); }}><Trash2 size={18} />删除当前日块</button>
         {returnPoint && <button type="button" onClick={() => { setActionsOpen(false); void returnFromLink(); }}><CornerUpLeft size={18} />返回链接前位置</button>}

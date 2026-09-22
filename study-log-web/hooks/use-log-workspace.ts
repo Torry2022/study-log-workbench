@@ -5,17 +5,27 @@ import { requestLogJson } from "@/lib/client-http";
 import { isValidLogDate } from "@/lib/study-date";
 import type { DayEntry, DaySummary, MonthSummary } from "@/lib/types";
 
-export type WorkspaceView = "log" | "favorites";
-interface Selection { view: WorkspaceView; month: string; date: string; heading: string }
-const empty: Selection = { view: "log", month: "", date: "", heading: "" };
+export type WorkspaceView = "log" | "favorites" | "notes" | "stats";
+interface Selection { view: WorkspaceView; month: string; date: string; heading: string; noteId: string; statsMonth: string }
+const empty: Selection = { view: "log", month: "", date: "", heading: "", noteId: "", statsMonth: "" };
+
+function needsLeave(current: Selection, next: Selection) {
+  return current.view !== next.view || current.date !== next.date ||
+    (current.view === "notes" && current.noteId !== next.noteId) ||
+    (current.view === "stats" && current.statsMonth !== next.statsMonth);
+}
 
 function readLocation(): Selection {
   const url = new URL(window.location.href);
   const date = url.searchParams.get("date") || "";
   const month = url.searchParams.get("month") || "";
   const heading = url.searchParams.get("heading") || "";
+  const view = url.searchParams.get("view") || "log";
+  const noteId = url.searchParams.get("note") || "";
   return {
-    view: url.searchParams.get("view") === "favorites" ? "favorites" : "log",
+    view: ["favorites", "notes", "stats"].includes(view) ? view as WorkspaceView : "log",
+    noteId: noteId.length <= 4096 && !/[\u0000-\u001f]/.test(noteId) ? noteId : "",
+    statsMonth: view === "stats" && /^\d{4}-(0[1-9]|1[0-2])$/.test(month) ? month : "",
     month: isValidLogDate(date) ? date.slice(0, 7) : /^\d{4}-(0[1-9]|1[0-2])$/.test(month) ? month : "",
     date: isValidLogDate(date) ? date : "",
     heading: heading.length <= 4096 && !/[\u0000-\u001f]/.test(heading) ? heading : ""
@@ -24,9 +34,11 @@ function readLocation(): Selection {
 
 function writeLocation(selection: Selection, replace = false) {
   const url = new URL(window.location.href);
-  for (const name of ["view", "month", "date", "heading"]) url.searchParams.delete(name);
+  for (const name of ["view", "month", "date", "heading", "note"]) url.searchParams.delete(name);
   url.searchParams.set("view", selection.view);
-  if (selection.month) url.searchParams.set("month", selection.month);
+  if (selection.view === "stats" && selection.statsMonth) url.searchParams.set("month", selection.statsMonth);
+  else if (selection.view !== "stats" && selection.month) url.searchParams.set("month", selection.month);
+  if (selection.view === "notes" && selection.noteId) url.searchParams.set("note", selection.noteId);
   if (selection.date) url.searchParams.set("date", selection.date);
   if (selection.heading) url.searchParams.set("heading", selection.heading);
   const index = Number.isInteger(window.history.state?.studyLogIndex) ? window.history.state.studyLogIndex : 0;
@@ -57,8 +69,9 @@ export function useLogWorkspace(active: boolean, beforeLeave?: RefObject<() => P
     const restore = async (initial = false) => {
       const attempt = ++navigationAttempt.current;
       const target = readLocation();
+      if (!target.statsMonth) target.statsMonth = currentSelection.current.statsMonth;
       if (!target.month) target.month = monthsRef.current[0]?.id || "";
-      if (!initial && (target.date !== currentSelection.current.date || target.view !== currentSelection.current.view) && beforeLeave?.current) {
+      if (!initial && needsLeave(currentSelection.current, target) && beforeLeave?.current) {
         const accepted = await beforeLeave.current();
         if (attempt !== navigationAttempt.current) return;
         if (!accepted) {
@@ -140,7 +153,7 @@ export function useLogWorkspace(active: boolean, beforeLeave?: RefObject<() => P
 
   const navigate = useCallback(async (next: Selection) => {
     const attempt = ++navigationAttempt.current;
-    if ((next.date !== currentSelection.current.date || next.view !== currentSelection.current.view) && beforeLeave?.current && !(await beforeLeave.current())) return false;
+    if (needsLeave(currentSelection.current, next) && beforeLeave?.current && !(await beforeLeave.current())) return false;
     if (attempt !== navigationAttempt.current) return false;
     window.history.replaceState({ ...window.history.state, studyLogScrollY: window.scrollY }, "");
     setScrollTarget(null);
@@ -150,15 +163,17 @@ export function useLogWorkspace(active: boolean, beforeLeave?: RefObject<() => P
     acceptedIndex.current = window.history.state?.studyLogIndex || 0;
     return true;
   }, [beforeLeave]);
-  const selectMonth = useCallback((month: string) => { void navigate({ view: "log", month, date: "", heading: "" }); }, [navigate]);
-  const selectDate = useCallback((date: string, heading = "") => navigate({ view: "log", month: date.slice(0, 7), date, heading }), [navigate]);
+  const selectMonth = useCallback((month: string) => { void navigate({ ...currentSelection.current, view: "log", month, date: "", heading: "" }); }, [navigate]);
+  const selectDate = useCallback((date: string, heading = "") => navigate({ ...currentSelection.current, view: "log", month: date.slice(0, 7), date, heading }), [navigate]);
   const selectView = useCallback((view: WorkspaceView) => navigate({ ...currentSelection.current, view }), [navigate]);
+  const selectNote = useCallback((noteId: string) => navigate({ ...currentSelection.current, view: "notes", noteId }), [navigate]);
+  const selectStatsMonth = useCallback((statsMonth: string) => navigate({ ...currentSelection.current, view: "stats", statsMonth }), [navigate]);
   const acceptSaved = useCallback((saved: DayEntry) => {
     if (saved.date === currentSelection.current.date) setDay(saved);
     setListRevision(value => value + 1);
   }, []);
   return {
-    months, days, day: day?.date === selection.date ? day : null, selection, selectMonth, selectDate, selectView, scrollTarget, navigationRevision,
+    months, days, day: day?.date === selection.date ? day : null, selection, selectMonth, selectDate, selectView, selectNote, selectStatsMonth, scrollTarget, navigationRevision,
     navigationLoading: loading.months || loading.days,
     navigationError: errors.months || errors.days,
     acceptSaved,

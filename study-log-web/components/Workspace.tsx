@@ -24,9 +24,11 @@ import { NotesModule } from "./NotesModule";
 import { NotesNavigation } from "./NotesNavigation";
 import { ExportMenu } from "./ExportMenu";
 import { useExport } from "@/hooks/use-export";
+import { useWriting } from "@/hooks/use-writing";
+import { WritingPanel } from "./WritingPanel";
 import type { InternalLinkTarget } from "./MarkdownPreview";
 import { buildMarkdownOutline } from "@/lib/markdown-outline";
-import { toEditableDayBody } from "@/lib/day-content";
+import { assertEditableDayBody, toEditableDayBody } from "@/lib/day-content";
 import type { StatsEntry } from "@/lib/stats-types";
 import type { WorkspaceMode } from "./LogReader";
 import "@/app/editing-workspace.css";
@@ -53,6 +55,12 @@ export function Workspace() {
   const [missingFavorite, setMissingFavorite] = useState("");
   const [navigationError, setNavigationError] = useState("");
   const [returnNoteId, setReturnNoteId] = useState("");
+  const writing = useWriting({ active, visible: logView, date: logs.selection.date, onConfirm: confirm, onApply: async (date, content) => {
+    if (!active || !logView || draft.busy || deleting || backupOpen || logs.loading || draft.draft?.date !== date || logs.selection.date !== date) return false;
+    const body = draft.draft.body ? `${draft.draft.body}\n\n${content}` : content;
+    assertEditableDayBody(body);
+    draft.replaceBody(body); setMode("source"); setReading(false); return true;
+  } });
   const navigationState = useRef({ active, revision: logs.navigationRevision });
   navigationState.current = { active, revision: logs.navigationRevision };
   const sourceNavigation = useRef(0);
@@ -68,8 +76,15 @@ export function Workspace() {
     if (logs.selection.view === "notes") return notes.beforeLeave();
     if (logs.selection.view === "stats") return stats.beforeLeave();
     if (draft.busy || deleting || backupOpen) return false;
+    if (!draft.dirty && !writing.dirty && !writing.busy) return true;
+    const accepted = await confirm({ title: "放弃未保存修改？", message: writing.dirty || writing.busy ? "离开将丢弃当前未保存的日志修改、AI材料与生成草稿，并取消进行中的操作。" : "当前日志有未保存修改，离开后将丢弃这些修改。", confirmLabel: "放弃修改", tone: "danger" });
+    if (accepted && active) { draft.reset(); writing.discard(); }
+    return accepted;
+  };
+  const discardLog = async () => {
+    if (!active || draft.busy || deleting || backupOpen) return false;
     if (!draft.dirty) return true;
-    const accepted = await confirm({ title: "放弃未保存修改？", message: "当前日志有未保存修改，离开后将丢弃这些修改。", confirmLabel: "放弃修改", tone: "danger" });
+    const accepted = await confirm({ title: "放弃未保存修改？", message: "当前日志有未保存修改，继续将丢弃这些修改。AI材料与生成草稿会保留。", confirmLabel: "放弃修改", tone: "danger" });
     if (accepted) draft.reset();
     return accepted;
   };
@@ -84,7 +99,7 @@ export function Workspace() {
     window.addEventListener("keydown", save);
     return () => window.removeEventListener("keydown", save);
   }, [active, logView, draft.dirty, draft.save, logs.day, backupOpen, deleting]);
-  const reload = async () => { if (await beforeLeave.current()) { draft.reset(); logs.retry(); } };
+  const reload = async () => { if (await discardLog()) { draft.reset(); logs.retry(); } };
   const exit = async () => {
     if (!(await beforeLeave.current())) return;
     setSessionError("");
@@ -139,6 +154,7 @@ export function Workspace() {
     }
   };
   return <><WorkspaceChrome active={active} months={logs.months} days={logs.days}
+    inspector={<WritingPanel writing={writing} themeMode={theme} />}
     view={logs.selection.view} onView={async view => { const accepted = await logs.selectView(view); if (accepted) { clearSearch(); setReading(false); if (view === "favorites") void favorites.reload(); } return accepted; }}
     moduleNavigation={onNavigate => logs.selection.view === "favorites" ? <FavoritesNavigation favorites={favorites} active={active} /> : logs.selection.view === "stats" ? <StatsNavigation stats={stats} onNavigate={onNavigate} /> : logs.selection.view === "notes" ? <NotesNavigation notes={notes} onNavigate={onNavigate} /> : null}
     selectedMonth={logs.selection.month} selectedDate={logs.selection.date}
@@ -157,7 +173,7 @@ export function Workspace() {
       editing={{ mode, onMode: setMode, documentDate: draft.draft?.date || "", body: draft.draft?.body || "", dirty: draft.dirty,
         busy: draft.busy || deleting, locked: deleting, error: operationError || draft.error || (missingFavorite === logs.selection.date ? "原收藏小节未找到，已打开所属日期。" : ""), conflict: draft.conflict, saved: draft.saved, resetRevision: draft.resetRevision,
         onChange: draft.change, onSave: () => { if (!deleting && !backupOpen) void draft.save(); }, onReload: () => void reload(),
-        onDiscard: () => { void beforeLeave.current(); }, onDelete: () => void deleteCurrent(), onBackups: () => { if (!draft.busy && !deleting) setBackupOpen(true); } }} /></div>
+        onDiscard: () => { void discardLog(); }, onDelete: () => void deleteCurrent(), onBackups: () => { if (!draft.busy && !deleting) setBackupOpen(true); } }} /></div>
     <div className="workspace-view" hidden={logs.selection.view !== "favorites"}><FavoritesModule favorites={favorites} active={active && logs.selection.view === "favorites"} onOpen={async (date, heading, missing) => { const accepted = await selectDate(date, heading); if (accepted) { setMode("preview"); setReading(false); if (missing) setMissingFavorite(date); } return accepted; }} /></div>
     <div className="workspace-view" hidden={logs.selection.view !== "stats"}><StudyStatsPage stats={stats} onOpenEntry={openStatsEntry} /></div>
     <div className="workspace-view" hidden={logs.selection.view !== "notes"}><NotesModule notes={notes} themeMode={theme} onOpenLogTarget={openNotesLogTarget} exportAction={<ExportMenu scopes={[{ scope: "notes", label: "全部随记" }]} onExport={exporting.run} busy={exporting.busy} disabled={!active} />} /></div>

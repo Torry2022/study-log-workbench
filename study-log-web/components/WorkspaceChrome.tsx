@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { BarChart3, CalendarDays, ChevronLeft, ChevronRight, FileText, Lightbulb, LogOut, Menu, Monitor, Moon, MoreHorizontal, Plus, Search, Star, Sun, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { BarChart3, CalendarDays, ChevronLeft, ChevronRight, FileText, Lightbulb, LogOut, Menu, Monitor, Moon, MoreHorizontal, PanelRightOpen, Plus, Search, Star, Sun, Wand2, X } from "lucide-react";
 import type { WorkspaceView } from "@/hooks/use-log-workspace";
 import type { DaySummary, MonthSummary } from "@/lib/types";
 import { withBasePath } from "@/lib/base-path";
@@ -11,12 +11,14 @@ import { isValidLogDate, isFutureLogDate, todayInShanghai } from "@/lib/study-da
 import { SearchBox, type SearchSelection } from "./SearchBox";
 import { lockBodyScroll } from "@/hooks/use-dialog-exit";
 import "@/app/workspace.css";
+import "@/app/writing-inspector.css";
 
 export interface WorkspaceChromeProps {
   active: boolean;
   view: WorkspaceView;
   onView: (view: WorkspaceView) => Promise<boolean>;
   moduleNavigation: (onNavigate: () => void) => ReactNode;
+  inspector?: ReactNode;
   months: MonthSummary[];
   days: DaySummary[];
   selectedMonth: string;
@@ -45,11 +47,16 @@ const themes = [
 ] as const;
 
 /** Presentation and navigation only; authentication and document state belong to Workspace. */
-export function WorkspaceChrome({ active, view, onView, moduleNavigation, months, days, selectedMonth, selectedDate, loading, error,
+export function WorkspaceChrome({ active, view, onView, moduleNavigation, inspector, months, days, selectedMonth, selectedDate, loading, error,
   theme, themePreference = "system", readingMode = false, onMonth, onDate, onNewDate, onTheme, onLogout, onRetry, onSearchSelect, onSearchChange, children }: WorkspaceChromeProps) {
   const [compact, setCompact] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
-  const [panel, setPanel] = useState<"navigation" | "account" | "search" | null>(null);
+  const [panel, setPanel] = useState<"navigation" | "account" | "search" | "writing" | null>(null);
+  const [inspectorCollapsed, setInspectorCollapsed] = useState(true);
+  const [inspectorWidth, setInspectorWidth] = useState(380);
+  const writingPanel = useRef<HTMLElement>(null);
+  const resizeCleanup = useRef<(() => void) | null>(null);
+  const hasInspector = Boolean(inspector) && view === "log" && !readingMode;
   const [monthsExpanded, setMonthsExpanded] = useState(false);
   const [query, setQuery] = useState("");
   const [customDate, setCustomDate] = useState(todayInShanghai());
@@ -67,6 +74,7 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, months
   const keyboardOpen = useMobileViewport(compact);
   const drawerOpen = compact && panel !== null;
   const effectiveCollapsed = !compact && collapsed;
+  const writingExpanded = compact ? panel === "writing" : !inspectorCollapsed;
   const filteredDays = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
     return needle ? days.filter(day => `${day.date} ${day.headings.join(" ")}`.toLocaleLowerCase().includes(needle)) : days;
@@ -81,6 +89,8 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, months
   }, []);
 
   useEffect(() => { if (readingMode) { setPanel(null); setThemeOpen(false); } }, [readingMode]);
+  useEffect(() => { if (!hasInspector) setPanel(current => current === "writing" ? null : current); }, [hasInspector]);
+  useEffect(() => () => { resizeCleanup.current?.(); }, []);
   useEffect(() => {
     if (!active) { setPanel(null); setThemeOpen(false); }
     if (!active || (compact && panel !== "navigation")) setDateJumpRequest(0);
@@ -108,20 +118,20 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, months
     });
   }
 
-  function openPanel(value: "navigation" | "account" | "search") {
+  function openPanel(value: "navigation" | "account" | "search" | "writing") {
     returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setPanel(value);
   }
 
   useEffect(() => {
     if (!drawerOpen) return;
-    const dialog = panel === "navigation" ? sidebar.current : panel === "search" ? globalSearch.current : account.current;
+    const dialog = panel === "navigation" ? sidebar.current : panel === "search" ? globalSearch.current : panel === "writing" ? writingPanel.current : account.current;
     const unlockScroll = lockBodyScroll();
     const frame = requestAnimationFrame(() => dialog?.querySelector<HTMLElement>(panel === "search" ? "input" : "button")?.focus());
     const keydown = (event: KeyboardEvent) => {
       if (event.key === "Escape") { event.preventDefault(); setPanel(null); return; }
       if (event.key !== "Tab" || !dialog) return;
-      const items = Array.from(dialog.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), [tabindex="0"]'))
+      const items = Array.from(dialog.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex="0"]'))
         .filter(item => item.getClientRects().length > 0);
       const first = items[0], last = items.at(-1);
       if (!first || !last) { event.preventDefault(); return; }
@@ -187,7 +197,7 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, months
         <button className="button ghost" type="button" onClick={onLogout}><LogOut size={16} />退出</button>
       </div>
     </header>
-    <section className={`workspace without-inspector${readingMode ? " reading-mode-workspace" : ""}${effectiveCollapsed ? " sidebar-collapsed" : ""}`}>
+    <section className={`workspace ${hasInspector ? "with-writing" : "without-inspector"}${writingExpanded ? " writing-expanded" : ""}${readingMode ? " reading-mode-workspace" : ""}${effectiveCollapsed ? " sidebar-collapsed" : ""}`} style={{ "--inspector-width": `${writingExpanded ? inspectorWidth : 52}px` } as CSSProperties}>
       <aside ref={sidebar} className={`sidebar${effectiveCollapsed ? " collapsed" : ""}${panel === "navigation" ? " mobile-open" : ""}`}
         inert={compact && panel !== "navigation"} role={compact ? "dialog" : undefined} aria-modal={compact && panel === "navigation" ? true : undefined} aria-label="日志导航">
         <div className="mobile-drawer-header"><div><strong>{viewLabel}</strong><span>{view === "log" ? "按月份和日期浏览" : "筛选与浏览"}</span></div><button className="mobile-drawer-close" type="button" onClick={() => setPanel(null)} aria-label="关闭左侧导航"><X size={19} /></button></div>
@@ -221,6 +231,20 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, months
         </>}
       </aside>
       <section className="reader reader-preview" inert={drawerOpen}>{children}</section>
+      {hasInspector && <aside ref={writingPanel} className={`writing-inspector${writingExpanded ? " expanded" : " collapsed"}${panel === "writing" ? " mobile-open" : ""}`} inert={compact && panel !== "writing"} role={compact ? "dialog" : undefined} aria-modal={compact && panel === "writing" ? true : undefined} aria-label="AI 工具">
+        {!compact && !writingExpanded && <div className="inspector-rail"><button className="rail-button" type="button" aria-label="展开右侧栏" title="展开右侧栏" onClick={() => setInspectorCollapsed(false)}><ChevronLeft size={18} /></button><button className="rail-button" type="button" aria-label="AI生成" title="AI生成" onClick={() => setInspectorCollapsed(false)}><Wand2 size={17} /></button></div>}
+        <div className="writing-inspector-content" hidden={!writingExpanded}>
+          <div className="writing-inspector-heading"><strong><Wand2 size={16} />AI生成</strong><button className="collapse-button" type="button" aria-label={compact ? "关闭 AI 工具" : "折叠右侧栏"} onClick={() => compact ? setPanel(null) : setInspectorCollapsed(true)}>{compact ? <X size={19} /> : <ChevronRight size={16} />}</button></div>
+          {inspector}
+        </div>
+        {!compact && writingExpanded && <div className="inspector-resizer" role="separator" tabIndex={0} aria-label="调整右侧栏宽度" aria-orientation="vertical" aria-valuenow={inspectorWidth} aria-valuemin={320} aria-valuemax={720}
+          onKeyDown={event => { if (!["ArrowLeft", "ArrowRight"].includes(event.key)) return; event.preventDefault(); setInspectorWidth(value => Math.max(320, Math.min(Math.min(720, Math.max(360, innerWidth - 560)), value + (event.key === "ArrowLeft" ? 1 : -1) * (event.shiftKey ? 32 : 16)))); }}
+          onPointerDown={event => { event.preventDefault(); resizeCleanup.current?.(); const start = event.clientX, width = inspectorWidth;
+            const move = (next: PointerEvent) => setInspectorWidth(Math.max(320, Math.min(Math.min(720, Math.max(360, innerWidth - 560)), width + start - next.clientX)));
+            const finish = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", finish); window.removeEventListener("pointercancel", finish); resizeCleanup.current = null; };
+            resizeCleanup.current = finish; window.addEventListener("pointermove", move); window.addEventListener("pointerup", finish); window.addEventListener("pointercancel", finish);
+          }} />}
+      </aside>}
     </section>
     <nav className="mobile-bottom-nav" aria-label="主要功能" inert={drawerOpen}>
       <button className={view === "log" ? "active" : ""} type="button" onClick={() => void switchView("log")}><FileText size={20} /><span>日志</span></button>
@@ -228,10 +252,11 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, months
       <button className={view === "favorites" ? "active" : ""} type="button" onClick={() => void switchView("favorites")}><Star size={20} /><span>收藏</span></button>
       <button className={view === "stats" ? "active" : ""} type="button" onClick={() => void switchView("stats")}><BarChart3 size={20} /><span>统计</span></button>
     </nav>
-    {compact && panel === "navigation" && <div className="mobile-overlay-backdrop" aria-hidden="true" onClick={() => setPanel(null)} />}
+    {compact && (panel === "navigation" || panel === "writing") && <div className="mobile-overlay-backdrop" aria-hidden="true" onClick={() => setPanel(null)} />}
     {compact && panel === "account" && <div className="mobile-sheet-backdrop" onClick={() => setPanel(null)}><section ref={account} className="mobile-action-sheet mobile-account-sheet" role="dialog" aria-modal="true" aria-label="应用设置" onClick={event => event.stopPropagation()}>
       <div className="mobile-sheet-header"><strong>应用设置</strong><button type="button" onClick={() => setPanel(null)} aria-label="关闭应用设置"><X size={18} /></button></div>
       <div className="mobile-theme-options" role="group" aria-label="主题模式">{themes.map(({ value, label, Icon }) => <button key={value} className={themePreference === value ? "active" : ""} type="button" aria-pressed={themePreference === value} onClick={() => chooseTheme(value)}><Icon size={18} />{label.replace("模式", "")}</button>)}</div>
+      {hasInspector && <button className="button secondary full" type="button" onClick={() => openPanel("writing")}><PanelRightOpen size={18} />AI 工具</button>}
       <button className="mobile-logout" type="button" onClick={() => { setPanel(null); onLogout(); }}><LogOut size={18} />退出登录</button>
     </section></div>}
   </main>;

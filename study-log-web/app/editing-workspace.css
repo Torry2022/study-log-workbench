@@ -240,6 +240,14 @@
 }
 .log-mode-select {
   display: none;
+  width: 66px;
+  height: 36px;
+  padding: 0 4px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--canvas);
+  color: var(--body);
+  font-size: 13px;
 }
 
 @media (min-width: 1024px) {
@@ -247,14 +255,6 @@
   @container reader-workspace (max-width: 560px) {
     .log-mode-select {
       display: block;
-      width: 66px;
-      height: 36px;
-      padding: 0 4px;
-      border: 1px solid var(--hairline);
-      border-radius: var(--radius-md);
-      background: var(--canvas);
-      color: var(--body);
-      font-size: 13px;
     }
   }
 }
@@ -417,4 +417,16 @@
 }
 @media (min-width: 1024px) and (max-width: 1320px) {
   .editor-toolbar-actions .button { font-size: 0; width: 36px; padding: 0; }
+}
+@media (min-width: 1024px) {
+  @container reader-workspace (max-width: 850px) {
+    .reader-log-controls .view-mode-switch { display: none; }
+    .reader-log-controls .log-mode-select { display: block; }
+  }
+  @container reader-workspace (max-width: 700px) {
+    .editor-toolbar-actions .button { font-size: 0; width: 36px; padding: 0; }
+  }
+  @container reader-workspace (max-width: 600px) {
+    .reader-toolbar-log .reader-log-controls { flex: 1 1 100%; flex-wrap: wrap; margin-left: 0; }
+  }
 }

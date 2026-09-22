@@ -67,5 +67,6 @@ export function useLogDraft(day: DayEntry | null, active: boolean, onSaved: (day
       setError(error instanceof Error ? error.message : "保存失败，请重试");
     } finally { saving.current = false; setBusy(false); }
   }
-  return { draft, dirty, busy, error, conflict, saved, resetRevision, change, reset, acceptExternal, save };
+  function replaceBody(body: string) { change(body); setResetRevision(value => value + 1); }
+  return { draft, dirty, busy, error, conflict, saved, resetRevision, change, replaceBody, reset, acceptExternal, save };
 }

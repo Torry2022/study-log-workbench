@@ -1,0 +1,17 @@
+/* Layout and controls follow the established dark inspector. */
+.public-reading-shell .workspace.with-writing { grid-template-columns: 260px minmax(0, 1fr) var(--inspector-width, 52px); }
+.public-reading-shell .workspace.with-writing.sidebar-collapsed { grid-template-columns: 52px minmax(0, 1fr) var(--inspector-width, 52px); }
+.writing-inspector { position: sticky; top: 0; align-self: start; height: 100svh; max-height: 100svh; min-width: 0; border-left: 1px solid rgba(250,249,245,.1); background: var(--surface-dark); color: var(--on-dark); }
+.writing-inspector-content:not([hidden]) { height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr); }
+.writing-inspector-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 14px; border-bottom: 1px solid rgba(250,249,245,.1); }
+.writing-inspector-heading strong { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; }
+.writing-inspector .collapse-button, .writing-inspector .rail-button { display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; padding: 0; border: 0; border-radius: var(--radius-md); color: var(--on-dark-soft); background: transparent; }
+.writing-inspector .collapse-button:hover, .writing-inspector .rail-button:hover { color: var(--on-dark); background: var(--surface-dark-elevated); }
+.writing-inspector .inspector-rail { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 14px 7px; }
+.writing-inspector .inspector-resizer { position: absolute; top: 0; bottom: 0; left: -4px; z-index: 5; width: 8px; cursor: col-resize; touch-action: none; }
+.writing-inspector .inspector-resizer:hover, .writing-inspector .inspector-resizer:focus-visible { border-left: 2px solid var(--primary); }
+@media (max-width: 1023px) {
+  .public-reading-shell .workspace.with-writing, .public-reading-shell .workspace.with-writing.sidebar-collapsed { grid-template-columns: minmax(0, 1fr); }
+  .writing-inspector { position: fixed; inset: 0 0 0 auto; z-index: 92; width: min(420px, 94vw); height: var(--mobile-viewport-height, 100dvh); max-height: var(--mobile-viewport-height, 100dvh); visibility: hidden; pointer-events: none; }
+  .writing-inspector.mobile-open { visibility: visible; pointer-events: auto; }
+}

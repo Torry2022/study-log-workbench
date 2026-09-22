@@ -19,6 +19,7 @@ interface Props {
   onChange: (value: string) => void;
   onSave: () => void;
   onView?: (view: EditorView | null) => void;
+  onUpdate?: (update: ViewUpdate) => void;
 }
 
 const markdownSyntaxHighlight = HighlightStyle.define([
@@ -84,7 +85,7 @@ const basicSetup = {
   searchKeymap: false
 };
 
-export function LogEditor({ date, value, active, onChange, onSave, onView }: Props) {
+export function LogEditor({ date, value, active, onChange, onSave, onView, onUpdate }: Props) {
   const editorView = useRef<EditorView | null>(null);
   const callbacks = useRef({ active, onChange, onSave, onView });
   callbacks.current = { active, onChange, onSave, onView };
@@ -225,6 +226,7 @@ export function LogEditor({ date, value, active, onChange, onSave, onView }: Pro
       readOnly={!active}
       onChange={handleChange}
       onCreateEditor={handleCreate}
+      onUpdate={onUpdate}
     />
   </div>;
 }

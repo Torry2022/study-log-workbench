@@ -11,7 +11,7 @@ import { formatNoteTime, localDateTimeInput, parseTags } from "@/lib/notes-view"
 import { IMAGE_ACCEPT, imageExtension } from "@/lib/asset-upload-rules";
 import "@/app/notes.css";
 
-interface Props { exportAction?: ReactNode; notes: NotesController; themeMode: "light" | "dark"; onOpenLogTarget: (target: InternalLinkTarget, noteId: string) => void | Promise<unknown> }
+interface Props { exportAction?: ReactNode; extractAction?: ReactNode; extraction?: ReactNode; notes: NotesController; themeMode: "light" | "dark"; onOpenLogTarget: (target: InternalLinkTarget, noteId: string) => void | Promise<unknown> }
 
 const keyOf = (value: string) => value.replace(/\s+/g, "").toLocaleLowerCase();
 
@@ -288,7 +288,7 @@ function NoteItem({ note, notes, themeMode, onOpenLogTarget }: { note: StudyNote
 }
 
 
-export function NotesModule({ notes, themeMode, onOpenLogTarget, exportAction }: Props) {
+export function NotesModule({ notes, themeMode, onOpenLogTarget, exportAction, extractAction, extraction }: Props) {
   if (!notes.active || !notes.visible) return null;
   return <>
     <div className="reader-toolbar-container"><div className="reader-toolbar notes-toolbar">
@@ -301,6 +301,7 @@ export function NotesModule({ notes, themeMode, onOpenLogTarget, exportAction }:
         </form>
         <button className="button secondary" type="button" disabled={notes.loading || notes.saving} onClick={() => void notes.reload()} aria-label="刷新随记" title="刷新随记"><RefreshCw size={15} /></button>
         {exportAction && <div className="notes-export-slot">{exportAction}</div>}
+        {extractAction}
         <button className="button secondary notes-new-mobile" type="button" disabled={notes.saving} onClick={() => void notes.openNew()} aria-label="新建随记"><Plus size={20} /></button>
       </div>
     </div></div>
@@ -309,10 +310,10 @@ export function NotesModule({ notes, themeMode, onOpenLogTarget, exportAction }:
       {notes.error && <div className="notes-error" role="alert">{notes.error}{notes.conflict && <button className="button secondary" type="button" disabled={notes.busy} onClick={() => void notes.reloadDraft()}>重新读取服务器版本</button>}</div>}
       {notes.message && <div className="notes-feedback" role="status">{notes.message}</div>}
       {notes.insertions.status && <div className={notes.insertions.failed ? "notes-error" : "notes-feedback"} role={notes.insertions.failed ? "alert" : "status"}>{notes.insertions.status}</div>}
-      {notes.editorOpen ? <NoteEditor notes={notes} /> : !notes.loaded ? <div className="workspace-state notes-state" role="status">{notes.loading ? "正在加载随记" : "随记加载失败"}</div> : notes.visibleNotes.length ? <div className="notes-feed">{notes.visibleNotes.map(note => <NoteItem key={note.id} note={note} notes={notes} themeMode={themeMode} onOpenLogTarget={onOpenLogTarget} />)}</div> : <div className="workspace-state notes-state notes-empty-state" role="status">
+      {extraction || (notes.editorOpen ? <NoteEditor notes={notes} /> : !notes.loaded ? <div className="workspace-state notes-state" role="status">{notes.loading ? "正在加载随记" : "随记加载失败"}</div> : notes.visibleNotes.length ? <div className="notes-feed">{notes.visibleNotes.map(note => <NoteItem key={note.id} note={note} notes={notes} themeMode={themeMode} onOpenLogTarget={onOpenLogTarget} />)}</div> : <div className="workspace-state notes-state notes-empty-state" role="status">
         <div className="workspace-state-body"><span className="workspace-state-title">{notes.notes.length ? "没有匹配的随记" : "还没有随记"}</span><span className="workspace-state-description">{notes.notes.length ? "调整搜索词、年份或标签后重试。" : "记录一个值得长期保留的观点、经验或判断。"}</span></div>
         {!notes.notes.length && <button className="button primary" type="button" onClick={() => void notes.openNew()}><Plus size={15} />新建随记</button>}
-      </div>}
+      </div>)}
     </div></div>
     {notes.insertions.link && createPortal(<InternalLinkDialog initialAlias={notes.insertions.link.alias} onClose={notes.insertions.closeLink} onInsert={notes.insertions.insertInternalLink} />, document.body)}
   </>;

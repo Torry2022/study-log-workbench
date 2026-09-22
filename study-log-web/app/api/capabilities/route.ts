@@ -24,6 +24,8 @@ export async function GET(request: NextRequest) {
       features: {
         aiWriting: { supported: true, configured: provider.configured && templates.generation.configured },
         aiHighlighting: { supported: true, configured: provider.configured && templates.highlighting.configured },
+        aiNoteExtraction: { supported: true, configured: provider.configured && templates.extraction.configured },
+        aiTaxonomy: { supported: true, configured: provider.configured },
         rag: { supported: false, configured: false }
       }
     }, { headers: { "Cache-Control": "no-store" } });

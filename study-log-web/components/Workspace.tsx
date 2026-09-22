@@ -29,6 +29,9 @@ import { WritingPanel } from "./WritingPanel";
 import { useHighlighting } from "@/hooks/use-highlighting";
 import { HighlightPanel } from "./HighlightPanel";
 import { HighlightReviewDialog } from "./HighlightReviewDialog";
+import { useNoteCandidates } from "@/hooks/use-note-candidates";
+import { NoteCandidateExtractor } from "./NoteCandidateExtractor";
+import { WandSparkles } from "lucide-react";
 import type { InternalLinkTarget } from "./MarkdownPreview";
 import { buildMarkdownOutline } from "@/lib/markdown-outline";
 import { assertEditableDayBody, toEditableDayBody } from "@/lib/day-content";
@@ -42,6 +45,8 @@ export function Workspace() {
   const logs = useLogWorkspace(active, beforeLeave);
   const { confirmation, confirm, resolveConfirmation } = useConfirmation();
   const notes = useNotes({ active, visible: logs.selection.view === "notes", onConfirm: confirm, routeNoteId: logs.selection.noteId, routeToken: logs.navigationRevision });
+  const extraction = useNoteCandidates({ active, visible: logs.selection.view === "notes", tags: notes.tags, onConfirm: confirm, onSaved: async () => { notes.clearFilters(); notes.clearSearch(); await notes.reload(); } });
+  const notesWithExtraction = { ...notes, openNew: async () => { if (!(await extraction.beforeLeave())) return false; return notes.openNew(); } };
   const stats = useStats({ active, visible: logs.selection.view === "stats", onConfirm: confirm, routeMonth: logs.selection.statsMonth, onRouteMonthChange: logs.selectStatsMonth });
   const favorites = useFavorites(active);
   const acceptSaved = useCallback((day: DayEntry) => { logs.acceptSaved(day); void favorites.reload(); }, [logs.acceptSaved, favorites.reload]);
@@ -82,7 +87,7 @@ export function Workspace() {
   }, [logs.selectDate]);
   beforeLeave.current = async () => {
     if (!active) return false;
-    if (logs.selection.view === "notes") return notes.beforeLeave();
+    if (logs.selection.view === "notes") return await extraction.beforeLeave() && await notes.beforeLeave();
     if (logs.selection.view === "stats") return stats.beforeLeave();
     if (draft.busy || deleting || backupOpen) return false;
     if (!draft.dirty && !writing.dirty && !writing.busy) return true;
@@ -166,7 +171,7 @@ export function Workspace() {
     inspectorTab={inspectorTab} onInspectorTab={setInspectorTab}
     inspector={inspectorTab === "writing" ? <WritingPanel writing={writing} themeMode={theme} /> : <HighlightPanel highlighting={highlighting} />}
     view={logs.selection.view} onView={async view => { const accepted = await logs.selectView(view); if (accepted) { clearSearch(); setReading(false); if (view === "favorites") void favorites.reload(); } return accepted; }}
-    moduleNavigation={onNavigate => logs.selection.view === "favorites" ? <FavoritesNavigation favorites={favorites} active={active} /> : logs.selection.view === "stats" ? <StatsNavigation stats={stats} onNavigate={onNavigate} /> : logs.selection.view === "notes" ? <NotesNavigation notes={notes} onNavigate={onNavigate} /> : null}
+    moduleNavigation={onNavigate => logs.selection.view === "favorites" ? <FavoritesNavigation favorites={favorites} active={active} /> : logs.selection.view === "stats" ? <StatsNavigation stats={stats} onNavigate={onNavigate} /> : logs.selection.view === "notes" ? <NotesNavigation notes={notesWithExtraction} onNavigate={onNavigate} /> : null}
     selectedMonth={logs.selection.month} selectedDate={logs.selection.date}
     loading={logs.navigationLoading} error={logs.navigationError || sessionError} readingMode={reading && logView}
     theme={theme} themePreference={preference} onTheme={chooseTheme}
@@ -186,7 +191,10 @@ export function Workspace() {
         onDiscard: () => { void discardLog(); }, onDelete: () => void deleteCurrent(), onBackups: () => { if (!draft.busy && !deleting) setBackupOpen(true); } }} /></div>
     <div className="workspace-view" hidden={logs.selection.view !== "favorites"}><FavoritesModule favorites={favorites} active={active && logs.selection.view === "favorites"} onOpen={async (date, heading, missing) => { const accepted = await selectDate(date, heading); if (accepted) { setMode("preview"); setReading(false); if (missing) setMissingFavorite(date); } return accepted; }} /></div>
     <div className="workspace-view" hidden={logs.selection.view !== "stats"}><StudyStatsPage stats={stats} onOpenEntry={openStatsEntry} /></div>
-    <div className="workspace-view" hidden={logs.selection.view !== "notes"}><NotesModule notes={notes} themeMode={theme} onOpenLogTarget={openNotesLogTarget} exportAction={<ExportMenu scopes={[{ scope: "notes", label: "全部随记" }]} onExport={exporting.run} busy={exporting.busy} disabled={!active} />} /></div>
+    <div className="workspace-view" hidden={logs.selection.view !== "notes"}><NotesModule notes={notesWithExtraction} themeMode={theme} onOpenLogTarget={openNotesLogTarget}
+      extraction={extraction.open ? <NoteCandidateExtractor extraction={extraction} /> : undefined}
+      extractAction={<button type="button" aria-label="AI提取" title="AI提取" className={`button secondary notes-ai-extract${extraction.open ? " active" : ""}`} disabled={!active || notes.busy || extraction.busy === "save"} onClick={async () => { if (extraction.open) await extraction.beforeLeave(); else if (await notes.beforeLeave()) extraction.begin(); }}><WandSparkles size={15} /><span>AI提取</span></button>}
+      exportAction={<ExportMenu scopes={[{ scope: "notes", label: "全部随记" }]} onExport={exporting.run} busy={exporting.busy} disabled={!active} />} /></div>
   </WorkspaceChrome>{backupOpen && active && <BackupDialog date={logs.selection.date} onClose={() => setBackupOpen(false)} onRestored={acceptExternal}
     beforeRestore={() => confirm({ title: "恢复此版本？", message: draft.dirty ? "恢复将替换当前日块，并放弃未保存修改；写入前会保留现有文件。" : "恢复将替换当前日块，其他日期保持不变；写入前会保留现有文件。", confirmLabel: "恢复", tone: "danger" })} />}
     <HighlightReviewDialog highlighting={highlighting} />

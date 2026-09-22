@@ -13,7 +13,9 @@ try {
   }
   await assertNoLinks(root);
   const data = path.join(root, "data");
+  const backups = path.join(root, "backups");
   await assertNoLinks(data);
+  await assertNoLinks(backups);
   await assertNoLinks(path.join(root, ".env"));
   const environment = parseEnv(await fs.readFile(path.join(root, ".env"), "utf8"));
   const identityFile = path.join(data, ".instance.json");
@@ -26,7 +28,7 @@ try {
   await withInstanceLock(data, () => new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ["node_modules/next/dist/bin/next", command, "-H", "127.0.0.1", "-p", port], {
       cwd: path.join(repository, "study-log-web"),
-      env: { ...process.env, ...environment, LOG_ROOT: data, NODE_ENV: command === "dev" ? "development" : "production" },
+      env: { ...process.env, ...environment, LOG_ROOT: data, BACKUP_ROOT: backups, NODE_ENV: command === "dev" ? "development" : "production" },
       stdio: "inherit", windowsHide: true
     });
     const stop = () => child.kill("SIGTERM");

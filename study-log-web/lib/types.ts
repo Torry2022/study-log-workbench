@@ -20,3 +20,10 @@ export interface DayEntry extends DaySummary {
   version: string | null;
   updatedAt: string | null;
 }
+
+export interface SaveDayInput {
+  date: string;
+  content: string;
+  baseVersion: string | null;
+  mode?: "replace";
+}

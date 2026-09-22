@@ -8,6 +8,12 @@ export function getLogRoot(): string {
   return path.resolve(root);
 }
 
+export function getBackupRoot(): string {
+  const root = process.env.BACKUP_ROOT?.trim();
+  if (!root || !path.isAbsolute(root)) throw new Error("BACKUP_ROOT must be an explicit absolute backup directory");
+  return path.resolve(root);
+}
+
 function requiredSecret(name: string, minimum: number): string {
   const value = process.env[name] || "";
   if (value.trim().length < minimum || /^(?:change-me|replace-|dev-session-secret)/i.test(value)) {

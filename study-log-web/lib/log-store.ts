@@ -1,10 +1,10 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { getLogRoot, LOG_FILE_PATTERN } from "./config.ts";
-import { findLevelTwoHeadings, findRootAtxHeadings, stripTrailingStructuralSeparator } from "./day-content.ts";
-import type { DayEntry, DaySummary, MonthSummary } from "./types.ts";
-import { isValidLogDate } from "./study-date.ts";
+import { getBackupRoot, getLogRoot, LOG_FILE_PATTERN } from "./config.ts";
+import { findLevelTwoHeadings, findRootAtxHeadings, normalizeDayContent, stripTrailingStructuralSeparator } from "./day-content.ts";
+import type { DayEntry, DaySummary, MonthSummary, SaveDayInput } from "./types.ts";
+import { assertLogDateIsNotFuture, isValidLogDate } from "./study-date.ts";
 
 
 interface LogFile {
@@ -229,4 +229,141 @@ export async function getDay(date: string): Promise<DayEntry> {
     version: fileVersion(existing.filePath, existing.sourceContent, stat.mtimeMs),
     updatedAt: stat.mtime.toISOString()
   };
+}
+
+export class LogWriteInputError extends Error {}
+export class LogConflictError extends Error {
+  constructor() { super("源文件已变化，未覆盖。请保留当前草稿并重新读取后核对。"); }
+}
+
+// Serialize the target-file decision as well as the write. A new day may select
+// either the existing yearly file or a monthly file created by an earlier write.
+const writeQueues = new Map<string, Promise<void>>();
+async function withWriteQueue<T>(root: string, operation: () => Promise<T>): Promise<T> {
+  const previous = writeQueues.get(root) || Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>(resolve => { release = resolve; });
+  writeQueues.set(root, current);
+  await previous;
+  try { return await operation(); }
+  finally { release(); if (writeQueues.get(root) === current) writeQueues.delete(root); }
+}
+
+async function assertUnlinkedPath(target: string): Promise<void> {
+  let current = path.parse(target).root;
+  for (const part of target.slice(current.length).split(path.sep).filter(Boolean)) {
+    current = path.join(current, part);
+    const stat = await fs.lstat(current).catch(error => {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
+    });
+    if (stat?.isSymbolicLink()) throw new Error("Linked storage path is not permitted");
+  }
+}
+
+async function existingRegularFile(file: string): Promise<boolean> {
+  await assertUnlinkedPath(file);
+  const stat = await fs.lstat(file).catch(error => {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  });
+  if (stat && !stat.isFile()) throw new Error("Source must be a regular file");
+  return Boolean(stat);
+}
+
+function boundaryAfter(prefix: string, newline: string): string {
+  if (!prefix) return "";
+  return prefix.endsWith(newline + newline) ? "" : prefix.endsWith(newline) ? newline : newline + newline;
+}
+
+function replaceOrInsert(source: string, file: LogFile, date: string, normalized: string): string {
+  const newline = source.includes("\r\n") ? "\r\n" : "\n";
+  const block = `${normalized.replace(/\r?\n/g, newline).trimEnd()}${newline}${newline}---`;
+  const blocks = parseBlocks(source, file);
+  const existing = blocks.find(item => item.date === date);
+  if (existing) {
+    const suffix = source.slice(existing.end);
+    // The unedited prefix and following day blocks remain byte-for-byte intact.
+    return source.slice(0, existing.start) + block + newline + (suffix ? newline : "") + suffix;
+  }
+  const next = blocks.find(item => item.date > date);
+  const at = next?.start ?? source.length;
+  const prefix = source.slice(0, at);
+  const suffix = source.slice(at);
+  let boundary = boundaryAfter(prefix, newline);
+  if (blocks.some(item => item.start < at) && !/(?:^|\r?\n)[ \t]*---[ \t]*$/.test(prefix.trimEnd())) {
+    boundary += `---${newline}${newline}`;
+  }
+  return prefix + boundary + block + newline + (suffix ? newline : "") + suffix;
+}
+
+async function sourceVersion(file: string): Promise<string | null> {
+  if (!(await existingRegularFile(file))) return null;
+  const content = await readText(file);
+  const stat = await fs.stat(file);
+  return fileVersion(file, content, stat.mtimeMs);
+}
+
+export async function saveDay(input: SaveDayInput): Promise<DayEntry> {
+  if (!input || typeof input !== "object" || !Object.hasOwn(input, "baseVersion") ||
+    !(input.baseVersion === null || typeof input.baseVersion === "string" && input.baseVersion.length > 0) ||
+    typeof input.date !== "string" || !isValidLogDate(input.date) || typeof input.content !== "string" ||
+    (input.mode !== undefined && input.mode !== "replace")) {
+    throw new LogWriteInputError("需要有效日期、正文和 baseVersion（非空字符串或 null）；当前仅支持 replace");
+  }
+  assertLogDateIsNotFuture(input.date);
+  const normalized = normalizeDayContent(input.date, input.content);
+  const root = getLogRoot();
+  const backupRoot = getBackupRoot();
+  return withWriteQueue(root, async () => {
+    await assertUnlinkedPath(root);
+    const blocks = await readBlocks(toMonth(input.date));
+    const existing = blocks.find(block => block.date === input.date);
+    const monthlyName = `${toMonth(input.date)}_学习日志.md`;
+    const yearlyName = `${input.date.slice(0, 4)}_学习日志.md`;
+    const fileName = existing?.fileName ||
+      (await existingRegularFile(path.join(root, monthlyName)) ? monthlyName :
+        await existingRegularFile(path.join(root, yearlyName)) ? yearlyName : monthlyName);
+    const file: LogFile = { fileName, filePath: path.join(root, fileName) };
+    const present = await existingRegularFile(file.filePath);
+    // Reuse the day lookup's source snapshot for an existing day.
+    const source = existing?.sourceContent ?? (present ? await readText(file.filePath) : "");
+    const stat = present ? await fs.stat(file.filePath) : null;
+    const version = stat ? fileVersion(file.filePath, source, stat.mtimeMs) : null;
+    const currentBlocks = parseBlocks(source, file);
+    const currentDay = currentBlocks.find(block => block.date === input.date);
+    if (input.baseVersion === null ? Boolean(currentDay) : !currentDay || input.baseVersion !== version) {
+      throw new LogConflictError();
+    }
+    const next = replaceOrInsert(source, file, input.date, normalized);
+    const nextBlocks = parseBlocks(next, file);
+    const updated = nextBlocks.find(block => block.date === input.date);
+    if (!updated || new Set(nextBlocks.map(block => block.date)).size !== nextBlocks.length) {
+      throw new LogWriteInputError("日块结构无效，未写入源文件");
+    }
+    if (present) {
+      await assertUnlinkedPath(backupRoot);
+      await fs.mkdir(backupRoot, { recursive: true, mode: 0o700 });
+      const backup = path.join(backupRoot, `${fileName}.${new Date().toISOString().replace(/[:.]/g, "-")}.${crypto.randomUUID()}.bak`);
+      await fs.writeFile(backup, source, { encoding: "utf8", flag: "wx", mode: 0o600 });
+    }
+    const temporary = path.join(root, `.${fileName}.${crypto.randomUUID()}.tmp`);
+    let committed = false;
+    let savedVersion = "";
+    let savedUpdatedAt = "";
+    try {
+      await fs.writeFile(temporary, next, { encoding: "utf8", flag: "wx", mode: stat?.mode ?? 0o600 });
+      const preparedStat = await fs.stat(temporary);
+      savedVersion = fileVersion(file.filePath, next, preparedStat.mtimeMs);
+      savedUpdatedAt = preparedStat.mtime.toISOString();
+      // Detect external changes during preparation; do not overwrite a newer source.
+      if (await sourceVersion(file.filePath) !== version) throw new LogConflictError();
+      await fs.rename(temporary, file.filePath);
+      committed = true;
+    } finally {
+      if (!committed) await fs.unlink(temporary).catch(error => { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; });
+    }
+    return { ...toDaySummary(updated), exists: true, content: updated.content,
+      version: savedVersion, updatedAt: savedUpdatedAt };
+  });
 }

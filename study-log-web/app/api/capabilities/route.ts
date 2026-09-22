@@ -5,6 +5,7 @@ import { requireAuth } from "@/lib/auth";
 import { getLogRoot } from "@/lib/config";
 import { inspectChatConfig } from "@/lib/ai-config";
 import { inspectWritingPrompts } from "@/lib/ai-prompts";
+import { inspectMcpConfig } from "@/lib/mcp-config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,7 +27,7 @@ export async function GET(request: NextRequest) {
         aiHighlighting: { supported: true, configured: provider.configured && templates.highlighting.configured },
         aiNoteExtraction: { supported: true, configured: provider.configured && templates.extraction.configured },
         aiTaxonomy: { supported: true, configured: provider.configured },
-        rag: { supported: false, configured: false }
+        rag: { supported: true, configured: provider.configured && inspectMcpConfig().configured }
       }
     }, { headers: { "Cache-Control": "no-store" } });
   } catch {

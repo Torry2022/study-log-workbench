@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { BarChart3, CalendarDays, ChevronLeft, ChevronRight, FileText, Highlighter, Lightbulb, LogOut, Menu, Monitor, Moon, MoreHorizontal, PanelRightOpen, Plus, Search, Star, Sun, Wand2, X } from "lucide-react";
+import { BarChart3, CalendarDays, ChevronLeft, ChevronRight, FileText, Highlighter, Lightbulb, LogOut, Menu, MessageSquareText, Monitor, Moon, MoreHorizontal, PanelRightOpen, Plus, Search, Star, Sun, Wand2, X } from "lucide-react";
 import type { WorkspaceView } from "@/hooks/use-log-workspace";
 import type { DaySummary, MonthSummary } from "@/lib/types";
 import { withBasePath } from "@/lib/base-path";
@@ -18,6 +18,7 @@ export interface WorkspaceChromeProps {
   view: WorkspaceView;
   onView: (view: WorkspaceView) => Promise<boolean>;
   moduleNavigation: (onNavigate: () => void) => ReactNode;
+  ragNavigation?: (controls: { collapsed: boolean; visible: boolean; onCollapse: () => void; onExpand: () => void; onNavigate: () => void }) => ReactNode;
   inspector?: ReactNode;
   inspectorTab: "writing" | "highlighting";
   onInspectorTab: (tab: "writing" | "highlighting") => void;
@@ -49,7 +50,7 @@ const themes = [
 ] as const;
 
 /** Presentation and navigation only; authentication and document state belong to Workspace. */
-export function WorkspaceChrome({ active, view, onView, moduleNavigation, inspector, inspectorTab, onInspectorTab, months, days, selectedMonth, selectedDate, loading, error,
+export function WorkspaceChrome({ active, view, onView, moduleNavigation, ragNavigation, inspector, inspectorTab, onInspectorTab, months, days, selectedMonth, selectedDate, loading, error,
   theme, themePreference = "system", readingMode = false, onMonth, onDate, onNewDate, onTheme, onLogout, onRetry, onSearchSelect, onSearchChange, children }: WorkspaceChromeProps) {
   const [compact, setCompact] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
@@ -170,8 +171,8 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, inspec
   }
 
   const switchView = async (next: WorkspaceView) => { if (await onView(next)) setPanel(null); };
-  const viewLabel = { log: "学习日志", notes: "随记", favorites: "收藏", stats: "统计" }[view];
-  const ViewIcon = { log: FileText, notes: Lightbulb, favorites: Star, stats: BarChart3 }[view];
+  const viewLabel = { log: "学习日志", notes: "随记", favorites: "收藏", stats: "统计", qa: "问答" }[view];
+  const ViewIcon = { log: FileText, notes: Lightbulb, favorites: Star, stats: BarChart3, qa: MessageSquareText }[view];
   return <main className={`app-shell view-${view} public-reading-shell${readingMode ? " reading-mode" : ""}${keyboardOpen ? " mobile-keyboard-open" : ""}`}>
     <header className="topbar" inert={drawerOpen && panel !== "search"}>
       <div className="mobile-topbar">
@@ -192,6 +193,7 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, inspec
         <button className={`button secondary app-nav-link${view === "notes" ? " active" : ""}`} type="button" onClick={() => void switchView("notes")}><Lightbulb size={16} />随记</button>
         <button className={`button secondary app-nav-link${view === "favorites" ? " active" : ""}`} type="button" onClick={() => void switchView("favorites")}><Star size={16} />收藏</button>
         <button className={`button secondary app-nav-link${view === "stats" ? " active" : ""}`} type="button" onClick={() => void switchView("stats")}><BarChart3 size={16} />统计</button>
+        <button className={`button secondary app-nav-link${view === "qa" ? " active" : ""}`} type="button" onClick={() => void switchView("qa")}><MessageSquareText size={16} />问答</button>
         <div className="theme-menu" ref={themeMenu} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setThemeOpen(false); }}>
           <button className="button icon-only" ref={themeButton} type="button" onClick={() => setThemeOpen(value => !value)} aria-label="切换主题模式" aria-expanded={themeOpen} title="切换主题模式">{themePreference === "system" ? <Monitor size={17} /> : theme === "dark" ? <Moon size={17} /> : <Sun size={17} />}</button>
           {themeOpen && <div className="theme-popover" role="group" aria-label="主题模式">{themes.map(({ value, label, Icon }) => <button key={value} className={themePreference === value ? "active" : ""} type="button" aria-pressed={themePreference === value} onClick={() => chooseTheme(value)}><Icon size={15} />{label}{value === "system" && <small>{theme === "dark" ? "夜间" : "日间"}</small>}</button>)}</div>}
@@ -200,10 +202,10 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, inspec
       </div>
     </header>
     <section className={`workspace ${hasInspector ? "with-writing" : "without-inspector"}${writingExpanded ? " writing-expanded" : ""}${readingMode ? " reading-mode-workspace" : ""}${effectiveCollapsed ? " sidebar-collapsed" : ""}`} style={{ "--inspector-width": `${writingExpanded ? inspectorWidth : 52}px` } as CSSProperties}>
-      <aside ref={sidebar} className={`sidebar${effectiveCollapsed ? " collapsed" : ""}${panel === "navigation" ? " mobile-open" : ""}`}
+      <aside ref={sidebar} className={`sidebar${view === "qa" ? " qa-sidebar" : ""}${effectiveCollapsed ? " collapsed" : ""}${panel === "navigation" ? " mobile-open" : ""}`}
         inert={compact && panel !== "navigation"} role={compact ? "dialog" : undefined} aria-modal={compact && panel === "navigation" ? true : undefined} aria-label="日志导航">
         <div className="mobile-drawer-header"><div><strong>{viewLabel}</strong><span>{view === "log" ? "按月份和日期浏览" : "筛选与浏览"}</span></div><button className="mobile-drawer-close" type="button" onClick={() => setPanel(null)} aria-label="关闭左侧导航"><X size={19} /></button></div>
-        {effectiveCollapsed ? <div className="sidebar-rail">
+        {view === "qa" && ragNavigation ? ragNavigation({ collapsed: effectiveCollapsed, visible: !compact || panel === "navigation", onCollapse: () => changeCollapsed(true), onExpand: () => changeCollapsed(false), onNavigate: () => setPanel(null) }) : effectiveCollapsed ? <div className="sidebar-rail">
           <button className="sidebar-rail-button" onClick={() => changeCollapsed(false)} aria-label="展开左侧栏" title="展开左侧栏"><ChevronRight size={18} /></button>
           {view !== "log" ? <button className="sidebar-rail-button" onClick={() => changeCollapsed(false)} aria-label={`展开${viewLabel}筛选`} title={`${viewLabel}筛选`}><ViewIcon size={17} /></button> : <>
           <button className="sidebar-rail-button" onClick={() => changeCollapsed(false, "months")} aria-label="展开月份列表" title="月份"><CalendarDays size={17} /></button>
@@ -253,6 +255,7 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, inspec
       <button className={view === "notes" ? "active" : ""} type="button" onClick={() => void switchView("notes")}><Lightbulb size={20} /><span>随记</span></button>
       <button className={view === "favorites" ? "active" : ""} type="button" onClick={() => void switchView("favorites")}><Star size={20} /><span>收藏</span></button>
       <button className={view === "stats" ? "active" : ""} type="button" onClick={() => void switchView("stats")}><BarChart3 size={20} /><span>统计</span></button>
+      <button className={view === "qa" ? "active" : ""} type="button" onClick={() => void switchView("qa")}><MessageSquareText size={20} /><span>问答</span></button>
     </nav>
     {compact && (panel === "navigation" || panel === "writing") && <div className="mobile-overlay-backdrop" aria-hidden="true" onClick={() => setPanel(null)} />}
     {compact && panel === "account" && <div className="mobile-sheet-backdrop" onClick={() => setPanel(null)}><section ref={account} className="mobile-action-sheet mobile-account-sheet" role="dialog" aria-modal="true" aria-label="应用设置" onClick={event => event.stopPropagation()}>

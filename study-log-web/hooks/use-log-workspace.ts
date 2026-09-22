@@ -5,14 +5,15 @@ import { requestLogJson } from "@/lib/client-http";
 import { isValidLogDate } from "@/lib/study-date";
 import type { DayEntry, DaySummary, MonthSummary } from "@/lib/types";
 
-export type WorkspaceView = "log" | "favorites" | "notes" | "stats";
-interface Selection { view: WorkspaceView; month: string; date: string; heading: string; noteId: string; statsMonth: string }
-const empty: Selection = { view: "log", month: "", date: "", heading: "", noteId: "", statsMonth: "" };
+export type WorkspaceView = "log" | "favorites" | "notes" | "stats" | "qa";
+interface Selection { view: WorkspaceView; month: string; date: string; heading: string; noteId: string; statsMonth: string; sessionId: string }
+const empty: Selection = { view: "log", month: "", date: "", heading: "", noteId: "", statsMonth: "", sessionId: "" };
 
 function needsLeave(current: Selection, next: Selection) {
   return current.view !== next.view || current.date !== next.date ||
     (current.view === "notes" && current.noteId !== next.noteId) ||
-    (current.view === "stats" && current.statsMonth !== next.statsMonth);
+    (current.view === "stats" && current.statsMonth !== next.statsMonth) ||
+    (current.view === "qa" && current.sessionId !== next.sessionId);
 }
 
 function readLocation(): Selection {
@@ -22,8 +23,10 @@ function readLocation(): Selection {
   const heading = url.searchParams.get("heading") || "";
   const view = url.searchParams.get("view") || "log";
   const noteId = url.searchParams.get("note") || "";
+  const sessionId = url.searchParams.get("session") || "";
   return {
-    view: ["favorites", "notes", "stats"].includes(view) ? view as WorkspaceView : "log",
+    view: ["favorites", "notes", "stats", "qa"].includes(view) ? view as WorkspaceView : "log",
+    sessionId: /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(sessionId) ? sessionId.toLowerCase() : "",
     noteId: noteId.length <= 4096 && !/[\u0000-\u001f]/.test(noteId) ? noteId : "",
     statsMonth: view === "stats" && /^\d{4}-(0[1-9]|1[0-2])$/.test(month) ? month : "",
     month: isValidLogDate(date) ? date.slice(0, 7) : /^\d{4}-(0[1-9]|1[0-2])$/.test(month) ? month : "",
@@ -34,11 +37,12 @@ function readLocation(): Selection {
 
 function writeLocation(selection: Selection, replace = false) {
   const url = new URL(window.location.href);
-  for (const name of ["view", "month", "date", "heading", "note"]) url.searchParams.delete(name);
+  for (const name of ["view", "month", "date", "heading", "note", "session"]) url.searchParams.delete(name);
   url.searchParams.set("view", selection.view);
   if (selection.view === "stats" && selection.statsMonth) url.searchParams.set("month", selection.statsMonth);
   else if (selection.view !== "stats" && selection.month) url.searchParams.set("month", selection.month);
   if (selection.view === "notes" && selection.noteId) url.searchParams.set("note", selection.noteId);
+  if (selection.view === "qa" && selection.sessionId) url.searchParams.set("session", selection.sessionId);
   if (selection.date) url.searchParams.set("date", selection.date);
   if (selection.heading) url.searchParams.set("heading", selection.heading);
   const index = Number.isInteger(window.history.state?.studyLogIndex) ? window.history.state.studyLogIndex : 0;
@@ -168,12 +172,18 @@ export function useLogWorkspace(active: boolean, beforeLeave?: RefObject<() => P
   const selectView = useCallback((view: WorkspaceView) => navigate({ ...currentSelection.current, view }), [navigate]);
   const selectNote = useCallback((noteId: string) => navigate({ ...currentSelection.current, view: "notes", noteId }), [navigate]);
   const selectStatsMonth = useCallback((statsMonth: string) => navigate({ ...currentSelection.current, view: "stats", statsMonth }), [navigate]);
+  const selectRagSession = useCallback((sessionId: string) => navigate({ ...currentSelection.current, view: "qa", sessionId }), [navigate]);
+  // A successful save updates the current address without navigating away from its answer.
+  const replaceRagSession = useCallback((sessionId: string) => {
+    const next = { ...currentSelection.current, sessionId }; currentSelection.current = next;
+    setSelection(next); writeLocation(next, true);
+  }, []);
   const acceptSaved = useCallback((saved: DayEntry) => {
     if (saved.date === currentSelection.current.date) setDay(saved);
     setListRevision(value => value + 1);
   }, []);
   return {
-    months, days, day: day?.date === selection.date ? day : null, selection, selectMonth, selectDate, selectView, selectNote, selectStatsMonth, scrollTarget, navigationRevision,
+    months, days, day: day?.date === selection.date ? day : null, selection, selectMonth, selectDate, selectView, selectNote, selectStatsMonth, selectRagSession, replaceRagSession, scrollTarget, navigationRevision,
     navigationLoading: loading.months || loading.days,
     navigationError: errors.months || errors.days,
     acceptSaved,

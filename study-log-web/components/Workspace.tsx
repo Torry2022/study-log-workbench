@@ -31,6 +31,10 @@ import { HighlightPanel } from "./HighlightPanel";
 import { HighlightReviewDialog } from "./HighlightReviewDialog";
 import { useNoteCandidates } from "@/hooks/use-note-candidates";
 import { NoteCandidateExtractor } from "./NoteCandidateExtractor";
+import { useRag } from "@/hooks/use-rag";
+import { RagWorkspace } from "./RagWorkspace";
+import { RagHistorySidebar } from "./RagHistorySidebar";
+import type { RagCitation } from "@/lib/rag-types";
 import { WandSparkles } from "lucide-react";
 import type { InternalLinkTarget } from "./MarkdownPreview";
 import { buildMarkdownOutline } from "@/lib/markdown-outline";
@@ -44,6 +48,7 @@ export function Workspace() {
   const beforeLeave = useRef<() => Promise<boolean>>(async () => true);
   const logs = useLogWorkspace(active, beforeLeave);
   const { confirmation, confirm, resolveConfirmation } = useConfirmation();
+  const rag = useRag({ active, visible: logs.selection.view === "qa", routeSessionId: logs.selection.sessionId, routeToken: logs.navigationRevision, onConfirm: confirm, onRoute: logs.replaceRagSession });
   const notes = useNotes({ active, visible: logs.selection.view === "notes", onConfirm: confirm, routeNoteId: logs.selection.noteId, routeToken: logs.navigationRevision });
   const extraction = useNoteCandidates({ active, visible: logs.selection.view === "notes", tags: notes.tags, onConfirm: confirm, onSaved: async () => { notes.clearFilters(); notes.clearSearch(); await notes.reload(); } });
   const notesWithExtraction = { ...notes, openNew: async () => { if (!(await extraction.beforeLeave())) return false; return notes.openNew(); } };
@@ -63,6 +68,7 @@ export function Workspace() {
   const [missingFavorite, setMissingFavorite] = useState("");
   const [navigationError, setNavigationError] = useState("");
   const [returnNoteId, setReturnNoteId] = useState("");
+  const [returnRag, setReturnRag] = useState<{ scroll: number } | null>(null);
   const [inspectorTab, setInspectorTab] = useState<"writing" | "highlighting">("writing");
   const writing = useWriting({ active, visible: logView, date: logs.selection.date, onConfirm: confirm, onApply: async (date, content) => {
     if (!active || !logView || draft.busy || deleting || backupOpen || logs.loading || draft.draft?.date !== date || logs.selection.date !== date) return false;
@@ -87,6 +93,7 @@ export function Workspace() {
   }, [logs.selectDate]);
   beforeLeave.current = async () => {
     if (!active) return false;
+    if (logs.selection.view === "qa") return rag.beforeLeave();
     if (logs.selection.view === "notes") return await extraction.beforeLeave() && await notes.beforeLeave();
     if (logs.selection.view === "stats") return stats.beforeLeave();
     if (draft.busy || deleting || backupOpen) return false;
@@ -167,7 +174,28 @@ export function Workspace() {
       return false;
     }
   };
+  const openRagCitation = async (citation: RagCitation) => {
+    const attempt = ++sourceNavigation.current, revision = navigationState.current.revision, scroll = window.scrollY;
+    setNavigationError("");
+    try {
+      const { day } = await requestJson<{ day: DayEntry }>(`/api/logs/day?date=${encodeURIComponent(citation.date)}`);
+      if (attempt !== sourceNavigation.current || !navigationState.current.active || navigationState.current.revision !== revision) return;
+      if (!day.exists) { setNavigationError("引用的日志日期已不存在，回答中的原始片段仍可查看。"); return; }
+      const headings = buildMarkdownOutline(toEditableDayBody(day.date, day.content)).filter(item => item.level === 3);
+      const heading = citation.headingIndex === null ? null : headings[citation.headingIndex];
+      const found = citation.headingIndex === null || heading?.text === citation.heading;
+      if (!(await selectDate(citation.date, found ? heading?.id || "" : ""))) return;
+      setReturnRag({ scroll }); setMode("preview"); setReading(false);
+      if (!found) setNavigationError("引用标题已变化，已打开所属日期；请对照回答中的原始片段。");
+    } catch (failure) {
+      if (attempt === sourceNavigation.current && navigationState.current.active && navigationState.current.revision === revision) setNavigationError(failure instanceof Error ? failure.message : "读取引用失败");
+    }
+  };
   return <><WorkspaceChrome active={active} months={logs.months} days={logs.days}
+    ragNavigation={({ collapsed, visible, onCollapse, onExpand, onNavigate }) => <RagHistorySidebar active={active} visible={logs.selection.view === "qa" && visible} collapsed={collapsed}
+      sessions={rag.sessions} activeSessionId={rag.session?.id || ""} query={rag.query} loading={rag.loading} generating={rag.generating || rag.saving || rag.initializing}
+      onCollapse={onCollapse} onExpand={onExpand} onQueryChange={rag.setQuery} onNew={() => { void rag.newSession().then(accepted => { if (accepted) onNavigate(); }); }}
+      onOpen={async id => { const accepted = await logs.selectRagSession(id); if (accepted) onNavigate(); return accepted; }} onRename={rag.rename} onDelete={rag.delete} />}
     inspectorTab={inspectorTab} onInspectorTab={setInspectorTab}
     inspector={inspectorTab === "writing" ? <WritingPanel writing={writing} themeMode={theme} /> : <HighlightPanel highlighting={highlighting} />}
     view={logs.selection.view} onView={async view => { const accepted = await logs.selectView(view); if (accepted) { clearSearch(); setReading(false); if (view === "favorites") void favorites.reload(); } return accepted; }}
@@ -181,6 +209,15 @@ export function Workspace() {
     {navigationError && <div className="editor-navigation-status" role="alert">{navigationError}<button className="button secondary" type="button" onClick={() => setNavigationError("")}>关闭</button></div>}
     {(exporting.status || exporting.error || exporting.busy) && <div className="editor-navigation-status" role={exporting.error ? "alert" : "status"}>{exporting.error || exporting.status || "正在准备导出…"}{exporting.busy && <button className="button secondary" type="button" onClick={exporting.cancel}>取消导出</button>}</div>}
     {logView && returnNoteId && <div className="editor-navigation-status"><button className="button secondary" type="button" onClick={async () => { if (await logs.selectNote(returnNoteId)) { setReturnNoteId(""); setReading(false); } }}>返回随记</button></div>}
+    {logView && returnRag && <div className="editor-navigation-status"><button className="button secondary" type="button" onClick={async () => { const target = returnRag; if (await logs.selectView("qa")) { setReturnRag(null); requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo({ top: target.scroll, behavior: "auto" }))); } }}>返回问答</button></div>}
+    <div className="workspace-view" hidden={logs.selection.view !== "qa"}>
+      {rag.configurationError && <div className="editor-navigation-status" role="status">{rag.configurationError}<button className="button secondary" onClick={() => void rag.refreshConfiguration()}>检查配置</button></div>}
+      {rag.error && <div className="editor-navigation-status" role="alert">{rag.error}<button className="button secondary" onClick={rag.clearError}>关闭</button><button className="button secondary" onClick={() => void rag.reloadSession()}>重新读取</button></div>}
+      {(rag.saveError || rag.saving) && <div className="editor-navigation-status" role={rag.saveError ? "alert" : "status"}>{rag.saveError || "正在保存问答历史…"}{rag.saveError && <><button className="button secondary" disabled={rag.saving || !active} onClick={rag.retrySave}>重试保存</button><button className="button secondary" disabled={rag.saving || !active} onClick={() => void rag.reloadSession()}>放弃本地回答并重新读取</button></>}</div>}
+      <RagWorkspace active={active} visible={logs.selection.view === "qa"} disabled={!rag.configured || rag.saving || Boolean(rag.saveError)} messages={rag.messages} initializing={rag.initializing}
+        question={rag.question} stage={rag.stage} generating={rag.generating} themeMode={theme} answerMode={rag.answerMode} focusRequestToken={rag.focusToken} sessionNavigationToken={rag.navigationToken}
+        onQuestionChange={rag.setQuestion} onAnswerModeChange={rag.setAnswerMode} onSubmit={() => void rag.submit()} onStop={rag.stop} onRegenerate={() => void rag.regenerate()} onCitation={citation => void openRagCitation(citation)} />
+    </div>
     <div className="workspace-view" hidden={!logView}><LogReader active={active && logView} favorites={favorites} exporting={exporting} day={logs.day} date={logs.selection.date} heading={logs.selection.heading}
       scrollTarget={logs.scrollTarget} navigationRevision={logs.navigationRevision} loading={logs.loading} error={logs.error} theme={theme}
       reading={reading} onReading={value => { if (value) setMode("preview"); setReading(value); }} onRetry={logs.retry} onNavigate={selectDate}

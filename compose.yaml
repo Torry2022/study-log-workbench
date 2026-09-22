@@ -1,0 +1,92 @@
+services:
+  web:
+    image: ${WEB_IMAGE:-study-log-workbench-web:local}
+    build:
+      context: .
+      dockerfile: ops/web.Dockerfile
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:22-bookworm-slim}
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 240s
+    env_file:
+      - path: ${INSTANCE_ROOT:-./.local/instance}/.env
+        required: false
+    environment:
+      LOG_ROOT: /instance/data
+      BACKUP_ROOT: /instance/backups
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: "3000"
+    ports:
+      - "127.0.0.1:${WEB_PORT:-3560}:3000"
+    volumes:
+      - type: bind
+        source: ${INSTANCE_ROOT:-./.local/instance}/data
+        target: /instance/data
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${INSTANCE_ROOT:-./.local/instance}/backups
+        target: /instance/backups
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/study-log').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  study-log-mcp:
+    profiles: [retrieval]
+    image: ${MCP_IMAGE:-study-log-workbench-mcp:local}
+    build:
+      context: ./study-log-mcp
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:22-bookworm-slim}
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 120s
+    env_file:
+      - path: ${INSTANCE_ROOT:-./.local/instance}/.env.mcp
+        required: false
+    environment:
+      LOG_ROOT: /instance/data
+      INDEX_ROOT: /instance/index
+      MCP_HTTP_HOST: 0.0.0.0
+      MCP_HTTP_PORT: "3020"
+    volumes:
+      - type: bind
+        source: ${INSTANCE_ROOT:-./.local/instance}/data
+        target: /instance/data
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${INSTANCE_ROOT:-./.local/instance}/index
+        target: /instance/index
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3020/health',{headers:{Authorization:'Bearer '+process.env.MCP_HTTP_TOKEN}}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+  tools:
+    profiles: [tools]
+    image: ${TOOLS_IMAGE:-study-log-workbench-tools:local}
+    build:
+      context: .
+      dockerfile: ops/tools.Dockerfile
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:22-bookworm-slim}
+    init: true
+    volumes:
+      - type: bind
+        source: ${INSTANCE_PARENT:-./.local}
+        target: /instances
+        bind:
+          create_host_path: false

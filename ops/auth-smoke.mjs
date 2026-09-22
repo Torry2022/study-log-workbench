@@ -1,0 +1,42 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+import crypto from "node:crypto";
+import { parseEnv } from "node:util";
+import assert from "node:assert/strict";
+
+const [root, base = "http://127.0.0.1:3561/study-log"] = process.argv.slice(2);
+if (!root || !path.isAbsolute(root)) throw new Error("Provide an explicit synthetic instance root");
+const url = new URL(base);
+if (!["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)) throw new Error("Smoke tests only target local synthetic instances");
+const env = parseEnv(await fs.readFile(path.join(root, ".env"), "utf8"));
+const post = (route, body) => fetch(base + route, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+const counts = [];
+for (const route of ["/api/auth/login", "/api/auth/app-login"]) {
+  for (const payload of [null, {}, { password: "wrong" }, { password: [] }, { password: 123 }]) assert.equal((await post(route, payload)).status, 401);
+}
+counts.push("malformed and wrong credentials");
+const login = await post("/api/auth/login", { password: env.APP_PASSWORD });
+assert.equal(login.status, 200);
+const cookie = login.headers.get("set-cookie");
+assert.match(cookie, /HttpOnly/i); assert.match(cookie, /SameSite=lax/i);
+const cookieHeader = cookie.split(";")[0];
+assert.equal((await fetch(base + "/api/capabilities")).status, 401);
+const capabilities = await fetch(base + "/api/capabilities", { headers: { cookie: cookieHeader } });
+assert.equal(capabilities.status, 200);
+const identity = JSON.parse(await fs.readFile(path.join(root, "data/.instance.json"), "utf8"));
+assert.equal((await capabilities.json()).instanceId, identity.id);
+counts.push("cookie authentication and instance identity");
+const tokenResponse = await post("/api/auth/app-login", { password: env.APP_PASSWORD });
+const { token, expiresAt } = await tokenResponse.json();
+assert.ok(Date.parse(expiresAt) > Date.now());
+assert.equal((await fetch(base + "/api/capabilities", { headers: { authorization: `Bearer ${token}` } })).status, 200);
+assert.equal((await fetch(base + "/api/capabilities", { headers: { authorization: `Bearer ${token}.extra` } })).status, 401);
+const body = Buffer.from(JSON.stringify({ sub: "owner", exp: 1, aud: "study-log-app" })).toString("base64url");
+const expired = body + "." + crypto.createHmac("sha256", env.SESSION_SECRET).update(body).digest("base64url");
+assert.equal((await fetch(base + "/api/capabilities", { headers: { authorization: `Bearer ${expired}` } })).status, 401);
+counts.push("app tokens, malformed suffix and expiry");
+const logout = await fetch(base + "/api/auth/logout", { method: "POST", headers: { cookie: cookieHeader } });
+assert.equal(logout.status, 200); assert.match(logout.headers.get("set-cookie"), /Max-Age=0/i);
+assert.equal((await fetch(base + "/api/capabilities")).status, 401);
+counts.push("logout cookie removal");
+console.log(JSON.stringify({ passed: counts }));

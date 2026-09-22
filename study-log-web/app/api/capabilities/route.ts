@@ -1,0 +1,27 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from "@/lib/auth";
+import { getLogRoot } from "@/lib/config";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+export async function GET(request: NextRequest) {
+  const unauthorized = requireAuth(request);
+  if (unauthorized) return unauthorized;
+  try {
+    const instance = JSON.parse(await fs.readFile(path.join(getLogRoot(), ".instance.json"), "utf8"));
+    if (instance.schemaVersion !== 1 || typeof instance.id !== "string" || !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(instance.id)) throw new Error("Invalid identity");
+    return NextResponse.json({
+      instanceId: instance.id,
+      apiContractVersion: 1,
+      features: {
+        aiWriting: { supported: false, configured: false },
+        rag: { supported: false, configured: false }
+      }
+    }, { headers: { "Cache-Control": "no-store" } });
+  } catch {
+    return NextResponse.json({ error: "实例尚未正确初始化" }, { status: 503 });
+  }
+}

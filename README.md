@@ -8,6 +8,8 @@
 
 当前入口仅用于验证工程启动，不提供资料读写。未配置数据目录，不会查找父目录中的日志。
 
+认证API测试须使用已初始化实例启动：`node ops/run-web.mjs dev 实例绝对路径 3561`，访问 `http://127.0.0.1:3561/study-log`。启动器加载所选实例配置，不在终端显示密码；API流程可用 `node ops/auth-smoke.mjs 实例绝对路径` 验证。登录页面尚在接入。
+
 ## 初始化实例
 
 运行 `npm run instance -- init 实例绝对路径`，选择一个新目录。命令创建独立的 `data`、`index`、`backups` 目录，并将随机访问密码和会话密钥写入实例 `.env`，不会把凭据打印到终端。`data/.instance.json` 保存实例身份。

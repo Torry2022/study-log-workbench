@@ -265,7 +265,7 @@
 .internal-link-selection { margin: 0; padding: 0 20px 10px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 @media (max-width: 760px) {
   .internal-link-dialog-backdrop { padding: 12px; }
-  .internal-link-dialog { width: calc(100vw - 24px); height: min(620px, calc(100dvh - 24px)); max-height: calc(100dvh - 24px); }
+  .internal-link-dialog { width: 100%; min-width: 0; height: min(620px, calc(100dvh - 24px)); max-height: calc(100dvh - 24px); }
   .internal-link-dialog-controls.has-alias { grid-template-columns: minmax(0, 1fr); }
   .internal-link-dialog-header { padding: 14px; }
   .internal-link-dialog-controls { padding: 12px 14px; }

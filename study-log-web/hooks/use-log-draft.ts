@@ -20,6 +20,7 @@ export function useLogDraft(day: DayEntry | null, active: boolean, onSaved: (day
   const [error, setError] = useState("");
   const [conflict, setConflict] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [resetRevision, setResetRevision] = useState(0);
   const dirty = Boolean(draft && draft.body !== draft.savedBody);
 
   useEffect(() => {
@@ -39,7 +40,11 @@ export function useLogDraft(day: DayEntry | null, active: boolean, onSaved: (day
     const next = { ...current.current, body };
     current.current = next; setDraft(next); setSaved(false);
   }
-  function reset() { if (day) { const next = fromDay(day); current.current = next; setDraft(next); setError(""); setConflict(false); } }
+  function reset() { if (day) { const next = fromDay(day); current.current = next; setDraft(next); setError(""); setConflict(false); setResetRevision(value => value + 1); } }
+  function acceptExternal(day: DayEntry) {
+    const next = fromDay(day); current.current = next; setDraft(next);
+    setError(""); setConflict(false); setSaved(false); setResetRevision(value => value + 1);
+  }
   async function save() {
     const submitted = current.current;
     if (!active || saving.current || !submitted) return;
@@ -62,5 +67,5 @@ export function useLogDraft(day: DayEntry | null, active: boolean, onSaved: (day
       setError(error instanceof Error ? error.message : "保存失败，请重试");
     } finally { saving.current = false; setBusy(false); }
   }
-  return { draft, dirty, busy, error, conflict, saved, change, reset, save };
+  return { draft, dirty, busy, error, conflict, saved, resetRevision, change, reset, acceptExternal, save };
 }

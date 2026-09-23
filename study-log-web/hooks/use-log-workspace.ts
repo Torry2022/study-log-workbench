@@ -159,7 +159,10 @@ export function useLogWorkspace(active: boolean, beforeLeave?: RefObject<() => P
     const attempt = ++navigationAttempt.current;
     if (needsLeave(currentSelection.current, next) && beforeLeave?.current && !(await beforeLeave.current())) return false;
     if (attempt !== navigationAttempt.current) return false;
+    const resetLogScroll = next.view === "log" && !next.heading &&
+      (next.date !== currentSelection.current.date || next.month !== currentSelection.current.month);
     window.history.replaceState({ ...window.history.state, studyLogScrollY: window.scrollY }, "");
+    if (resetLogScroll) window.scrollTo({ top: 0, behavior: "instant" });
     setScrollTarget(null);
     setNavigationRevision(value => value + 1);
     currentSelection.current = next;
@@ -167,7 +170,15 @@ export function useLogWorkspace(active: boolean, beforeLeave?: RefObject<() => P
     acceptedIndex.current = window.history.state?.studyLogIndex || 0;
     return true;
   }, [beforeLeave]);
-  const selectMonth = useCallback((month: string) => { void navigate({ ...currentSelection.current, view: "log", month, date: "", heading: "" }); }, [navigate]);
+  const selectMonth = useCallback((month: string) => {
+    const current = currentSelection.current;
+    // Re-selecting the current month must not clear a day that is already open.
+    if (current.month === month) {
+      if (current.view !== "log") void navigate({ ...current, view: "log" });
+      return;
+    }
+    void navigate({ ...current, view: "log", month, date: "", heading: "" });
+  }, [navigate]);
   const selectDate = useCallback((date: string, heading = "") => navigate({ ...currentSelection.current, view: "log", month: date.slice(0, 7), date, heading }), [navigate]);
   const selectView = useCallback((view: WorkspaceView) => navigate({ ...currentSelection.current, view }), [navigate]);
   const selectNote = useCallback((noteId: string) => navigate({ ...currentSelection.current, view: "notes", noteId }), [navigate]);

@@ -11,6 +11,7 @@ export type FeedbackMessage = {
 
 type AppFeedbackProps = FeedbackMessage & {
   onDismiss: () => void;
+  action?: { label: string; onClick: () => void };
 };
 
 const ICONS = {
@@ -20,7 +21,7 @@ const ICONS = {
   error: CircleAlert
 };
 
-export function AppFeedback({ message, tone, onDismiss }: AppFeedbackProps) {
+export function AppFeedback({ message, tone, onDismiss, action }: AppFeedbackProps) {
   const Icon = ICONS[tone];
   const persistent = tone === "warning" || tone === "error";
 
@@ -28,6 +29,7 @@ export function AppFeedback({ message, tone, onDismiss }: AppFeedbackProps) {
     <div className={`toast ${tone}`} role={persistent ? "alert" : "status"} aria-live={persistent ? "assertive" : "polite"}>
       <Icon size={16} aria-hidden="true" />
       <span>{message}</span>
+      {action && <button className="toast-action" type="button" onClick={action.onClick}>{action.label}</button>}
       {persistent && (
         <button type="button" onClick={onDismiss} aria-label="关闭提示">
           <X size={15} />

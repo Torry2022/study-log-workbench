@@ -5,7 +5,7 @@ import "@/app/rag-workspace.css";
 import { BookOpen, Check, ChevronDown, CircleAlert, Copy, FileText, LoaderCircle, MessageSquareText, RotateCcw, Send, Square } from "lucide-react";
 import { type FormEvent, type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { MarkdownPreview } from "@/components/MarkdownPreview";
-import { RagViewState as WorkspaceState } from "@/components/RagViewState";
+import { WorkspaceState } from "@/components/WorkspaceState";
 import type { RagAnswerMode, RagChatMessage, RagCitation } from "@/lib/rag-types";
 import { stripRagCitationLabels } from "@/lib/rag-answer";
 

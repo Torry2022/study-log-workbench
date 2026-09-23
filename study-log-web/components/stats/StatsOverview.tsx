@@ -2,7 +2,7 @@
 
 import { CalendarDays, ChevronDown, RefreshCw, Settings2, TrendingDown, TrendingUp } from "lucide-react";
 import { useMemo, useState } from "react";
-import { WorkspaceState } from "./WorkspaceState";
+import { WorkspaceState } from "../WorkspaceState";
 import type { DomainCount, MonthlyStats, StatsEntry, TagCount } from "@/lib/stats-types";
 
 type Drilldown =

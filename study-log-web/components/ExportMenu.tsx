@@ -49,9 +49,9 @@ export function ExportMenu({ scopes, onExport, busy, disabled = false, variant =
         buttons[next]?.focus();
       }
     }}>
-    <button ref={trigger} type="button" className="button secondary" title="导出" aria-haspopup="menu"
+    <button ref={trigger} type="button" className="button secondary" title="导出" aria-haspopup="menu" aria-busy={busy}
       aria-expanded={open} aria-controls={open ? id : undefined} disabled={disabled || busy}
-      onClick={() => setOpen((value) => !value)}><Download size={15} />{busy ? "导出中…" : "导出"}</button>
+      onClick={() => setOpen((value) => !value)}><Download size={15} />导出</button>
     {open && <div id={id} className="export-popover" role="menu" aria-label="导出范围">{items}</div>}
   </div>;
 }

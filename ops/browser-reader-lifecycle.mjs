@@ -31,7 +31,7 @@ try{
  await page.route('**/api/logs/day?date=2026-01-17',route=>fail?route.fulfill({status:503,json:{error:'合成读取故障'}}):route.continue());
  await page.locator('.day-item-open').filter({hasText:'01-17'}).click();
  await expect(page.locator('.preview-empty[role=alert]')).toContainText('合成读取故障');
- fail=false;await page.getByRole('button',{name:'重试',exact:true}).click();await expect(page.locator('.markdown-preview')).toContainText('文件版本');
+ fail=false;await page.locator('.preview-empty').getByRole('button',{name:'重新加载',exact:true}).click();await expect(page.locator('.markdown-preview')).toContainText('文件版本');
  await page.unroute('**/api/logs/day?date=2026-01-17');
  let expire=true;
  await page.route('**/api/logs/day?date=2026-01-15',route=>expire?route.fulfill({status:401,json:{error:'Unauthorized'}}):route.continue());
@@ -40,7 +40,7 @@ try{
  await expect(page.locator('.reader')).toBeHidden();expire=false;
  await page.getByLabel('访问密码').fill(env.APP_PASSWORD);await page.getByRole('button',{name:'登录',exact:true}).click();
  await expect(page.locator('.markdown-preview')).toContainText('同名小节');
- await page.goto(base+'?date=2026-01-16');await expect(page.locator('.preview-empty')).toContainText('这一天暂无学习日志');
+ await page.goto(base+'?date=2026-01-16');await expect(page.locator('.preview-empty')).toContainText('暂无正文');
  await page.goto(base+'?month=2026-03');await expect(page.locator('.day-empty')).toContainText('本月暂无日志');
  await page.getByRole('button',{name:'退出',exact:true}).click();await expect(page.getByRole('button',{name:'登录',exact:true})).toBeVisible();
  assert.equal(await page.locator('.reader').count(),0);

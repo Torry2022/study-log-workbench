@@ -22,6 +22,9 @@ try {
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await expect(page.locator('.markdown-preview')).toContainText('合成');
   await expect(page.locator('.topbar').getByRole('button', { name: '日志', exact: true })).toHaveCount(0);
+  const readingEntry = page.getByRole('button', { name: '进入阅读模式' });
+  await expect(readingEntry).toHaveCSS('width', '40px');
+  await expect(readingEntry).toHaveCSS('border-top-style', 'solid');
   const eyebrow = page.locator('.reader-log-identity .eyebrow');
   await expect(eyebrow).toHaveCSS('font-size', '12px');
   assert.equal(await eyebrow.evaluate(el => getComputedStyle(el).color), await eyebrow.evaluate(el => {
@@ -57,14 +60,24 @@ try {
   await button('浏览').click();
   for (const [name, selector] of [['随记', '.notes-empty-state'], ['收藏', '.favorites-empty-state']]) {
     await page.locator('.topbar').getByRole('button', { name, exact: true }).click();
+    await expect(page.locator('.sidebar-filter-heading > .section-title svg')).toHaveCount(1);
     const empty = page.locator(selector);
     await expect(empty).toBeVisible();
     await expect(empty.locator('svg')).toHaveCount(1);
     await expect(empty.getByRole('button')).toHaveCount(0);
+    if (name === '收藏') await expect(page.locator('.favorites-results')).toContainText('0 条收藏');
     await page.screenshot({ path: path.join(output, `empty-${name}.png`), animations: 'disabled' });
     await button('日志').click();
     await expect(page.locator('.reader-log-identity')).toBeVisible();
   }
+  await page.setViewportSize({ width: 390, height: 900 });
+  assert.deepEqual(await page.locator('.mobile-bottom-nav button span').allTextContents(), ['日志', '随记', '收藏', '问答', '统计']);
+  await page.locator('.mobile-bottom-nav').getByRole('button', { name: '收藏' }).click();
+  await expect(page.locator('.mobile-topbar-title')).toHaveText('收藏中心');
+  await page.locator('.mobile-bottom-nav').getByRole('button', { name: '问答' }).click();
+  await expect(page.locator('.mobile-topbar-title')).toHaveText('知识问答');
+  await page.locator('.mobile-bottom-nav').getByRole('button', { name: '统计' }).click();
+  await expect(page.locator('.mobile-topbar-title')).toHaveText('学习统计');
   assert.deepEqual(errors, []);
   console.log('Passed: original filename style, no extra top-level log tab, heading-edit/save feedback lifecycle, seven responsive widths, empty-state icons and module return');
 } finally { await browser.close(); }

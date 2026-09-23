@@ -32,11 +32,12 @@ import { HighlightPanel } from "./HighlightPanel";
 import { HighlightReviewDialog } from "./HighlightReviewDialog";
 import { useNoteCandidates } from "@/hooks/use-note-candidates";
 import { NoteCandidateExtractor } from "./NoteCandidateExtractor";
+import { AppFeedback } from "./AppFeedback";
 import { useRag } from "@/hooks/use-rag";
 import { RagWorkspace } from "./RagWorkspace";
 import { RagHistorySidebar } from "./RagHistorySidebar";
 import type { RagCitation } from "@/lib/rag-types";
-import { CalendarDays, Plus, Star, Tag, Tags, WandSparkles } from "lucide-react";
+import { CalendarDays, Lightbulb, Plus, Star, Tag, Tags, WandSparkles } from "lucide-react";
 import type { InternalLinkTarget } from "./MarkdownPreview";
 import { buildMarkdownOutline } from "@/lib/markdown-outline";
 import { assertEditableDayBody, toEditableDayBody } from "@/lib/day-content";
@@ -77,7 +78,10 @@ export function Workspace() {
   const [backupOpen, setBackupOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [operationError, setOperationError] = useState("");
-  const [missingFavorite, setMissingFavorite] = useState("");
+  const [missingFavorite, setMissingFavorite] = useState<string | null>(null);
+  useEffect(() => {
+    setMissingFavorite(current => current === logs.selection.date ? current : null);
+  }, [logs.selection.date]);
   const [navigationError, setNavigationError] = useState("");
   const [returnNoteId, setReturnNoteId] = useState("");
   const [returnRag, setReturnRag] = useState<{ scroll: number } | null>(null);
@@ -100,7 +104,7 @@ export function Workspace() {
   const clearSearch = useCallback(() => setSearchSelection(null), []);
   const selectDate = useCallback(async (date: string, heading = "") => {
     const accepted = await logs.selectDate(date, heading);
-    if (accepted) { setSearchSelection(null); setMissingFavorite(""); }
+    if (accepted) { setSearchSelection(null); setMissingFavorite(null); }
     return accepted;
   }, [logs.selectDate]);
   const openLog = () => { void logs.selectView("log").then(accepted => { if (accepted) { clearSearch(); setReading(false); } }); };
@@ -221,8 +225,8 @@ export function Workspace() {
   };
   return <><WorkspaceChrome active={active} months={logs.months} days={logs.days}
     openAiRequest={openAiRequest}
-    moduleSidebar={logs.selection.view === "favorites" ? { title: "收藏导航", label: "筛选收藏", icon: <Star size={18} />, filtered: favorites.filters.group !== "all" || favorites.filters.month !== "all", onReset: () => favorites.filter({ group: "all", month: "all" }) }
-      : logs.selection.view === "notes" ? { title: "随记", label: "年份和标签", icon: <Tag size={18} />, filtered: notes.yearFilter !== "all" || notes.tagFilter !== "all", onReset: notes.clearFilters, railActionBefore: <button className="sidebar-rail-button" type="button" title="新建随记" aria-label="新建随记" disabled={notes.saving} onClick={() => void notesWithExtraction.openNew()}><Plus size={18} /></button> }
+    moduleSidebar={logs.selection.view === "favorites" ? { title: <><Star size={15} /><span>收藏导航</span></>, label: "筛选收藏", icon: <Star size={18} />, filtered: favorites.filters.group !== "all" || favorites.filters.month !== "all", onReset: () => favorites.filter({ group: "all", month: "all" }) }
+      : logs.selection.view === "notes" ? { title: <><Lightbulb size={15} /><span>随记</span></>, label: "年份和标签", icon: <Tag size={18} />, filtered: notes.yearFilter !== "all" || notes.tagFilter !== "all", onReset: notes.clearFilters, railActionBefore: <button className="sidebar-rail-button" type="button" title="新建随记" aria-label="新建随记" disabled={notes.saving} onClick={() => void notesWithExtraction.openNew()}><Plus size={18} /></button> }
       : logs.selection.view === "stats" ? { title: "统计导航", label: "统计月份", icon: <CalendarDays size={18} />, filtered: Boolean(stats.months[0] && stats.selectedMonth !== stats.months[0].id), onReset: () => { if (stats.months[0]) void stats.changeMonth(stats.months[0].id); }, railAction: <button className="sidebar-rail-button" type="button" title="分类管理" aria-label="分类管理" onClick={stats.showManager}><Tags size={18} /></button> } : undefined}
     ragNavigation={({ collapsed, visible, onCollapse, onExpand, onNavigate }) => <RagHistorySidebar active={active} visible={logs.selection.view === "qa" && visible} collapsed={collapsed}
       sessions={rag.sessions} activeSessionId={rag.session?.id || ""} query={rag.query} loading={rag.loading} generating={rag.generating || rag.saving || rag.initializing}
@@ -238,8 +242,8 @@ export function Workspace() {
     onMonth={month => { clearSearch(); logs.selectMonth(month); }} onDate={selectSidebarDate} onRetry={logs.retry}
     onSearchChange={clearSearch} onSearchSelect={async result => { if (!(await selectDate(result.date))) return false; setMode("preview"); setReading(false); setSearchSelection(result); return true; }}
     onNewDate={date => { void logs.selectDate(date).then(accepted => { if (accepted) setMode("source"); }); }} onLogout={() => void exit()}>
-    {navigationError && <div className="editor-navigation-status" role="alert">{navigationError}<button className="button secondary" type="button" onClick={() => setNavigationError("")}>关闭</button></div>}
-    {(exporting.status || exporting.error || exporting.busy) && <div className="editor-navigation-status" role={exporting.error ? "alert" : "status"}>{exporting.error || exporting.status || "正在准备导出…"}{exporting.busy && <button className="button secondary" type="button" onClick={exporting.cancel}>取消导出</button>}</div>}
+    {navigationError && <AppFeedback message={navigationError} tone="error" onDismiss={() => setNavigationError("")} />}
+    {(exporting.status || exporting.error || exporting.busy) && <AppFeedback message={exporting.error || exporting.status || "正在准备导出…"} tone={exporting.error ? "error" : exporting.status ? "warning" : "info"} onDismiss={exporting.dismiss} action={exporting.busy ? { label: "取消导出", onClick: exporting.cancel } : undefined} />}
     <div className="workspace-view" hidden={logs.selection.view !== "qa"}>
       {rag.error && <div className="editor-navigation-status" role="alert">{rag.error}<button className="button secondary" onClick={rag.clearError}>关闭</button><button className="button secondary" onClick={() => void rag.reloadSession()}>重新读取</button></div>}
       {(rag.saveError || rag.saving) && <div className="editor-navigation-status" role={rag.saveError ? "alert" : "status"}>{rag.saveError || "正在保存问答历史…"}{rag.saveError && <><button className="button secondary" disabled={rag.saving || !active} onClick={rag.retrySave}>重试保存</button><button className="button secondary" disabled={rag.saving || !active} onClick={() => void rag.reloadSession()}>放弃本地回答并重新读取</button></>}</div>}

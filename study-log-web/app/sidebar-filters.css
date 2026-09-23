@@ -13,6 +13,13 @@
   box-shadow: var(--popover-shadow);
 }
 
+.module-sidebar-content {
+  display: grid;
+  align-content: start;
+  gap: 22px;
+  min-width: 0;
+}
+
 .sidebar-filter-heading {
   height: 32px;
   min-height: 32px;

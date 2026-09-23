@@ -2,7 +2,7 @@
 
 import { ArrowLeft, LockKeyhole, Save, Search, Sparkles, Trash2 } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
-import { WorkspaceState } from "./WorkspaceState";
+import { WorkspaceState } from "../WorkspaceState";
 import { FeatureAvailability } from "../FeatureAvailability";
 import type { Taxonomy, TaxonomyCatalogItem } from "@/lib/stats-types";
 import type { TaxonomySuggestionsController } from "@/hooks/use-taxonomy-suggestions";

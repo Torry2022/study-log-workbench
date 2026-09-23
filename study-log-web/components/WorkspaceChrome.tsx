@@ -150,6 +150,8 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, module
     const unlockScroll = lockBodyScroll();
     const frame = requestAnimationFrame(() => dialog?.querySelector<HTMLElement>(panel === "search" ? "input" : "button")?.focus());
     const keydown = (event: KeyboardEvent) => {
+      // A leave-confirmation above this drawer owns Escape and keyboard focus.
+      if (document.querySelector('[role="alertdialog"]')) return;
       if (event.key === "Escape") { event.preventDefault(); setPanel(null); return; }
       if (event.key !== "Tab" || !dialog) return;
       const items = Array.from(dialog.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex="0"]'))
@@ -189,13 +191,14 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, module
   }
 
   const switchView = async (next: WorkspaceView) => { if (await onView(next)) setPanel(null); };
-  const viewLabel = { log: "学习日志", notes: "随记", favorites: "收藏", stats: "统计", qa: "问答" }[view];
+  const viewLabel = { log: "学习日志", notes: "随记", favorites: "收藏中心", stats: "学习统计", qa: "知识问答" }[view];
   const ViewIcon = { log: FileText, notes: Lightbulb, favorites: Star, stats: BarChart3, qa: MessageSquareText }[view];
   async function selectSidebarDate(date: string, heading?: string, headingIndex?: number) {
     const accepted = await onDate(date, heading, headingIndex);
-    if (accepted === false) return;
-    if (heading) setQuery("");
+    if (accepted === false) return false;
+    setQuery("");
     if (compact) setPanel(null);
+    return true;
   }
   const logDateCreation = <>
 <button className="button secondary full" type="button" onClick={() => { onNewDate(todayInShanghai()); if (compact) setPanel(null); }}><Plus size={15} />今天</button>
@@ -250,7 +253,7 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, module
             {compact && months.length > 6 && <button className="button secondary full" type="button" aria-expanded={monthsExpanded} onClick={() => setMonthsExpanded(value => !value)}>{monthsExpanded ? "收起月份" : `展开其余 ${months.length - 6} 个月份`}</button>}
           </div>
           <div className="sidebar-section grow" data-log-section="dates">
-            <div className="section-title date-section-title"><span className="section-title-left"><FileText size={15} />日期</span><DateJump months={months} selectedDate={selectedDate} active={active && (!compact || panel === "navigation")} openRequest={dateJumpRequest} onDate={date => { onDate(date); if (compact) setPanel(null); }} /></div>
+            <div className="section-title date-section-title"><span className="section-title-left"><FileText size={15} />日期</span><DateJump months={months} selectedDate={selectedDate} active={active && (!compact || panel === "navigation")} openRequest={dateJumpRequest} onDate={date => selectSidebarDate(date)} /></div>
             {!compact && logDateCreation}
             <div className="sidebar-search"><Search size={14} /><input ref={dateSearch} value={query} onChange={event => setQuery(event.target.value)} placeholder="按标签定位日期" aria-label="按日期标签搜索日期" />{query && <button className="sidebar-search-clear" type="button" onClick={() => { setQuery(""); dateSearch.current?.focus(); }} aria-label="清空日期搜索"><X size={13} /></button>}</div>
             <div className="day-list" aria-busy={loading}>
@@ -287,8 +290,8 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, module
       <button className={view === "log" ? "active" : ""} type="button" onClick={() => void switchView("log")}><FileText size={20} /><span>日志</span></button>
       <button className={view === "notes" ? "active" : ""} type="button" onClick={() => void switchView("notes")}><Lightbulb size={20} /><span>随记</span></button>
       <button className={view === "favorites" ? "active" : ""} type="button" onClick={() => void switchView("favorites")}><Star size={20} /><span>收藏</span></button>
-      <button className={view === "stats" ? "active" : ""} type="button" onClick={() => void switchView("stats")}><BarChart3 size={20} /><span>统计</span></button>
       <button className={view === "qa" ? "active" : ""} type="button" onClick={() => void switchView("qa")}><MessageSquareText size={20} /><span>问答</span></button>
+      <button className={view === "stats" ? "active" : ""} type="button" onClick={() => void switchView("stats")}><BarChart3 size={20} /><span>统计</span></button>
     </nav>
     {compact && (panel === "navigation" || panel === "writing") && <div className="mobile-overlay-backdrop" aria-hidden="true" onClick={() => setPanel(null)} />}
     {compact && panel === "account" && <div className="mobile-sheet-backdrop" onClick={() => setPanel(null)}><section ref={account} className="mobile-action-sheet mobile-account-sheet" role="dialog" aria-modal="true" aria-label="应用设置" onClick={event => event.stopPropagation()}>

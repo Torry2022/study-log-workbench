@@ -1,0 +1,67 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+import assert from "node:assert/strict";
+import { parseEnv } from "node:util";
+import { createRequire } from "node:module";
+const require = createRequire(new URL("../study-log-web/package.json", import.meta.url));
+const { chromium, expect } = require("@playwright/test");
+const [root, base = "http://127.0.0.1:3578/study-log"] = process.argv.slice(2);
+if (!root || !path.isAbsolute(root) || !["127.0.0.1", "localhost"].includes(new URL(base).hostname)) throw Error("Explicit synthetic local instance required");
+const env = parseEnv(await fs.readFile(path.join(root, ".env"), "utf8"));
+const browser = await chromium.launch();
+try {
+  for (const width of [1440, 390]) {
+    const page = await browser.newPage({ viewport: { width, height: 900 } });
+    const errors = []; page.on("pageerror", error => errors.push(error.message));
+    const calendar = page.getByRole("dialog", { name: "跳转到指定日期", exact: true });
+    const confirmation = page.getByRole("alertdialog", { name: "放弃未保存修改？", exact: true });
+    const sidebar = page.locator("aside.sidebar");
+    const query = page.getByLabel("按日期标签搜索日期", { exact: true });
+    const editor = page.locator(".cm-content");
+    const login = async () => { await page.getByLabel("访问密码").fill(env.APP_PASSWORD); await page.getByRole("button", { name: "登录", exact: true }).click(); await expect(page.locator(".workspace")).toBeVisible(); };
+    const navigation = async () => { if (width < 1024 && !await sidebar.isVisible()) await page.getByRole("button", { name: "打开日志导航", exact: true }).click(); };
+    const draft = async () => {
+      await page.goto(base + "?date=2026-01-15");
+      await page.getByRole("button", { name: "源码", exact: true }).filter({ visible: true }).click();
+      await expect(editor).toBeVisible(); await editor.click(); await editor.press("Control+End");
+      await page.keyboard.insertText("\nDATE_NAVIGATION_UNSAVED_SYNTHETIC");
+      await navigation(); await query.fill("2026-01-17");
+    };
+    await page.goto(base + "?date=2026-01-15"); await login();
+    await draft();
+    await page.keyboard.press("Control+g");
+    await calendar.getByRole("button", { name: "跳转到 2026-01-17", exact: true }).click();
+    await expect(confirmation).toBeVisible();
+    await expect(calendar).toBeVisible();
+    await confirmation.getByRole("button", { name: "取消", exact: true }).click();
+    await expect(confirmation).toHaveCount(0); await expect(calendar).toBeVisible();
+    await expect(query).toHaveValue("2026-01-17"); await expect(page).toHaveURL(/date=2026-01-15/);
+    await expect(editor).toContainText("DATE_NAVIGATION_UNSAVED_SYNTHETIC");
+    if (width < 1024) await expect(sidebar).toHaveClass(/mobile-open/);
+    await calendar.getByRole("button", { name: "跳转到 2026-01-17", exact: true }).click();
+    await expect(confirmation).toBeVisible(); await page.keyboard.press("Tab");
+    assert.equal(await confirmation.evaluate(element => element.contains(document.activeElement)), true);
+    await page.keyboard.press("Escape"); await expect(confirmation).toHaveCount(0); await expect(calendar).toBeVisible();
+    if (width < 1024) await expect(sidebar).toHaveClass(/mobile-open/);
+    await calendar.getByRole("button", { name: "跳转到 2026-01-17", exact: true }).click();
+    await confirmation.getByRole("button", { name: "放弃修改", exact: true }).click();
+    await expect(page).toHaveURL(/date=2026-01-17/); await expect(calendar).toHaveCount(0);
+    if (width < 1024) await expect(sidebar).not.toHaveClass(/mobile-open/);
+    await navigation(); await expect(query).toHaveValue("");
+    await draft();
+    await sidebar.locator(".day-item-open").filter({ hasText: "2026-01-17" }).click();
+    await confirmation.getByRole("button", { name: "取消", exact: true }).click();
+    await expect(query).toHaveValue("2026-01-17"); await expect(editor).toContainText("DATE_NAVIGATION_UNSAVED_SYNTHETIC");
+    await sidebar.locator(".day-item-open").filter({ hasText: "2026-01-17" }).click();
+    await confirmation.getByRole("button", { name: "放弃修改", exact: true }).click();
+    await expect(page).toHaveURL(/date=2026-01-17/); await navigation(); await expect(query).toHaveValue("");
+    await draft(); await page.keyboard.press("Control+g");
+    await calendar.getByRole("button", { name: "跳转到 2026-01-17", exact: true }).click();
+    await expect(confirmation).toBeVisible();
+    await page.evaluate(() => window.dispatchEvent(new Event("study-log:auth-expired")));
+    await expect(page.getByLabel("访问密码")).toBeVisible(); await expect(calendar).toHaveCount(0); await expect(confirmation).toHaveCount(0);
+    await login(); await expect(page).toHaveURL(/date=2026-01-15/); await expect(editor).toContainText("DATE_NAVIGATION_UNSAVED_SYNTHETIC");
+    assert.deepEqual(errors, []); await page.close();
+    console.log(`Date navigation PASS ${width}: cancel/Escape keep calendar/drawer/filter/draft, successful calendar/date selection clears filter, nested focus and auth expiry`);
+  }
+} finally { await browser.close(); }

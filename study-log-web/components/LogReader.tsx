@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { BookOpen, ChevronLeft, ChevronRight, CornerUpLeft, DatabaseBackup, Edit3, Eye, FileText, LayoutList, Link2, Maximize2, Minimize2, MoreHorizontal, PanelRightOpen, RefreshCw, Save, Star, Trash2, Upload, X } from "lucide-react";
+import { BookOpen, ChevronLeft, ChevronRight, CornerUpLeft, DatabaseBackup, Edit3, Eye, FileText, FileX2, LayoutList, Link2, Maximize2, Minimize2, MoreHorizontal, PanelRightOpen, RefreshCw, Save, Star, Trash2, Upload, X } from "lucide-react";
 import { MarkdownPreview, type InternalLinkTarget } from "./MarkdownPreview";
 import { buildMarkdownOutline } from "@/lib/markdown-outline";
 import { toEditableDayBody } from "@/lib/day-content";
@@ -23,6 +23,7 @@ import type { MarkdownHeading } from "@/lib/markdown-outline";
 import { FavoriteGroupDialog } from "./FavoriteGroupDialog";
 import { FavoriteRemovePopover, FavoriteSuccessNotice } from "./FavoriteFeedback";
 import { ExportMenu } from "./ExportMenu";
+import { WorkspaceState } from "./WorkspaceState";
 import { AppFeedback } from "./AppFeedback";
 import "@/app/feedback.css";
 import type { ExportScope } from "@/hooks/use-export";
@@ -306,9 +307,11 @@ export function LogReader({ onOpenAi, navigation, editing, search, favorites, ex
     {editing.error && <div className="editor-save-status" role="alert">{editing.error}{editing.conflict && <button className="button secondary" type="button" onClick={editing.onReload}>重新读取</button>}</div>}
     {active && editing.saved && !editing.dirty && !editing.error && <AppFeedback message="已保存" tone="success" onDismiss={() => {}} />}
     <div className="reader-preview-pane" style={{ display: mode === "source" ? "none" : undefined }}>
-    {loading ? <div className="preview-loading" role="status">正在读取日志…</div> : error ? <div className="preview-empty" role="alert"><p>{error}</p><button className="button secondary" onClick={onRetry}>重试</button></div> : !day?.exists && !content.trim() ? <div className="preview-empty"><p>{date ? "这一天暂无学习日志" : "暂无学习日志，请从左侧选择日期"}</p></div> : <div className={`preview-workspace${headings.length && mode === "preview" ? " has-outline" : ""}`}>
+    {loading || error || !content.trim() ? <div className={`preview-workspace${(loading || error) && mode === "preview" ? " has-outline" : ""}`}><div className="preview-pane">
+      {loading ? <WorkspaceState kind="loading" title={`正在加载 ${date}`} className="preview-loading" /> : error ? <WorkspaceState kind="error" title="日志加载失败" description={error} className="preview-empty" actions={<button className="button secondary" type="button" onClick={onRetry}><RefreshCw size={15} />重新加载</button>} /> : <WorkspaceState kind="empty" icon={FileX2} title={date ? "暂无正文" : "选择左侧日期，或新建今天的学习日志"} className="preview-empty" />}
+    </div></div> : <div className={`preview-workspace${headings.length && mode === "preview" ? " has-outline" : ""}`}>
       <div className="preview-pane"><MarkdownPreview active={active} containerRef={preview} content={content} headings={headings} themeMode={theme} textHighlight={search || undefined} onInternalLink={openInternalLink} />
-        {!reading && <button className="button preview-reading-mode-entry" type="button" aria-label="进入阅读模式" onClick={() => changeReading(true)}><Maximize2 size={18} /></button>}
+        {!reading && <button className="reading-mode-entry preview-reading-mode-entry" type="button" aria-label="进入阅读模式" title="进入阅读模式" onClick={() => changeReading(true)}><Maximize2 size={18} /></button>}
       </div>{headings.length > 0 && mode === "preview" && renderOutline(false)}
     </div>}
     </div>
@@ -316,7 +319,7 @@ export function LogReader({ onOpenAi, navigation, editing, search, favorites, ex
       onPasteCapture={event => { const files = imageFiles(event.clipboardData.files); if (files.length) { event.preventDefault(); void attachments.upload(files); } }}
       onDropCapture={event => { const files = imageFiles(event.dataTransfer.files); if (files.length) { event.preventDefault(); void attachments.upload(files); } }}
       onDragOver={event => { if (Array.from(event.dataTransfer.items).some(item => item.type.startsWith("image/"))) event.preventDefault(); }}>
-      {editorReady ? <LogEditor date={date} value={editing.body} active={active && !editing.locked && mode !== "preview"} onChange={editing.onChange} onSave={editing.onSave} onUpdate={attachments.update} onView={view => { editorView.current = view; }} /> : <div className="source-empty">{loading ? "正在读取日志…" : "选择日期以编辑学习日志"}</div>}
+      {editorReady ? <LogEditor date={date} value={editing.body} active={active && !editing.locked && mode !== "preview"} onChange={editing.onChange} onSave={editing.onSave} onUpdate={attachments.update} onView={view => { editorView.current = view; }} /> : <WorkspaceState kind={error ? "error" : loading ? "loading" : "empty"} title={error ? "日志加载失败" : loading ? `正在加载 ${date}` : "选择左侧日期，或新建今天的学习日志"} description={error || undefined} className="source-empty" actions={error ? <button className="button secondary" type="button" onClick={onRetry}><RefreshCw size={15} />重新加载</button> : undefined} />}
     </div></div>
     {active && favoriteFeedback?.kind === "added" && <FavoriteSuccessNotice {...favoriteFeedback} onClose={() => setFavoriteFeedback(null)} onGroup={() => { setOutlineOpen(false); setFavoriteGroup(favoriteFeedback.id); }} />}
     {active && favoriteFeedback?.kind === "remove" && <FavoriteRemovePopover {...favoriteFeedback} busy={favorites.busy} error={favorites.error} onClose={() => setFavoriteFeedback(null)} onConfirm={() => favorites.remove(favoriteFeedback.id)} />}

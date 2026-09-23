@@ -34,6 +34,7 @@
   color: inherit;
 }
 .toast > button:hover { background: var(--surface-soft); }
+.toast > .toast-action { width: auto; min-height: 28px; padding: 0 8px; border: 1px solid var(--hairline); font-size: 12px; white-space: nowrap; }
 .toast.success { border-left-color: var(--accent-teal); }
 .toast.warning { border-left-color: var(--warning); }
 .toast.error { border-left-color: var(--error); }

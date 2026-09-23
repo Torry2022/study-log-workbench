@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ArrowUpDown, ChevronDown, FileText, Grid2X2, LayoutList, Search, Star, X } from "lucide-react";
-import { WorkspaceState } from "./stats/WorkspaceState";
+import { WorkspaceState } from "./WorkspaceState";
 import { FavoriteGroupDialog } from "./FavoriteGroupDialog";
 import { FavoriteRemovePopover } from "./FavoriteFeedback";
 import type { FavoritesController } from "@/hooks/use-favorites";
@@ -52,7 +52,7 @@ export function FavoritesModule({ favorites, active = true, onOpen, onOpenLog }:
     <div className="reader-content reader-content-favorites"><div className="favorites-view">
       {favorites.loaded && favorites.error && <div className="favorites-error" role="alert">{favorites.error}<button className="button secondary" type="button" disabled={favorites.loading || favorites.busy} onClick={() => void favorites.reload()}>重试</button></div>}
       {!favorites.loaded ? <WorkspaceState kind={favorites.error ? "error" : "loading"} title={favorites.error ? "收藏加载失败" : "正在加载收藏"} description={favorites.error || undefined} className="favorites-empty-state" actions={favorites.error ? <button className="button secondary" type="button" disabled={favorites.loading} onClick={() => void favorites.reload()}>重试</button> : undefined} /> : <>
-        {favorites.favorites.length > 0 && <div className="favorites-results"><span>{favorites.visible.length} 条收藏{favorites.filters.group !== "all" && ` · ${favorites.filters.group === "ungrouped" ? "未分组" : groupsById.get(favorites.filters.group) || ""}`}{favorites.filters.query && ` · ${favorites.filters.query}`}</span>{favorites.loading && <span role="status">正在刷新</span>}</div>}
+        <div className="favorites-results"><span>{favorites.visible.length} 条收藏{favorites.filters.group !== "all" && ` · ${favorites.filters.group === "ungrouped" ? "未分组" : groupsById.get(favorites.filters.group) || ""}`}{favorites.filters.query && ` · ${favorites.filters.query}`}</span>{favorites.loading && <span role="status">正在刷新</span>}</div>
         {monthGroups.length ? <div className="favorites-groups">{monthGroups.map(([month, items]) => <section className="favorites-month-group" key={month}>
           {favorites.filters.sort === "log-date" && <div className="favorites-month-heading"><span>{month}</span><small>{items.length}</small></div>}
           <div className={`favorites-month-list ${favorites.view}`}>{items.map(favorite => <div key={favorite.id} className={`favorite-item favorite-item-center favorite-item-${favorites.view}${favorite.exists ? "" : " missing"}`}>

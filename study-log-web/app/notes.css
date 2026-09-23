@@ -42,6 +42,10 @@
   gap: 22px;
 }
 
+.view-notes .sidebar:not(.collapsed) {
+  gap: 10px;
+}
+
 .notes-sidebar-primary {
   flex: 0 0 auto;
 }

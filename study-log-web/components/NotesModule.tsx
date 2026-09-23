@@ -4,7 +4,7 @@ import { Bold, Check, ChevronLeft, FileImage, FileText, Italic, Lightbulb, Link2
 import { useEffect, useId, useRef, useState, type ClipboardEvent, type DragEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { MarkdownPreview, type InternalLinkTarget } from "./MarkdownPreview";
-import { WorkspaceState } from "./stats/WorkspaceState";
+import { WorkspaceState } from "./WorkspaceState";
 import { InternalLinkDialog } from "./InternalLinkDialog";
 import type { NotesController } from "@/hooks/use-notes";
 import type { StudyNote, StudyNoteFacet } from "@/lib/notes-types";

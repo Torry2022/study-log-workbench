@@ -5,7 +5,7 @@ import "@/app/rag-history.css";
 import { ChevronLeft, ChevronRight, MessageSquareText, MoreHorizontal, Plus, Search, SquarePen, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { containModalFocus, lockBodyScroll } from "@/hooks/use-dialog-exit";
-import { RagViewState as WorkspaceState } from "@/components/RagViewState";
+import { WorkspaceState } from "@/components/WorkspaceState";
 import type { RagSessionSummary } from "@/lib/rag-types";
 import { ragSessionGroup as sessionGroup, ragUpdatedLabel as updatedLabel } from "@/lib/rag-history-view";
 

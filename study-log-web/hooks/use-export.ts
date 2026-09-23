@@ -28,6 +28,7 @@ export function useExport(options: ExportOptions) {
     pending.current = null;
     setBusy(false);
   }, []);
+  const dismiss = useCallback(() => { setStatus(""); setError(""); }, []);
   useEffect(() => {
     cancel();
     setStatus("");
@@ -68,9 +69,7 @@ export function useExport(options: ExportOptions) {
       anchor.remove();
       // Give the browser time to consume the download URL before releasing it.
       window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
-      setStatus(result.warningCount > 0
-        ? `下载已开始；${result.warningCount} 个附件缺失，请查看 ZIP 内的导出说明.txt。`
-        : "下载已开始");
+      if (result.warningCount > 0) setStatus(`${result.warningCount} 个附件缺失，请查看 ZIP 内的导出说明.txt。`);
       return true;
     } catch (cause) {
       if (!signal.aborted && pending.current === controller) {
@@ -85,5 +84,5 @@ export function useExport(options: ExportOptions) {
     }
   }, []);
 
-  return { run, busy, status, error, cancel };
+  return { run, busy, status, error, cancel, dismiss };
 }

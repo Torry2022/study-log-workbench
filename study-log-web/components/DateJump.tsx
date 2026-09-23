@@ -12,7 +12,7 @@ export interface DateJumpProps {
   months: MonthSummary[];
   selectedDate: string;
   active: boolean;
-  onDate: (date: string) => void;
+  onDate: (date: string) => void | Promise<boolean>;
   /** Chrome handles Ctrl+G and reveals the sidebar before supplying a new token. */
   openRequest?: number;
 }
@@ -41,6 +41,8 @@ export function DateJump({ months, selectedDate, active, onDate, openRequest = 0
   const monthInput = useRef<HTMLInputElement>(null);
   const request = useRef<AbortController | null>(null);
   const handledRequest = useRef(0);
+  const selectionPending = useRef(false);
+  const selectionEpoch = useRef(0);
   const loading = result.month !== month || result.status === "loading";
   const available = result.month === month && result.status === "ready" ? result.dates : new Set<string>();
   const error = result.month === month && result.status === "error" ? result.error : "";
@@ -52,7 +54,7 @@ export function DateJump({ months, selectedDate, active, onDate, openRequest = 0
   }
 
   useEffect(() => {
-    if (!active) { request.current?.abort(); handledRequest.current = openRequest; setOpen(false); return; }
+    if (!active) { selectionEpoch.current++; request.current?.abort(); handledRequest.current = openRequest; setOpen(false); return; }
     if (openRequest > 0 && openRequest !== handledRequest.current) {
       handledRequest.current = openRequest;
       setResult({ month: initial, status: "loading", dates: new Set(), error: "" });
@@ -61,9 +63,9 @@ export function DateJump({ months, selectedDate, active, onDate, openRequest = 0
   }, [active, openRequest, initial]);
 
   useEffect(() => {
-    const expire = () => { request.current?.abort(); setOpen(false); };
+    const expire = () => { selectionEpoch.current++; request.current?.abort(); setOpen(false); };
     window.addEventListener(AUTH_EXPIRED_EVENT, expire);
-    return () => { window.removeEventListener(AUTH_EXPIRED_EVENT, expire); request.current?.abort(); };
+    return () => { selectionEpoch.current++; window.removeEventListener(AUTH_EXPIRED_EVENT, expire); request.current?.abort(); };
   }, []);
 
   useEffect(() => {
@@ -88,10 +90,11 @@ export function DateJump({ months, selectedDate, active, onDate, openRequest = 0
     if (!active || !open) return;
     const frame = requestAnimationFrame(() => monthInput.current?.focus());
     const outside = (event: PointerEvent) => {
+      if (selectionPending.current) return;
       if (!control.current?.contains(event.target as Node)) close(false);
     };
     const escape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || selectionPending.current) return;
       event.preventDefault(); event.stopImmediatePropagation(); close(true);
     };
     document.addEventListener("pointerdown", outside);
@@ -100,12 +103,24 @@ export function DateJump({ months, selectedDate, active, onDate, openRequest = 0
     return () => { cancelAnimationFrame(frame); document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", escape, true); };
   }, [active, open]);
 
+  async function chooseDate(date: string) {
+    if (!active || !available.has(date) || selectionPending.current) return;
+    const epoch = selectionEpoch.current;
+    selectionPending.current = true;
+    try {
+      const accepted = await onDate(date);
+      if (accepted !== false && epoch === selectionEpoch.current) close(true);
+    } finally {
+      selectionPending.current = false;
+    }
+  }
+
   function chooseMonth(next: string) {
     if (validMonth(next) && next >= minimum && next <= maximum) setMonth(next);
   }
 
   return <div className="date-jump-control" ref={control} onBlur={event => {
-    if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) close(false);
+    if (!selectionPending.current && event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) close(false);
   }}>
     <button ref={trigger} className={`date-jump-trigger${open ? " active" : ""}`} type="button" disabled={!active || months.length === 0}
       title="跳转到指定日期（Ctrl+G）" aria-label="按日期跳转" aria-haspopup="dialog" aria-expanded={active && open}
@@ -122,7 +137,7 @@ export function DateJump({ months, selectedDate, active, onDate, openRequest = 0
           if (!date) return <span className="date-jump-spacer" key={`spacer-${index}`} />;
           const className = `date-jump-day${date === selectedDate ? " active" : ""}${date === today ? " today" : ""}`;
           return available.has(date) ? <button className={className} key={date} type="button" aria-label={`跳转到 ${date}`} aria-current={date === selectedDate ? "date" : undefined}
-            onClick={() => { if (!active || !available.has(date)) return; close(true); onDate(date); }}>{Number(date.slice(-2))}<span aria-hidden="true" /></button>
+            onClick={() => void chooseDate(date)}>{Number(date.slice(-2))}<span aria-hidden="true" /></button>
             : <span className={`${className} unavailable`} key={date} title={`${date} ${loading ? "正在读取" : error ? "目录未能读取" : "暂无日志"}`}>{Number(date.slice(-2))}</span>;
         })}
         {loading && <span className="date-jump-loading" role="status">正在读取</span>}

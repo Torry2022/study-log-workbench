@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { AUTH_EXPIRED_EVENT, cancelWorkspaceRequests } from "@/lib/client-http";
 import { withBasePath } from "@/lib/base-path";
+import { WorkspaceState } from "./WorkspaceState";
 import { LoginScreen } from "./LoginScreen";
 
 const SessionContext = createContext({ active: false, logout: async () => {} });
@@ -45,10 +46,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   }
 
   if (authenticated === null) {
-    return <main className="workspace-state workspace-state-fullscreen"><div className="workspace-state-body">
-      <p className="workspace-state-title">{connectionError || "正在连接学习日志"}</p>
-      {connectionError && <button className="button secondary" onClick={() => setAttempt(value => value + 1)}>重试连接</button>}
-    </div></main>;
+    return <main><WorkspaceState kind={connectionError ? "error" : "loading"} title={connectionError ? "连接失败" : "正在连接学习日志"} description={connectionError || undefined} layout="fullscreen" actions={connectionError ? <button className="button secondary" type="button" onClick={() => setAttempt(value => value + 1)}>重试连接</button> : undefined} /></main>;
   }
   return <SessionContext.Provider value={{ active: authenticated, logout }}>
     {!authenticated && <LoginScreen notice={notice} onAuthenticated={() => { cancelWorkspaceRequests(); setHasWorkspace(true); setAuthenticated(true); setNotice(""); }} />}

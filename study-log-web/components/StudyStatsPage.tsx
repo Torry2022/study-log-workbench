@@ -3,7 +3,7 @@
 import { CalendarDays, FileText, Tags } from "lucide-react";
 import { StatsOverview } from "./stats/StatsOverview";
 import { TaxonomyManager } from "./stats/TaxonomyManager";
-import { WorkspaceState } from "./stats/WorkspaceState";
+import { WorkspaceState } from "./WorkspaceState";
 import type { StatsController } from "@/hooks/use-stats";
 import type { StatsEntry } from "@/lib/stats-types";
 import "@/app/stats.css";

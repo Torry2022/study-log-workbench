@@ -18,7 +18,7 @@ export function FavoriteGroupDialog({ favoriteId, favorites, onClose, onOpenCent
   if (!favorite || !favorites.active) return null;
   return createPortal(<div ref={backdropRef} className="favorite-group-dialog-backdrop" role="presentation" onClick={close}>
     <div className="favorite-group-dialog" role="dialog" aria-modal="true" aria-labelledby="favorite-group-dialog-title" onClick={event => event.stopPropagation()}>
-      <div className="favorite-group-dialog-header"><div><h3 id="favorite-group-dialog-title">选择分组</h3><span className="favorite-title">{favorite.headingText}</span></div><button type="button" onClick={close} disabled={favorites.busy} aria-label="关闭选择分组"><X size={18} /></button></div>
+      <div className="favorite-group-dialog-header"><div><h3 id="favorite-group-dialog-title">选择分组</h3></div><button type="button" onClick={close} disabled={favorites.busy} aria-label="关闭选择分组"><X size={18} /></button></div>
       {favorites.error && <div className="favorites-error" role="alert">{favorites.error}</div>}
       <div className="favorite-group-dialog-list">{favorites.groups.length ? favorites.groups.map(group => <label className="favorite-group-option" key={group.id}>
         <span><strong>{group.name}</strong><small>{favorites.favorites.filter(item => item.groupIds.includes(group.id)).length} 条收藏</small></span>
@@ -28,7 +28,7 @@ export function FavoriteGroupDialog({ favoriteId, favorites, onClose, onOpenCent
         event.preventDefault(); const group = await favorites.createGroup(name.trim());
         if (group && await favorites.setGroups(favorite.id, [...favorite.groupIds, group.id])) setName("");
       }}><input value={name} onChange={event => setName(event.target.value)} placeholder="新建分组名称" aria-label="新建收藏分组名称" disabled={favorites.busy} /><button type="submit" disabled={!name.trim() || favorites.busy}>创建并加入</button></form>
-      <div className="favorite-group-dialog-actions">{onOpenCenter ? <button type="button" disabled={favorites.busy} onClick={() => requestExit(() => { onClose(); onOpenCenter(); })}><Star size={14} />收藏中心</button> : <span />}
+      <div className="favorite-group-dialog-actions"><button type="button" disabled={favorites.busy} onClick={() => requestExit(() => { onClose(); onOpenCenter?.(); })}><Star size={14} />收藏中心</button>
         <div><button className="danger" type="button" disabled={favorites.busy} onClick={async () => { if (await favorites.remove(favorite.id)) onClose(); }}>取消收藏</button><button className="primary" type="button" onClick={close} disabled={favorites.busy}>完成</button></div>
       </div>
     </div>

@@ -40,6 +40,7 @@ interface Editing {
 }
 interface Props {
   onOpenAi?: () => void;
+  onOpenFavorites?: () => void;
   navigation?: {
     previousDate: string | null; nextDate: string | null; showAdjacent: boolean;
     onReturnNotes?: () => void; onReturnRag?: () => void;
@@ -56,7 +57,7 @@ interface Props {
   onNavigate: (date: string, heading?: string) => Promise<boolean>;
 }
 
-export function LogReader({ onOpenAi, navigation, editing, search, favorites, exporting, active, navigationRevision, day, date, heading, scrollTarget, loading, error, theme, reading, onReading, onRetry, onNavigate }: Props) {
+export function LogReader({ onOpenAi, onOpenFavorites, navigation, editing, search, favorites, exporting, active, navigationRevision, day, date, heading, scrollTarget, loading, error, theme, reading, onReading, onRetry, onNavigate }: Props) {
   const content = useMemo(() => editing.documentDate === date ? editing.body : day ? toEditableDayBody(day.date, day.content) : "", [editing.documentDate, editing.body, date, day]);
   const headings = useMemo(() => buildMarkdownOutline(content), [content]);
   const [outlineOpen, setOutlineOpen] = useState(false);
@@ -323,7 +324,7 @@ export function LogReader({ onOpenAi, navigation, editing, search, favorites, ex
     </div></div>
     {active && favoriteFeedback?.kind === "added" && <FavoriteSuccessNotice {...favoriteFeedback} onClose={() => setFavoriteFeedback(null)} onGroup={() => { setOutlineOpen(false); setFavoriteGroup(favoriteFeedback.id); }} />}
     {active && favoriteFeedback?.kind === "remove" && <FavoriteRemovePopover {...favoriteFeedback} busy={favorites.busy} error={favorites.error} onClose={() => setFavoriteFeedback(null)} onConfirm={() => favorites.remove(favoriteFeedback.id)} />}
-    {active && favoriteGroup && <FavoriteGroupDialog favoriteId={favoriteGroup} favorites={favorites} onClose={() => setFavoriteGroup("")} />}
+    {active && favoriteGroup && <FavoriteGroupDialog favoriteId={favoriteGroup} favorites={favorites} onClose={() => setFavoriteGroup("")} onOpenCenter={onOpenFavorites} />}
     {outlineOpen && <div className="reader-outline-modal mobile-panel-outline" onClick={() => setOutlineOpen(false)}><div onClick={event => event.stopPropagation()}>{renderOutline(true)}</div></div>}
     {actionsOpen && <div className="mobile-sheet-backdrop" onClick={() => setActionsOpen(false)}><section className="mobile-action-sheet" ref={actions} role="dialog" aria-modal="true" aria-label="日志操作" onClick={event => event.stopPropagation()}>
       <div className="mobile-sheet-header"><div><strong>日志操作</strong><span>{date || "未选择日期"}</span><span>{day?.fileName || "Markdown"}</span></div><button type="button" aria-label="关闭日志操作" onClick={() => setActionsOpen(false)}><X size={18} /></button></div>

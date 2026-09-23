@@ -254,6 +254,7 @@ export function Workspace() {
     </div>
     <div className="workspace-view" hidden={!logView}><LogReader active={active && logView} favorites={favorites} exporting={exporting} day={logs.day} date={logs.selection.date} heading={logs.selection.heading}
       onOpenAi={() => setOpenAiRequest(value => value + 1)}
+      onOpenFavorites={() => { void logs.selectView("favorites").then(accepted => { if (accepted) { clearSearch(); setReading(false); void favorites.reload(); } }); }}
       navigation={{ previousDate: dayIndex > 0 ? visibleDays[dayIndex - 1].date : null, nextDate: dayIndex >= 0 ? visibleDays[dayIndex + 1]?.date || null : null, showAdjacent: true,
         onReturnNotes: returnNoteId ? async () => { if (await logs.selectNote(returnNoteId)) { setReturnNoteId(""); setReading(false); } } : undefined,
         onReturnRag: returnRag ? async () => { const target = returnRag; if (await logs.selectView("qa")) { setReturnRag(null); requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo({ top: target.scroll, behavior: "auto" }))); } } : undefined }}

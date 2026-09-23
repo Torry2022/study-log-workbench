@@ -825,6 +825,14 @@
     padding-right: 0;
   }
 
+  .sidebar .sidebar-filter-heading .section-title {
+    display: none;
+  }
+
+  .sidebar .sidebar-filter-heading:not(:has(.sidebar-filter-reset:not(:disabled))) {
+    display: none;
+  }
+
   .sidebar-section.grow {
     min-height: 0;
     flex: 1 0 auto;

@@ -58,6 +58,27 @@ try {
   }
   await page.setViewportSize({ width: 1920, height: 1080 });
   await button('浏览').click();
+  await page.setViewportSize({ width: 1024, height: 900 });
+  await button('分屏').click();
+  await expect(page.locator('.view-log .reader')).toHaveCSS('container-type', 'inline-size');
+  const splitPanes = () => page.evaluate(() => {
+    const preview = document.querySelector('.mode-split > .reader-preview-pane').getBoundingClientRect();
+    const source = document.querySelector('.mode-split > .source-workspace').getBoundingClientRect();
+    return { preview: { x: preview.x, y: preview.y, right: preview.right, bottom: preview.bottom }, source: { x: source.x, y: source.y } };
+  });
+  const narrowSplit = await splitPanes();
+  assert.ok(narrowSplit.source.y >= narrowSplit.preview.bottom - 1, 'split panes should stack when the reader is under 840px');
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const wideSplit = await splitPanes();
+  assert.ok(wideSplit.source.x >= wideSplit.preview.right - 1, 'split panes should be side by side when the reader is at least 840px');
+  await button('浏览').click();
+  await expect(page.locator('.view-log .reader')).toHaveCSS('container-type', 'normal');
+  await page.setViewportSize({ width: 1024, height: 900 });
+  await page.locator('.topbar').getByRole('button', { name: '收藏', exact: true }).click();
+  await expect(page.locator('.favorites-results')).toBeVisible();
+  assert.ok((await page.locator('.favorites-results').boundingBox()).y < 300, '1024px favorites toolbar should not push results below the first viewport');
+  await button('日志').click();
+  await page.setViewportSize({ width: 1440, height: 900 });
   for (const [name, selector] of [['随记', '.notes-empty-state'], ['收藏', '.favorites-empty-state']]) {
     await page.locator('.topbar').getByRole('button', { name, exact: true }).click();
     await expect(page.locator('.sidebar-filter-heading > .section-title svg')).toHaveCount(1);
@@ -74,10 +95,22 @@ try {
   assert.deepEqual(await page.locator('.mobile-bottom-nav button span').allTextContents(), ['日志', '随记', '收藏', '问答', '统计']);
   await page.locator('.mobile-bottom-nav').getByRole('button', { name: '收藏' }).click();
   await expect(page.locator('.mobile-topbar-title')).toHaveText('收藏中心');
+  await expect(page.locator('.mobile-topbar').getByRole('button', { name: '全局搜索' })).toBeHidden();
   await page.locator('.mobile-bottom-nav').getByRole('button', { name: '问答' }).click();
   await expect(page.locator('.mobile-topbar-title')).toHaveText('知识问答');
+  await expect(page.locator('.mobile-topbar').getByRole('button', { name: '全局搜索' })).toBeVisible();
   await page.locator('.mobile-bottom-nav').getByRole('button', { name: '统计' }).click();
   await expect(page.locator('.mobile-topbar-title')).toHaveText('学习统计');
+  await expect(page.locator('.reader-toolbar-stats')).toBeHidden();
+  await expect(page.locator('.stats-review-toolbar > div:first-child')).toBeHidden();
+  await expect(page.getByLabel('选择统计月份')).toBeVisible();
+  assert.ok(await page.locator('.stats-calendar-scroll').evaluate(el => el.scrollWidth > el.clientWidth), 'mobile calendar should scroll inside its card');
+  await page.locator('.mobile-bottom-nav').getByRole('button', { name: '随记' }).click();
+  await expect(page.locator('.mobile-topbar').getByRole('button', { name: '全局搜索' })).toBeHidden();
+  await expect(page.locator('.notes-export-slot')).toBeHidden();
+  await page.getByRole('button', { name: '打开随记筛选' }).click();
+  await expect(page.getByRole('button', { name: '导出全部随记' })).toBeVisible();
+  await page.getByRole('button', { name: '关闭左侧导航' }).click();
   assert.deepEqual(errors, []);
   console.log('Passed: original filename style, no extra top-level log tab, heading-edit/save feedback lifecycle, seven responsive widths, empty-state icons and module return');
 } finally { await browser.close(); }

@@ -54,6 +54,10 @@
   justify-content: center;
 }
 
+.notes-export-mobile {
+  display: none;
+}
+
 .notes-filter-section {
   gap: 9px;
 }
@@ -766,14 +770,9 @@
 .notes-error { color: var(--error); }
 .notes-clear-filters { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 12px; }
 
-@media (max-width: 760px) { .notes-header-actions:has(.notes-export-slot) { grid-template-columns: minmax(0, 1fr) repeat(2, 44px); } }
-
-/* The optional export slot occupies the same icon-sized cell as its neighboring actions. */
 @media (max-width: 760px) {
-  .notes-export-slot { min-width: 0; }
-  .notes-export-slot .export-menu > button { width: 44px; min-width: 44px; height: 44px; padding: 0; gap: 0; font-size: 0; }
-  .notes-export-slot .export-menu > button svg { width: 17px; height: 17px; flex-shrink: 0; }
-  .notes-export-slot .export-menu > button span { display: none; }
+  .notes-export-mobile { display: inline-flex; }
+  .notes-export-slot { display: none; }
 }
 .note-entry:focus { outline: none; }
 

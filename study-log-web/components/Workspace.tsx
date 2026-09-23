@@ -235,7 +235,7 @@ export function Workspace() {
     inspectorTab={inspectorTab} onInspectorTab={setInspectorTab}
     inspector={inspectorTab === "writing" ? <WritingPanel writing={writing} themeMode={theme} /> : <HighlightPanel highlighting={highlighting} />}
     view={logs.selection.view} onView={async view => { const accepted = await logs.selectView(view); if (accepted) { clearSearch(); setReading(false); if (view === "favorites") void favorites.reload(); } return accepted; }}
-    moduleNavigation={(onNavigate, filtersOnly) => logs.selection.view === "favorites" ? <FavoritesNavigation favorites={favorites} active={active} /> : logs.selection.view === "stats" ? <StatsNavigation stats={stats} filtersOnly={filtersOnly} onNavigate={onNavigate} /> : logs.selection.view === "notes" ? <NotesNavigation notes={notesWithExtraction} filtersOnly={filtersOnly} onNavigate={onNavigate} /> : null}
+    moduleNavigation={(onNavigate, filtersOnly) => logs.selection.view === "favorites" ? <FavoritesNavigation favorites={favorites} active={active} /> : logs.selection.view === "stats" ? <StatsNavigation stats={stats} filtersOnly={filtersOnly} onNavigate={onNavigate} /> : logs.selection.view === "notes" ? <NotesNavigation notes={notesWithExtraction} filtersOnly={filtersOnly} onNavigate={onNavigate} onExport={() => void exporting.run("notes")} exportBusy={exporting.busy} /> : null}
     selectedMonth={logs.selection.month} selectedDate={logs.selection.date} dayQuery={dayQuery} onDayQueryChange={setDayQuery}
     loading={logs.navigationLoading} error={logs.navigationError || sessionError} readingMode={reading && logView}
     theme={theme} themePreference={preference} onTheme={chooseTheme}

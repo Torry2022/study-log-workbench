@@ -192,6 +192,7 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, module
 
   const switchView = async (next: WorkspaceView) => { if (await onView(next)) setPanel(null); };
   const viewLabel = { log: "学习日志", notes: "随记", favorites: "收藏中心", stats: "学习统计", qa: "知识问答" }[view];
+  const navigationLabel = { log: "打开日志导航", notes: "打开随记筛选", favorites: "打开收藏筛选", stats: "打开统计导航", qa: "打开问答历史" }[view];
   const ViewIcon = { log: FileText, notes: Lightbulb, favorites: Star, stats: BarChart3, qa: MessageSquareText }[view];
   async function selectSidebarDate(date: string, heading?: string, headingIndex?: number) {
     const accepted = await onDate(date, heading, headingIndex);
@@ -211,9 +212,9 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, module
   return <main className={`app-shell view-${view} public-reading-shell${readingMode ? " reading-mode" : ""}${keyboardOpen ? " mobile-keyboard-open" : ""}`}>
     <header className="topbar" inert={drawerOpen && panel !== "search"}>
       <div className="mobile-topbar">
-        <button className="mobile-topbar-button" type="button" onClick={() => openPanel("navigation")} aria-label="打开日志导航" aria-expanded={panel === "navigation"}><Menu size={20} /></button>
+        <button className="mobile-topbar-button" type="button" onClick={() => openPanel("navigation")} aria-label={navigationLabel} aria-expanded={panel === "navigation"}><Menu size={20} /></button>
         <div className="mobile-topbar-title"><strong>{viewLabel}</strong></div>
-        <div className="mobile-topbar-actions"><button className="mobile-topbar-button" type="button" onClick={() => openPanel("search")} aria-label="全局搜索"><Search size={19} /></button><button className="mobile-topbar-button" type="button" onClick={() => openPanel("account")} aria-label="更多设置"><MoreHorizontal size={20} /></button></div>
+        <div className="mobile-topbar-actions"><button className="mobile-topbar-button" type="button" onClick={() => openPanel("search")} aria-label="全局搜索" hidden={view !== "log" && view !== "qa"}><Search size={19} /></button><button className="mobile-topbar-button" type="button" onClick={() => openPanel("account")} aria-label="更多设置"><MoreHorizontal size={20} /></button></div>
       </div>
       <div className="brand">
         <span className="brand-mark theme-logo" aria-hidden="true"><img className="theme-logo-light" src={withBasePath("/app-logo-light.svg")} alt="" /><img className="theme-logo-dark" src={withBasePath("/app-logo-dark.svg")} alt="" /></span>

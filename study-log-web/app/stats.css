@@ -513,3 +513,32 @@
 .taxonomy-table.has-ai-review th:nth-child(5) { width: 12%; }
 .taxonomy-table.has-ai-review th:nth-child(6) { width: 15%; }
 @media (max-width: 760px) { .taxonomy-table.has-ai-review { min-width: 900px; } }
+
+@media (max-width: 1023px) {
+  .view-stats .reader-toolbar-stats,
+  .stats-review-toolbar > div:first-child { display: none; }
+
+  .view-stats .stats-workspace-v2 { padding: 8px 16px 32px; }
+  .stats-review-toolbar,
+  .stats-review-actions,
+  .taxonomy-manager-header,
+  .taxonomy-manager-actions { align-items: stretch; flex-direction: column; }
+  .stats-review-toolbar { min-height: 0; gap: 8px; padding-bottom: 8px; }
+  .stats-review-actions { flex-direction: row; flex-wrap: wrap; gap: 6px; }
+  .stats-review-actions .button,
+  .taxonomy-manager-actions .button,
+  .stats-month-select { width: 100%; height: 44px; }
+  .stats-month-select select { height: 44px; }
+  .stats-review-actions .stats-month-select { flex: 1 1 100%; }
+  .stats-review-actions .button { width: auto; flex: 1 1 calc(50% - 3px); }
+  .stats-metric-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stats-metric-strip strong { font-family: "Study Log Latin Serif", Georgia, serif; font-size: 30px; }
+  .stats-calendar-scroll { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; }
+  .stats-calendar-weekdays,
+  .stats-calendar-grid { min-width: 332px; grid-template-columns: repeat(7, minmax(44px, 1fr)); gap: 4px; }
+  .stats-calendar-day { min-height: 44px; flex-wrap: wrap; gap: 2px; }
+  .stats-analysis-grid,
+  .taxonomy-domain-band,
+  .taxonomy-filter-bar { grid-template-columns: minmax(0, 1fr); }
+  .taxonomy-table-wrap { max-width: calc(100vw - 32px); -webkit-overflow-scrolling: touch; }
+}

@@ -4,7 +4,7 @@ const[root,base='http://127.0.0.1:3563/study-log']=process.argv.slice(2);if(!roo
 const env=parseEnv(await fs.readFile(path.join(root,'.env'),'utf8'));const browser=await chromium.launch();
 try{
  const page=await browser.newPage({viewport:{width:1440,height:900}});await page.goto(base+'?date=2026-01-15');await page.getByLabel('访问密码').fill(env.APP_PASSWORD);await page.getByRole('button',{name:'登录',exact:true}).click();await expect(page.locator('.markdown-preview')).toContainText('合成段落',{timeout:60000});
- await page.evaluate(()=>scrollTo({top:600,behavior:'instant'}));
+ await expect.poll(async()=>{await page.evaluate(()=>scrollTo({top:600,behavior:'instant'}));return page.evaluate(()=>scrollY);}).toBeGreaterThan(500);
  const anchor=await page.evaluate(()=>{const y=document.querySelector('.reader-toolbar-container').getBoundingClientRect().bottom+12;return [...document.querySelectorAll('.markdown-preview p')].find(p=>p.getBoundingClientRect().bottom>=y)?.textContent;});assert.match(anchor,/合成段落/);
  await page.getByRole('button',{name:'源码',exact:true}).filter({visible:true}).click();
  const line=page.locator('.cm-line').filter({hasText:anchor});await expect(line).toBeVisible();await expect.poll(async()=>line.evaluate(el=>el.getBoundingClientRect().top)).toBeGreaterThan(-10);await expect.poll(async()=>line.evaluate(el=>el.getBoundingClientRect().top)).toBeLessThan(250);

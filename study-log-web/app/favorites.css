@@ -1025,7 +1025,7 @@
 
 @media (max-width: 1180px) {
 
-  .favorites-header-actions {
+  .reader-controls.favorites-header-actions {
     width: 100%;
     align-items: center;
     flex-direction: row;

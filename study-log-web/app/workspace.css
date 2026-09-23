@@ -496,6 +496,10 @@
 .view-log .reader {
   container-type: normal;
 }
+.view-log .reader:has(.mode-split) {
+  container-name: split-reader;
+  container-type: inline-size;
+}
 
 @media (max-width: 1180px) {
 

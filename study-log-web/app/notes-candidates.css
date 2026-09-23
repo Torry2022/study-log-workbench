@@ -465,7 +465,7 @@
 .notes-ai-warnings { padding: 12px; border: 1px solid var(--hairline); border-radius: var(--radius-md); color: var(--muted); font-size: 12px; }
 .notes-ai-warnings p { margin: 0; }
 @media (max-width: 760px) {
-  .notes-header-actions:has(.notes-ai-extract) { grid-template-columns: minmax(0, 1fr) repeat(3, 44px); }
+  .notes-header-actions:has(.notes-ai-extract) { grid-template-columns: minmax(0, 1fr) repeat(2, 44px); }
   .notes-ai-extract { width: 44px; min-width: 44px; height: 44px; padding: 0; }
   .notes-ai-extract > span { display: none; }
   .notes-ai-extract > svg { flex-shrink: 0; }

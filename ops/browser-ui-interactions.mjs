@@ -52,6 +52,15 @@ try {
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${module} drawer overflows`);
     await page.getByRole("button", { name: "关闭左侧导航" }).click();
   }
+  await page.goto(`${base}?date=2026-01-15`);
+  await expect(page.locator(".markdown-preview")).toContainText("并发控制");
+  await page.getByRole("button", { name: "更多日志操作" }).click();
+  const logActions = page.getByRole("dialog", { name: "日志操作" });
+  await expect(logActions).toBeVisible();
+  assert.equal(await logActions.locator(".mobile-sheet-grid").evaluate(element => getComputedStyle(element).gridTemplateColumns.split(" ").length), 2);
+  await page.setViewportSize({ width: 481, height: 900 });
+  assert.equal(await logActions.locator(".mobile-sheet-grid").evaluate(element => getComputedStyle(element).gridTemplateColumns.split(" ").length), 3);
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "log actions overflow");
   assert.deepEqual(errors, []);
-  console.log("Passed: favorite group center navigation and module-specific mobile drawer content");
+  console.log("Passed: favorite group navigation, mobile drawers, and narrow log action grid");
 } finally { await browser.close(); }

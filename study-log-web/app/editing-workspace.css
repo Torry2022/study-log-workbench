@@ -382,8 +382,11 @@
 @media (max-width: 1023px) {
   .mobile-sheet-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
   .mobile-sheet-grid button { min-width: 0; min-height: 70px; display: grid; place-items: center; align-content: center; gap: 7px; padding: 8px 5px; border: 1px solid var(--hairline); border-radius: var(--radius-md); background: var(--surface-soft); color: var(--body); font-size: 12px; text-align: center; }
-  .mobile-sheet-header > div { display: grid; gap: 4px; }
+  .mobile-sheet-header > div { display: grid; gap: 2px; }
   .mobile-sheet-header span { color: var(--muted); font-size: 12px; }
+}
+@media (max-width: 480px) {
+  .mobile-sheet-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (min-width: 1024px) {
   .mode-split { height: calc(100svh - var(--reader-toolbar-height) - 64px); min-height: 420px; grid-template-rows: auto auto minmax(0, 1fr); }

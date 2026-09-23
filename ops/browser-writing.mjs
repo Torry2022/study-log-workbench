@@ -71,7 +71,7 @@ try {
     return route.fulfill(batchRequests === 1 ? { status: 200, json: { document: { fileName: "retained.txt", text: "BEFORE_AUTH_EXPIRY", sections: [], warnings: [] } } } : { status: 401, json: { error: "Unauthorized" } });
   });
   await fileInput.setInputFiles([textFile("retained.txt", "first"), textFile("expired.txt", "second"), textFile("never-requested.txt", "third")]); await expect(page.getByLabel("访问密码")).toBeVisible(); assert.equal(batchRequests, 2); await page.unroute("**/api/materials/extract"); await login(); await open(); await expect(material).toHaveValue(/BEFORE_AUTH_EXPIRY/);
-  await expect(page.getByRole("button", { name: "重新检查配置", exact: true })).toBeEnabled(); configured = true; await page.getByRole("button", { name: "重新检查配置", exact: true }).click(); await expect(page.getByRole("button", { name: "生成日志草稿", exact: true })).toBeEnabled();
+  await page.locator('.writing-panel .feature-availability summary').click(); await expect(page.getByRole("button", { name: "重新检查", exact: true })).toBeEnabled(); configured = true; await page.getByRole("button", { name: "重新检查", exact: true }).click(); await expect(page.getByRole("button", { name: "生成日志草稿", exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "生成日志草稿", exact: true }).click(); await expect(output).toHaveValue(generatedContent); await expect(panel).toContainText("合成生成提示");
   await output.fill(generatedContent + "\n\n人工修订保留。"); const edited = await output.inputValue();
   const callsBeforeCancel = generationCalls; await page.getByRole("button", { name: "生成日志草稿", exact: true }).click(); await confirm(false); assert.equal(generationCalls, callsBeforeCancel); await expect(output).toHaveValue(edited);

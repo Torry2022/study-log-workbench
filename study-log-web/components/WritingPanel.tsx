@@ -1,6 +1,7 @@
 "use client";
 
-import { Check, RefreshCw, Upload, Wand2, X } from "lucide-react";
+import { Check, Upload, Wand2, X } from "lucide-react";
+import { FeatureAvailability } from "./FeatureAvailability";
 import { useEffect, useRef } from "react";
 import type { WritingController } from "@/hooks/use-writing";
 import "@/app/writing.css";
@@ -14,10 +15,7 @@ export function WritingPanel({ writing }: { writing: WritingController; themeMod
   }, [writing.instruction, writing.active, writing.visible]);
   if (!writing.active) return null;
   return <div className="writing-panel panel-body">
-    {(writing.configurationError || writing.configurationMessages.length > 0) && <div className="writing-configuration">
-      {writing.configurationError ? <p className="status-line error" role="alert">{writing.configurationError}</p> : writing.configurationMessages.map(message => <p className="status-line warning" key={message}>{message}</p>)}
-      <button type="button" className="mini-button" onClick={() => void writing.refreshConfiguration()} disabled={writing.configurationLoading}><RefreshCw size={13} />重新检查配置</button>
-    </div>}
+    {(writing.configurationError || writing.configurationMessages.length > 0) && <FeatureAvailability dark title={writing.configurationError ? "暂时无法检查 AI 服务" : "AI 写作尚未启用"} description="仍可导入和整理材料，启用后即可生成草稿。" messages={writing.configurationError ? [writing.configurationError] : writing.configurationMessages} busy={writing.configurationLoading} onCheck={() => void writing.refreshConfiguration()} />}
     <label htmlFor="writing-instruction">补充要求</label>
     <textarea id="writing-instruction" ref={instruction} className="dark-input instruction-textarea" value={writing.instruction} onChange={event => writing.setInstruction(event.target.value)} placeholder="例如：简写、突出项目实践、保留术语" rows={1} />
     <div className="field-row"><label htmlFor="writing-material">学习材料</label><label className={`mini-button file-button${writing.busy ? " disabled" : ""}`}><Upload size={14} />{writing.busy === "import" ? "导入中" : "导入文件"}

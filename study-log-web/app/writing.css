@@ -119,6 +119,4 @@
 
 .writing-panel { background: var(--surface-dark); color: var(--on-dark); }
 .writing-panel .mini-button { color: var(--on-dark-soft); border-color: rgba(250, 249, 245, 0.16); }
-.writing-panel .writing-configuration { display: grid; gap: 8px; }
-.writing-panel .writing-configuration .mini-button { justify-self: start; }
 .writing-panel .status-line { overflow-wrap: anywhere; }

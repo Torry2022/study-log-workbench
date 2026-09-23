@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useSession } from "./AuthGate";
 import { WorkspaceChrome } from "./WorkspaceChrome";
 import { LogReader } from "./LogReader";
+import { FeatureAvailability } from "./FeatureAvailability";
 import { useLogWorkspace } from "@/hooks/use-log-workspace";
 import { useTheme } from "@/hooks/use-theme";
 import { useLogDraft } from "@/hooks/use-log-draft";
@@ -240,10 +241,10 @@ export function Workspace() {
     {navigationError && <div className="editor-navigation-status" role="alert">{navigationError}<button className="button secondary" type="button" onClick={() => setNavigationError("")}>关闭</button></div>}
     {(exporting.status || exporting.error || exporting.busy) && <div className="editor-navigation-status" role={exporting.error ? "alert" : "status"}>{exporting.error || exporting.status || "正在准备导出…"}{exporting.busy && <button className="button secondary" type="button" onClick={exporting.cancel}>取消导出</button>}</div>}
     <div className="workspace-view" hidden={logs.selection.view !== "qa"}>
-      {rag.configurationError && <div className="editor-navigation-status" role="status">{rag.configurationError}<button className="button secondary" onClick={() => void rag.refreshConfiguration()}>检查配置</button></div>}
       {rag.error && <div className="editor-navigation-status" role="alert">{rag.error}<button className="button secondary" onClick={rag.clearError}>关闭</button><button className="button secondary" onClick={() => void rag.reloadSession()}>重新读取</button></div>}
       {(rag.saveError || rag.saving) && <div className="editor-navigation-status" role={rag.saveError ? "alert" : "status"}>{rag.saveError || "正在保存问答历史…"}{rag.saveError && <><button className="button secondary" disabled={rag.saving || !active} onClick={rag.retrySave}>重试保存</button><button className="button secondary" disabled={rag.saving || !active} onClick={() => void rag.reloadSession()}>放弃本地回答并重新读取</button></>}</div>}
       <RagWorkspace onOpenLog={openLog} active={active} visible={logs.selection.view === "qa"} disabled={!rag.configured || rag.saving || Boolean(rag.saveError)} messages={rag.messages} initializing={rag.initializing}
+        availability={rag.configurationError ? <FeatureAvailability title="问答服务尚未就绪" description="已有问答仍可查看，服务就绪后即可继续提问。" messages={[rag.configurationError]} onCheck={() => void rag.refreshConfiguration()} /> : undefined}
         question={rag.question} stage={rag.stage} generating={rag.generating} themeMode={theme} answerMode={rag.answerMode} focusRequestToken={rag.focusToken} sessionNavigationToken={rag.navigationToken}
         onQuestionChange={rag.setQuestion} onAnswerModeChange={rag.setAnswerMode} onSubmit={() => void rag.submit()} onStop={rag.stop} onRegenerate={() => void rag.regenerate()} onCitation={citation => void openRagCitation(citation)} />
     </div>

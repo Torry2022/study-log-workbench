@@ -68,8 +68,9 @@ try {
     await dialog.getByRole("button", { name: accepted ? "放弃修改" : "取消", exact: true }).click(); await expect(dialog).toHaveCount(0);
   };
   await page.goto(`${base}?view=stats&month=2026-08`); await login(); await openManager();
-  await expect(request()).toBeDisabled(); await expect(page.locator(".taxonomy-ai-status")).toContainText("请配置 CHAT_MODEL");
-  configured = true; await page.getByRole("button", { name: "刷新 AI 配置", exact: true }).click(); await expect(request()).toBeEnabled();
+  await expect(request()).toBeDisabled(); await expect(page.locator(".taxonomy-ai-status")).toContainText("AI 分类建议尚未启用");
+  await page.locator('.taxonomy-ai-status .feature-availability summary').click(); await expect(page.locator('.feature-availability-details')).toContainText('模型名称');
+  configured = true; await page.getByRole("button", { name: "重新检查", exact: true }).click(); await expect(request()).toBeEnabled();
 
   saved = { domains: ["其他"], mappings: {}, updatedAt: null, version: null };
   await page.reload(); await openManager(); await expect(request()).toBeDisabled();

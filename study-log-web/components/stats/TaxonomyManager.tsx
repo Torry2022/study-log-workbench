@@ -3,6 +3,7 @@
 import { ArrowLeft, LockKeyhole, Save, Search, Sparkles, Trash2 } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
 import { WorkspaceState } from "./WorkspaceState";
+import { FeatureAvailability } from "../FeatureAvailability";
 import type { Taxonomy, TaxonomyCatalogItem } from "@/lib/stats-types";
 import type { TaxonomySuggestionsController } from "@/hooks/use-taxonomy-suggestions";
 
@@ -98,8 +99,7 @@ export function TaxonomyManager({
 
       <div className="taxonomy-ai-status" aria-live="polite">
         {ai.configurationLoading && <p>正在读取 AI 配置…</p>}
-        {ai.configurationError && <p>{ai.configurationError}</p>}
-        {!ai.configured && <>{ai.configurationMessages.map(message => <p key={message}>{message}</p>)}<button type="button" className="button secondary" disabled={ai.configurationLoading} onClick={() => void ai.refreshConfiguration()}>刷新 AI 配置</button></>}
+        {!ai.configured && !ai.configurationLoading && <FeatureAvailability title="AI 分类建议尚未启用" description="可以继续手动调整和保存分类。" messages={ai.configurationError ? [ai.configurationError] : ai.configurationMessages} busy={ai.configurationLoading} onCheck={() => void ai.refreshConfiguration()} />}
         {ai.inputProblem && <p>{ai.inputProblem}</p>}
         {filteredRows.length > 200 && <p>本次最多处理 200 个标签，请缩小筛选范围。</p>}
         {ai.status && <p>{ai.status}</p>}

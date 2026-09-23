@@ -54,7 +54,7 @@ try {
   if (other.exists) assert.ok(other.content.includes(otherMarker), "Secondary date belongs to another fixture; do not overwrite it");
   else assert.equal((await page.request.put(`${base}/api/logs/day`, { data: { date: otherDate, content: `### ${otherMarker}\n\n只用于确认旧标注不会进入切换后的日块。`, baseVersion: other.version } })).status(), 200);
   await page.goto(`${base}?date=${date}`); await open(); await expect(panel).toContainText("合成标注模型未配置"); await expect(page.getByRole("button", { name: "标注重点", exact: true })).toBeDisabled(); assert.equal(calls, 0);
-  await expect(page.getByRole("button", { name: "重新检查标注配置", exact: true })).toBeEnabled(); configured = true; await page.getByRole("button", { name: "重新检查标注配置", exact: true }).click(); await expect(page.getByRole("button", { name: "标注重点", exact: true })).toBeEnabled();
+  await page.locator('.highlight-panel .feature-availability summary').click(); await expect(page.getByRole("button", { name: "重新检查", exact: true })).toBeEnabled(); configured = true; await page.getByRole("button", { name: "重新检查", exact: true }).click(); await expect(page.getByRole("button", { name: "标注重点", exact: true })).toBeEnabled();
   await source(); const savedVersion = (await day()).version;
   await request(); await expect(dialog.locator(".diff-bold-token")).toHaveCount(2); await expect(dialog.getByLabel("原始 Markdown", { exact: true })).toContainText("核心概念与机制"); await expect(dialog.getByLabel("标注后的 Markdown", { exact: true })).toContainText("**核心概念与机制**"); assert.equal((await day()).version, savedVersion);
   await close(); await expect(editor).not.toContainText("**核心概念与机制**"); assert.equal((await day()).version, savedVersion);

@@ -1,0 +1,45 @@
+.feature-availability {
+  --availability-text: var(--body);
+  --availability-muted: var(--muted);
+  --availability-border: var(--hairline);
+  --availability-surface: var(--surface-soft);
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--availability-border);
+  border-radius: var(--radius-md);
+  background: var(--availability-surface);
+  color: var(--availability-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.feature-availability.on-dark {
+  --availability-text: var(--on-dark);
+  --availability-muted: var(--on-dark-soft);
+  --availability-border: var(--surface-dark-elevated);
+  --availability-surface: var(--surface-dark-soft);
+}
+.feature-availability > svg { margin-top: 2px; }
+.feature-availability-body { min-width: 0; }
+.feature-availability-body > strong { color: var(--availability-text); font-size: 13px; font-weight: 500; }
+.feature-availability p { margin: 3px 0 0; color: inherit; font-size: inherit; line-height: inherit; }
+.feature-availability summary { width: fit-content; margin-top: 6px; cursor: pointer; color: var(--availability-text); }
+.feature-availability-details { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--availability-border); overflow-wrap: anywhere; }
+.feature-availability ul { margin: 6px 0; padding-left: 18px; }
+.feature-availability button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  margin-top: 8px;
+  padding: 0 10px;
+  border: 1px solid var(--availability-border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--availability-text);
+  font: inherit;
+}
+.rag-composer > .feature-availability { margin: 2px 2px 8px; }

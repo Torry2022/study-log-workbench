@@ -240,7 +240,6 @@
 
 .highlight-review-overlay { z-index: 110; }
 .highlight-panel { min-height: 0; display: flex; flex-direction: column; gap: 12px; padding: 16px; overflow: auto; background: var(--surface-dark); color: var(--on-dark); }
-.highlight-panel .highlight-configuration { display: grid; gap: 8px; }
 .highlight-panel .button.secondary-on-dark { color: var(--on-dark-soft); background: var(--surface-dark-elevated); border-color: rgba(250,249,245,.12); }
 .highlight-panel .status-line, .highlight-review-overlay .status-line { margin: 0; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
 .highlight-panel .status-line.warning, .highlight-review-overlay .status-line.warning { color: var(--warning); }

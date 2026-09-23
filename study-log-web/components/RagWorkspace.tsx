@@ -3,13 +3,14 @@
 import "@/app/rag-workspace.css";
 
 import { BookOpen, Check, ChevronDown, CircleAlert, Copy, FileText, LoaderCircle, MessageSquareText, RotateCcw, Send, Square } from "lucide-react";
-import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { type FormEvent, type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { MarkdownPreview } from "@/components/MarkdownPreview";
 import { RagViewState as WorkspaceState } from "@/components/RagViewState";
 import type { RagAnswerMode, RagChatMessage, RagCitation } from "@/lib/rag-types";
 import { stripRagCitationLabels } from "@/lib/rag-answer";
 
 interface RagWorkspaceProps {
+  availability?: ReactNode;
   onOpenLog?: () => void;
   active: boolean;
   visible: boolean;
@@ -32,6 +33,7 @@ interface RagWorkspaceProps {
 }
 
 export function RagWorkspace({
+  availability,
   active,
   onOpenLog,
   visible,
@@ -337,6 +339,7 @@ export function RagWorkspace({
       </div>
 
       <form className={`rag-composer${composerHidden ? " is-hidden" : ""}`} onSubmit={submit} ref={composerRef}>
+        {availability}
         <textarea
           ref={textareaRef}
           value={question}

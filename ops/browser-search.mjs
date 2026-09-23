@@ -53,7 +53,9 @@ try {
   await input().press('ArrowDown'); await expect(options().first()).toHaveAttribute('aria-selected', 'true');
   await input().press('Escape'); await expect(popover()).not.toBeVisible();
   await input().blur(); await input().focus(); await expect(popover()).toBeVisible();
-  await page.locator('.reader-log-identity h2').click(); await expect(popover()).not.toBeVisible();
+  // The date heading can sit underneath the search popover in the full workspace.
+  // Click actual exposed reader content to exercise outside-pointer dismissal.
+  await page.locator('.markdown-preview p').nth(8).click(); await expect(popover()).not.toBeVisible();
 
   await query('b12case'); await expect(options()).toHaveCount(1);
   await page.getByRole('button', { name: '搜索时忽略大小写，点击后区分大小写', exact: true }).click();

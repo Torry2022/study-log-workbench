@@ -609,6 +609,7 @@
 
 @media (max-width: 1023px) {
 
+  .notes-open-log,
   .notes-title-block {
     display: none;
   }
@@ -623,7 +624,7 @@
   .notes-header-actions {
     width: 100%;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 44px 44px;
+    grid-template-columns: minmax(0, 1fr) 44px;
     gap: 8px;
   }
 
@@ -761,7 +762,7 @@
 .notes-error { color: var(--error); }
 .notes-clear-filters { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 12px; }
 
-@media (max-width: 760px) { .notes-header-actions:has(.notes-export-slot) { grid-template-columns: minmax(0, 1fr) repeat(3, 44px); } }
+@media (max-width: 760px) { .notes-header-actions:has(.notes-export-slot) { grid-template-columns: minmax(0, 1fr) repeat(2, 44px); } }
 
 /* The optional export slot occupies the same icon-sized cell as its neighboring actions. */
 @media (max-width: 760px) {
@@ -771,3 +772,14 @@
   .notes-export-slot .export-menu > button span { display: none; }
 }
 .note-entry:focus { outline: none; }
+
+/* Empty modules share the question workspace's visual anchor. */
+.notes-empty-state {
+  min-height: clamp(340px, 48vh, 540px);
+}
+.reader-content-notes:has(.notes-empty-state) {
+  padding-top: 28px;
+}
+@media (max-width: 1023px) {
+  .reader-content-notes:has(.notes-empty-state) { padding-top: 0; }
+}

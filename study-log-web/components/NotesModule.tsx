@@ -1,9 +1,10 @@
 "use client";
 
-import { Bold, Check, ChevronLeft, FileImage, Italic, Link2, Plus, RefreshCw, Save, Search, Trash2, X } from "lucide-react";
+import { Bold, Check, ChevronLeft, FileImage, FileText, Italic, Lightbulb, Link2, Plus, Save, Search, Trash2, X } from "lucide-react";
 import { useEffect, useId, useRef, useState, type ClipboardEvent, type DragEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { MarkdownPreview, type InternalLinkTarget } from "./MarkdownPreview";
+import { WorkspaceState } from "./stats/WorkspaceState";
 import { InternalLinkDialog } from "./InternalLinkDialog";
 import type { NotesController } from "@/hooks/use-notes";
 import type { StudyNote, StudyNoteFacet } from "@/lib/notes-types";
@@ -11,7 +12,7 @@ import { formatNoteTime, localDateTimeInput, parseTags } from "@/lib/notes-view"
 import { IMAGE_ACCEPT, imageExtension } from "@/lib/asset-upload-rules";
 import "@/app/notes.css";
 
-interface Props { exportAction?: ReactNode; extractAction?: ReactNode; extraction?: ReactNode; notes: NotesController; themeMode: "light" | "dark"; onOpenLogTarget: (target: InternalLinkTarget, noteId: string) => void | Promise<unknown> }
+interface Props { onOpenLog?: () => void; exportAction?: ReactNode; extractAction?: ReactNode; extraction?: ReactNode; notes: NotesController; themeMode: "light" | "dark"; onOpenLogTarget: (target: InternalLinkTarget, noteId: string) => void | Promise<unknown> }
 
 const keyOf = (value: string) => value.replace(/\s+/g, "").toLocaleLowerCase();
 
@@ -288,7 +289,7 @@ function NoteItem({ note, notes, themeMode, onOpenLogTarget }: { note: StudyNote
 }
 
 
-export function NotesModule({ notes, themeMode, onOpenLogTarget, exportAction, extractAction, extraction }: Props) {
+export function NotesModule({ notes, themeMode, onOpenLogTarget, exportAction, extractAction, extraction, onOpenLog }: Props) {
   if (!notes.active || !notes.visible) return null;
   return <>
     <div className="reader-toolbar-container"><div className="reader-toolbar notes-toolbar">
@@ -299,21 +300,18 @@ export function NotesModule({ notes, themeMode, onOpenLogTarget, exportAction, e
           <button className="search-submit" type="submit" disabled={!notes.query.trim()} aria-label="搜索随记内容"><Search size={14} /></button>
           {(notes.query || notes.submittedQuery) && <button className="search-clear" type="button" onClick={notes.clearSearch} aria-label="清空随记搜索"><X size={14} /></button>}
         </form>
-        <button className="button secondary" type="button" disabled={notes.loading || notes.saving} onClick={() => void notes.reload()} aria-label="刷新随记" title="刷新随记"><RefreshCw size={15} /></button>
-        {exportAction && <div className="notes-export-slot">{exportAction}</div>}
         {extractAction}
+        {exportAction && <div className="notes-export-slot">{exportAction}</div>}
         <button className="button secondary notes-new-mobile" type="button" disabled={notes.saving} onClick={() => void notes.openNew()} aria-label="新建随记"><Plus size={20} /></button>
+        {onOpenLog && <button className="button secondary notes-open-log" type="button" onClick={onOpenLog}><FileText size={15} />日志</button>}
       </div>
     </div></div>
     <div className="reader-content reader-content-notes"><div className={`notes-workspace${notes.editorOpen ? " notes-workspace-editor" : ""}`}>
-      {notes.loadError && <div className="notes-error" role="alert">{notes.loadError}<button className="button secondary" type="button" disabled={notes.loading} onClick={() => void notes.reload()}>重试</button></div>}
+      {(notes.loaded || notes.editorOpen || extraction) && notes.loadError && <div className="notes-error" role="alert">{notes.loadError}<button className="button secondary" type="button" disabled={notes.loading} onClick={() => void notes.reload()}>重试</button></div>}
       {notes.error && <div className="notes-error" role="alert">{notes.error}{notes.conflict && <button className="button secondary" type="button" disabled={notes.busy} onClick={() => void notes.reloadDraft()}>重新读取服务器版本</button>}</div>}
       {notes.message && <div className="notes-feedback" role="status">{notes.message}</div>}
       {notes.insertions.status && <div className={notes.insertions.failed ? "notes-error" : "notes-feedback"} role={notes.insertions.failed ? "alert" : "status"}>{notes.insertions.status}</div>}
-      {extraction || (notes.editorOpen ? <NoteEditor notes={notes} /> : !notes.loaded ? <div className="workspace-state notes-state" role="status">{notes.loading ? "正在加载随记" : "随记加载失败"}</div> : notes.visibleNotes.length ? <div className="notes-feed">{notes.visibleNotes.map(note => <NoteItem key={note.id} note={note} notes={notes} themeMode={themeMode} onOpenLogTarget={onOpenLogTarget} />)}</div> : <div className="workspace-state notes-state notes-empty-state" role="status">
-        <div className="workspace-state-body"><span className="workspace-state-title">{notes.notes.length ? "没有匹配的随记" : "还没有随记"}</span><span className="workspace-state-description">{notes.notes.length ? "调整搜索词、年份或标签后重试。" : "记录一个值得长期保留的观点、经验或判断。"}</span></div>
-        {!notes.notes.length && <button className="button primary" type="button" onClick={() => void notes.openNew()}><Plus size={15} />新建随记</button>}
-      </div>)}
+      {extraction || (notes.editorOpen ? <NoteEditor notes={notes} /> : !notes.loaded ? <WorkspaceState kind={notes.loadError ? "error" : "loading"} title={notes.loadError ? "随记加载失败" : "正在加载随记"} description={notes.loadError || undefined} className="notes-state" actions={notes.loadError ? <button className="button secondary" type="button" disabled={notes.loading} onClick={() => void notes.reload()}>重试</button> : undefined} /> : notes.visibleNotes.length ? <div className="notes-feed">{notes.visibleNotes.map(note => <NoteItem key={note.id} note={note} notes={notes} themeMode={themeMode} onOpenLogTarget={onOpenLogTarget} />)}</div> : <WorkspaceState kind="empty" icon={Lightbulb} title={notes.notes.length ? "没有匹配的随记" : "还没有随记"} description={notes.notes.length ? "调整搜索词、年份或标签后重试。" : "记录一个值得长期保留的观点、经验或判断。"} className="notes-state notes-empty-state" />)}
     </div></div>
     {notes.insertions.link && createPortal(<InternalLinkDialog initialAlias={notes.insertions.link.alias} onClose={notes.insertions.closeLink} onInsert={notes.insertions.insertInternalLink} />, document.body)}
   </>;

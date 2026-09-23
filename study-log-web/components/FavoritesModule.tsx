@@ -1,14 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowUpDown, ChevronDown, Grid2X2, LayoutList, Search, X } from "lucide-react";
+import { ArrowUpDown, ChevronDown, FileText, Grid2X2, LayoutList, Search, Star, X } from "lucide-react";
+import { WorkspaceState } from "./stats/WorkspaceState";
 import { FavoriteGroupDialog } from "./FavoriteGroupDialog";
 import { FavoriteRemovePopover } from "./FavoriteFeedback";
 import type { FavoritesController } from "@/hooks/use-favorites";
 import type { FavoriteHeading } from "@/lib/favorites-types";
 import "@/app/favorites.css";
 
-export function FavoritesModule({ favorites, active = true, onOpen }: {
+export function FavoritesModule({ favorites, active = true, onOpen, onOpenLog }: {
+  onOpenLog?: () => void;
   favorites: FavoritesController; active?: boolean; onOpen: (date: string, heading: string, missing?: boolean) => Promise<boolean>;
 }) {
   const [query, setQuery] = useState(favorites.filters.query);
@@ -39,17 +41,18 @@ export function FavoritesModule({ favorites, active = true, onOpen }: {
           <Search size={15} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder={favorites.filters.headingsOnly ? "搜索收藏小节标题" : "搜索收藏标题或内容"} aria-label="搜索收藏" />
           <button className={`search-heading-toggle${favorites.filters.headingsOnly ? " active" : ""}`} type="button" onClick={() => favorites.filter({ headingsOnly: !favorites.filters.headingsOnly })} aria-pressed={favorites.filters.headingsOnly} aria-label="仅搜索收藏小节标题">H3</button>
           <button className={`search-case-toggle${favorites.filters.ignoreCase ? "" : " active"}`} type="button" onClick={() => favorites.filter({ ignoreCase: !favorites.filters.ignoreCase })} aria-pressed={!favorites.filters.ignoreCase} aria-label="收藏搜索区分大小写">Aa</button>
-          <button className="search-submit" type="submit" aria-label="搜索收藏内容"><Search size={14} /></button>
+          <button className="search-submit" type="submit" disabled={!query.trim()} aria-label="搜索收藏内容"><Search size={14} /></button>
           {(query || favorites.filters.query) && <button className="search-clear" type="button" onClick={() => { setQuery(""); favorites.filter({ query: "" }); }} aria-label="清空收藏搜索"><X size={14} /></button>}
         </form>
-        <div className="stats-month-control favorites-sort-control"><ArrowUpDown size={16} /><select value={favorites.filters.sort} onChange={event => favorites.filter({ sort: event.target.value as "log-date" | "saved-date" })} aria-label="收藏排序方式"><option value="log-date">按日志日期排序</option><option value="saved-date">按收藏时间排序</option></select><ChevronDown size={15} /></div>
+        <div className="stats-month-control favorites-sort-control"><ArrowUpDown size={16} /><select value={favorites.filters.sort} onChange={event => favorites.filter({ sort: event.target.value as "log-date" | "saved-date" })} aria-label="收藏排序方式"><option value="log-date">日志日期：最新优先</option><option value="saved-date">收藏时间：最新优先</option></select><ChevronDown size={15} /></div>
         {viewSwitch("favorites-view-switch-desktop")}{viewSwitch("favorites-view-switch-mobile")}
+        {onOpenLog && <button className="button secondary" type="button" onClick={onOpenLog}><FileText size={15} />日志</button>}
       </div>
     </div></div>
     <div className="reader-content reader-content-favorites"><div className="favorites-view">
-      {favorites.error && <div className="favorites-error" role="alert">{favorites.error}<button className="button secondary" type="button" disabled={favorites.loading || favorites.busy} onClick={() => void favorites.reload()}>重试</button></div>}
-      {!favorites.loaded ? <div className="workspace-state favorites-empty-state" role="status">{favorites.loading ? "正在加载收藏" : "未能加载收藏"}</div> : <>
-        <div className="favorites-results"><span>{favorites.visible.length} 条收藏{favorites.filters.group !== "all" && ` · ${favorites.filters.group === "ungrouped" ? "未分组" : groupsById.get(favorites.filters.group) || ""}`}{favorites.filters.query && ` · ${favorites.filters.query}`}</span>{favorites.loading && <span role="status">正在刷新</span>}</div>
+      {favorites.loaded && favorites.error && <div className="favorites-error" role="alert">{favorites.error}<button className="button secondary" type="button" disabled={favorites.loading || favorites.busy} onClick={() => void favorites.reload()}>重试</button></div>}
+      {!favorites.loaded ? <WorkspaceState kind={favorites.error ? "error" : "loading"} title={favorites.error ? "收藏加载失败" : "正在加载收藏"} description={favorites.error || undefined} className="favorites-empty-state" actions={favorites.error ? <button className="button secondary" type="button" disabled={favorites.loading} onClick={() => void favorites.reload()}>重试</button> : undefined} /> : <>
+        {favorites.favorites.length > 0 && <div className="favorites-results"><span>{favorites.visible.length} 条收藏{favorites.filters.group !== "all" && ` · ${favorites.filters.group === "ungrouped" ? "未分组" : groupsById.get(favorites.filters.group) || ""}`}{favorites.filters.query && ` · ${favorites.filters.query}`}</span>{favorites.loading && <span role="status">正在刷新</span>}</div>}
         {monthGroups.length ? <div className="favorites-groups">{monthGroups.map(([month, items]) => <section className="favorites-month-group" key={month}>
           {favorites.filters.sort === "log-date" && <div className="favorites-month-heading"><span>{month}</span><small>{items.length}</small></div>}
           <div className={`favorites-month-list ${favorites.view}`}>{items.map(favorite => <div key={favorite.id} className={`favorite-item favorite-item-center favorite-item-${favorites.view}${favorite.exists ? "" : " missing"}`}>
@@ -62,7 +65,7 @@ export function FavoritesModule({ favorites, active = true, onOpen }: {
             <button className="favorite-group-button" type="button" disabled={favorites.busy} onClick={() => setGroupId(favorite.id)} aria-label={`选择 ${favorite.headingText} 的收藏分组`}>分组</button>
             <button className="favorite-remove" type="button" disabled={favorites.busy} aria-label={`取消收藏 ${favorite.headingText}`} onClick={event => { const rect = event.currentTarget.getBoundingClientRect(); setRemove({ favorite, top: rect.top + rect.height / 2, left: rect.left - 8 }); }}><X size={13} strokeWidth={2} /></button>
           </div>)}</div>
-        </section>)}</div> : <div className="workspace-state favorites-empty-state" role="status"><div className="workspace-state-body"><span className="workspace-state-title">{favorites.favorites.length ? "没有符合条件的收藏" : "暂无收藏小节"}</span><span className="workspace-state-description">{favorites.favorites.length ? "换个关键词、分组或月份再试。" : "在日志三级小节标题旁点击星标即可收藏。"}</span></div></div>}
+        </section>)}</div> : <WorkspaceState kind="empty" icon={Star} title={favorites.favorites.length ? "没有符合条件的收藏" : "暂无收藏小节"} description={!favorites.favorites.length ? "在浏览目录中点击三级标题旁的星标即可收藏。" : favorites.filters.headingsOnly ? favorites.filters.ignoreCase ? "换个小节标题关键词或筛选条件再试。" : "当前已区分大小写；可关闭 Aa 后再搜索小节标题。" : favorites.filters.ignoreCase ? "换个收藏标题、正文内容或月份筛选再试。" : "当前已区分大小写；可关闭 Aa 后再搜索收藏标题或正文内容。"} className="favorites-empty-state" />}
       </>}
     </div></div>
     {groupId && <FavoriteGroupDialog favoriteId={groupId} favorites={favorites} onClose={() => setGroupId("")} />}

@@ -10,7 +10,7 @@ import { useLogDraft } from "@/hooks/use-log-draft";
 import { useConfirmation } from "@/hooks/use-confirmation";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { BackupDialog } from "./BackupDialog";
-import { requestJson } from "@/lib/client-http";
+import { requestJson, requestLogJson } from "@/lib/client-http";
 import type { DayEntry } from "@/lib/types";
 import type { SearchSelection } from "./SearchBox";
 import { clearSearchSessionHistory } from "@/hooks/use-search-history";
@@ -35,7 +35,7 @@ import { useRag } from "@/hooks/use-rag";
 import { RagWorkspace } from "./RagWorkspace";
 import { RagHistorySidebar } from "./RagHistorySidebar";
 import type { RagCitation } from "@/lib/rag-types";
-import { WandSparkles } from "lucide-react";
+import { CalendarDays, Plus, Star, Tag, Tags, WandSparkles } from "lucide-react";
 import type { InternalLinkTarget } from "./MarkdownPreview";
 import { buildMarkdownOutline } from "@/lib/markdown-outline";
 import { assertEditableDayBody, toEditableDayBody } from "@/lib/day-content";
@@ -59,8 +59,19 @@ export function Workspace() {
   const logView = logs.selection.view === "log";
   const exporting = useExport({ active: active && (logView || logs.selection.view === "notes"), contextKey: logs.selection.view, date: logs.selection.date, logDirty: draft.dirty, notesDirty: notes.dirty, onConfirm: confirm });
   const [mode, setMode] = useState<WorkspaceMode>("preview");
+  const [dayQuery, setDayQuery] = useState("");
+  const [openAiRequest, setOpenAiRequest] = useState(0);
+  const dayNeedle = dayQuery.trim().toLocaleLowerCase();
+  const visibleDays = dayNeedle ? logs.days.filter(day => `${day.date} ${day.headings.join(" ")}`.toLocaleLowerCase().includes(dayNeedle)) : logs.days;
+  const dayIndex = visibleDays.findIndex(day => day.date === logs.selection.date);
   const { theme, preference, chooseTheme } = useTheme();
   const [reading, setReading] = useState(false);
+  useEffect(() => {
+    const mobile = window.matchMedia("(max-width: 1023px)");
+    const leaveDesktopReading = () => { if (mobile.matches) setReading(false); };
+    leaveDesktopReading(); mobile.addEventListener("change", leaveDesktopReading);
+    return () => mobile.removeEventListener("change", leaveDesktopReading);
+  }, []);
   const [sessionError, setSessionError] = useState("");
   const [backupOpen, setBackupOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -91,6 +102,22 @@ export function Workspace() {
     if (accepted) { setSearchSelection(null); setMissingFavorite(""); }
     return accepted;
   }, [logs.selectDate]);
+  const openLog = () => { void logs.selectView("log").then(accepted => { if (accepted) { clearSearch(); setReading(false); } }); };
+  const selectSidebarDate = async (date: string, heading = "", headingIndex?: number) => {
+    if (!heading) return selectDate(date);
+    const attempt = ++sourceNavigation.current, revision = navigationState.current.revision;
+    setNavigationError("");
+    try {
+      const { day } = await requestLogJson<{ day: DayEntry }>(`/api/logs/day?date=${encodeURIComponent(date)}`);
+      if (attempt !== sourceNavigation.current || !navigationState.current.active || revision !== navigationState.current.revision) return false;
+      const target = headingIndex === undefined ? undefined : buildMarkdownOutline(toEditableDayBody(date, day.content)).filter(item => item.level === 3)[headingIndex];
+      if (!(await selectDate(date, target?.id || heading))) return false;
+      setMode("preview"); setReading(false); setDayQuery(""); return true;
+    } catch (error) {
+      if (attempt === sourceNavigation.current && navigationState.current.active && revision === navigationState.current.revision && !(error instanceof Error && error.name === "AbortError")) setNavigationError(error instanceof Error ? error.message : "读取日志小节失败");
+      return false;
+    }
+  };
   beforeLeave.current = async () => {
     if (!active) return false;
     if (logs.selection.view === "qa") return rag.beforeLeave();
@@ -192,6 +219,10 @@ export function Workspace() {
     }
   };
   return <><WorkspaceChrome active={active} months={logs.months} days={logs.days}
+    openAiRequest={openAiRequest}
+    moduleSidebar={logs.selection.view === "favorites" ? { title: "收藏导航", label: "筛选收藏", icon: <Star size={18} />, filtered: favorites.filters.group !== "all" || favorites.filters.month !== "all", onReset: () => favorites.filter({ group: "all", month: "all" }) }
+      : logs.selection.view === "notes" ? { title: "随记", label: "年份和标签", icon: <Tag size={18} />, filtered: notes.yearFilter !== "all" || notes.tagFilter !== "all", onReset: notes.clearFilters, railActionBefore: <button className="sidebar-rail-button" type="button" title="新建随记" aria-label="新建随记" disabled={notes.saving} onClick={() => void notesWithExtraction.openNew()}><Plus size={18} /></button> }
+      : logs.selection.view === "stats" ? { title: "统计导航", label: "统计月份", icon: <CalendarDays size={18} />, filtered: Boolean(stats.months[0] && stats.selectedMonth !== stats.months[0].id), onReset: () => { if (stats.months[0]) void stats.changeMonth(stats.months[0].id); }, railAction: <button className="sidebar-rail-button" type="button" title="分类管理" aria-label="分类管理" onClick={stats.showManager}><Tags size={18} /></button> } : undefined}
     ragNavigation={({ collapsed, visible, onCollapse, onExpand, onNavigate }) => <RagHistorySidebar active={active} visible={logs.selection.view === "qa" && visible} collapsed={collapsed}
       sessions={rag.sessions} activeSessionId={rag.session?.id || ""} query={rag.query} loading={rag.loading} generating={rag.generating || rag.saving || rag.initializing}
       onCollapse={onCollapse} onExpand={onExpand} onQueryChange={rag.setQuery} onNew={() => { void rag.newSession().then(accepted => { if (accepted) onNavigate(); }); }}
@@ -199,26 +230,28 @@ export function Workspace() {
     inspectorTab={inspectorTab} onInspectorTab={setInspectorTab}
     inspector={inspectorTab === "writing" ? <WritingPanel writing={writing} themeMode={theme} /> : <HighlightPanel highlighting={highlighting} />}
     view={logs.selection.view} onView={async view => { const accepted = await logs.selectView(view); if (accepted) { clearSearch(); setReading(false); if (view === "favorites") void favorites.reload(); } return accepted; }}
-    moduleNavigation={onNavigate => logs.selection.view === "favorites" ? <FavoritesNavigation favorites={favorites} active={active} /> : logs.selection.view === "stats" ? <StatsNavigation stats={stats} onNavigate={onNavigate} /> : logs.selection.view === "notes" ? <NotesNavigation notes={notesWithExtraction} onNavigate={onNavigate} /> : null}
-    selectedMonth={logs.selection.month} selectedDate={logs.selection.date}
+    moduleNavigation={(onNavigate, filtersOnly) => logs.selection.view === "favorites" ? <FavoritesNavigation favorites={favorites} active={active} /> : logs.selection.view === "stats" ? <StatsNavigation stats={stats} filtersOnly={filtersOnly} onNavigate={onNavigate} /> : logs.selection.view === "notes" ? <NotesNavigation notes={notesWithExtraction} filtersOnly={filtersOnly} onNavigate={onNavigate} /> : null}
+    selectedMonth={logs.selection.month} selectedDate={logs.selection.date} dayQuery={dayQuery} onDayQueryChange={setDayQuery}
     loading={logs.navigationLoading} error={logs.navigationError || sessionError} readingMode={reading && logView}
     theme={theme} themePreference={preference} onTheme={chooseTheme}
-    onMonth={month => { clearSearch(); logs.selectMonth(month); }} onDate={selectDate} onRetry={logs.retry}
+    onMonth={month => { clearSearch(); logs.selectMonth(month); }} onDate={selectSidebarDate} onRetry={logs.retry}
     onSearchChange={clearSearch} onSearchSelect={async result => { if (!(await selectDate(result.date))) return false; setMode("preview"); setReading(false); setSearchSelection(result); return true; }}
     onNewDate={date => { void logs.selectDate(date).then(accepted => { if (accepted) setMode("source"); }); }} onLogout={() => void exit()}>
     {navigationError && <div className="editor-navigation-status" role="alert">{navigationError}<button className="button secondary" type="button" onClick={() => setNavigationError("")}>关闭</button></div>}
     {(exporting.status || exporting.error || exporting.busy) && <div className="editor-navigation-status" role={exporting.error ? "alert" : "status"}>{exporting.error || exporting.status || "正在准备导出…"}{exporting.busy && <button className="button secondary" type="button" onClick={exporting.cancel}>取消导出</button>}</div>}
-    {logView && returnNoteId && <div className="editor-navigation-status"><button className="button secondary" type="button" onClick={async () => { if (await logs.selectNote(returnNoteId)) { setReturnNoteId(""); setReading(false); } }}>返回随记</button></div>}
-    {logView && returnRag && <div className="editor-navigation-status"><button className="button secondary" type="button" onClick={async () => { const target = returnRag; if (await logs.selectView("qa")) { setReturnRag(null); requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo({ top: target.scroll, behavior: "auto" }))); } }}>返回问答</button></div>}
     <div className="workspace-view" hidden={logs.selection.view !== "qa"}>
       {rag.configurationError && <div className="editor-navigation-status" role="status">{rag.configurationError}<button className="button secondary" onClick={() => void rag.refreshConfiguration()}>检查配置</button></div>}
       {rag.error && <div className="editor-navigation-status" role="alert">{rag.error}<button className="button secondary" onClick={rag.clearError}>关闭</button><button className="button secondary" onClick={() => void rag.reloadSession()}>重新读取</button></div>}
       {(rag.saveError || rag.saving) && <div className="editor-navigation-status" role={rag.saveError ? "alert" : "status"}>{rag.saveError || "正在保存问答历史…"}{rag.saveError && <><button className="button secondary" disabled={rag.saving || !active} onClick={rag.retrySave}>重试保存</button><button className="button secondary" disabled={rag.saving || !active} onClick={() => void rag.reloadSession()}>放弃本地回答并重新读取</button></>}</div>}
-      <RagWorkspace active={active} visible={logs.selection.view === "qa"} disabled={!rag.configured || rag.saving || Boolean(rag.saveError)} messages={rag.messages} initializing={rag.initializing}
+      <RagWorkspace onOpenLog={openLog} active={active} visible={logs.selection.view === "qa"} disabled={!rag.configured || rag.saving || Boolean(rag.saveError)} messages={rag.messages} initializing={rag.initializing}
         question={rag.question} stage={rag.stage} generating={rag.generating} themeMode={theme} answerMode={rag.answerMode} focusRequestToken={rag.focusToken} sessionNavigationToken={rag.navigationToken}
         onQuestionChange={rag.setQuestion} onAnswerModeChange={rag.setAnswerMode} onSubmit={() => void rag.submit()} onStop={rag.stop} onRegenerate={() => void rag.regenerate()} onCitation={citation => void openRagCitation(citation)} />
     </div>
     <div className="workspace-view" hidden={!logView}><LogReader active={active && logView} favorites={favorites} exporting={exporting} day={logs.day} date={logs.selection.date} heading={logs.selection.heading}
+      onOpenAi={() => setOpenAiRequest(value => value + 1)}
+      navigation={{ previousDate: dayIndex > 0 ? visibleDays[dayIndex - 1].date : null, nextDate: dayIndex >= 0 ? visibleDays[dayIndex + 1]?.date || null : null, showAdjacent: true,
+        onReturnNotes: returnNoteId ? async () => { if (await logs.selectNote(returnNoteId)) { setReturnNoteId(""); setReading(false); } } : undefined,
+        onReturnRag: returnRag ? async () => { const target = returnRag; if (await logs.selectView("qa")) { setReturnRag(null); requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo({ top: target.scroll, behavior: "auto" }))); } } : undefined }}
       scrollTarget={logs.scrollTarget} navigationRevision={logs.navigationRevision} loading={logs.loading} error={logs.error} theme={theme}
       reading={reading} onReading={value => { if (value) setMode("preview"); setReading(value); }} onRetry={logs.retry} onNavigate={selectDate}
       search={searchSelection?.date === logs.selection.date ? searchSelection : null}
@@ -226,9 +259,9 @@ export function Workspace() {
         busy: draft.busy || deleting, locked: deleting, error: operationError || draft.error || (missingFavorite === logs.selection.date ? "原收藏小节未找到，已打开所属日期。" : ""), conflict: draft.conflict, saved: draft.saved, resetRevision: draft.resetRevision,
         onChange: draft.change, onSave: () => { if (!deleting && !backupOpen) void draft.save(); }, onReload: () => void reload(),
         onDiscard: () => { void discardLog(); }, onDelete: () => void deleteCurrent(), onBackups: () => { if (!draft.busy && !deleting) setBackupOpen(true); } }} /></div>
-    <div className="workspace-view" hidden={logs.selection.view !== "favorites"}><FavoritesModule favorites={favorites} active={active && logs.selection.view === "favorites"} onOpen={async (date, heading, missing) => { const accepted = await selectDate(date, heading); if (accepted) { setMode("preview"); setReading(false); if (missing) setMissingFavorite(date); } return accepted; }} /></div>
-    <div className="workspace-view" hidden={logs.selection.view !== "stats"}><StudyStatsPage stats={stats} onOpenEntry={openStatsEntry} /></div>
-    <div className="workspace-view" hidden={logs.selection.view !== "notes"}><NotesModule notes={notesWithExtraction} themeMode={theme} onOpenLogTarget={openNotesLogTarget}
+    <div className="workspace-view" hidden={logs.selection.view !== "favorites"}><FavoritesModule onOpenLog={openLog} favorites={favorites} active={active && logs.selection.view === "favorites"} onOpen={async (date, heading, missing) => { const accepted = await selectDate(date, heading); if (accepted) { setMode("preview"); setReading(false); if (missing) setMissingFavorite(date); } return accepted; }} /></div>
+    <div className="workspace-view" hidden={logs.selection.view !== "stats"}><StudyStatsPage onOpenLog={openLog} stats={stats} onOpenEntry={openStatsEntry} /></div>
+    <div className="workspace-view" hidden={logs.selection.view !== "notes"}><NotesModule onOpenLog={openLog} notes={notesWithExtraction} themeMode={theme} onOpenLogTarget={openNotesLogTarget}
       extraction={extraction.open ? <NoteCandidateExtractor extraction={extraction} /> : undefined}
       extractAction={<button type="button" aria-label="AI提取" title="AI提取" className={`button secondary notes-ai-extract${extraction.open ? " active" : ""}`} disabled={!active || notes.busy || extraction.busy === "save"} onClick={async () => { if (extraction.open) await extraction.beforeLeave(); else if (await notes.beforeLeave()) extraction.begin(); }}><WandSparkles size={15} /><span>AI提取</span></button>}
       exportAction={<ExportMenu scopes={[{ scope: "notes", label: "全部随记" }]} onExport={exporting.run} busy={exporting.busy} disabled={!active} />} /></div>

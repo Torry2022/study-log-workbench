@@ -10,6 +10,7 @@ import type { RagAnswerMode, RagChatMessage, RagCitation } from "@/lib/rag-types
 import { stripRagCitationLabels } from "@/lib/rag-answer";
 
 interface RagWorkspaceProps {
+  onOpenLog?: () => void;
   active: boolean;
   visible: boolean;
   disabled?: boolean;
@@ -32,6 +33,7 @@ interface RagWorkspaceProps {
 
 export function RagWorkspace({
   active,
+  onOpenLog,
   visible,
   disabled = false,
   messages,
@@ -204,7 +206,11 @@ export function RagWorkspace({
     }
   }
 
-  return (
+  return (<>
+    {enabled && <div className="reader-toolbar-container"><div className="reader-toolbar reader-toolbar-qa">
+      <div className="module-title-block"><div className="reader-heading-row"><h2>知识问答</h2></div></div>
+      <div className="reader-controls">{onOpenLog && <button className="button secondary" type="button" onClick={onOpenLog}><FileText size={15} />日志</button>}</div>
+    </div></div>}
     <div className={`rag-workspace${messages.length > 0 ? " has-messages" : ""}`} hidden={!enabled}>
       <div className="rag-conversation" aria-live="polite">
         {initializing && messages.length === 0 ? (
@@ -371,5 +377,5 @@ export function RagWorkspace({
         )}
       </form>
     </div>
-  );
+  </>);
 }

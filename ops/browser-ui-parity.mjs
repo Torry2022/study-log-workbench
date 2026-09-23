@@ -1,0 +1,70 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import { parseEnv } from 'node:util';
+import { createRequire } from 'node:module';
+const require = createRequire(new URL('../study-log-web/package.json', import.meta.url));
+const { chromium, expect } = require('@playwright/test');
+const [root, base = 'http://127.0.0.1:3578/study-log'] = process.argv.slice(2);
+if (!root || !path.isAbsolute(root) || !path.basename(root).startsWith('ui-parity-') || !['localhost', '127.0.0.1'].includes(new URL(base).hostname)) throw Error('New synthetic ui-parity- instance and loopback URL required');
+const env = parseEnv(await fs.readFile(path.join(root, '.env'), 'utf8'));
+const output = path.join(root, 'artifacts', 'ui-parity');
+await fs.mkdir(output, { recursive: true });
+const browser = await chromium.launch();
+try {
+  const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
+  // Isolate empty-state presentation from other synthetic workflow fixtures.
+  await page.route('**/api/notes', route => route.request().method() === 'GET' ? route.fulfill({ json: { notes: [] } }) : route.continue());
+  await page.route('**/api/favorites', route => route.request().method() === 'GET' ? route.fulfill({ json: { favorites: [], groups: [] } }) : route.continue());
+  const errors = []; page.on('pageerror', error => errors.push(error.message));
+  await page.goto(base + '?date=2026-01-15');
+  await page.getByLabel('访问密码').fill(env.APP_PASSWORD);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page.locator('.markdown-preview')).toContainText('合成');
+  await expect(page.locator('.topbar').getByRole('button', { name: '日志', exact: true })).toHaveCount(0);
+  const eyebrow = page.locator('.reader-log-identity .eyebrow');
+  await expect(eyebrow).toHaveCSS('font-size', '12px');
+  assert.equal(await eyebrow.evaluate(el => getComputedStyle(el).color), await eyebrow.evaluate(el => {
+    const span = document.createElement('span'); span.style.color = 'var(--muted)'; el.append(span); const color = getComputedStyle(span).color; span.remove(); return color;
+  }));
+  const button = name => page.getByRole('button', { name, exact: true }).filter({ visible: true });
+  await page.locator('.outline-item').first().click();
+  await button('源码').click();
+  const editor = page.locator('.cm-content');
+  await editor.click(); await editor.press('Control+Home'); await editor.press('Shift+End');
+  await page.keyboard.insertText(`### 1. 修改后的合成标题 ${Date.now()}`);
+  await expect(editor).toContainText('修改后的合成标题');
+  await expect(page.getByText('未找到目标小节，已打开该日日志。', { exact: true })).toHaveCount(0);
+  await expect(page.locator('.editor-save-status')).toHaveCount(0);
+  await expect(button('保存')).toBeEnabled();
+  await button('保存').click();
+  await expect(page.locator('.toast.success')).toHaveText('已保存');
+  await expect(button('保存')).toBeDisabled();
+  await button('浏览').click();
+  await expect(page.locator('.editor-save-status')).toHaveCount(0);
+  await expect(page.getByText('未找到目标小节，已打开该日日志。', { exact: true })).toHaveCount(0);
+  await expect(page.locator('.toast.success')).toHaveCount(0, { timeout: 5000 });
+  await button('源码').click();
+  for (const width of [1920, 1440, 1180, 1024, 850, 768, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.evaluate(() => scrollTo(0, 0));
+    await expect(button('保存')).toBeVisible();
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `overflow at ${width}`);
+    const save = await button('保存').boundingBox(); assert.ok(save.x >= 0 && save.x + save.width <= width, `save bounds ${width}`);
+    await page.screenshot({ path: path.join(output, `source-${width}.png`), animations: 'disabled' });
+  }
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await button('浏览').click();
+  for (const [name, selector] of [['随记', '.notes-empty-state'], ['收藏', '.favorites-empty-state']]) {
+    await page.locator('.topbar').getByRole('button', { name, exact: true }).click();
+    const empty = page.locator(selector);
+    await expect(empty).toBeVisible();
+    await expect(empty.locator('svg')).toHaveCount(1);
+    await expect(empty.getByRole('button')).toHaveCount(0);
+    await page.screenshot({ path: path.join(output, `empty-${name}.png`), animations: 'disabled' });
+    await button('日志').click();
+    await expect(page.locator('.reader-log-identity')).toBeVisible();
+  }
+  assert.deepEqual(errors, []);
+  console.log('Passed: original filename style, no extra top-level log tab, heading-edit/save feedback lifecycle, seven responsive widths, empty-state icons and module return');
+} finally { await browser.close(); }

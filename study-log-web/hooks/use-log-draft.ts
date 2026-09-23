@@ -29,6 +29,11 @@ export function useLogDraft(day: DayEntry | null, active: boolean, onSaved: (day
   }, [day]);
   useEffect(() => { setError(""); setConflict(false); setSaved(false); }, [draft?.date]);
   useEffect(() => {
+    if (!saved) return;
+    const timer = window.setTimeout(() => setSaved(false), 3600);
+    return () => window.clearTimeout(timer);
+  }, [saved]);
+  useEffect(() => {
     if (!dirty) return;
     const protect = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
     window.addEventListener("beforeunload", protect);
@@ -40,7 +45,7 @@ export function useLogDraft(day: DayEntry | null, active: boolean, onSaved: (day
     const next = { ...current.current, body };
     current.current = next; setDraft(next); setSaved(false);
   }
-  function reset() { if (day) { const next = fromDay(day); current.current = next; setDraft(next); setError(""); setConflict(false); setResetRevision(value => value + 1); } }
+  function reset() { if (day) { const next = fromDay(day); current.current = next; setDraft(next); setError(""); setConflict(false); setSaved(false); setResetRevision(value => value + 1); } }
   function acceptExternal(day: DayEntry) {
     const next = fromDay(day); current.current = next; setDraft(next);
     setError(""); setConflict(false); setSaved(false); setResetRevision(value => value + 1);

@@ -1,14 +1,12 @@
 "use client";
 
-import { Check, Eye, FileCode2, RefreshCw, Upload, Wand2, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Check, RefreshCw, Upload, Wand2, X } from "lucide-react";
+import { useEffect, useRef } from "react";
 import type { WritingController } from "@/hooks/use-writing";
-import { MarkdownPreview } from "./MarkdownPreview";
 import "@/app/writing.css";
 
-export function WritingPanel({ writing, themeMode }: { writing: WritingController; themeMode: "light" | "dark" }) {
+export function WritingPanel({ writing }: { writing: WritingController; themeMode: "light" | "dark" }) {
   const instruction = useRef<HTMLTextAreaElement>(null);
-  const [preview, setPreview] = useState(false);
   useEffect(() => {
     if (!instruction.current || !writing.active || !writing.visible) return;
     instruction.current.style.height = "auto";
@@ -33,8 +31,8 @@ export function WritingPanel({ writing, themeMode }: { writing: WritingControlle
     {writing.status && <p className={`status-line ${writing.statusKind}`} role={writing.statusKind === "error" ? "alert" : "status"}>{writing.status}</p>}
     {[...writing.materialWarnings, ...writing.generationWarnings].map((warning, index) => <p className="status-line warning" key={`${index}:${warning}`}>{warning}</p>)}
     {writing.output && writing.outputDate && writing.outputDate !== writing.date && <p className="status-line warning">该草稿属于 {writing.outputDate}，切回对应日块后才能追加。</p>}
-    <div className="field-row"><label htmlFor="writing-output">生成草稿</label><button className="mini-button" type="button" aria-pressed={preview} onClick={() => setPreview(value => !value)}>{preview ? <FileCode2 size={14} /> : <Eye size={14} />}{preview ? "编辑草稿" : "预览草稿"}</button></div>
-    {preview ? <div className="writing-output-preview"><MarkdownPreview content={writing.output} themeMode={themeMode} active={writing.active && writing.visible} /></div> : <textarea id="writing-output" className="ai-output" value={writing.output} onChange={event => writing.setOutput(event.target.value)} readOnly={writing.busy === "generate"} placeholder={writing.busy === "generate" ? "正在生成，请稍候…" : "生成后可在此审阅、修改草稿"} />}
+    <label htmlFor="writing-output">生成草稿</label>
+    <textarea id="writing-output" className="ai-output" value={writing.busy === "generate" && !writing.output ? "正在生成，请稍候..." : writing.output} onChange={event => writing.setOutput(event.target.value)} readOnly={writing.busy === "generate" && !writing.output} />
     <button className="button secondary-on-dark full" type="button" onClick={() => void writing.apply()} disabled={Boolean(writing.busy) || !writing.output.trim() || writing.outputDate !== writing.date}><Check size={15} />追加到编辑器</button>
     <p className="status-line">追加后仍需在日志编辑器中保存，才会写入资料。</p>
   </div>;

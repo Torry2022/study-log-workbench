@@ -38,9 +38,18 @@ try {
    await page.locator('.preview-outline').getByRole('button',{name:'2. 同名小节',exact:true}).last().click();
   }
   await expect(page).toHaveURL(/heading=2/);
-  if(width<1024)await page.getByRole('button',{name:'更多日志操作',exact:true}).click();await page.getByRole('button',{name:'进入阅读模式',exact:true}).filter({visible:true}).click();
-  await expect(page.locator('main')).toHaveClass(/reading-mode/);
-  await page.getByRole('button',{name:'退出阅读',exact:true}).click();
+  // The original compact UI has no reading-mode entry; desktop retains the dedicated mode.
+  if(width>=1024){
+   await page.getByRole('button',{name:'进入阅读模式',exact:true}).filter({visible:true}).click();
+   await expect(page.locator('main')).toHaveClass(/reading-mode/);
+   await page.setViewportSize({width:390,height:844});
+   await expect(page.locator('main')).not.toHaveClass(/reading-mode/);
+   await expect(page.locator('.mobile-topbar')).toBeVisible();
+   await page.setViewportSize({width,height});
+   await page.getByRole('button',{name:'进入阅读模式',exact:true}).click();
+   await expect(page.locator('main')).toHaveClass(/reading-mode/);
+   await page.getByRole('button',{name:'退出阅读',exact:true}).click();
+  }
   const image=page.getByRole('img',{name:'合成示意图',exact:true});
   await expect(image).toHaveCount(1);{await image.click();await expect(page.getByRole('dialog',{name:'图片预览'})).toBeVisible();await page.keyboard.press('Escape');await expect(page.getByRole('dialog',{name:'图片预览'})).toHaveCount(0);}
   const link=page.getByRole('link',{name:'查看二月记录',exact:true});

@@ -74,16 +74,17 @@ try {
   await expect(page.getByRole("button", { name: "重新检查配置", exact: true })).toBeEnabled(); configured = true; await page.getByRole("button", { name: "重新检查配置", exact: true }).click(); await expect(page.getByRole("button", { name: "生成日志草稿", exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "生成日志草稿", exact: true }).click(); await expect(output).toHaveValue(generatedContent); await expect(panel).toContainText("合成生成提示");
   await output.fill(generatedContent + "\n\n人工修订保留。"); const edited = await output.inputValue();
-  await page.getByRole("button", { name: "预览草稿", exact: true }).click(); await expect(panel.locator(".writing-output-preview")).toContainText("人工修订保留"); await page.getByRole("button", { name: "编辑草稿", exact: true }).click();
   const callsBeforeCancel = generationCalls; await page.getByRole("button", { name: "生成日志草稿", exact: true }).click(); await confirm(false); assert.equal(generationCalls, callsBeforeCancel); await expect(output).toHaveValue(edited);
   generatedStatus = 502; await page.getByRole("button", { name: "生成日志草稿", exact: true }).click(); await confirm(); await expect(panel).toContainText("合成生成失败"); await expect(output).toHaveValue(edited); generatedStatus = 200;
   const versionBeforeApply = (await day()).version; await page.getByRole("button", { name: "追加到编辑器", exact: true }).click(); await expect(panel).toContainText("尚未保存"); assert.equal((await day()).version, versionBeforeApply);
   await expect(page.locator(".cm-content").filter({ visible: true })).toContainText("ORIGINAL_CONTENT"); await expect(page.locator(".cm-content").filter({ visible: true })).toContainText("人工修订保留");
-  await page.getByRole("button", { name: "保存", exact: true }).filter({ visible: true }).first().click(); await expect.poll(async () => (await day()).content).toContain("人工修订保留");
+  const source = page.locator(".cm-content").filter({ visible: true }); await source.click(); await source.press("Control+End"); await page.keyboard.insertText("\n\n追加后在源码继续修订。");
+  assert.equal((await day()).version, versionBeforeApply, "Editing the appended source must not save implicitly");
+  await page.getByRole("button", { name: "保存", exact: true }).filter({ visible: true }).first().click(); await expect.poll(async () => (await day()).content).toContain("人工修订保留"); await expect.poll(async () => (await day()).content).toContain("追加后在源码继续修订。");
   console.log("Writing: missing configuration, five ordered formats, partial failure, concurrent input, mock generation/retry and append without save passed");
 
   await page.getByRole("button", { name: "收藏", exact: true }).filter({ visible: true }).first().click(); await confirm(false); await expect(material).toHaveValue(/上传期间继续输入/); await expect(output).toHaveValue(edited);
-  await page.locator(".day-list .day-item").filter({ hasText: "2026-09-16" }).click(); await confirm(false); await expect(page).toHaveURL(/date=2026-09-13/); await expect(output).toHaveValue(edited);
+  await page.locator(".day-list .day-item-open").filter({ hasText: "09-16" }).click(); await confirm(false); await expect(page).toHaveURL(/date=2026-09-13/); await expect(output).toHaveValue(edited);
   await page.getByRole("button", { name: "退出", exact: true }).filter({ visible: true }).click(); await confirm(false); await expect(instruction).toHaveValue("突出项目实践");
   let unload = false; page.once("dialog", async dialog => { unload = dialog.type() === "beforeunload"; await dialog.dismiss(); }); await page.reload({ timeout: 3000 }).catch(() => {}); assert.equal(unload, true);
   // Re-login keeps material, requirements and prior output; old response cannot replace them.
@@ -94,8 +95,8 @@ try {
   // Confirmed date departure cancels generation; old content cannot land in another date.
   let releaseOld, startedOld; const oldGate = new Promise(resolve => releaseOld = resolve), oldSeen = new Promise(resolve => startedOld = resolve);
   waitGeneration = { promise: oldGate, started: startedOld }; await page.getByRole("button", { name: "生成日志草稿", exact: true }).click(); await confirm(); await oldSeen;
-  await page.locator(".day-list .day-item").filter({ hasText: "2026-09-16" }).click(); await confirm(); await expect(page).toHaveURL(/date=2026-09-16/); releaseOld(); waitGeneration = null; await open(); await expect(output).toHaveValue("");
-  await page.locator(".day-list .day-item").filter({ hasText: date }).click(); await expect(page).toHaveURL(/date=2026-09-13/); await material.fill("明确放弃的材料");
+  await page.locator(".day-list .day-item-open").filter({ hasText: "09-16" }).click(); await confirm(); await expect(page).toHaveURL(/date=2026-09-16/); releaseOld(); waitGeneration = null; await open(); await expect(output).toHaveValue("");
+  await page.locator(".day-list .day-item-open").filter({ hasText: date.slice(5) }).click(); await expect(page).toHaveURL(/date=2026-09-13/); await material.fill("明确放弃的材料");
   await page.getByRole("button", { name: "收藏", exact: true }).filter({ visible: true }).first().click(); await confirm();
   await page.getByRole("button", { name: "日志", exact: true }).filter({ visible: true }).first().click(); await open(); await expect(material).toHaveValue(""); await expect(output).toHaveValue("");
   await instruction.fill("手机合成要求"); await material.fill("手机合成材料"); generatedContent = "### 手机模拟草稿\n\n手机生成预览。"; await page.getByRole("button", { name: "生成日志草稿", exact: true }).click(); await expect(output).toHaveValue(generatedContent);
@@ -103,8 +104,12 @@ try {
   for (const width of [1440, 1100]) {
     await page.setViewportSize({ width, height: 1000 }); await page.evaluate(() => window.scrollTo(0, 0));
     const resizer = page.getByRole("separator", { name: "调整右侧栏宽度", exact: true });
-    for (const direction of ["Shift+ArrowLeft", "Shift+ArrowRight"]) {
-      await resizer.focus(); for (let count = 0; count < 20; count++) await resizer.press(direction);
+    if (width <= 1180) {
+      await expect(resizer).toBeHidden();
+      assert.ok(await page.locator(".writing-inspector").evaluate(element => element.getBoundingClientRect().top >= document.querySelector(".reader").getBoundingClientRect().bottom - 1), "Narrow desktop inspector follows the reader");
+    }
+    for (const direction of width > 1180 ? ["Shift+ArrowLeft", "Shift+ArrowRight"] : ["stacked"]) {
+      if (direction !== "stacked") { await resizer.focus(); for (let count = 0; count < 20; count++) await resizer.press(direction); }
       const escaped = await page.locator(".reader-toolbar-log").evaluate(toolbar => {
         const bounds = toolbar.closest(".reader").getBoundingClientRect();
         return [...toolbar.querySelectorAll("button,select")].flatMap(control => {
@@ -116,12 +121,12 @@ try {
       });
       assert.deepEqual(escaped, [], `Toolbar overflow or blocked hit target at ${width}px (${direction})`);
     }
-    for (let count = 0; count < 4; count++) await resizer.press("ArrowLeft");
+    if (width > 1180) for (let count = 0; count < 4; count++) await resizer.press("ArrowLeft");
   }
   await page.screenshot({ path: path.resolve("artifacts/writing/desktop-1100.png") }); await page.setViewportSize({ width: 1440, height: 1000 });
   await fs.mkdir(path.resolve("artifacts/writing"), { recursive: true }); await page.screenshot({ path: path.resolve("artifacts/writing/desktop.png") });
   await page.setViewportSize({ width: 390, height: 844 }); await open(); await page.screenshot({ path: path.resolve("artifacts/writing/mobile.png") }); assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
-  await page.getByRole("button", { name: "预览草稿", exact: true }).click(); await expect(panel.locator(".writing-output-preview")).toContainText("手机生成预览");
+  await expect(output).toHaveValue(generatedContent);
   await page.getByRole("button", { name: "追加到编辑器", exact: true }).scrollIntoViewIfNeeded(); await page.screenshot({ path: path.resolve("artifacts/writing/mobile-preview.png") });
   const mobileVersion = (await day()).version; await page.getByRole("button", { name: "追加到编辑器", exact: true }).click(); assert.equal((await day()).version, mobileVersion);
   await page.getByRole("button", { name: "关闭 AI 工具", exact: true }).click(); await expect(page.locator(".cm-content").filter({ visible: true })).toContainText("手机生成预览"); await page.getByRole("button", { name: "保存", exact: true }).filter({ visible: true }).first().click(); await expect.poll(async () => (await day()).content).toContain("手机生成预览");

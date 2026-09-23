@@ -22,8 +22,10 @@ try {
   await expect.poll(() => new URL(page.url()).searchParams.get("date")).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   const initialized = new URL(page.url());
   assert.equal(initialized.searchParams.get("view"), "favorites");
-  const date = initialized.searchParams.get("date");
-  const month = initialized.searchParams.get("month");
+  const date = "2026-09-20", month = "2026-09", marker = "B13 收藏导航独占合成日";
+  const { day } = await (await page.request.get(`${base}/api/logs/day?date=${date}`)).json();
+  if (day.exists) assert.ok(day.content.includes(marker), "Do not overwrite another fixture");
+  else assert.equal((await page.request.put(`${base}/api/logs/day`, { data: { date, baseVersion: day.version, content: `### ${marker}\n\n独立导航与草稿保护验收。` } })).status(), 200);
 
   await page.goto(`${base}?view=log&date=${date}`);
   const favoritesButton = () => page.getByRole("button", { name: "收藏", exact: true }).filter({ visible: true });
@@ -33,7 +35,8 @@ try {
     await sourceButton().click();
     await expect(editor).toBeVisible();
     await editor.click(); await editor.press("Control+End"); await page.keyboard.insertText(`\n${marker}`);
-    await expect(page.locator(".editor-save-status")).toContainText("有未保存修改");
+    await expect(page.locator(".editor-save-status")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "保存", exact: true }).filter({ visible: true })).toBeEnabled();
   };
   const answer = async accept => {
     const dialog = page.getByRole("alertdialog");

@@ -1,0 +1,114 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+import assert from "node:assert/strict";
+import { parseEnv } from "node:util";
+import { createRequire } from "node:module";
+const require = createRequire(new URL("../study-log-web/package.json", import.meta.url));
+const { chromium, expect } = require("@playwright/test");
+const [root, base = "http://127.0.0.1:3578/study-log"] = process.argv.slice(2);
+if (!root || !path.isAbsolute(root) || !["127.0.0.1", "localhost"].includes(new URL(base).hostname)) throw Error("Local synthetic fixture required");
+const env = parseEnv(await fs.readFile(path.join(root, ".env"), "utf8"));
+const artifacts = path.resolve("artifacts/sidebar-parity");
+await fs.mkdir(artifacts, { recursive: true });
+const browser = await chromium.launch();
+try {
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const page = await context.newPage();
+  const errors = []; page.on("pageerror", error => errors.push(error.message));
+  await page.goto(base);
+  await page.getByLabel("访问密码").fill(env.APP_PASSWORD);
+  await page.getByRole("button", { name: "登录", exact: true }).click();
+  const sidebar = page.locator("aside.sidebar");
+  await expect(sidebar).toBeVisible();
+  const nav = async label => { await page.locator(".topbar-actions").getByRole("button", { name: label, exact: true }).click(); };
+  const collapsed = () => expect(sidebar).toHaveClass(/collapsed/);
+  const expanded = () => expect(sidebar).not.toHaveClass(/collapsed/);
+  // Every module starts expanded and persists its own collapse preference.
+  await sidebar.getByRole("button", { name: "折叠左侧栏", exact: true }).click(); await collapsed();
+  for (const label of ["随记", "收藏", "统计", "问答"]) {
+    await nav(label); await expanded();
+    await sidebar.getByRole("button", { name: "折叠左侧栏", exact: true }).click(); await collapsed();
+  }
+  await nav("收藏"); await collapsed();
+  await sidebar.getByRole("button", { name: "筛选收藏", exact: true }).click();
+  const favoriteDialog = page.getByRole("dialog", { name: "筛选收藏", exact: true });
+  await expect(favoriteDialog).toBeVisible();
+  await favoriteDialog.getByRole("button", { name: /^未分组/ }).click();
+  await expect(favoriteDialog.getByRole("button", { name: "重置筛选" })).toBeVisible();
+  await favoriteDialog.getByRole("button", { name: "重置筛选" }).click();
+  await expect(favoriteDialog.getByRole("button", { name: "重置筛选" })).toBeHidden();
+  await page.keyboard.press("Escape"); await expect(favoriteDialog).toBeHidden();
+  await expect(sidebar.getByRole("button", { name: "筛选收藏", exact: true })).toBeFocused();
+  await sidebar.getByRole("button", { name: "筛选收藏", exact: true }).click();
+  await nav("随记"); await expect(favoriteDialog).toBeHidden(); await collapsed();
+  await expect(sidebar.getByRole("button", { name: "新建随记", exact: true })).toBeVisible();
+  await sidebar.getByRole("button", { name: "年份和标签", exact: true }).click();
+  const notesDialog = page.getByRole("dialog", { name: "年份和标签", exact: true });
+  await expect(notesDialog).toBeVisible();
+  await expect(notesDialog.getByRole("button", { name: "新建随记", exact: true })).toHaveCount(0);
+  await page.screenshot({ path: path.join(artifacts, "desktop-notes-filter.png") });
+  await page.keyboard.press("Escape");
+  await sidebar.getByRole("button", { name: "展开左侧栏", exact: true }).click(); await expanded();
+  await nav("统计"); await collapsed();
+  await expect(sidebar.getByRole("button", { name: "分类管理", exact: true })).toBeVisible();
+  await sidebar.getByRole("button", { name: "统计月份", exact: true }).click();
+  const statsDialog = page.getByRole("dialog", { name: "统计月份", exact: true });
+  await expect(statsDialog).toBeVisible();
+  await expect(statsDialog.getByRole("button", { name: "分类管理", exact: true })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await page.reload(); await collapsed();
+  await nav("随记"); await expanded();
+  await nav("问答"); await collapsed();
+  await nav("收藏"); await collapsed();
+  await page.goto(base); await collapsed();
+  const cookies = await context.cookies();
+  for (const view of ["log", "favorites", "stats", "qa"]) assert.equal(cookies.find(item => item.name === `study-log-sidebar-${view}`)?.value, "collapsed");
+  assert.equal(cookies.find(item => item.name === "study-log-sidebar-notes")?.value, "expanded");
+  // Match the source's intermediate width layout: expanded AI panel is below the reader.
+  await page.setViewportSize({ width: 1100, height: 900 });
+  await page.getByRole("button", { name: "AI生成", exact: true }).click();
+  const inspector = page.locator(".writing-inspector");
+  await expect(inspector).toHaveClass(/expanded/);
+  assert.equal(await inspector.evaluate(el => getComputedStyle(el).gridColumn), "1 / -1");
+  await expect(page.getByRole("separator", { name: "调整右侧栏宽度" })).toBeHidden();
+  await page.screenshot({ path: path.join(artifacts, "tablet-ai-panel.png"), fullPage: true });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(page.getByRole("separator", { name: "调整右侧栏宽度" })).toBeVisible();
+  const tabWidths = await page.locator(".inspector-tabs button").evaluateAll(buttons => buttons.map(button => button.getBoundingClientRect().width));
+  assert.ok(Math.abs(tabWidths[0] - tabWidths[1]) < 1);
+  await page.getByRole("button", { name: "重点标注", exact: true }).click();
+  await page.getByRole("button", { name: "折叠右侧栏", exact: true }).click();
+  await expect(page.getByRole("button", { name: "重点标注", exact: true })).toHaveClass(/active/);
+  // Read existing synthetic headings only; do not seed or overwrite other agents' fixtures.
+  const { months } = await (await page.request.get(base + "/api/logs/months")).json();
+  let headingDay;
+  for (const month of months) {
+    const { days } = await (await page.request.get(base + "/api/logs?month=" + encodeURIComponent(month.id))).json();
+    headingDay = days.find(day => day.headings.length > 0);
+    if (headingDay) break;
+  }
+  assert.ok(headingDay, "Synthetic acceptance fixture must include at least one real H3 heading");
+  await page.goto(base + "?date=" + headingDay.date);
+  await sidebar.getByRole("button", { name: "展开左侧栏", exact: true }).click();
+  const query = sidebar.getByLabel("按日期标签搜索日期");
+  await query.fill(headingDay.headings[0]);
+  const row = sidebar.locator(".day-item").filter({ has: page.locator(".day-date", { hasText: headingDay.date }) });
+  const tag = row.getByRole("button", { name: headingDay.headings[0], exact: true }).first();
+  await tag.click();
+  await expect(query).toHaveValue("");
+  await expect.poll(() => new URL(page.url()).searchParams.get("heading")).toBeTruthy();
+  await expect(page.locator('.view-mode-switch [aria-label="浏览"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(sidebar.locator(".day-item.active .day-date")).toHaveText(headingDay.date.slice(5));
+  // Mobile navigation retains date creation before month navigation.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "打开日志导航", exact: true }).click();
+  const create = await page.getByRole("button", { name: "今天", exact: true }).boundingBox();
+  const month = await page.locator('[data-log-section="months"]').boundingBox();
+  assert.ok(create && month && create.y < month.y);
+  await expect.poll(async () => Math.round((await sidebar.boundingBox())?.x ?? -1)).toBe(0);
+  await page.screenshot({ path: path.join(artifacts, "mobile-navigation.png") });
+  await page.getByRole("button", { name: "关闭左侧导航", exact: true }).click();
+  await expect(page.getByRole("button", { name: "打开日志导航", exact: true })).toBeFocused();
+  assert.deepEqual(errors, []);
+  console.log("Sidebar parity PASS: per-module cookies, reload, collapsed filters/reset/Escape/switch, shortcut slots, AI tablet layout/tab selection, direct heading jump/query clearing, mobile ordering/focus.");
+} finally { await browser.close(); }

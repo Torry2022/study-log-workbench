@@ -846,7 +846,7 @@
 }
 
 .favorites-empty-state {
-  min-height: clamp(340px, 42vh, 480px);
+  min-height: clamp(340px, 48vh, 540px);
 }
 
 .favorite-group-dialog-backdrop {
@@ -1390,4 +1390,11 @@
   .reader-content-favorites {
     padding: 14px 12px 28px;
   }
+}
+
+.reader-content-favorites:has(.favorites-empty-state) {
+  padding-top: 28px;
+}
+@media (max-width: 1023px) {
+  .reader-content-favorites:has(.favorites-empty-state) { padding-top: 0; }
 }

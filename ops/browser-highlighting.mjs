@@ -26,7 +26,7 @@ try {
       if (page.viewportSize().width <= 1023) {
         if (!await page.locator(".writing-inspector.mobile-open").count()) { await page.getByRole("button", { name: "更多设置", exact: true }).click(); await page.getByRole("button", { name: "AI 工具", exact: true }).click(); }
       } else if (await page.getByRole("button", { name: "展开右侧栏", exact: true }).count()) await page.getByRole("button", { name: "展开右侧栏", exact: true }).click();
-      await page.getByRole("button", { name: "AI标注", exact: true }).filter({ visible: true }).last().click();
+      await page.getByRole("button", { name: "重点标注", exact: true }).filter({ visible: true }).last().click();
     }
     await expect(panel).toBeVisible();
   };
@@ -73,11 +73,11 @@ try {
   // Late responses are discarded after date/module changes and expired authentication.
   for (const destination of ["date", "module"]) {
     const late = delayed(); await page.getByRole("button", { name: "标注重点", exact: true }).click(); await late.seen;
-    if (destination === "date") { await page.locator(".day-item").filter({ hasText: otherDate }).click(); await expect(page).toHaveURL(new RegExp(`date=${otherDate}`)); }
+    if (destination === "date") { await page.locator(".day-item-open").filter({ hasText: otherDate.slice(5) }).click(); await expect(page).toHaveURL(new RegExp(`date=${otherDate}`)); }
     else { await page.getByRole("button", { name: "收藏", exact: true }).filter({ visible: true }).first().click(); await expect(page.getByLabel("搜索收藏", { exact: true })).toBeVisible(); }
     late.release(); await expect(dialog).toHaveCount(0);
     if (destination === "module") await page.getByRole("button", { name: "日志", exact: true }).filter({ visible: true }).first().click();
-    await page.locator(".day-item").filter({ hasText: date }).click(); await open(); await expect(dialog).toHaveCount(0);
+    await page.locator(".day-item-open").filter({ hasText: date.slice(5) }).click(); await open(); await expect(dialog).toHaveCount(0);
   }
   await editor.click(); await editor.press("Control+End"); await page.keyboard.insertText("\n认证过期保留原稿。"); const expired = delayed(); await page.getByRole("button", { name: "标注重点", exact: true }).click(); await expired.seen;
   await page.evaluate(() => window.dispatchEvent(new Event("study-log:auth-expired"))); await expect(page.getByLabel("访问密码")).toBeVisible(); expired.release(); await login(); await open(); await expect(dialog).toHaveCount(0); await expect(editor).toContainText("认证过期保留原稿");

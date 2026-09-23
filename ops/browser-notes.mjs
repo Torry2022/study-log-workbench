@@ -19,6 +19,7 @@ try {
   const ownNotes = async () => (await snapshot()).filter(note => note.title.startsWith(prefix));
   const create = async data => { const response = await page.request.post(`${base}/api/notes`, { data: { body: "合成记录", insight: "独立理解", sources: ["普通资料来源"], tags: ["验收标签"], recordedAt: "2026-08-11T12:00", ...data } }); assert.equal(response.status(), 200, await response.text()); return (await response.json()).note; };
   const center = async () => { await page.getByRole("button", { name: "随记", exact: true }).filter({ visible: true }).first().click(); await expect(page.getByLabel("搜索随记", { exact: true })).toBeVisible(); };
+  const revisit = async () => { await page.getByRole("button", { name: "日志", exact: true }).filter({ visible: true }).first().click(); await center(); };
   const cards = page.locator(".note-entry").filter({ has: page.getByRole("heading", { name: /^验收随记/ }) });
   const body = page.getByLabel("随记正文", { exact: true }), insight = page.getByLabel("个人理解", { exact: true });
   const editor = page.locator(".notes-composer");
@@ -45,15 +46,14 @@ try {
   await start(); await page.getByPlaceholder("标题（可选，留空时显示正文首句）").fill(`${prefix}编辑`); await page.getByLabel("记录时间", { exact: true }).fill("2026-08-12T14:30"); await body.fill("正文独立字段"); await insight.fill("个人理解独立字段"); await page.getByLabel("来源", { exact: true }).fill("普通来源\nhttps://example.com");
   await page.getByRole("combobox", { name: "搜索或创建标签" }).fill("新建标签"); await page.getByRole("combobox", { name: "搜索或创建标签" }).press("Enter");
   await page.getByRole("button", { name: "日志", exact: true }).filter({ visible: true }).first().click(); await confirm("取消"); await expect(body).toHaveValue("正文独立字段");
-  await page.getByRole("button", { name: "刷新随记", exact: true }).click(); await expect(body).toHaveValue("正文独立字段");
   let unloadSeen = false; page.once("dialog", async dialog => { unloadSeen = dialog.type() === "beforeunload"; await dialog.dismiss(); }); await page.reload({ timeout: 3000 }).catch(() => {}); assert.equal(unloadSeen, true); await expect(body).toHaveValue("正文独立字段");
   await save(); let saved = (await ownNotes()).find(note => note.title === `${prefix}编辑`); assert.equal(saved.insight, "个人理解独立字段"); assert.deepEqual(saved.tags, ["新建标签"]); assert.deepEqual(saved.sources, ["普通来源", "https://example.com"]);
   await expect(card(`${prefix}编辑`)).toContainText("个人理解独立字段");
   await page.getByLabel("搜索随记", { exact: true }).fill("普通资料来源"); await page.getByRole("button", { name: "搜索随记内容", exact: true }).click(); await expect(cards).toHaveCount(2);
   await page.locator(".notes-filter-list").getByRole("button", { name: /^2025/ }).click(); await expect(cards).toHaveCount(1); await expect(cards).toContainText(`${prefix}旧年`);
   await page.locator(".notes-filter-list").getByRole("button", { name: /^全部/ }).click(); await page.locator(".notes-tag-filter-list").getByRole("button", { name: /^内链标签/ }).click(); await expect(cards).toHaveCount(1);
-  await card(`${prefix}来源`).getByRole("link", { name: "合成日志来源", exact: true }).click(); await expect(page).toHaveURL(/date=2026-09-11/); await page.getByRole("button", { name: "返回随记", exact: true }).click(); await expect(cards).toHaveCount(1); await expect(page.getByLabel("搜索随记", { exact: true })).toHaveValue("普通资料来源"); await expect(page.locator(".notes-tag-filter-list .active")).toContainText("内链标签");
-  await page.getByRole("button", { name: "清除筛选", exact: true }).click(); await page.getByRole("button", { name: "清空随记搜索", exact: true }).click();
+  await card(`${prefix}来源`).getByRole("link", { name: "合成日志来源", exact: true }).click(); await expect(page).toHaveURL(/date=2026-09-11/); if (!await page.getByRole("button", { name: "返回随记", exact: true }).filter({ visible: true }).count()) await page.getByRole("button", { name: "更多操作", exact: true }).click(); await page.getByRole("button", { name: "返回随记", exact: true }).filter({ visible: true }).click(); await expect(cards).toHaveCount(1); await expect(page.getByLabel("搜索随记", { exact: true })).toHaveValue("普通资料来源"); await expect(page.locator(".notes-tag-filter-list .active")).toContainText("内链标签");
+  await page.getByRole("button", { name: "重置筛选", exact: true }).click(); await page.getByRole("button", { name: "清空随记搜索", exact: true }).click();
   console.log("Notes CRUD fields, tag picker, filters, dirty navigation/refresh and source return passed");
 
   // A save finishing after further typing promotes the version without closing the editor.
@@ -63,7 +63,7 @@ try {
   await page.getByRole("button", { name: "重新读取服务器版本", exact: true }).click(); await confirm("取消"); await expect(body).toHaveValue("冲突本地草稿"); await page.getByRole("button", { name: "重新读取服务器版本", exact: true }).click(); await confirm(); await expect(body).toHaveValue("另一窗口写入"); await discard();
   await edit(`${prefix}编辑`); await body.fill("失败与登录过期保留草稿");
   await page.route("**/api/notes", route => route.request().method() === "PATCH" ? route.fulfill({ status: 500, json: { error: "合成保存失败" } }) : route.continue()); await page.getByRole("button", { name: "保存随记", exact: true }).click(); await expect(page.locator(".notes-error")).toContainText("合成保存失败"); await expect(body).toHaveValue("失败与登录过期保留草稿"); await page.unroute("**/api/notes");
-  await page.route("**/api/notes", route => route.request().method() === "GET" ? route.fulfill({ status: 401, json: { error: "Unauthorized" } }) : route.continue()); await page.getByRole("button", { name: "刷新随记", exact: true }).click(); await expect(page.getByLabel("访问密码")).toBeVisible(); await page.unroute("**/api/notes"); await login(); await expect(body).toHaveValue("失败与登录过期保留草稿"); await discard();
+  await page.route("**/api/notes", route => route.request().method() === "PATCH" ? route.fulfill({ status: 401, json: { error: "Unauthorized" } }) : route.continue()); await page.getByRole("button", { name: "保存随记", exact: true }).click(); await expect(page.getByLabel("访问密码")).toBeVisible(); await page.unroute("**/api/notes"); await login(); await expect(body).toHaveValue("失败与登录过期保留草稿"); await discard();
   console.log("Notes save-while-typing, conflict, failure and authentication draft retention passed");
 
   // Upload stays attached to its original field and maps its selection through typing.
@@ -77,10 +77,10 @@ try {
   await card(`${prefix}旧年`).getByRole("button", { name: `删除随记：${prefix}旧年`, exact: true }).click(); await confirm("取消"); await expect(card(`${prefix}旧年`)).toBeVisible();
   await page.route("**/api/notes", route => route.request().method() === "DELETE" ? route.fulfill({ status: 500, json: { error: "合成删除失败" } }) : route.continue()); await card(`${prefix}旧年`).getByRole("button", { name: `删除随记：${prefix}旧年`, exact: true }).click(); await confirm("删除"); await expect(page.locator(".notes-error")).toContainText("合成删除失败"); await expect(card(`${prefix}旧年`)).toBeVisible(); await page.unroute("**/api/notes");
   await card(`${prefix}旧年`).getByRole("button", { name: `删除随记：${prefix}旧年`, exact: true }).click(); await confirm("删除"); await expect(card(`${prefix}旧年`)).toHaveCount(0);
-  // A failed refresh keeps saved items; a stale GET cannot replace a newer mutation.
+  // Reopening the module refreshes saved items without clearing them on failure; a stale GET cannot replace a newer mutation.
   await page.route("**/api/notes", route => route.request().method() === "GET" ? route.fulfill({ status: 500, json: { error: "合成读取失败" } }) : route.continue());
-  await page.getByRole("button", { name: "刷新随记", exact: true }).click(); await expect(page.locator(".notes-error")).toContainText("合成读取失败"); await expect(card(`${prefix}编辑`)).toBeVisible(); await page.unroute("**/api/notes"); await page.getByRole("button", { name: "重试", exact: true }).click(); await expect(page.locator(".notes-error")).toHaveCount(0);
-  const stale = await delayed("**/api/notes", "GET"); await page.getByRole("button", { name: "刷新随记", exact: true }).click(); await stale.seen(); await edit(`${prefix}编辑`); await page.getByPlaceholder("标题（可选，留空时显示正文首句）").fill(`${prefix}编辑迟到保护`); await save(); await stale.release(); await expect(card(`${prefix}编辑迟到保护`)).toBeVisible(); await edit(`${prefix}编辑迟到保护`); await page.getByPlaceholder("标题（可选，留空时显示正文首句）").fill(`${prefix}编辑`); await save();
+  await revisit(); await expect(page.locator(".notes-error")).toContainText("合成读取失败"); await expect(card(`${prefix}编辑`)).toBeVisible(); await page.unroute("**/api/notes"); await page.getByRole("button", { name: "重试", exact: true }).click(); await expect(page.locator(".notes-error")).toHaveCount(0);
+  const stale = await delayed("**/api/notes", "GET"); await revisit(); await stale.seen(); await edit(`${prefix}编辑`); await page.getByPlaceholder("标题（可选，留空时显示正文首句）").fill(`${prefix}编辑迟到保护`); await save(); await stale.release(); await expect(card(`${prefix}编辑迟到保护`)).toBeVisible(); await edit(`${prefix}编辑迟到保护`); await page.getByPlaceholder("标题（可选，留空时显示正文首句）").fill(`${prefix}编辑`); await save();
   await fs.mkdir(path.resolve("artifacts/notes"), { recursive: true }); await page.evaluate(() => window.scrollTo(0, 0)); await page.screenshot({ path: path.resolve("artifacts/notes/desktop.png") });
   await edit(`${prefix}编辑`); await page.screenshot({ path: path.resolve("artifacts/notes/desktop-editor.png") }); await discard();
   await page.goto(`${base}?view=notes&note=${saved.id}`); await expect(card(`${prefix}编辑`)).toBeFocused();

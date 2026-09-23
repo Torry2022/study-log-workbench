@@ -3,6 +3,7 @@ import path from "node:path";
 import assert from "node:assert/strict";
 import { parseEnv } from "node:util";
 import { createRequire } from "node:module";
+import { clickLogAction } from "./browser-log-actions.mjs";
 const require = createRequire(new URL("../study-log-web/package.json", import.meta.url));
 const { chromium, expect } = require("@playwright/test");
 const [root, base = "http://127.0.0.1:3561/study-log"] = process.argv.slice(2);
@@ -25,9 +26,7 @@ try {
   const dialog = page.getByRole("dialog", { name: "备份与恢复", exact: true });
   const rows = dialog.locator(".backup-version-list button");
   const open = async () => {
-    const button = page.getByRole("button", { name: "备份与恢复", exact: true }).filter({ visible: true });
-    if (!await button.count()) await page.getByRole("button", { name: "更多日志操作", exact: true }).click();
-    await button.click(); await expect(dialog).toBeVisible();
+    await clickLogAction(page, "备份与恢复"); await expect(dialog).toBeVisible();
   };
   const close = async () => { await dialog.getByRole("button", { name: "关闭备份与恢复", exact: true }).click(); await expect(dialog).not.toBeVisible(); };
   const select = async (index = 0) => { await rows.nth(index).click(); await expect(dialog.locator(".backup-diff-viewer")).toBeVisible(); };

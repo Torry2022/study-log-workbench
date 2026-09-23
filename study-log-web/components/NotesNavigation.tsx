@@ -1,13 +1,12 @@
 "use client";
 
-import { CalendarDays, Plus, Tag, X } from "lucide-react";
+import { CalendarDays, Plus, Tag } from "lucide-react";
 import type { NotesController } from "@/hooks/use-notes";
 import "@/app/notes.css";
 
-export function NotesNavigation({ notes, onNavigate }: { notes: NotesController; onNavigate?: () => void }) {
+export function NotesNavigation({ notes, onNavigate, filtersOnly = false }: { notes: NotesController; onNavigate?: () => void; filtersOnly?: boolean }) {
   return <div className="module-sidebar-content notes-sidebar-content">
-    <button className="button primary notes-new-button" type="button" disabled={notes.saving} onClick={async () => { if (await notes.openNew()) onNavigate?.(); }}><Plus size={15} />新建随记</button>
-    {(notes.yearFilter !== "all" || notes.tagFilter !== "all") && <button className="notes-clear-filters" type="button" onClick={notes.clearFilters}><X size={13} />清除筛选</button>}
+    {!filtersOnly && <button className="button secondary full notes-new-button" type="button" disabled={notes.saving} onClick={async () => { if (await notes.openNew()) onNavigate?.(); }}><Plus size={15} />新建随记</button>}
     <div className="sidebar-section notes-filter-section"><div className="section-title"><span><CalendarDays size={15} />年份</span></div>
       <div className="notes-filter-list">{[{ value: "all", count: notes.notes.length }, ...notes.years].map(year => <button className={`nav-item${notes.yearFilter === year.value ? " active" : ""}`} type="button" key={year.value} onClick={() => { notes.setYearFilter(year.value); onNavigate?.(); }}><span>{year.value === "all" ? "全部" : year.value}</span><small>{year.count}</small></button>)}</div>
     </div>

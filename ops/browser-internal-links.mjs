@@ -3,6 +3,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import { parseEnv } from 'node:util';
 import { createRequire } from 'node:module';
+import { clickLogAction } from './browser-log-actions.mjs';
 const require = createRequire(new URL('../study-log-web/package.json', import.meta.url));
 const { chromium, expect } = require('@playwright/test');
 const [root, base = 'http://127.0.0.1:3561/study-log'] = process.argv.slice(2);
@@ -22,7 +23,7 @@ try {
   await page.goto(base + '?date=2026-04-11');
   await page.getByRole('button', { name: '源码', exact: true }).filter({ visible: true }).click();
   await page.locator('.cm-content').press('Control+End'); await page.keyboard.press('Shift+Home');
-  await page.getByRole('button', { name: '内部链接', exact: true }).filter({ visible: true }).click();
+  await clickLogAction(page, '内部链接');
   const dialog = page.getByRole('dialog', { name: '插入内部链接' });
   await expect(dialog).toContainText('显示文字：选区别名');
   const query = page.getByRole('combobox', { name: '搜索日期、小节标题或正文' });
@@ -31,7 +32,7 @@ try {
   await expect(page.locator('.cm-content')).toContainText('[[2026-04-12#目标标题|选区别名]]');
   await page.locator('.cm-content').press('Control+z'); await expect(page.locator('.cm-content')).not.toContainText('#目标标题|选区别名');
   await page.keyboard.press('Control+y');
-  await page.getByRole('button', { name: '保存', exact: true }).filter({ visible: true }).click(); await expect(page.locator('.editor-save-status')).toHaveText('已保存');
+  await page.getByRole('button', { name: '保存', exact: true }).filter({ visible: true }).click(); await expect(page.locator('.toast.success')).toHaveText('已保存');
   await page.getByRole('button', { name: '分屏', exact: true }).click();
   await page.getByRole('link', { name: '选区别名', exact: true }).click();
   await expect(page).toHaveURL(/date=2026-04-12/);
@@ -41,20 +42,20 @@ try {
   await page.getByRole('button', { name: '返回链接前位置', exact: true }).filter({ visible: true }).click();
   await expect(page).toHaveURL(/date=2026-04-11/); await expect(page.getByRole('button', { name: '分屏', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('link', { name: '不存在的日块', exact: true }).click(); await expect(page.locator('.editor-navigation-status[role=alert]')).toHaveText('未找到目标日块'); await expect(page).toHaveURL(/date=2026-04-11/);
-  await page.getByRole('link', { name: '缺失标题', exact: true }).click(); await expect(page.getByText('未找到目标小节，已打开该日日志。', { exact: true })).toBeVisible();
+  await page.getByRole('link', { name: '缺失标题', exact: true }).click(); await expect(page.getByRole('status').filter({ hasText: '未找到目标小节，已打开该日日志。' })).toBeVisible();
   await page.getByRole('button', { name: '返回链接前位置', exact: true }).filter({ visible: true }).click();
 
   // Search failure retries; changing a query cancels a delayed old result.
   let failures = 1;
   await page.route('**/api/links?**', route => failures-- > 0 ? route.fulfill({ status: 500, json: { error: '合成搜索失败' } }) : route.continue());
-  await page.getByRole('button', { name: '内部链接', exact: true }).filter({ visible: true }).click();
+  const focusReturn = await clickLogAction(page, '内部链接');
   await expect(dialog.getByRole('alert')).toContainText('合成搜索失败'); await dialog.getByRole('button', { name: '重试', exact: true }).click(); await expect(dialog.getByRole('option').first()).toBeVisible();
   await page.unroute('**/api/links?**');
   let release, started;
   const gate = new Promise(resolve => { release = resolve; }); const seen = new Promise(resolve => { started = resolve; });
   await page.route('**/api/links?**', async route => { if (new URL(route.request().url()).searchParams.get('query') !== '旧查询') return route.continue(); const response = await route.fetch(); started(); await gate; await route.fulfill({ response }).catch(() => {}); });
   await query.fill('旧查询'); await seen; await query.fill('独特词'); await expect(dialog.getByRole('option').first()).toContainText('目标标题'); release();
-  await query.press('Escape'); await expect(dialog).not.toBeVisible(); await expect(page.getByRole('button', { name: '内部链接', exact: true }).filter({ visible: true })).toBeFocused();
+  await query.press('Escape'); await expect(dialog).not.toBeVisible(); await expect(focusReturn).toBeFocused();
   await fs.mkdir(path.resolve('artifacts/links'), { recursive: true }); await page.screenshot({ path: path.resolve('artifacts/links/desktop.png') });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole('button', { name: '更多日志操作', exact: true }).click(); await page.getByRole('button', { name: '内部链接', exact: true }).filter({ visible: true }).click();

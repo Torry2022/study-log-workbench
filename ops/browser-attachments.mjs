@@ -3,6 +3,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import { parseEnv } from 'node:util';
 import { createRequire } from 'node:module';
+import { clickLogAction } from './browser-log-actions.mjs';
 const require = createRequire(new URL('../study-log-web/package.json', import.meta.url));
 const { chromium, expect } = require('@playwright/test');
 const [root, base = 'http://127.0.0.1:3561/study-log'] = process.argv.slice(2);
@@ -17,7 +18,7 @@ try {
   const login = async () => { await page.getByLabel('访问密码').fill(env.APP_PASSWORD); await page.getByRole('button', { name: '登录', exact: true }).click(); await page.locator('.workspace').waitFor(); };
   const source = async () => { await page.getByRole('button', { name: '源码', exact: true }).filter({ visible: true }).click(); await expect(page.locator('.cm-content')).toBeVisible(); };
   const replace = async text => { await page.locator('.cm-content').click(); await page.keyboard.press('Control+a'); await page.keyboard.insertText(text); };
-  const discard = async () => { await page.getByRole('button', { name: '放弃修改', exact: true }).filter({ visible: true }).click(); await page.getByRole('alertdialog').getByRole('button', { name: '放弃修改', exact: true }).click(); await expect(page.getByRole('alertdialog')).not.toBeVisible(); };
+  const discard = async () => { await clickLogAction(page, '放弃修改'); await page.getByRole('alertdialog').getByRole('button', { name: '放弃修改', exact: true }).click(); await expect(page.getByRole('alertdialog')).not.toBeVisible(); };
   const delayUpload = async () => {
     let release, seen;
     const gate = new Promise(resolve => { release = resolve; });
@@ -72,7 +73,7 @@ try {
 
   const switching = await delayUpload(); await page.getByLabel('选择日志图片').setInputFiles(file); await switching.started;
   await expect(page.locator('.editor-save-status')).not.toBeVisible();
-  await page.locator('.day-item').filter({ hasText: '2026-03-12' }).click(); await expect(page.locator('.editor-date-line')).toContainText('2026-03-12');
+  await page.locator('.day-item-open').filter({hasText:'03-12'}).click(); await expect(page.locator('.editor-date-line')).toContainText('2026-03-12');
   await switching.release(); await expect(page.locator('.cm-content')).not.toContainText('./assets/image-');
   const expired = await delayUpload(); await page.getByLabel('选择日志图片').setInputFiles(file); await expired.started;
   await page.evaluate(() => window.dispatchEvent(new Event('study-log:auth-expired'))); await expired.release(); await login();

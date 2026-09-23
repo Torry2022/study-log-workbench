@@ -125,6 +125,20 @@
   gap: 8px;
 }
 
+@media (min-width: 1024px) {
+  .topbar > .workspace-global-search {
+    max-width: 560px;
+    justify-self: end;
+  }
+}
+
+@media (max-width: 1023px) {
+  .reader-toolbar-qa,
+  .reader-toolbar-stats {
+    display: none;
+  }
+}
+
 .theme-menu {
   position: relative;
 }

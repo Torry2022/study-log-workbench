@@ -58,6 +58,16 @@
   min-width: 0;
 }
 
+.reader-log-identity .eyebrow {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
 .reader-log-identity .reader-heading-row {
   flex-wrap: nowrap;
 }
@@ -82,12 +92,41 @@
   gap: 8px;
 }
 
+.reader-log-controls .day-toolbar-actions { order: 3; }
+.reader-toolbar-log .toolbar-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.toolbar-danger-action { margin-left: 4px; }
+
 .reader-secondary-actions {
   display: flex;
   align-items: center;
   gap: 12px;
   min-width: 0;
 }
+
+.reader-navigator-desktop .day-navigator { margin-top: 0; }
+.day-navigator { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; }
+.day-nav-button {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--canvas);
+  color: var(--body);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.day-nav-button:hover:not(:disabled) { background: var(--surface-soft); color: var(--ink); }
+.day-nav-button:disabled { color: var(--muted-soft); }
 
 .reading-mode-entry,
 .reading-mode-icon {
@@ -728,6 +767,18 @@
   }
 }
 
+/* Keep the original progressive toolbar overflow rather than squeezing controls. */
+.reader-toolbar-log .log-toolbar-more,
+.log-mode-select,
+.log-overflow-navigation,
+.log-overflow-refresh,
+.log-overflow-export,
+.log-overflow-backup,
+.log-overflow-delete { display: none; }
+.log-toolbar-popover { min-width: 180px; max-height: min(480px, 70vh); overflow-y: auto; }
+.log-overflow-export button { width: 100%; }
+.log-toolbar-popover .danger { color: var(--error); }
+
 @media (min-width: 1024px) {
   .reader-toolbar-log {
     flex-wrap: wrap;
@@ -748,22 +799,82 @@
     column-gap: 10px;
     align-items: center;
   }
+  .reader-toolbar-log .reader-log-identity .eyebrow,
   .reader-toolbar-log .reader-log-identity h2 { grid-column: 1; }
   .reader-toolbar-log .reader-heading-row { display: contents; }
+  .reader-toolbar-log .reader-navigator-desktop {
+    grid-column: 2;
+    grid-row: 1 / 3;
+    display: flex;
+    align-items: center;
+  }
   .reader-toolbar-log .reader-secondary-actions:empty { display: none; }
 
   @container reader-workspace (max-width: 1520px) {
     .reader-toolbar-log { gap: 12px; padding: 12px 16px; }
     .reader-toolbar-log .reader-secondary-actions { display: none; }
-    .reader-toolbar-log .reader-log-controls { gap: 8px; }
+    .reader-toolbar-log .reader-log-controls,
+    .reader-toolbar-log .day-toolbar-actions { gap: 8px; }
+    .reader-toolbar-log .toolbar-danger-action { margin-left: 0; }
+    .reader-toolbar-log:has(.editor-toolbar-actions, .reader-secondary-actions > .button) .log-toolbar-more { display: inline-flex; }
   }
 
   @container reader-workspace (max-width: 1200px) {
+    .reader-toolbar-log .view-mode-switch { min-width: 0; }
+    .reader-toolbar-log .day-nav-button,
+    .reader-toolbar-log .view-mode-button,
+    .reader-toolbar-log .day-toolbar-actions > .button,
+    .reader-toolbar-log .day-toolbar-actions > .export-menu > .button {
+      width: 36px;
+      min-width: 36px;
+      flex: 0 0 36px;
+      padding: 0;
+      gap: 0;
+      font-size: 0;
+    }
     .reader-toolbar-log .reader-heading-row { gap: 8px; }
   }
 
+  @container reader-workspace (max-width: 850px) {
+    .reader-toolbar-log .log-action-delete { display: none; }
+    .reader-toolbar-log .log-toolbar-more { display: inline-flex; }
+    .log-overflow-delete { display: block; }
+  }
+  @container reader-workspace (max-width: 790px) {
+    .reader-toolbar-log .log-action-backup { display: none; }
+    .log-overflow-backup { display: block; }
+  }
+  @container reader-workspace (max-width: 730px) {
+    .reader-toolbar-log .log-action-export { display: none; }
+    .log-overflow-export { display: block; }
+  }
+  @container reader-workspace (max-width: 670px) {
+    .reader-toolbar-log .log-action-refresh { display: none; }
+    .log-overflow-refresh { display: block; }
+  }
   @container reader-workspace (max-width: 560px) {
+    .reader-toolbar-log .view-mode-switch { display: none; }
     .reader-toolbar-log .reader-log-identity h2 { font-size: 20px; }
+    .log-mode-select {
+      display: block;
+      width: 66px;
+      height: 36px;
+      padding: 0 4px;
+      border: 1px solid var(--hairline);
+      border-radius: var(--radius-md);
+      background: var(--canvas);
+      color: var(--body);
+      font-size: 13px;
+    }
+  }
+  @container reader-workspace (max-width: 460px) {
+    .reader-toolbar-log .reader-navigator-desktop { display: none; }
+    .log-overflow-navigation { display: block; }
+    .reader-toolbar-log .log-overflow-navigation .day-nav-button {
+      width: auto;
+      padding: 0 8px;
+      font-size: 13px;
+    }
   }
 }
 
@@ -777,6 +888,26 @@
     min-height: 0;
     display: grid;
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mobile-spinner { animation: reader-toolbar-spin 0.8s linear infinite; }
+  .mobile-sheet-grid .danger { color: var(--error); }
+  .mobile-sheet-section {
+    display: grid;
+    gap: 8px;
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid var(--hairline-soft);
+  }
+  .mobile-sheet-section > span { color: var(--muted); font-size: 12px; font-weight: 700; }
+  .mobile-sheet-section > div { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .mobile-sheet-section button {
+    min-height: 44px;
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-md);
+    background: var(--canvas);
+    color: var(--body);
+    font-size: 12px;
   }
 
   .reader-toolbar {
@@ -1024,6 +1155,4 @@
   .reading-mode .reader-toolbar { top: 0; }
   .reader-outline-modal .preview-outline { top: var(--mobile-topbar-height); right: 0; bottom: 0; width: min(88vw, 360px); max-height: none; border-radius: 0; }
 }
-.reader-outline-access { display: none; }
-.reader-outline-access .mobile-toolbar-icon { width: 40px; height: 40px; display: inline-grid; place-items: center; padding: 0; border: 1px solid var(--hairline); border-radius: var(--radius-md); background: var(--canvas); color: var(--body); }
-@media (min-width: 1024px) and (max-width: 1180px) { .reader-outline-access { display: flex; } }
+@keyframes reader-toolbar-spin { to { transform: rotate(360deg); } }

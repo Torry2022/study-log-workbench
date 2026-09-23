@@ -26,9 +26,13 @@ try {
   };
   const choose = async label => {
     const more = page.getByRole('button', { name: '更多日志操作', exact: true });
-    if (await more.isVisible()) await more.click();
-    else await page.getByRole('button', { name: '导出', exact: true }).filter({ visible: true }).click();
-    await page.getByRole('menuitem', { name: label, exact: true }).click();
+    if (await more.isVisible()) {
+      await more.click();
+      await page.getByRole('dialog', { name: '日志操作', exact: true }).getByRole('button', { name: label, exact: true }).click();
+    } else {
+      await page.getByRole('button', { name: '导出', exact: true }).filter({ visible: true }).click();
+      await page.getByRole('menuitem', { name: label, exact: true }).click();
+    }
   };
   const confirm = async () => {
     await page.getByRole('alertdialog', { name: '导出已保存内容？' }).getByRole('button', { name: '继续导出' }).click();

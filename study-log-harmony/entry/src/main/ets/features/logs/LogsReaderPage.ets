@@ -52,6 +52,13 @@ export struct LogsReaderPage {
   @State private dirty: boolean = false;
   @State private saving: boolean = false;
   @State private saveError: string = '';
+  @State private newLogDate: string = '';
+  @State private calendarMonth: string = '';
+  @State private calendarDates: string[] = [];
+  @State private calendarMode: string = 'create';
+  @State private calendarOpen: boolean = false;
+  @State private calendarLoading: boolean = false;
+  @State private calendarError: boolean = false;
   private reads: LogReadRepository = new LogReadRepository(apiClient);
   private writes: LogWriteRepository = new LogWriteRepository(apiClient);
   private editor: SourceEditorSession = new SourceEditorSession();
@@ -60,6 +67,7 @@ export struct LogsReaderPage {
   private dayRevision: number = 0;
   private restoredDraftApplied: boolean = false;
   private leaveCheckPending: boolean = false;
+  private calendarRevision: number = 0;
 
   aboutToAppear(): void {
     this.lifecycle++;
@@ -83,6 +91,7 @@ export struct LogsReaderPage {
     this.lifecycle++;
     this.listRevision++;
     this.dayRevision++;
+    this.calendarRevision++;
     this.reads.invalidate();
     this.editor.onChange = () => {};
     this.editor.onDirty = () => {};
@@ -196,6 +205,7 @@ export struct LogsReaderPage {
       this.reportDraft();
       this.previewText = this.draftText;
       this.reads.invalidate();
+      this.refreshNavigation(date);
     } catch (error) {
       if (lifecycle !== this.lifecycle || revision !== this.dayRevision) return;
       this.saveError = error instanceof ApiError && error.statusCode === 409 ?
@@ -203,6 +213,24 @@ export struct LogsReaderPage {
           error instanceof Error ? error.message : '保存失败，请重试';
     } finally {
       if (lifecycle === this.lifecycle && revision === this.dayRevision) this.saving = false;
+    }
+  }
+
+  private async refreshNavigation(date: string): Promise<void> {
+    const lifecycle = this.lifecycle;
+    const month = date.slice(0, 7);
+    try {
+      const result = await Promise.all([this.reads.months(), this.reads.days(month)]);
+      if (lifecycle !== this.lifecycle) return;
+      this.months = result[0].months;
+      if (this.month === month && this.selectedDate === date) {
+        this.days = result[1].days;
+        this.navigationError = '';
+      }
+    } catch (error) {
+      if (lifecycle === this.lifecycle && this.month === month && this.selectedDate === date) {
+        this.navigationError = this.message(error as Error);
+      }
     }
   }
 
@@ -305,6 +333,172 @@ export struct LogsReaderPage {
     this.targetRevision++;
   }
 
+  private calendarDate(value: Date): string {
+    return `${value.getFullYear()}-${(value.getMonth() + 1).toString().padStart(2, '0')}-${value.getDate().toString().padStart(2, '0')}`;
+  }
+
+  private openCalendar(mode: string): void {
+    this.calendarMode = mode;
+    if (!this.newLogDate) this.newLogDate = this.calendarDate(new Date());
+    this.calendarMonth = (mode === 'jump' ? this.selectedDate || this.newLogDate : this.newLogDate).slice(0, 7);
+    this.calendarOpen = true;
+    this.loadCalendar();
+  }
+
+  private async loadCalendar(): Promise<void> {
+    const revision = ++this.calendarRevision;
+    this.calendarLoading = true;
+    this.calendarError = false;
+    this.calendarDates = [];
+    try {
+      const response = await this.reads.days(this.calendarMonth);
+      if (revision === this.calendarRevision) this.calendarDates = response.days.map((day: DaySummary) => day.date);
+    } catch (_) {
+      if (revision === this.calendarRevision) this.calendarError = true;
+    } finally {
+      if (revision === this.calendarRevision) this.calendarLoading = false;
+    }
+  }
+
+  private shiftCalendar(offset: number): void {
+    const parts = this.calendarMonth.split('-');
+    this.calendarMonth = this.calendarDate(new Date(Number(parts[0]), Number(parts[1]) - 1 + offset, 1)).slice(0, 7);
+    this.loadCalendar();
+  }
+
+  private calendarCells(): string[] {
+    if (!this.calendarMonth) return [];
+    const parts = this.calendarMonth.split('-');
+    const first = new Date(Number(parts[0]), Number(parts[1]) - 1, 1);
+    const count = new Date(Number(parts[0]), Number(parts[1]), 0).getDate();
+    const cells: string[] = [];
+    for (let index = 0; index < (first.getDay() + 6) % 7; index++) cells.push('');
+    for (let day = 1; day <= count; day++) cells.push(`${this.calendarMonth}-${day.toString().padStart(2, '0')}`);
+    return cells;
+  }
+
+  private canSelectCalendarDate(date: string): boolean {
+    return !!date && date <= this.calendarDate(new Date()) &&
+      (this.calendarMode === 'create' || (!this.calendarLoading && !this.calendarError && this.calendarDates.includes(date)));
+  }
+
+  private selectCalendarDate(date: string): void {
+    if (!this.canSelectCalendarDate(date)) return;
+    this.calendarOpen = false;
+    if (this.calendarMode === 'jump') this.confirmDiscard(() => this.openDate(date, false));
+    else this.newLogDate = date;
+  }
+
+  private async openDate(date: string, edit: boolean): Promise<void> {
+    if (date.slice(0, 7) === this.month) await this.loadDay(date);
+    else await this.loadDays(date.slice(0, 7), date);
+    if (edit && this.day?.date === date) this.sourceMode = true;
+  }
+
+  private openNewLog(date: string): void {
+    this.calendarOpen = false;
+    this.confirmDiscard(() => this.openDate(date, true));
+  }
+
+  @Builder
+  private logCalendar() {
+    Column({ space: 8 }) {
+      Text(this.calendarMode === 'jump' ? '跳转到日期' : '选择新建日期')
+        .fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.ink'))
+      Row() {
+        Button('‹', { type: ButtonType.Normal }).width(36).height(36)
+          .fontSize(20).fontColor($r('app.color.body')).backgroundColor(Color.Transparent)
+          .accessibilityText('上一个月').onClick(() => this.shiftCalendar(-1))
+        Text(this.calendarMonth).fontSize(14).fontColor($r('app.color.ink')).layoutWeight(1).textAlign(TextAlign.Center)
+        Button('›', { type: ButtonType.Normal }).width(36).height(36)
+          .fontSize(20).fontColor($r('app.color.body')).backgroundColor(Color.Transparent)
+          .enabled(this.calendarMonth < this.calendarDate(new Date()).slice(0, 7))
+          .accessibilityText('下一个月').onClick(() => this.shiftCalendar(1))
+      }.width('100%')
+      Row() {
+        ForEach(['一', '二', '三', '四', '五', '六', '日'], (day: string) => {
+          Text(day).width('14.2857%').textAlign(TextAlign.Center).fontSize(12).fontColor($r('app.color.muted'))
+        })
+      }.width('100%')
+      Flex({ wrap: FlexWrap.Wrap }) {
+        ForEach(this.calendarCells(), (date: string, index: number) => {
+          Button({ type: ButtonType.Normal }) {
+            Column({ space: 2 }) {
+              Text(date ? Number(date.slice(-2)).toString() : '').fontSize(13)
+                .fontColor(this.canSelectCalendarDate(date) ? $r('app.color.ink') : $r('app.color.muted_soft'))
+              Circle().width(3).height(3).fill(this.calendarDates.includes(date) ? $r('app.color.primary') : Color.Transparent)
+            }
+          }
+          .id(`log_calendar_day_${date || index}`).width('14.2857%').height(36).padding(0)
+          .backgroundColor(date && date === (this.calendarMode === 'jump' ? this.selectedDate : this.newLogDate) ?
+            $r('app.color.surface_card') : Color.Transparent)
+          .borderRadius(6).enabled(this.canSelectCalendarDate(date))
+          .accessibilityText(date).onClick(() => this.selectCalendarDate(date))
+        }, (date: string, index: number) => `${date}:${index}`)
+      }.width('100%')
+      if (this.calendarError) {
+        Button('读取失败，点击重试', { type: ButtonType.Normal }).fontSize(12)
+          .fontColor($r('app.color.muted')).backgroundColor(Color.Transparent).onClick(() => this.loadCalendar())
+      } else {
+        Text(this.calendarLoading ? '正在读取日志日期…' :
+          this.calendarMode === 'jump' ? '有记录的日期可直接跳转' : '选定日期后，点击“新建”打开日块')
+          .fontSize(12).fontColor($r('app.color.muted'))
+      }
+    }.width(280).padding(14)
+  }
+
+  @Builder
+  private dateActions() {
+    Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.SpaceBetween }) {
+      Button({ type: ButtonType.Normal }) {
+        Row({ space: 7 }) {
+          SymbolGlyph($r('sys.symbol.plus')).fontSize(15).fontColor([$r('app.color.ink')])
+          Text('今天').fontSize(13).fontWeight(FontWeight.Medium).fontColor($r('app.color.ink'))
+        }.justifyContent(FlexAlign.Center)
+      }
+      .width('100%').height(40).padding(0).margin({ bottom: 8 })
+      .backgroundColor($r('app.color.canvas'))
+      .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8).clip(true)
+      .onClick(() => this.openNewLog(this.calendarDate(new Date())))
+      Row({ space: 8 }) {
+        Button({ type: ButtonType.Normal }) {
+          Row({ space: 7 }) {
+            SymbolGlyph($r('sys.symbol.calendar')).fontSize(15).fontColor([$r('app.color.ink')])
+            Text(this.newLogDate || this.calendarDate(new Date())).fontSize(13)
+              .fontWeight(FontWeight.Medium).fontColor($r('app.color.ink'))
+          }.justifyContent(FlexAlign.Center)
+        }
+        .layoutWeight(1).height(40).padding(0).backgroundColor($r('app.color.canvas'))
+        .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8).clip(true)
+        .id('log_create_date_picker').accessibilityText('选择新建日期')
+        .onClick(() => this.openCalendar('create'))
+        .bindPopup(this.calendarOpen && this.calendarMode === 'create', {
+          builder: this.logCalendar(), placement: Placement.Bottom, enableArrow: false,
+          popupColor: $r('app.color.canvas'), radius: 8,
+          onStateChange: (event) => { if (!event.isVisible && this.calendarMode === 'create') this.calendarOpen = false; }
+        })
+        Button('+ 新建', { type: ButtonType.Normal }).height(40).padding({ left: 10, right: 10 })
+          .fontSize(13).fontColor($r('app.color.ink')).backgroundColor($r('app.color.canvas'))
+          .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8)
+          .id('log_create_date_submit').onClick(() => this.openNewLog(this.newLogDate || this.calendarDate(new Date())))
+      }.width('100%')
+    }.width('100%')
+  }
+
+  @Builder
+  private jumpDatePicker() {
+    Button({ type: ButtonType.Normal }) {
+      SymbolGlyph($r('sys.symbol.calendar')).fontSize(15).fontColor([$r('app.color.primary_active')])
+    }.width(28).height(28).padding(0).backgroundColor(Color.Transparent)
+      .id('log_jump_date_picker').accessibilityText('跳转到指定日期')
+      .onClick(() => this.openCalendar('jump'))
+      .bindPopup(this.calendarOpen && this.calendarMode === 'jump', {
+        builder: this.logCalendar(), placement: Placement.BottomRight, enableArrow: false,
+        popupColor: $r('app.color.canvas'), radius: 8,
+        onStateChange: (event) => { if (!event.isVisible && this.calendarMode === 'jump') this.calendarOpen = false; }
+      })
+  }
+
   private openHeading(day: DaySummary, heading: string, index: number): void {
     if (this.day?.date === day.date) {
       this.targetHeading = heading;
@@ -323,6 +517,8 @@ export struct LogsReaderPage {
         navigationDayQuery: this.navigationDayQuery,
         navigationLoading: this.monthsLoading || this.daysLoading,
         navigationError: this.navigationError,
+        dateActions: (): void => this.dateActions(),
+        jumpDatePicker: (): void => this.jumpDatePicker(),
         onMonth: (month: string) => { if (month !== this.month) this.confirmDiscard(() => this.loadDays(month)); },
         onDay: (date: string) => { if (date !== this.selectedDate) this.confirmDiscard(() => this.loadDay(date)); },
         onHeading: (day: DaySummary, heading: string, index: number) => this.openHeading(day, heading, index),

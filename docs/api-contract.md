@@ -1,13 +1,13 @@
-# Web/API 契约（实施中）
+# Web/API 契约
 
-所有路径以 `/study-log` 开头。当前契约版本1尚在逐项实现，未达到完整冻结门槛。
+所有路径以 `/study-log` 开头。当前客户端契约版本为 1；鸿蒙迁移时以实际路由和协议测试核对本文，发现差异先修正文档或实现，再接入客户端。独立试装尚未完成，不据此宣称发布验收通过。
 
 ## 认证与身份
 
 - `POST /api/auth/login` 接收 `{password}`；正确返回 `{ok:true}` 并设置 HttpOnly、SameSite=Lax 会话Cookie；错误/畸形密码返回401，不回显输入。
 - `POST /api/auth/app-login` 接收同样参数，返回 `{ok:true,token,expiresAt}`；后续用 `Authorization: Bearer …`。Cookie与App Token有不同受众，不互相替用。
 - `GET /api/auth/me` 返回认证状态。`POST /api/auth/logout` 清除当前浏览器Cookie，不撤销其他已签发Token。
-- `GET /api/capabilities` 需要认证，返回持久 `instanceId`、`apiContractVersion` 和 `features`。当前AI/问答尚未实现，`supported/configured` 都为false；不得将未实现能力报告为可用。
+- `GET /api/capabilities` 需要认证，返回持久 `instanceId`、`apiContractVersion:1`、`aiConfiguration` 和 `features`。`aiWriting`、`aiHighlighting`、`aiNoteExtraction`、`aiTaxonomy`、`rag` 均已实现，`supported` 为 true；各项 `configured` 由实例模型、对应模板及问答所需 MCP 配置分别决定，不代表上游服务连通或结果质量。
 - 认证有效期7天。过期、错误签名、额外分段或错误受众不能访问受保护API。Cookie Secure由实例配置明确指定，本地HTTP初始化默认false；HTTPS部署应设true。
 
 配置及初始化错误不得包含密码、密钥或资料正文。实例身份不随服务重启改变。
@@ -40,7 +40,7 @@
 - `GET /api/stats?month=YYYY-MM` 返回 `{stats}`，月份须合法；省略时选择最近有日志月份（空库为当前上海月份）。按权威日块与根级H3计数，包含所有活动，不内置个人排除或领域推断。领域/标签比例、活跃天数及上月变化均从这些条目计算；entries的headingIndex是日内真实H3序号，重复标题来源定位应使用此序号。
 - `GET /api/taxonomy` 返回 `{taxonomy,catalog}`。taxonomy含domains/mappings/updatedAt/version，空实例仅领域“其他”、空映射及null版本；catalog按历史标题整理标签、出现次数、月份和来源，提供显式映射标识。
 - `PUT /api/taxonomy` 接受 `{domains,mappings,baseVersion}` 返回 `{taxonomy}`。baseVersion必填，空文件用null，已有文件用读取的SHA256版本；旧版本409 `TAXONOMY_CONFLICT`。删除自定义领域后，其映射归入“其他”；不重建个人默认领域。
-- 以上均先认证、禁止缓存。参数400，存储错误500且隐藏路径。分类JSON位于显式实例data，读取与写入共用进程内队列；覆盖前在实例backups保留完整唯一备份，再通过临时文件sync和rename替换。分类建议属于后续AI能力，当前只有手工编辑。
+- 以上均先认证、禁止缓存。参数400，存储错误500且隐藏路径。分类JSON位于显式实例data，读取与写入共用进程内队列；覆盖前在实例backups保留完整唯一备份，再通过临时文件sync和rename替换。分类建议接口见下文，建议经人工审核后才进入手工草稿。
 
 ## 随记
 
@@ -108,4 +108,8 @@
 - `GET /api/backups/preview?date=...&kind=write&id=...` 返回 `{preview:{date,kind,id,fileName,historicalContent,currentContent,currentVersion,backupVersion}}`。backupVersion是历史日块内容摘要，预览用于比较，不修改资料。
 - `POST /api/backups/restore` 接收 `{date,kind:"write",id,baseVersion,backupVersion}`。baseVersion使用预览时的currentVersion，字段不可省略；已删除日可为null。双方版本任一变化返回409，须重新预览并确认。成功返回 `{day}`。
 - 恢复经过普通写入的串行队列、写前备份和原子替换，仅复制历史中的选中日。当前已有日保持实际所属文件；恢复缺失日优先回历史年月源文件，不覆盖其他日。损坏/重复日期备份拒绝恢复。
-- 以上入口均须认证；备份ID严格限制为所选日期对应的年/月文件名和备份格式，不接受路径。未找到版本404，参数400，文件系统错误500且不泄露路径；所有响应禁止缓存。当前仅实现本机写前备份，整实例恢复在后续批次实现。
+- 以上入口均须认证；备份ID严格限制为所选日期对应的年/月文件名和备份格式，不接受路径。未找到版本404，参数400，文件系统错误500且不泄露路径；所有响应禁止缓存。日块备份不同于已实现的停机整实例归档恢复，后者见[整实例备份与恢复](backup-restore.md)。
+
+## 日志问答与历史
+
+`POST /api/rag/query` 使用 SSE 返回 `status`、`sources`、`delta`、`done` 或 `error`；只有 `done` 表示完整回答。会话列表、创建、读取、更新、命名和删除由 `/api/rag/sessions` 及其子路径提供，写入携带版本及操作标识。请求结构、引用和失败恢复见[日志问答](rag.md)。客户端不得将连接提前结束当成成功，也不得将随记或 Wiki 当成日志证据。

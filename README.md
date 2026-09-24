@@ -34,6 +34,6 @@ node ops/run-web.mjs start "/absolute/path/to/new-instance" 3560
 
 ## 当前验收边界
 
-维护者已用合成资料完成网页生产构建、主要浏览器流程、Linux 容器部署和少量真实模型调用；详细结果在[实施状态](docs/implementation-status.md)、[浏览器回归](docs/web-regression-b28.md)和[模型小样本记录](docs/model-validation.md)。独立使用者安装仍须按[试装清单](docs/independent-install-checklist.md)取得证据，维护者本机测试不能替代。真实向量/重排提供方、复杂材料的模型质量和 Firefox 也未完成相应验收。鸿蒙公开版尚未开始。
+维护者已用合成资料完成网页生产构建、主要浏览器流程、Linux 容器部署和少量真实模型调用；详细结果在[实施状态](docs/implementation-status.md)、[浏览器回归](docs/web-regression-b28.md)和[模型小样本记录](docs/model-validation.md)。独立使用者安装仍须按[试装清单](docs/independent-install-checklist.md)取得证据，维护者本机测试不能替代。真实向量/重排提供方、复杂材料的模型质量和 Firefox 也未完成相应验收。鸿蒙公开版迁移已启动，进度见[鸿蒙迁移记录](docs/harmony-migration.md)；这不改变网页独立试装的未通过状态。
 
 源码位于 `study-log-web/`、`study-log-mcp/` 和 `ops/`；接口与数据约束见[架构](docs/architecture.md)及[API 契约](docs/api-contract.md)。界面修改遵循 [DESIGN.md](DESIGN.md)。项目代码按 MIT 许可发布；第三方依赖说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

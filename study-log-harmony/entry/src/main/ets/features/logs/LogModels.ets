@@ -24,3 +24,14 @@ export interface DayEntry extends DaySummary {
 export interface MonthsResponse { months: MonthSummary[]; }
 export interface DaysResponse { days: DaySummary[]; }
 export interface DayResponse { day: DayEntry; }
+
+export interface SaveDayRequest {
+  date: string;
+  content: string;
+  baseVersion: string | null;
+}
+
+export interface DeleteDayRequest {
+  date: string;
+  baseVersion: string;
+}

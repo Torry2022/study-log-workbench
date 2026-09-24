@@ -35,6 +35,8 @@ export class ApiClient {
 
   get<T>(path: string): Promise<T> { return this.request<T>(path, 'GET'); }
   post<T>(path: string, body: object): Promise<T> { return this.request<T>(path, 'POST', body); }
+  put<T>(path: string, body: object): Promise<T> { return this.request<T>(path, 'PUT', body); }
+  delete<T>(path: string, body: object): Promise<T> { return this.request<T>(path, 'DELETE', body); }
 
   private async request<T>(path: string, method: rcp.HttpMethod, body?: object): Promise<T> {
     const instanceRevision = activeInstance.revision;

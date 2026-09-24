@@ -52,4 +52,16 @@ test('native requests stay on the selected origin and ignore a late old-instance
   pending[3]({ statusCode: 401, toString: () => '{"error":"密码错误"}' });
   await assert.rejects(wrongPassword, /密码错误/);
   assert.equal(expired, 0);
+  client.setToken('second-token');
+  const save = client.put('/logs/day', { date: '2026-09-24', content: '正文', baseVersion: 'v1' });
+  assert.equal(requests[4].args[1], 'PUT');
+  assert.deepEqual(JSON.parse(requests[4].args[3]),
+    { date: '2026-09-24', content: '正文', baseVersion: 'v1' });
+  pending[4]({ statusCode: 409, toString: () => '{"error":"日志已变化","code":"LOG_CONFLICT"}' });
+  await assert.rejects(save, error => error.statusCode === 409 && error.code === 'LOG_CONFLICT');
+  const remove = client.delete('/logs/day', { date: '2026-09-24', baseVersion: 'v2' });
+  assert.equal(requests[5].args[1], 'DELETE');
+  assert.equal(JSON.parse(requests[5].args[3]).baseVersion, 'v2');
+  pending[5]({ statusCode: 200, toString: () => '{"day":{"exists":false,"version":null}}' });
+  assert.equal((await remove).day.exists, false);
 });

@@ -4,8 +4,10 @@ import { EmptyState, LoadFailure } from '../../common/ui/FeedbackStates';
 import { MarkdownReader } from '../../common/ui/MarkdownReader';
 import { workspaceDateFamily, workspaceSansFamily } from '../../common/ui/Typography';
 import { AppLogo } from '../../common/ui/AppLogo';
+import { SourceEditor, SourceEditorSession, EditorSnapshot } from '../../common/editor/SourceEditor';
 import { DayEntry, DaySummary, MonthSummary } from './LogModels';
 import { LogReadRepository } from './LogReadRepository';
+import { LogWriteRepository } from './LogWriteRepository';
 import { LogNavigation } from './components/LogNavigation';
 import { DesktopLogHeader } from './components/DesktopLogHeader';
 
@@ -31,13 +33,32 @@ export struct LogsReaderPage {
   @State private targetRevision: number = 0;
   @State private headerWidth: number = 900;
   @State private headerDateWidth: number = 190;
+  @State private sourceMode: boolean = false;
+  @State private editorReady: boolean = false;
+  @State private draftText: string = '';
+  @State private editorInitialText: string = '';
+  @State private previewText: string = '';
+  @State private savedText: string = '';
+  @State private dirty: boolean = false;
+  @State private saving: boolean = false;
+  @State private saveError: string = '';
   private reads: LogReadRepository = new LogReadRepository(apiClient);
+  private writes: LogWriteRepository = new LogWriteRepository(apiClient);
+  private editor: SourceEditorSession = new SourceEditorSession();
   private lifecycle: number = 0;
   private listRevision: number = 0;
   private dayRevision: number = 0;
 
   aboutToAppear(): void {
     this.lifecycle++;
+    this.editor.onReadyChange = (ready: boolean) => this.editorReady = ready;
+    this.editor.onChange = (snapshot: EditorSnapshot) => {
+      if (snapshot.documentKey !== this.selectedDate) return;
+      this.draftText = snapshot.text;
+      this.dirty = snapshot.text !== this.savedText;
+    };
+    this.editor.onDirty = (key: string) => { if (key === this.selectedDate) this.dirty = true; };
+    this.editor.onFailure = (message: string) => this.saveError = message;
     this.loadMonths();
   }
 
@@ -46,6 +67,10 @@ export struct LogsReaderPage {
     this.listRevision++;
     this.dayRevision++;
     this.reads.invalidate();
+    this.editor.onChange = () => {};
+    this.editor.onDirty = () => {};
+    this.editor.onFailure = () => {};
+    this.editor.onReadyChange = () => {};
   }
 
   private isWide(): boolean {
@@ -55,6 +80,69 @@ export struct LogsReaderPage {
 
   private message(error: Error): string {
     return error instanceof ApiError ? error.message : '服务器暂时无法读取日志';
+  }
+
+  private bodyFromDay(day: DayEntry): string {
+    return day.content.trimEnd().replace(/(?:\r?\n)+[ \t]*---[ \t]*$/, '')
+      .replace(/^##\s+\d{4}-\d{2}-\d{2}[^\S\r\n]*\r?\n/, '').replace(/^\r?\n+/, '').trimEnd();
+  }
+
+  private confirmDiscard(next: () => void): void {
+    if (this.saving) { this.saveError = '保存进行中，请稍候'; return; }
+    if (!this.dirty) { next(); return; }
+    AlertDialog.show({ message: '当前日志修改尚未保存，是否放弃修改？', autoCancel: false,
+      primaryButton: { value: '继续编辑', action: () => {} },
+      secondaryButton: { value: '放弃修改', fontColor: $r('app.color.error'), action: () => {
+        this.dirty = false;
+        next();
+      } }
+    });
+  }
+
+  private async switchMode(source: boolean): Promise<void> {
+    if (source === this.sourceMode) return;
+    if (!source && this.editorReady && this.day) {
+      try {
+        const snapshot = await this.editor.command('snapshot');
+        if (snapshot.documentKey !== this.selectedDate) return;
+        this.draftText = snapshot.text;
+        this.dirty = snapshot.text !== this.savedText;
+        this.previewText = snapshot.text;
+      } catch (error) {
+        this.saveError = error instanceof Error ? error.message : '编辑器尚未就绪';
+        return;
+      }
+    }
+    this.sourceMode = source;
+  }
+
+  private async save(): Promise<void> {
+    if (!this.day || !this.editorReady || this.saving || !this.dirty) return;
+    const lifecycle = this.lifecycle;
+    const revision = this.dayRevision;
+    const date = this.day.date;
+    this.saving = true;
+    this.saveError = '';
+    try {
+      const snapshot = await this.editor.command('snapshot');
+      if (snapshot.documentKey !== date || lifecycle !== this.lifecycle || revision !== this.dayRevision) return;
+      this.draftText = snapshot.text;
+      const response = await this.writes.save({ date, content: snapshot.text, baseVersion: this.day.version });
+      if (lifecycle !== this.lifecycle || revision !== this.dayRevision || this.day?.date !== date) return;
+      if (!response.day || response.day.date !== date || !response.day.version) throw new Error('保存响应格式异常');
+      this.day = response.day;
+      this.savedText = snapshot.text;
+      this.dirty = this.draftText !== snapshot.text;
+      this.previewText = this.draftText;
+      this.reads.invalidate();
+    } catch (error) {
+      if (lifecycle !== this.lifecycle || revision !== this.dayRevision) return;
+      this.saveError = error instanceof ApiError && error.statusCode === 409 ?
+        '源文件已变化，未覆盖。当前草稿仍保留，请先复制内容再刷新核对。' :
+          error instanceof Error ? error.message : '保存失败，请重试';
+    } finally {
+      if (lifecycle === this.lifecycle && revision === this.dayRevision) this.saving = false;
+    }
   }
 
   private async loadMonths(): Promise<void> {
@@ -107,6 +195,9 @@ export struct LogsReaderPage {
     const revision = ++this.dayRevision;
     this.dayLoading = true;
     this.errorMessage = '';
+    this.day = undefined;
+    this.editorReady = false;
+    this.dirty = false;
     this.selectedDate = date;
     try {
       const response = await this.reads.day(date);
@@ -115,6 +206,12 @@ export struct LogsReaderPage {
         throw new Error('日块响应格式异常');
       }
       this.day = response.day;
+      const body = this.bodyFromDay(response.day);
+      this.savedText = body;
+      this.draftText = body;
+      this.editorInitialText = body;
+      this.previewText = body;
+      this.saveError = '';
       this.targetHeading = heading;
       this.targetHeadingIndex = headingIndex;
       if (heading) this.targetRevision++;
@@ -145,7 +242,7 @@ export struct LogsReaderPage {
       this.targetHeadingIndex = index;
       this.targetRevision++;
       this.navigationOpen = false;
-    } else this.loadDay(day.date, heading, index);
+    } else this.confirmDiscard(() => this.loadDay(day.date, heading, index));
   }
 
   @Builder
@@ -157,8 +254,8 @@ export struct LogsReaderPage {
         navigationDayQuery: this.navigationDayQuery,
         navigationLoading: this.monthsLoading || this.daysLoading,
         navigationError: this.navigationError,
-        onMonth: (month: string) => { if (month !== this.month) this.loadDays(month); },
-        onDay: (date: string) => this.loadDay(date),
+        onMonth: (month: string) => { if (month !== this.month) this.confirmDiscard(() => this.loadDays(month)); },
+        onDay: (date: string) => { if (date !== this.selectedDate) this.confirmDiscard(() => this.loadDay(date)); },
         onHeading: (day: DaySummary, heading: string, index: number) => this.openHeading(day, heading, index),
         onQuery: (query: string) => this.navigationDayQuery = query,
         onToggleMonths: () => this.navigationMonthsExpanded = !this.navigationMonthsExpanded,
@@ -169,11 +266,30 @@ export struct LogsReaderPage {
   }
 
   @Builder
+  private editorActions() {
+    Row({ space: 6 }) {
+      Button('浏览').fontSize(13)
+        .fontColor(!this.sourceMode ? $r('app.color.ink') : $r('app.color.muted'))
+        .backgroundColor(!this.sourceMode ? $r('app.color.surface_card') : $r('app.color.surface_soft'))
+        .onClick(() => this.switchMode(false))
+      Button('源码').fontSize(13)
+        .fontColor(this.sourceMode ? $r('app.color.ink') : $r('app.color.muted'))
+        .backgroundColor(this.sourceMode ? $r('app.color.surface_card') : $r('app.color.surface_soft'))
+        .onClick(() => this.switchMode(true))
+      Button(this.saving ? '保存中' : '保存').fontSize(13)
+        .fontColor($r('app.color.on_primary')).backgroundColor($r('app.color.primary'))
+        .enabled(this.editorReady && this.dirty && !this.saving)
+        .onClick(() => this.save())
+    }
+  }
+
+  @Builder
   private heading() {
     if (this.isWide()) {
       DesktopLogHeader({ fileName: this.day?.fileName || '', selectedDate: this.selectedDate,
         workspaceBreakpoint: this.workspaceBreakpoint,
         toolbarWidth: this.headerWidth, dateWidth: this.headerDateWidth,
+        actions: (): void => this.editorActions(),
         onWidth: (width: number) => this.headerWidth = width,
         onDateWidth: (width: number) => this.headerDateWidth = Math.max(120, width) })
     } else {
@@ -181,6 +297,7 @@ export struct LogsReaderPage {
         Text(this.selectedDate)
           .fontFamily(workspaceDateFamily(this.workspaceBreakpoint)).fontSize(24).fontWeight(600)
           .fontColor($r('app.color.ink')).layoutWeight(1)
+        this.editorActions()
       }.height(60).width('100%').padding({ left: 16, right: 16 })
         .border({ width: { bottom: 1 }, color: $r('app.color.hairline') })
     }
@@ -200,11 +317,24 @@ export struct LogsReaderPage {
           onRetry: () => this.month ? this.selectedDate ? this.loadDay(this.selectedDate) : this.loadDays(this.month) :
             this.loadMonths() })
       } else if (this.day) {
-        MarkdownReader({ content: this.day.content, contentMode: 'log', documentKey: this.day.date,
-          targetHeading: this.targetHeading, targetHeadingIndex: this.targetHeadingIndex,
-          targetRevision: this.targetRevision,
-          onInternalLink: (date: string, heading: string) => this.openInternalLink(date, heading) })
-          .layoutWeight(1).width('100%')
+        Stack({ alignContent: Alignment.Bottom }) {
+          Row() {
+            SourceEditor({ session: this.editor, documentKey: this.day.date,
+              initialText: this.editorInitialText })
+              .width(this.sourceMode ? '100%' : 0).height('100%')
+              .visibility(this.sourceMode ? Visibility.Visible : Visibility.None)
+            MarkdownReader({ content: this.previewText, contentMode: 'log', documentKey: this.day.date,
+              targetHeading: this.targetHeading, targetHeadingIndex: this.targetHeadingIndex,
+              targetRevision: this.targetRevision,
+              onInternalLink: (date: string, heading: string) => this.confirmDiscard(() => this.openInternalLink(date, heading)) })
+              .width(this.sourceMode ? 0 : '100%').height('100%')
+              .visibility(this.sourceMode ? Visibility.None : Visibility.Visible)
+          }.width('100%').height('100%')
+          if (this.saveError) {
+            Text(this.saveError).fontSize(13).fontColor($r('app.color.error'))
+              .width('100%').padding(12).backgroundColor($r('app.color.surface_soft'))
+          }
+        }.layoutWeight(1).width('100%')
       } else {
         EmptyState({ title: '暂无学习日志', description: '当前实例还没有可阅读的日志。' })
       }
@@ -225,7 +355,7 @@ export struct LogsReaderPage {
           .fontSize(16).fontWeight(FontWeight.Medium).fontColor($r('app.color.ink')).layoutWeight(1)
         Button('更换服务器').fontSize(13).fontColor($r('app.color.body'))
           .backgroundColor($r('app.color.surface_soft'))
-          .onClick(() => this.onChangeServer())
+          .onClick(() => this.confirmDiscard(() => this.onChangeServer()))
       }.width('100%').height(54).padding({ left: 12, right: 12 })
         .border({ width: { bottom: 1 }, color: $r('app.color.hairline') })
       Stack() {

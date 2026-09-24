@@ -11,6 +11,7 @@ import { LogReadRepository } from './LogReadRepository';
 import { LogWriteRepository } from './LogWriteRepository';
 import { LogNavigation } from './components/LogNavigation';
 import { DesktopLogHeader } from './components/DesktopLogHeader';
+import { BackupPanel } from './components/BackupPanel';
 
 export interface PreservedLogDraft {
   namespace: string;
@@ -52,6 +53,8 @@ export struct LogsReaderPage {
   @State private dirty: boolean = false;
   @State private saving: boolean = false;
   @State private deleting: boolean = false;
+  @State private backupOpen: boolean = false;
+  @State private backupBusy: boolean = false;
   @State private saveError: string = '';
   @State private newLogDate: string = '';
   @State private calendarMonth: string = '';
@@ -141,7 +144,7 @@ export struct LogsReaderPage {
   }
 
   private async checkBeforeLeaving(next: () => void): Promise<void> {
-    if (this.saving || this.deleting) { this.saveError = '操作进行中，请稍候'; return; }
+    if (this.saving || this.deleting || this.backupOpen) { this.saveError = '操作进行中，请稍候'; return; }
     if (this.day && this.editorReady) {
       try {
         const snapshot = await this.editor.command('snapshot');
@@ -184,7 +187,7 @@ export struct LogsReaderPage {
   }
 
   private async save(): Promise<void> {
-    if (!this.day || !this.editorReady || this.saving || this.deleting) return;
+    if (!this.day || !this.editorReady || this.saving || this.deleting || this.backupOpen) return;
     const lifecycle = this.lifecycle;
     const revision = this.dayRevision;
     const date = this.day.date;
@@ -235,8 +238,44 @@ export struct LogsReaderPage {
     }
   }
 
+  private async beforeRestore(): Promise<boolean> {
+    if (!this.day || !this.backupOpen) return false;
+    if (this.editorReady) {
+      const snapshot = await this.editor.command('snapshot');
+      if (snapshot.documentKey !== this.selectedDate) return false;
+      this.draftText = snapshot.text;
+      this.dirty = snapshot.text !== this.savedText;
+      this.reportDraft();
+    }
+    return new Promise<boolean>((resolve) => {
+      AlertDialog.show({ title: '恢复此版本', autoCancel: false,
+        message: `仅恢复 ${this.selectedDate} 日块，恢复前会再次保留现有文件。` +
+          (this.dirty ? '\n当前编辑器有未保存修改，恢复会放弃这些修改。' : ''),
+        primaryButton: { value: '取消', action: () => resolve(false) },
+        secondaryButton: { value: '恢复', action: () => resolve(true) },
+        cancel: () => resolve(false) });
+    });
+  }
+
+  private applyRestoredDay(day: DayEntry): void {
+    if (day.date !== this.selectedDate) return;
+    this.day = day;
+    const body = this.bodyFromDay(day);
+    this.savedText = body;
+    this.draftText = body;
+    this.editorInitialText = body;
+    this.previewText = body;
+    this.dirty = false;
+    this.reportDraft();
+    this.sourceMode = false;
+    this.saveError = '';
+    this.reads.invalidate();
+    this.refreshNavigation(day.date);
+    this.backupOpen = false;
+  }
+
   private async confirmDelete(): Promise<void> {
-    if (!this.day?.exists || !this.day.version || this.saving || this.deleting) return;
+    if (!this.day?.exists || !this.day.version || this.saving || this.deleting || this.backupOpen) return;
     const date = this.day.date;
     const version = this.day.version;
     if (this.editorReady) {
@@ -261,7 +300,7 @@ export struct LogsReaderPage {
   }
 
   private async deleteDay(date: string, version: string): Promise<void> {
-    if (this.deleting || this.saving) return;
+    if (this.deleting || this.saving || this.backupOpen) return;
     const lifecycle = this.lifecycle;
     const revision = this.dayRevision;
     this.deleting = true;
@@ -605,6 +644,10 @@ export struct LogsReaderPage {
         .fontColor($r('app.color.error')).backgroundColor($r('app.color.surface_soft'))
         .enabled(!!this.day?.exists && !this.saving && !this.deleting)
         .onClick(() => this.confirmDelete())
+      Button('备份').fontSize(13)
+        .fontColor($r('app.color.body')).backgroundColor($r('app.color.surface_soft'))
+        .enabled(!!this.day && !this.saving && !this.deleting)
+        .onClick(() => this.backupOpen = true)
     }
   }
 
@@ -667,44 +710,61 @@ export struct LogsReaderPage {
   }
 
   build() {
-    Column() {
-      Row({ space: 8 }) {
-        if (!this.isWide()) {
-          Button({ type: ButtonType.Normal }) {
-            SymbolGlyph($r('sys.symbol.line_3_horizontal')).fontSize(20).fontColor([$r('app.color.ink')])
-          }.width(42).height(42).backgroundColor(Color.Transparent).accessibilityText('打开日期导航')
-            .onClick(() => this.navigationOpen = true)
-        }
-        AppLogo({ iconSize: 28, cornerRadius: 6 })
-        Text('学习日志工作台').fontFamily(workspaceSansFamily(this.workspaceBreakpoint))
-          .fontSize(16).fontWeight(FontWeight.Medium).fontColor($r('app.color.ink')).layoutWeight(1)
-        Button('更换服务器').fontSize(13).fontColor($r('app.color.body'))
-          .backgroundColor($r('app.color.surface_soft'))
-          .onClick(() => this.confirmDiscard(() => this.onChangeServer()))
-      }.width('100%').height(54).padding({ left: 12, right: 12 })
-        .border({ width: { bottom: 1 }, color: $r('app.color.hairline') })
-      Stack() {
-        Row() {
-          if (this.isWide()) {
-            Column() { this.navigation() }.width(260).height('100%')
-              .border({ width: { right: 1 }, color: $r('app.color.hairline') })
+    Stack() {
+      Column() {
+        Row({ space: 8 }) {
+          if (!this.isWide()) {
+            Button({ type: ButtonType.Normal }) {
+              SymbolGlyph($r('sys.symbol.line_3_horizontal')).fontSize(20).fontColor([$r('app.color.ink')])
+            }.width(42).height(42).backgroundColor(Color.Transparent).accessibilityText('打开日期导航')
+              .onClick(() => this.navigationOpen = true)
           }
-          this.reader()
-        }.width('100%').height('100%')
-        if (!this.isWide() && this.navigationOpen) {
+          AppLogo({ iconSize: 28, cornerRadius: 6 })
+          Text('学习日志工作台').fontFamily(workspaceSansFamily(this.workspaceBreakpoint))
+            .fontSize(16).fontWeight(FontWeight.Medium).fontColor($r('app.color.ink')).layoutWeight(1)
+          Button('更换服务器').fontSize(13).fontColor($r('app.color.body'))
+            .backgroundColor($r('app.color.surface_soft'))
+            .enabled(!this.backupOpen)
+            .onClick(() => this.confirmDiscard(() => this.onChangeServer()))
+        }.width('100%').height(54).padding({ left: 12, right: 12 })
+          .border({ width: { bottom: 1 }, color: $r('app.color.hairline') })
+        Stack() {
           Row() {
-            Column() {
-              Row() {
-                Text('日期').fontSize(16).fontColor($r('app.color.ink')).layoutWeight(1)
-                Button('关闭').fontSize(13).onClick(() => this.navigationOpen = false)
-              }.height(48).padding({ left: 16, right: 16 })
-              this.navigation()
-            }.width('86%').height('100%')
-              .backgroundColor($r('app.color.canvas'))
-            Blank().layoutWeight(1).height('100%').onClick(() => this.navigationOpen = false)
-          }.width('100%').height('100%').backgroundColor($r('app.color.scrim'))
-        }
-      }.layoutWeight(1).width('100%')
-    }.width('100%').height('100%').backgroundColor($r('app.color.canvas'))
+            if (this.isWide()) {
+              Column() { this.navigation() }.width(260).height('100%')
+                .border({ width: { right: 1 }, color: $r('app.color.hairline') })
+            }
+            this.reader()
+          }.width('100%').height('100%')
+          if (!this.isWide() && this.navigationOpen) {
+            Row() {
+              Column() {
+                Row() {
+                  Text('日期').fontSize(16).fontColor($r('app.color.ink')).layoutWeight(1)
+                  Button('关闭').fontSize(13).onClick(() => this.navigationOpen = false)
+                }.height(48).padding({ left: 16, right: 16 })
+                this.navigation()
+              }.width('86%').height('100%')
+                .backgroundColor($r('app.color.canvas'))
+              Blank().layoutWeight(1).height('100%').onClick(() => this.navigationOpen = false)
+            }.width('100%').height('100%').backgroundColor($r('app.color.scrim'))
+          }
+        }.layoutWeight(1).width('100%')
+      }.width('100%').height('100%').backgroundColor($r('app.color.canvas'))
+      if (this.backupOpen && this.day) {
+        Stack() {
+          Column() {}.width('100%').height('100%').backgroundColor($r('app.color.scrim'))
+          BackupPanel({ date: this.day.date,
+            onClose: () => { if (!this.backupBusy) this.backupOpen = false; },
+            onBeforeRestore: () => this.beforeRestore(),
+            onRestored: (day: DayEntry) => this.applyRestoredDay(day),
+            onBusyChange: (busy: boolean) => this.backupBusy = busy })
+            .width(this.isWide() ? '88%' : '100%')
+            .height(this.isWide() ? '88%' : '100%')
+            .borderRadius(this.isWide() ? 12 : 0)
+            .clip(true)
+        }.width('100%').height('100%')
+      }
+    }.width('100%').height('100%')
   }
 }

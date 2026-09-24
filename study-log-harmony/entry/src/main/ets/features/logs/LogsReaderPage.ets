@@ -47,6 +47,8 @@ export struct LogsReaderPage {
   @State private navigationDayQuery: string = '';
   @State private targetHeading: string = '';
   @State private targetHeadingIndex: number = -1;
+  @State private targetKind: string = '';
+  @State private targetQuery: string = '';
   @State private targetRevision: number = 0;
   @State private headerWidth: number = 600;
   @State private headerDateWidth: number = 190;
@@ -503,10 +505,11 @@ export struct LogsReaderPage {
 
   private selectSearchResult(result: LogSearchResult): void {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(result.date)) return;
+    const query = this.searchQuery.trim();
     const heading = (result.matches[0] || '').replace(/^#{1,6}\s+/, '').replace(/^\d+\.\s+/, '').trim();
     this.confirmDiscard(() => {
       this.closeSearch();
-      this.openInternalLink(result.date, result.headings.includes(heading) ? heading : '');
+      this.openInternalLink(result.date, result.headings.includes(heading) ? heading : '', 'search', query);
     });
   }
 
@@ -653,7 +656,9 @@ export struct LogsReaderPage {
     }
   }
 
-  private async openInternalLink(date: string, heading: string): Promise<void> {
+  private async openInternalLink(date: string, heading: string, kind: string = 'internal', query: string = ''): Promise<void> {
+    this.targetKind = kind;
+    this.targetQuery = query;
     if (date.slice(0, 7) !== this.month) {
       await this.loadDays(date.slice(0, 7), date);
       if (this.day?.date !== date) return;
@@ -1010,7 +1015,7 @@ export struct LogsReaderPage {
                 color: $r('app.color.hairline') })
             MarkdownReader({ content: this.previewText, contentMode: 'log', documentKey: this.day.date,
               targetHeading: this.targetHeading, targetHeadingIndex: this.targetHeadingIndex,
-              targetRevision: this.targetRevision,
+              targetKind: this.targetKind, targetQuery: this.targetQuery, targetRevision: this.targetRevision,
               onInternalLink: (date: string, heading: string) => this.confirmDiscard(() => this.openInternalLink(date, heading)) })
               .width(this.isWide() && this.splitMode ? '50%' : (this.sourceMode || this.splitMode && !this.isWide() ? 0 : '100%'))
               .height('100%')

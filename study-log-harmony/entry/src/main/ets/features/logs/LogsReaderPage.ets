@@ -59,6 +59,7 @@ export struct LogsReaderPage {
   private listRevision: number = 0;
   private dayRevision: number = 0;
   private restoredDraftApplied: boolean = false;
+  private leaveCheckPending: boolean = false;
 
   aboutToAppear(): void {
     this.lifecycle++;
@@ -74,6 +75,7 @@ export struct LogsReaderPage {
       if (key === this.selectedDate) { this.dirty = true; this.reportDraft(); }
     };
     this.editor.onFailure = (message: string) => this.saveError = message;
+    this.editor.onCommand = (command: string) => { if (command === 'save') this.save(); };
     this.loadMonths();
   }
 
@@ -86,6 +88,7 @@ export struct LogsReaderPage {
     this.editor.onDirty = () => {};
     this.editor.onFailure = () => {};
     this.editor.onReadyChange = () => {};
+    this.editor.onCommand = () => {};
     this.onCaptureDraft(async () => undefined);
   }
 
@@ -105,7 +108,7 @@ export struct LogsReaderPage {
   }
 
   private async captureDraft(): Promise<PreservedLogDraft | undefined> {
-    if (!this.dirty || !this.selectedDate) return undefined;
+    if (!this.selectedDate) return undefined;
     let text = this.draftText;
     if (this.editorReady) {
       try {
@@ -113,7 +116,7 @@ export struct LogsReaderPage {
         if (snapshot.documentKey === this.selectedDate) text = snapshot.text;
       } catch (_) { /* Keep the last observed draft if the editor is closing. */ }
     }
-    return { namespace: activeInstance.namespace, date: this.selectedDate, text };
+    return text !== this.savedText ? { namespace: activeInstance.namespace, date: this.selectedDate, text } : undefined;
   }
 
   private bodyFromDay(day: DayEntry): string {
@@ -122,7 +125,25 @@ export struct LogsReaderPage {
   }
 
   private confirmDiscard(next: () => void): void {
+    if (this.leaveCheckPending) return;
+    this.leaveCheckPending = true;
+    this.checkBeforeLeaving(next).finally(() => this.leaveCheckPending = false);
+  }
+
+  private async checkBeforeLeaving(next: () => void): Promise<void> {
     if (this.saving) { this.saveError = '保存进行中，请稍候'; return; }
+    if (this.day && this.editorReady) {
+      try {
+        const snapshot = await this.editor.command('snapshot');
+        if (snapshot.documentKey !== this.selectedDate) return;
+        this.draftText = snapshot.text;
+        this.dirty = snapshot.text !== this.savedText;
+        this.reportDraft();
+      } catch (error) {
+        this.saveError = error instanceof Error ? error.message : '请完成当前输入后重试';
+        return;
+      }
+    }
     if (!this.dirty) { next(); return; }
     AlertDialog.show({ message: '当前日志修改尚未保存，是否放弃修改？', autoCancel: false,
       primaryButton: { value: '继续编辑', action: () => {} },
@@ -153,7 +174,7 @@ export struct LogsReaderPage {
   }
 
   private async save(): Promise<void> {
-    if (!this.day || !this.editorReady || this.saving || !this.dirty) return;
+    if (!this.day || !this.editorReady || this.saving) return;
     const lifecycle = this.lifecycle;
     const revision = this.dayRevision;
     const date = this.day.date;
@@ -165,6 +186,7 @@ export struct LogsReaderPage {
       this.draftText = snapshot.text;
       this.dirty = snapshot.text !== this.savedText;
       this.reportDraft();
+      if (!this.dirty) return;
       const response = await this.writes.save({ date, content: snapshot.text, baseVersion: this.day.version });
       if (lifecycle !== this.lifecycle || revision !== this.dayRevision || this.day?.date !== date) return;
       if (!response.day || response.day.date !== date || !response.day.version) throw new Error('保存响应格式异常');

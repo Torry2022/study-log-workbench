@@ -465,6 +465,13 @@ export struct LogsReaderPage {
     }
   }
 
+  private refreshLog(): void {
+    this.moreOpen = false;
+    if (this.day && this.selectedDate) this.confirmDiscard(() => this.loadDay(this.selectedDate));
+    else if (this.month) this.loadDays(this.month);
+    else this.loadMonths();
+  }
+
   private changeSearch(query: string): void {
     this.searchQuery = query;
     this.searchRevision++;
@@ -871,6 +878,9 @@ export struct LogsReaderPage {
   @Builder
   private moreActions() {
     Column({ space: 4 }) {
+      Button('刷新日志', { type: ButtonType.Normal }).width('100%').height(40)
+        .fontSize(13).fontColor($r('app.color.body')).backgroundColor(Color.Transparent)
+        .enabled(!this.saving && !this.deleting && !this.imageBusy).onClick(() => this.refreshLog())
       Button('导出当前日块', { type: ButtonType.Normal }).width('100%').height(40)
         .fontSize(13).fontColor($r('app.color.body')).backgroundColor(Color.Transparent)
         .enabled(!!this.day && !this.exportBusy).onClick(() => this.exportLogs('day'))
@@ -937,6 +947,9 @@ export struct LogsReaderPage {
         .enabled(this.editorReady && this.dirty && !this.saving)
         .onClick(() => this.save())
       if (this.isWide() && this.headerWidth >= 760) {
+        Button('刷新').fontSize(13)
+          .fontColor($r('app.color.body')).backgroundColor($r('app.color.surface_soft'))
+          .enabled(!this.saving && !this.deleting && !this.imageBusy).onClick(() => this.refreshLog())
         Button('导出').fontSize(13)
           .fontColor($r('app.color.body')).backgroundColor($r('app.color.surface_soft'))
           .enabled(!this.exportBusy).onClick(() => this.exportMenuOpen = true)

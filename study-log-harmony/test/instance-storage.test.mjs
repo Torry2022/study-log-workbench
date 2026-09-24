@@ -43,6 +43,9 @@ test('saved namespaces separate origin and server identity, and returning to A r
   assert.equal((await instances.restore()).namespace, first);
   values.set('current', '{"origin":"https://user:pass@evil.example"}');
   assert.equal(await instances.restore(), undefined);
+  values.set('current', JSON.stringify({ origin: 'https://one.example', instanceId: firstId,
+    namespace: '------------------------------------', localHttp: false }));
+  assert.equal(await instances.restore(), undefined);
 });
 
 test('device-local token aliases do not cross instances or delayed writes', async () => {

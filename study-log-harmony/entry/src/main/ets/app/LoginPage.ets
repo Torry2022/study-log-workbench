@@ -151,7 +151,9 @@ export struct LoginPage {
       const request: AppLoginRequest = { password: this.password };
       const result = await apiClient.post<AppLoginResponse>('/auth/app-login', request);
       if (generation !== this.generation) return;
-      if (!result.ok || !result.token || Date.parse(result.expiresAt) <= Date.now()) throw new Error('服务器登录响应无效');
+      const expiresAt = Date.parse(result.expiresAt);
+      if (result.ok !== true || typeof result.token !== 'string' || !result.token ||
+        !Number.isFinite(expiresAt) || expiresAt <= Date.now()) throw new Error('服务器登录响应无效');
       apiClient.setToken(result.token);
       const capabilities = await apiClient.get<InstanceCapabilities>('/capabilities');
       if (generation !== this.generation) return;

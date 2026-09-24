@@ -19,7 +19,7 @@ export class InstanceStore {
       const saved = JSON.parse(raw) as SavedInstance;
       if (typeof saved.localHttp !== 'boolean') return undefined;
       saved.origin = normalizeInstanceOrigin(saved.origin, saved.localHttp);
-      if (!/^[a-f0-9-]{36}$/i.test(saved.namespace) ||
+      if (!/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(saved.namespace) ||
         !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(saved.instanceId)) return undefined;
       return saved;
     } catch (_) { return undefined; }

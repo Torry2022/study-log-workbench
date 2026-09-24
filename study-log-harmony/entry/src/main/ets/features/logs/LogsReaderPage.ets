@@ -20,6 +20,9 @@ import { LogSearchPanel, LogSearchResult } from './LogSearchPanel';
 import { LogSearchRepository } from './LogSearchRepository';
 import { ToolbarAction } from '../../common/ui/ToolbarAction';
 import { LogDisplayModeControl } from './components/LogDisplayModeControl';
+import { SearchField } from '../../common/ui/FormControls';
+import { workspaceKey } from '../../common/ui/WorkspaceKeys';
+import { KeyCode } from '@kit.InputKit';
 
 export interface PreservedLogDraft {
   namespace: string;
@@ -520,6 +523,52 @@ export struct LogsReaderPage {
       this.closeSearch();
       this.openInternalLink(result.date, result.headings.includes(heading) ? heading : '', 'search', query);
     });
+  }
+
+  @Builder
+  private desktopSearchResults() {
+    if (this.searchOpen && (this.searchSubmitted || this.searchLoading || this.searchError)) {
+      Column({ space: 4 }) {
+        if (this.searchLoading) {
+          Row({ space: 8 }) {
+            LoadingProgress().width(18).height(18).color($r('app.color.primary'))
+            Text('正在搜索').fontSize(12).fontColor($r('app.color.muted'))
+          }.width('100%').height(44).padding({ left: 12 })
+        } else if (this.searchError) {
+          Row() {
+            Text(this.searchError).fontSize(12).fontColor($r('app.color.error')).layoutWeight(1)
+            Button('重试').fontSize(12).onClick(() => this.searchLogs())
+          }.width('100%').padding(10)
+        } else if (!this.searchResults.length) {
+          Text('未找到匹配内容').fontSize(12).fontColor($r('app.color.muted'))
+            .width('100%').padding(12)
+        } else {
+          List({ space: 4 }) {
+            ForEach(this.searchResults, (result: LogSearchResult) => {
+              ListItem() {
+                Button({ type: ButtonType.Normal }) {
+                  Column({ space: 3 }) {
+                    Text(result.date).fontSize(13).fontWeight(FontWeight.Medium)
+                      .fontColor($r('app.color.ink')).width('100%')
+                    Text(result.matches[0] || result.headings[0] || '')
+                      .fontSize(12).fontColor($r('app.color.muted')).maxLines(2)
+                      .textOverflow({ overflow: TextOverflow.Ellipsis }).width('100%')
+                  }.alignItems(HorizontalAlign.Start).width('100%')
+                }.width('100%').padding(10)
+                  .backgroundColor($r('app.color.surface_soft')).borderRadius(8)
+                  .onClick(() => this.selectSearchResult(result))
+              }
+            }, (result: LogSearchResult) => result.date)
+          }.width('100%').height(Math.min(420, this.searchResults.length * 68)).scrollBar(BarState.Off)
+        }
+      }.width(384).height(this.searchLoading || this.searchError || !this.searchResults.length ? 60 :
+        Math.min(420, this.searchResults.length * 68) + 16).padding(8)
+        .position({ x: 0, y: 50 })
+        .backgroundColor($r('app.color.canvas'))
+        .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(12)
+        .shadow({ radius: 18, color: $r('app.color.popover_shadow'), offsetY: 6 })
+        .zIndex(40)
+    }
   }
 
   private async confirmDelete(): Promise<void> {
@@ -1060,16 +1109,23 @@ export struct LogsReaderPage {
             }.alignItems(HorizontalAlign.Start).layoutWeight(1)
           }.layoutWeight(1).constraintSize({ minWidth: 208 })
           if (this.isWide()) {
-            Button({ type: ButtonType.Normal }) {
-              Row({ space: 8 }) {
-                Image($r('app.media.search')).width(17).height(17)
-                Text('搜索日志、术语、代码标识').fontSize(14).fontColor($r('app.color.muted'))
-                  .layoutWeight(1).textAlign(TextAlign.Start)
-              }.width('100%')
-            }.width(360).height(42).padding({ left: 12, right: 12 })
-              .backgroundColor($r('app.color.surface_soft'))
-              .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8)
-              .accessibilityText('搜索日志内容').onClick(() => this.searchOpen = true)
+            Stack({ alignContent: Alignment.TopStart }) {
+              SearchField({ value: this.searchQuery,
+                placeholder: this.searchHeadingsOnly ? '搜索小节标题' : '搜索日志、术语、代码标识',
+                loading: this.searchLoading, showHeadingToggle: true, headingOnly: this.searchHeadingsOnly,
+                showCaseToggle: true, caseSensitive: !this.searchIgnoreCase,
+                onChange: (query: string) => this.changeSearch(query),
+                onSubmit: () => { this.searchOpen = true; this.searchLogs(); },
+                onClear: () => this.changeSearch(''),
+                onHeadingToggle: () => this.searchHeadingsOnly = !this.searchHeadingsOnly,
+                onCaseToggle: () => this.searchIgnoreCase = !this.searchIgnoreCase,
+                onFocusChange: (focused: boolean) => { if (focused) this.searchOpen = true; },
+                onSearchKey: (event: KeyEvent) => {
+                  if (!workspaceKey(event, KeyCode.KEYCODE_ESCAPE)) return false;
+                  this.closeSearch(); return true;
+                } })
+              this.desktopSearchResults()
+            }.width(384).height(42).zIndex(40)
           } else {
             ToolbarAction({ label: '搜索日志内容', icon: $r('app.media.search'),
               showLabel: false, onAction: () => this.searchOpen = true })
@@ -1079,6 +1135,7 @@ export struct LogsReaderPage {
             onAction: () => this.confirmDiscard(() => this.onChangeServer()) })
         }.width('100%').height(64).padding({ left: 12, right: 12 })
           .backgroundColor($r('app.color.canvas'))
+          .zIndex(30)
           .border({ width: { bottom: 1 }, color: $r('app.color.hairline') })
         Stack() {
           Row() {
@@ -1132,7 +1189,7 @@ export struct LogsReaderPage {
           .backgroundColor($r('app.color.scrim'))
           .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
       }
-      if (this.searchOpen) {
+      if (this.searchOpen && !this.isWide()) {
         LogSearchPanel({ query: this.searchQuery, headingsOnly: this.searchHeadingsOnly,
           ignoreCase: this.searchIgnoreCase, loading: this.searchLoading,
           submitted: this.searchSubmitted, error: this.searchError, results: this.searchResults,

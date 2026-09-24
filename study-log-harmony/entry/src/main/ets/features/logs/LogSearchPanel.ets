@@ -1,5 +1,7 @@
 import { SearchField } from '../../common/ui/FormControls';
 import { EmptyState } from '../../common/ui/FeedbackStates';
+import { workspaceKey } from '../../common/ui/WorkspaceKeys';
+import { KeyCode } from '@kit.InputKit';
 
 export interface LogSearchResult {
   date: string;
@@ -26,6 +28,21 @@ export struct LogSearchPanel {
   onHeadings: () => void = () => {};
   onCase: () => void = () => {};
   onSelect: (result: LogSearchResult) => void = () => {};
+  @State private activeIndex: number = -1;
+
+  private searchKey(event: KeyEvent): boolean {
+    if (workspaceKey(event, KeyCode.KEYCODE_ESCAPE)) { this.onClose(); return true; }
+    if (!this.results.length) return false;
+    if (workspaceKey(event, KeyCode.KEYCODE_DPAD_DOWN)) {
+      this.activeIndex = (this.activeIndex + 1) % this.results.length;
+      return true;
+    }
+    if (workspaceKey(event, KeyCode.KEYCODE_DPAD_UP)) {
+      this.activeIndex = this.activeIndex <= 0 ? this.results.length - 1 : this.activeIndex - 1;
+      return true;
+    }
+    return false;
+  }
 
   build() {
     Column() {
@@ -38,15 +55,19 @@ export struct LogSearchPanel {
         .border({ width: { bottom: 1 }, color: $r('app.color.hairline') })
       Column({ space: 10 }) {
         SearchField({ value: this.query, placeholder: this.headingsOnly ? '搜索小节标题' : '搜索日志内容',
-          loading: this.loading, onChange: (query: string) => this.onQuery(query),
-          onSubmit: () => this.onSearch(), onClear: () => this.onQuery('') })
+          loading: this.loading, onChange: (query: string) => { this.activeIndex = -1; this.onQuery(query); },
+          onSubmit: () => {
+            if (this.activeIndex >= 0 && this.activeIndex < this.results.length) this.onSelect(this.results[this.activeIndex]);
+            else { this.activeIndex = -1; this.onSearch(); }
+          }, onClear: () => { this.activeIndex = -1; this.onQuery(''); },
+          onSearchKey: (event: KeyEvent) => this.searchKey(event) })
         Row({ space: 8 }) {
           Button(this.headingsOnly ? '仅标题 ✓' : '全文').fontSize(12)
             .fontColor($r('app.color.body')).backgroundColor($r('app.color.surface_soft'))
-            .onClick(() => this.onHeadings())
+            .onClick(() => { this.activeIndex = -1; this.onHeadings(); })
           Button(this.ignoreCase ? '忽略大小写 ✓' : '区分大小写').fontSize(12)
             .fontColor($r('app.color.body')).backgroundColor($r('app.color.surface_soft'))
-            .onClick(() => this.onCase())
+            .onClick(() => { this.activeIndex = -1; this.onCase(); })
         }.width('100%')
       }.width('100%').padding({ left: 16, right: 16, top: 12, bottom: 12 })
       if (this.error) {
@@ -64,7 +85,7 @@ export struct LogSearchPanel {
           title: '未找到匹配内容', description: '换一个关键词再试试' })
       } else {
         List({ space: 6 }) {
-          ForEach(this.results, (result: LogSearchResult) => {
+          ForEach(this.results, (result: LogSearchResult, index: number) => {
             ListItem() {
               Button({ type: ButtonType.Normal }) {
                 Column({ space: 5 }) {
@@ -74,7 +95,9 @@ export struct LogSearchPanel {
                     .fontSize(12).fontColor($r('app.color.muted')).maxLines(2)
                     .textOverflow({ overflow: TextOverflow.Ellipsis }).width('100%')
                 }.alignItems(HorizontalAlign.Start).width('100%')
-              }.width('100%').padding(12).backgroundColor($r('app.color.primary_tint'))
+              }.width('100%').padding(12)
+                .backgroundColor(this.activeIndex === index ?
+                  $r('app.color.surface_card') : $r('app.color.primary_tint'))
                 .border({ width: { left: 2 }, color: $r('app.color.primary') })
                 .borderRadius(8).onClick(() => this.onSelect(result))
             }

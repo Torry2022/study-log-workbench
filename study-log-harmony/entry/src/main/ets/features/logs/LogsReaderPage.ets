@@ -6,6 +6,7 @@ import { MarkdownReader } from '../../common/ui/MarkdownReader';
 import { workspaceDateFamily, workspaceSansFamily } from '../../common/ui/Typography';
 import { AppLogo } from '../../common/ui/AppLogo';
 import { SourceEditor, SourceEditorSession, EditorSnapshot } from '../../common/editor/SourceEditor';
+import { EditorLinkPicker } from '../../common/editor/EditorLinkPicker';
 import { DayEntry, DaySummary, MonthSummary } from './LogModels';
 import { LogReadRepository } from './LogReadRepository';
 import { LogWriteRepository } from './LogWriteRepository';
@@ -42,7 +43,7 @@ export struct LogsReaderPage {
   @State private targetHeading: string = '';
   @State private targetHeadingIndex: number = -1;
   @State private targetRevision: number = 0;
-  @State private headerWidth: number = 900;
+  @State private headerWidth: number = 600;
   @State private headerDateWidth: number = 190;
   @State private sourceMode: boolean = false;
   @State private splitMode: boolean = false;
@@ -56,6 +57,10 @@ export struct LogsReaderPage {
   @State private deleting: boolean = false;
   @State private backupOpen: boolean = false;
   @State private backupBusy: boolean = false;
+  @State private linkOpen: boolean = false;
+  @State private linkOpening: boolean = false;
+  @State private linkAlias: string = '';
+  @State private moreOpen: boolean = false;
   @State private saveError: string = '';
   @State private newLogDate: string = '';
   @State private calendarMonth: string = '';
@@ -73,6 +78,7 @@ export struct LogsReaderPage {
   private restoredDraftApplied: boolean = false;
   private leaveCheckPending: boolean = false;
   private calendarRevision: number = 0;
+  private linkTarget: EditorSnapshot | undefined = undefined;
 
   aboutToAppear(): void {
     this.lifecycle++;
@@ -104,6 +110,7 @@ export struct LogsReaderPage {
     this.editor.onFailure = () => {};
     this.editor.onReadyChange = () => {};
     this.editor.onCommand = () => {};
+    this.closeLink(false);
     this.onCaptureDraft(async () => undefined);
   }
 
@@ -146,7 +153,9 @@ export struct LogsReaderPage {
   }
 
   private async checkBeforeLeaving(next: () => void): Promise<void> {
-    if (this.saving || this.deleting || this.backupOpen) { this.saveError = '操作进行中，请稍候'; return; }
+    if (this.saving || this.deleting || this.backupOpen || this.linkOpen) {
+      this.saveError = '操作进行中，请稍候'; return;
+    }
     if (this.day && this.editorReady) {
       try {
         const snapshot = await this.editor.command('snapshot');
@@ -190,7 +199,7 @@ export struct LogsReaderPage {
   }
 
   private async save(): Promise<void> {
-    if (!this.day || !this.editorReady || this.saving || this.deleting || this.backupOpen) return;
+    if (!this.day || !this.editorReady || this.saving || this.deleting || this.backupOpen || this.linkOpen) return;
     const lifecycle = this.lifecycle;
     const revision = this.dayRevision;
     const date = this.day.date;
@@ -278,8 +287,54 @@ export struct LogsReaderPage {
     this.backupOpen = false;
   }
 
+  private async openLink(): Promise<void> {
+    if (!this.day || !this.editorReady || this.linkOpen || this.linkOpening || this.backupOpen) return;
+    this.moreOpen = false;
+    this.linkOpening = true;
+    const lifecycle = this.lifecycle;
+    const date = this.selectedDate;
+    let target: EditorSnapshot | undefined = undefined;
+    try {
+      if (!this.sourceMode && !this.splitMode) await this.switchMode(true);
+      if (lifecycle !== this.lifecycle || date !== this.selectedDate) return;
+      target = await this.editor.command('capture');
+      if (lifecycle !== this.lifecycle || target.documentKey !== date) return;
+      await this.editor.command('blur');
+      if (lifecycle !== this.lifecycle || date !== this.selectedDate) return;
+      this.linkTarget = target;
+      this.linkAlias = target.text.slice(target.from, target.to);
+      this.linkOpen = true;
+      target = undefined;
+    } catch (error) {
+      if (lifecycle === this.lifecycle) this.saveError = error instanceof Error ? error.message : '无法打开内部链接';
+    } finally {
+      if (target) this.editor.release(target).catch(() => {});
+      if (lifecycle === this.lifecycle) this.linkOpening = false;
+    }
+  }
+
+  private async insertLink(markup: string): Promise<void> {
+    const target = this.linkTarget;
+    if (!target || !this.linkOpen || target.documentKey !== this.selectedDate) throw new Error('插入位置已变化，请重新打开');
+    await this.editor.insert(target, markup);
+    this.closeLink();
+  }
+
+  private closeLink(refocus: boolean = true): void {
+    this.linkOpen = false;
+    const target = this.linkTarget;
+    this.linkTarget = undefined;
+    if (!target) return;
+    this.editor.release(target).then(() => {
+      if (refocus && this.editorReady && target.documentKey === this.selectedDate) {
+        this.editor.command('focus').catch(() => {});
+      }
+    }).catch(() => {});
+  }
+
   private async confirmDelete(): Promise<void> {
-    if (!this.day?.exists || !this.day.version || this.saving || this.deleting || this.backupOpen) return;
+    if (!this.day?.exists || !this.day.version || this.saving || this.deleting || this.backupOpen || this.linkOpen) return;
+    this.moreOpen = false;
     const date = this.day.date;
     const version = this.day.version;
     if (this.editorReady) {
@@ -304,7 +359,7 @@ export struct LogsReaderPage {
   }
 
   private async deleteDay(date: string, version: string): Promise<void> {
-    if (this.deleting || this.saving || this.backupOpen) return;
+    if (this.deleting || this.saving || this.backupOpen || this.linkOpen) return;
     const lifecycle = this.lifecycle;
     const revision = this.dayRevision;
     this.deleting = true;
@@ -631,6 +686,25 @@ export struct LogsReaderPage {
   }
 
   @Builder
+  private moreActions() {
+    Column({ space: 4 }) {
+      if (this.sourceMode || this.splitMode) {
+        Button('内部链接', { type: ButtonType.Normal }).width('100%').height(40)
+          .fontSize(13).fontColor($r('app.color.body')).backgroundColor(Color.Transparent)
+          .enabled(this.editorReady && !this.linkOpening).onClick(() => this.openLink())
+      }
+      Button('备份与恢复', { type: ButtonType.Normal }).width('100%').height(40)
+        .fontSize(13).fontColor($r('app.color.body')).backgroundColor(Color.Transparent)
+        .enabled(!!this.day && !this.saving && !this.deleting)
+        .onClick(() => { this.moreOpen = false; this.backupOpen = true; })
+      Button('删除日块', { type: ButtonType.Normal }).width('100%').height(40)
+        .fontSize(13).fontColor($r('app.color.error')).backgroundColor(Color.Transparent)
+        .enabled(!!this.day?.exists && !this.saving && !this.deleting)
+        .onClick(() => this.confirmDelete())
+    }.width(170).padding(8)
+  }
+
+  @Builder
   private editorActions() {
     Row({ space: 6 }) {
       Button('浏览').fontSize(13)
@@ -652,14 +726,28 @@ export struct LogsReaderPage {
         .fontColor($r('app.color.on_primary')).backgroundColor($r('app.color.primary'))
         .enabled(this.editorReady && this.dirty && !this.saving)
         .onClick(() => this.save())
-      Button(this.deleting ? '删除中' : '删除').fontSize(13)
-        .fontColor($r('app.color.error')).backgroundColor($r('app.color.surface_soft'))
-        .enabled(!!this.day?.exists && !this.saving && !this.deleting)
-        .onClick(() => this.confirmDelete())
-      Button('备份').fontSize(13)
-        .fontColor($r('app.color.body')).backgroundColor($r('app.color.surface_soft'))
-        .enabled(!!this.day && !this.saving && !this.deleting)
-        .onClick(() => this.backupOpen = true)
+      if (this.isWide() && this.headerWidth >= 760) {
+        if (this.sourceMode || this.splitMode) {
+          Button('内部链接').fontSize(13)
+            .fontColor($r('app.color.body')).backgroundColor($r('app.color.surface_soft'))
+            .enabled(this.editorReady && !this.linkOpening).onClick(() => this.openLink())
+        }
+        Button('备份').fontSize(13)
+          .fontColor($r('app.color.body')).backgroundColor($r('app.color.surface_soft'))
+          .enabled(!!this.day && !this.saving && !this.deleting)
+          .onClick(() => this.backupOpen = true)
+        Button(this.deleting ? '删除中' : '删除').fontSize(13)
+          .fontColor($r('app.color.error')).backgroundColor($r('app.color.surface_soft'))
+          .enabled(!!this.day?.exists && !this.saving && !this.deleting)
+          .onClick(() => this.confirmDelete())
+      } else {
+        Button('更多', { type: ButtonType.Normal }).fontSize(13)
+          .fontColor($r('app.color.body')).backgroundColor($r('app.color.surface_soft'))
+          .onClick(() => this.moreOpen = true)
+          .bindPopup(this.moreOpen, { builder: this.moreActions(), placement: Placement.BottomRight,
+            enableArrow: false, popupColor: $r('app.color.canvas'), radius: 8,
+            onStateChange: (event) => { if (!event.isVisible) this.moreOpen = false; } })
+      }
     }
   }
 
@@ -740,7 +828,7 @@ export struct LogsReaderPage {
             .fontSize(16).fontWeight(FontWeight.Medium).fontColor($r('app.color.ink')).layoutWeight(1)
           Button('更换服务器').fontSize(13).fontColor($r('app.color.body'))
             .backgroundColor($r('app.color.surface_soft'))
-            .enabled(!this.backupOpen)
+            .enabled(!this.backupOpen && !this.linkOpen)
             .onClick(() => this.confirmDiscard(() => this.onChangeServer()))
         }.width('100%').height(54).padding({ left: 12, right: 12 })
           .border({ width: { bottom: 1 }, color: $r('app.color.hairline') })
@@ -779,6 +867,17 @@ export struct LogsReaderPage {
             .height(this.isWide() ? '88%' : '100%')
             .borderRadius(this.isWide() ? 12 : 0)
             .clip(true)
+        }.width('100%').height('100%')
+      }
+      if (this.linkOpen) {
+        Stack() {
+          Column() {}.width('100%').height('100%').backgroundColor($r('app.color.scrim'))
+          EditorLinkPicker({ initialAlias: this.linkAlias,
+            onClose: () => this.closeLink(),
+            onInsert: (markup: string) => this.insertLink(markup) })
+            .width(this.isWide() ? 680 : '100%')
+            .height(this.isWide() ? 620 : '100%')
+            .borderRadius(this.isWide() ? 12 : 0).clip(true)
         }.width('100%').height('100%')
       }
     }.width('100%').height('100%')

@@ -1,11 +1,12 @@
 import { WorkspaceBreakpoint } from '../../common/AppConfig';
-import { apiClient, ApiError } from '../../common/network/ApiClient';
+import { apiClient, ApiError, ApiUploadFile } from '../../common/network/ApiClient';
 import { activeInstance } from '../../common/network/InstanceConfig';
 import { EmptyState, LoadFailure } from '../../common/ui/FeedbackStates';
 import { MarkdownReader } from '../../common/ui/MarkdownReader';
 import { workspaceDateFamily, workspaceSansFamily } from '../../common/ui/Typography';
 import { AppLogo } from '../../common/ui/AppLogo';
-import { SourceEditor, SourceEditorSession, EditorSnapshot } from '../../common/editor/SourceEditor';
+import { SourceEditor, SourceEditorSession, EditorSnapshot, EditorImageData } from '../../common/editor/SourceEditor';
+import { common } from '@kit.AbilityKit';
 import { EditorLinkPicker } from '../../common/editor/EditorLinkPicker';
 import { DayEntry, DaySummary, MonthSummary } from './LogModels';
 import { LogReadRepository } from './LogReadRepository';
@@ -13,6 +14,7 @@ import { LogWriteRepository } from './LogWriteRepository';
 import { LogNavigation } from './components/LogNavigation';
 import { DesktopLogHeader } from './components/DesktopLogHeader';
 import { BackupPanel } from './components/BackupPanel';
+import { LogImageUpload } from './LogImageUpload';
 
 export interface PreservedLogDraft {
   namespace: string;
@@ -59,6 +61,7 @@ export struct LogsReaderPage {
   @State private backupBusy: boolean = false;
   @State private linkOpen: boolean = false;
   @State private linkOpening: boolean = false;
+  @State private imageBusy: boolean = false;
   @State private linkAlias: string = '';
   @State private moreOpen: boolean = false;
   @State private saveError: string = '';
@@ -96,6 +99,7 @@ export struct LogsReaderPage {
     };
     this.editor.onFailure = (message: string) => this.saveError = message;
     this.editor.onCommand = (command: string) => { if (command === 'save') this.save(); };
+    this.editor.onImages = (target: EditorSnapshot, images: EditorImageData[]) => this.receiveImages(target, images);
     this.loadMonths();
   }
 
@@ -110,6 +114,7 @@ export struct LogsReaderPage {
     this.editor.onFailure = () => {};
     this.editor.onReadyChange = () => {};
     this.editor.onCommand = () => {};
+    this.editor.onImages = () => {};
     this.closeLink(false);
     this.onCaptureDraft(async () => undefined);
   }
@@ -153,7 +158,7 @@ export struct LogsReaderPage {
   }
 
   private async checkBeforeLeaving(next: () => void): Promise<void> {
-    if (this.saving || this.deleting || this.backupOpen || this.linkOpen) {
+    if (this.saving || this.deleting || this.backupOpen || this.linkOpen || this.imageBusy) {
       this.saveError = '操作进行中，请稍候'; return;
     }
     if (this.day && this.editorReady) {
@@ -199,7 +204,7 @@ export struct LogsReaderPage {
   }
 
   private async save(): Promise<void> {
-    if (!this.day || !this.editorReady || this.saving || this.deleting || this.backupOpen || this.linkOpen) return;
+    if (!this.day || !this.editorReady || this.saving || this.deleting || this.backupOpen || this.linkOpen || this.imageBusy) return;
     const lifecycle = this.lifecycle;
     const revision = this.dayRevision;
     const date = this.day.date;
@@ -296,7 +301,8 @@ export struct LogsReaderPage {
     let target: EditorSnapshot | undefined = undefined;
     try {
       if (!this.sourceMode && !this.splitMode) await this.switchMode(true);
-      if (lifecycle !== this.lifecycle || date !== this.selectedDate) return;
+      if (lifecycle !== this.lifecycle || date !== this.selectedDate ||
+        (!this.sourceMode && !this.splitMode)) return;
       target = await this.editor.command('capture');
       if (lifecycle !== this.lifecycle || target.documentKey !== date) return;
       await this.editor.command('blur');
@@ -332,8 +338,64 @@ export struct LogsReaderPage {
     }).catch(() => {});
   }
 
+  private imageUpload(): LogImageUpload {
+    return new LogImageUpload(this.getUIContext().getHostContext() as common.UIAbilityContext);
+  }
+
+  private async insertImages(): Promise<void> {
+    if (!this.day || !this.editorReady || this.imageBusy || this.linkOpen || this.backupOpen) return;
+    this.moreOpen = false;
+    this.imageBusy = true;
+    const lifecycle = this.lifecycle;
+    const date = this.selectedDate;
+    const uploader = this.imageUpload();
+    let target: EditorSnapshot | undefined = undefined;
+    let files: ApiUploadFile[] = [];
+    try {
+      if (!this.sourceMode && !this.splitMode) await this.switchMode(true);
+      if (lifecycle !== this.lifecycle || date !== this.selectedDate ||
+        (!this.sourceMode && !this.splitMode)) return;
+      target = await this.editor.command('capture');
+      files = await uploader.pick();
+      if (!files.length || lifecycle !== this.lifecycle || date !== this.selectedDate) return;
+      const markdown = await uploader.upload(files);
+      if (lifecycle !== this.lifecycle || date !== this.selectedDate) return;
+      await this.editor.insert(target, markdown);
+    } catch (error) {
+      if (lifecycle === this.lifecycle) this.saveError = error instanceof Error ? error.message : '图片插入失败';
+    } finally {
+      uploader.clear(files);
+      if (target) this.editor.release(target).catch(() => {});
+      if (lifecycle === this.lifecycle) this.imageBusy = false;
+    }
+  }
+
+  private async receiveImages(target: EditorSnapshot, images: EditorImageData[]): Promise<void> {
+    if (this.imageBusy || this.linkOpen || this.backupOpen || !this.day || target.documentKey !== this.selectedDate) {
+      this.editor.release(target).catch(() => {});
+      return;
+    }
+    this.imageBusy = true;
+    const lifecycle = this.lifecycle;
+    const date = this.selectedDate;
+    const uploader = this.imageUpload();
+    let files: ApiUploadFile[] = [];
+    try {
+      files = await uploader.paste(images);
+      const markdown = await uploader.upload(files);
+      if (lifecycle !== this.lifecycle || date !== this.selectedDate) return;
+      await this.editor.insert(target, markdown);
+    } catch (error) {
+      if (lifecycle === this.lifecycle) this.saveError = error instanceof Error ? error.message : '图片粘贴失败';
+    } finally {
+      uploader.clear(files);
+      this.editor.release(target).catch(() => {});
+      if (lifecycle === this.lifecycle) this.imageBusy = false;
+    }
+  }
+
   private async confirmDelete(): Promise<void> {
-    if (!this.day?.exists || !this.day.version || this.saving || this.deleting || this.backupOpen || this.linkOpen) return;
+    if (!this.day?.exists || !this.day.version || this.saving || this.deleting || this.backupOpen || this.linkOpen || this.imageBusy) return;
     this.moreOpen = false;
     const date = this.day.date;
     const version = this.day.version;
@@ -688,6 +750,9 @@ export struct LogsReaderPage {
   @Builder
   private moreActions() {
     Column({ space: 4 }) {
+      Button(this.imageBusy ? '上传中' : '插入图片', { type: ButtonType.Normal }).width('100%').height(40)
+        .fontSize(13).fontColor($r('app.color.body')).backgroundColor(Color.Transparent)
+        .enabled(!!this.day && this.editorReady && !this.imageBusy).onClick(() => this.insertImages())
       if (this.sourceMode || this.splitMode) {
         Button('内部链接', { type: ButtonType.Normal }).width('100%').height(40)
           .fontSize(13).fontColor($r('app.color.body')).backgroundColor(Color.Transparent)
@@ -727,6 +792,9 @@ export struct LogsReaderPage {
         .enabled(this.editorReady && this.dirty && !this.saving)
         .onClick(() => this.save())
       if (this.isWide() && this.headerWidth >= 760) {
+        Button(this.imageBusy ? '上传中' : '插入图片').fontSize(13)
+          .fontColor($r('app.color.body')).backgroundColor($r('app.color.surface_soft'))
+          .enabled(!!this.day && this.editorReady && !this.imageBusy).onClick(() => this.insertImages())
         if (this.sourceMode || this.splitMode) {
           Button('内部链接').fontSize(13)
             .fontColor($r('app.color.body')).backgroundColor($r('app.color.surface_soft'))

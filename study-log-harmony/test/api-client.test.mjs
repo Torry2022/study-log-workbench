@@ -65,3 +65,34 @@ test('native requests stay on the selected origin and ignore a late old-instance
   pending[5]({ statusCode: 200, toString: () => '{"day":{"exists":false,"version":null}}' });
   assert.equal((await remove).day.exists, false);
 });
+
+test('multipart uploads use only the active instance and reject a late response after switching', async () => {
+  const requests = [], pending = [], sessions = [];
+  const { ApiClient } = await loadEts('ApiClient', {
+    '@kit.RemoteCommunicationKit': { rcp: {
+      Request: class { constructor(...args) { this.args = args; requests.push(this); } },
+      MultipartForm: class { constructor(fields) { this.fields = fields; } },
+      createSession(configuration) { sessions.push(configuration); return {
+        fetch: () => new Promise(resolve => pending.push(resolve)), close() {} }; }
+    } },
+    './InstanceConfig': { activeInstance }
+  });
+  const client = new ApiClient(); let expired = 0;
+  client.setUnauthorizedHandler(() => expired++);
+  activeInstance.activate('https://images-one.example', 'one'); client.setToken('one-token');
+  const file = { path: '/cache/test.png', name: 'test.png', contentType: 'image/png' };
+  const old = client.postFiles('/assets/upload', [file]);
+  assert.equal(requests[0].args[0], 'https://images-one.example/study-log/api/assets/upload');
+  assert.equal(requests[0].args[2].authorization, 'Bearer one-token');
+  assert.equal(requests[0].args[3].fields.file[0].contentOrPath, file.path);
+  assert.equal(sessions[0].requestConfiguration.transfer.autoRedirect, false);
+  activeInstance.activate('https://images-two.example', 'two'); client.setToken('two-token');
+  pending[0]({ statusCode: 401, toString: () => '{}' });
+  await assert.rejects(old, /会话已切换/);
+  assert.equal(expired, 0);
+  const next = client.postFiles('/assets/upload', [file]);
+  assert.equal(requests[1].args[0], 'https://images-two.example/study-log/api/assets/upload');
+  assert.equal(requests[1].args[2].authorization, 'Bearer two-token');
+  pending[1]({ statusCode: 200, toString: () => '{"assets":[{"markdown":"![image](./assets/image.png)"}]}' });
+  assert.equal((await next).assets[0].markdown, '![image](./assets/image.png)');
+});

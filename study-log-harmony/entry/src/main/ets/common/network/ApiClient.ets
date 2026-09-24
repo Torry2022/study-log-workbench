@@ -3,6 +3,20 @@ import { activeInstance } from './InstanceConfig';
 
 interface ApiErrorPayload { error?: string; code?: string; }
 
+export interface ApiUploadFile { path: string; name: string; contentType: string; }
+
+class MultipartUploadFile implements rcp.FormFieldFileValue {
+  contentOrPath: string;
+  remoteFileName: string;
+  contentType: string;
+
+  constructor(file: ApiUploadFile) {
+    this.contentOrPath = file.path;
+    this.remoteFileName = file.name;
+    this.contentType = file.contentType;
+  }
+}
+
 export class ApiError extends Error {
   statusCode: number;
   code: string;
@@ -37,6 +51,34 @@ export class ApiClient {
   post<T>(path: string, body: object): Promise<T> { return this.request<T>(path, 'POST', body); }
   put<T>(path: string, body: object): Promise<T> { return this.request<T>(path, 'PUT', body); }
   delete<T>(path: string, body: object): Promise<T> { return this.request<T>(path, 'DELETE', body); }
+
+  async postFiles<T>(path: string, files: ApiUploadFile[]): Promise<T> {
+    const instanceRevision = activeInstance.revision;
+    const sessionRevision = this.sessionRevision;
+    const requestToken = this.token;
+    const headers: rcp.RequestHeaders = { accept: 'application/json' };
+    if (requestToken) headers['authorization'] = `Bearer ${requestToken}`;
+    const uploads: rcp.FormFieldFileValue[] = files.map((file: ApiUploadFile) => new MultipartUploadFile(file));
+    const form = new rcp.MultipartForm({ file: uploads });
+    const session = rcp.createSession({ requestConfiguration: {
+      transfer: { autoRedirect: false, timeout: { connectMs: 15000, transferMs: 240000 } }
+    } });
+    try {
+      const response = await session.fetch(new rcp.Request(activeInstance.apiUrl(path), 'POST', headers, form));
+      if (instanceRevision !== activeInstance.revision || sessionRevision !== this.sessionRevision) {
+        throw new Error('会话已切换，请重新操作');
+      }
+      const raw = response.toString() || '';
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        if (response.statusCode === 401 && requestToken) this.onUnauthorized();
+        let payload: ApiErrorPayload = {};
+        try { payload = JSON.parse(raw) as ApiErrorPayload; } catch (_) { payload = {}; }
+        throw new ApiError(payload.error || `请求失败（${response.statusCode}）`, response.statusCode, payload.code || '');
+      }
+      try { return JSON.parse(raw) as T; }
+      catch (_) { throw new ApiError('服务器响应格式异常', response.statusCode, 'INVALID_RESPONSE'); }
+    } finally { session.close(); }
+  }
 
   private async request<T>(path: string, method: rcp.HttpMethod, body?: object): Promise<T> {
     const instanceRevision = activeInstance.revision;

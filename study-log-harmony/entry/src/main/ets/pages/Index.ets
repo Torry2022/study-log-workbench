@@ -3,7 +3,8 @@ import { WorkspaceBreakpoint } from '../common/AppConfig';
 import { InstanceCapabilities, activeInstance } from '../common/network/InstanceConfig';
 import { apiClient } from '../common/network/ApiClient';
 import { LoginPage } from '../app/LoginPage';
-import { AppLogo } from '../common/ui/AppLogo';
+import { TokenStore } from '../common/storage/TokenStore';
+import { LogsReaderPage } from '../features/logs/LogsReaderPage';
 
 @Entry
 @Component
@@ -11,11 +12,19 @@ struct Index {
   @Provide('workspaceBreakpoint') private workspaceBreakpoint: WorkspaceBreakpoint = WorkspaceBreakpoint.COMPACT;
   @State private connected: boolean = false;
   @State private restoreOnAppear: boolean = true;
-  @State private origin: string = '';
+  private removeUnauthorizedHandler: () => void = () => {};
 
   aboutToAppear(): void {
     this.registerFonts();
+    this.removeUnauthorizedHandler = apiClient.setUnauthorizedHandler(() => {
+      apiClient.setToken('');
+      this.restoreOnAppear = false;
+      this.connected = false;
+      TokenStore.clear().catch(() => {});
+    });
   }
+
+  aboutToDisappear(): void { this.removeUnauthorizedHandler(); }
 
   private registerFonts(): void {
     const fonts = this.getUIContext().getFont();
@@ -45,8 +54,7 @@ struct Index {
     }
   }
 
-  private connectedTo(origin: string, _capabilities: InstanceCapabilities): void {
-    this.origin = origin;
+  private connectedTo(_origin: string, _capabilities: InstanceCapabilities): void {
     this.connected = true;
   }
 
@@ -57,20 +65,21 @@ struct Index {
     this.connected = false;
   }
 
+  private updateBreakpoint(width: number): void {
+    this.workspaceBreakpoint = width < 600 ? WorkspaceBreakpoint.COMPACT :
+      width < 840 ? WorkspaceBreakpoint.MEDIUM :
+        width < 1440 ? WorkspaceBreakpoint.LARGE : WorkspaceBreakpoint.EXTRA_LARGE;
+  }
+
   build() {
-    if (this.connected) {
-      Column({ space: 16 }) {
-        AppLogo({ iconSize: 52, cornerRadius: 11 })
-        Text('服务已连接').fontSize(28).fontColor($r('app.color.ink'))
-        Text(this.origin).fontSize(14).fontColor($r('app.color.muted'))
-        Text('公开版工作区仍在逐批迁移').fontSize(14).fontColor($r('app.color.muted'))
-        Button('更换服务器').backgroundColor($r('app.color.primary')).onClick(() => this.changeServer())
+    Stack() {
+      if (this.connected) {
+        LogsReaderPage({ onChangeServer: () => this.changeServer() })
+      } else {
+        LoginPage({ restoreOnAppear: this.restoreOnAppear,
+          onConnected: (origin: string, capabilities: InstanceCapabilities) => this.connectedTo(origin, capabilities) })
       }
-      .width('100%').height('100%').justifyContent(FlexAlign.Center)
-      .backgroundColor($r('app.color.canvas'))
-    } else {
-      LoginPage({ restoreOnAppear: this.restoreOnAppear,
-        onConnected: (origin: string, capabilities: InstanceCapabilities) => this.connectedTo(origin, capabilities) })
-    }
+    }.width('100%').height('100%')
+      .onAreaChange((_oldArea, area) => this.updateBreakpoint(Number(area.width)))
   }
 }

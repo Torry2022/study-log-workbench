@@ -2,7 +2,14 @@
   "color": [
     { "name": "start_window_background", "value": "#FAF9F5" },
     { "name": "canvas", "value": "#FAF9F5" },
+    { "name": "surface_soft", "value": "#F5F0E8" },
+    { "name": "hairline", "value": "#E6DFD8" },
+    { "name": "logo_surface", "value": "#FFFFFF" },
     { "name": "ink", "value": "#141413" },
-    { "name": "muted", "value": "#6C6A64" }
+    { "name": "muted", "value": "#6C6A64" },
+    { "name": "muted_soft", "value": "#8E8B82" },
+    { "name": "primary", "value": "#CC785C" },
+    { "name": "on_primary", "value": "#FFFFFF" },
+    { "name": "error", "value": "#C64545" }
   ]
 }

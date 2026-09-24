@@ -4,3 +4,5 @@ export enum WorkspaceBreakpoint {
   LARGE = 'large',
   EXTRA_LARGE = 'extra_large'
 }
+
+export const READING_MAX_WIDTH: number = 1040;

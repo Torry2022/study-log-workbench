@@ -1,15 +1,139 @@
 {
   "color": [
-    { "name": "start_window_background", "value": "#151412" },
-    { "name": "canvas", "value": "#151412" },
-    { "name": "surface_soft", "value": "#1C1A17" },
-    { "name": "hairline", "value": "#353028" },
     { "name": "logo_surface", "value": "#1C1A17" },
-    { "name": "ink", "value": "#F5F0E8" },
-    { "name": "muted", "value": "#AAA39A" },
-    { "name": "muted_soft", "value": "#8F8880" },
-    { "name": "primary", "value": "#D4876A" },
-    { "name": "on_primary", "value": "#FFFFFF" },
-    { "name": "error", "value": "#E16B6B" }
+    { "name": "interaction_hover", "value": "#221F1B" },
+    { "name": "interaction_hover_clear", "value": "#00221F1B" },
+    { "name": "search_toggle_active_background", "value": "#2C221D" },
+    { "name": "search_toggle_active_border", "value": "#6B4E3E" },
+    { "name": "warning", "value": "#E2B35F" },
+    { "name": "toast_shadow", "value": "#66000000" },
+    {
+      "name": "start_window_background",
+      "value": "#151412"
+    },
+    {
+      "name": "canvas",
+      "value": "#151412"
+    },
+    {
+      "name": "surface_soft",
+      "value": "#1C1A17"
+    },
+    {
+      "name": "surface_card",
+      "value": "#26231F"
+    },
+    {
+      "name": "surface_cream_strong",
+      "value": "#302C27"
+    },
+    {
+      "name": "hairline",
+      "value": "#353028"
+    },
+    {
+      "name": "hairline_soft",
+      "value": "#2A261F"
+    },
+    {
+      "name": "ink",
+      "value": "#F5F0E8"
+    },
+    {
+      "name": "body",
+      "value": "#D6D0C7"
+    },
+    {
+      "name": "body_strong",
+      "value": "#EEE7DC"
+    },
+    {
+      "name": "muted",
+      "value": "#AAA39A"
+    },
+    {
+      "name": "muted_soft",
+      "value": "#8F8880"
+    },
+    {
+      "name": "primary",
+      "value": "#D4876A"
+    },
+    {
+      "name": "primary_active",
+      "value": "#E39B7E"
+    },
+    {
+      "name": "primary_tint",
+      "value": "#30241E"
+    },
+    {
+      "name": "primary_tint_strong",
+      "value": "#4A3026"
+    },
+    {
+      "name": "primary_disabled",
+      "value": "#4A4037"
+    },
+    {
+      "name": "wiki_selected_border",
+      "value": "#815A48"
+    },
+    {
+      "name": "wiki_index_background",
+      "value": "#181714"
+    },
+    {
+      "name": "on_primary",
+      "value": "#FFFFFF"
+    },
+    {
+      "name": "surface_dark",
+      "value": "#181715"
+    },
+    {
+      "name": "surface_dark_soft",
+      "value": "#1F1E1B"
+    },
+    {
+      "name": "on_dark",
+      "value": "#FAF9F5"
+    },
+    {
+      "name": "on_dark_soft",
+      "value": "#A09D96"
+    },
+    {
+      "name": "error",
+      "value": "#E16B6B"
+    },
+    {
+      "name": "success",
+      "value": "#75B987"
+    },
+    {
+      "name": "accent_teal",
+      "value": "#70C2B0"
+    },
+    {
+      "name": "accent_amber",
+      "value": "#E2B35F"
+    },
+    {
+      "name": "success_surface",
+      "value": "#1B2820"
+    },
+    {
+      "name": "error_surface",
+      "value": "#2C1B1A"
+    },
+    {
+      "name": "scrim",
+      "value": "#73100F0D"
+    },
+    {
+      "name": "popover_shadow",
+      "value": "#6B000000"
+    }
   ]
 }

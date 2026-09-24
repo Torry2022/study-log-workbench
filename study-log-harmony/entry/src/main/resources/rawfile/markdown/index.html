@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <script>
+    document.documentElement.dataset.theme = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  </script>
+  <style>
+    html, body { margin: 0; min-height: 100%; background: #faf9f5; }
+    html[data-theme="dark"], html[data-theme="dark"] body { background: #151412; }
+  </style>
+  <link rel="stylesheet" href="katex.min.css">
+  <link rel="stylesheet" href="reader.css">
+  <script src="marked.umd.js"></script>
+  <script src="purify.min.js"></script>
+  <script src="katex.min.js"></script>
+  <script src="auto-render.min.js"></script>
+  <script src="mermaid.min.js"></script>
+</head>
+<body>
+  <main id="reader" class="markdown-body"></main>
+  <script>
+    const reader = document.getElementById('reader');
+    let bearerToken = '';
+    let instanceOrigin = '';
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, (character) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      })[character]);
+    }
+
+    function parseWikiLink(rawValue) {
+      const [rawTarget, rawAlias] = rawValue.split('|', 2);
+      const targetText = rawTarget.trim();
+      if (!targetText) return null;
+
+      const hashIndex = targetText.indexOf('#');
+      const date = hashIndex >= 0 ? targetText.slice(0, hashIndex).trim() : targetText;
+      const heading = hashIndex >= 0 ? targetText.slice(hashIndex + 1).trim() : '';
+      if (!date && !heading) return null;
+
+      return {
+        date,
+        heading,
+        label: (rawAlias || heading || date).trim() || targetText
+      };
+    }
+
+    marked.use({
+      extensions: [
+        {
+          name: 'cjkStrong',
+          level: 'inline',
+          start(source) { return source.indexOf('**'); },
+          tokenizer(source) {
+            const match = /^\*\*(?=\S)((?:(?!\*\*)[^\n])*?\S)\*\*(?=[\p{L}\p{N}])/u.exec(source);
+            if (!match) return;
+            return {
+              type: 'cjkStrong',
+              raw: match[0],
+              tokens: this.lexer.inlineTokens(match[1])
+            };
+          },
+          renderer(token) {
+            return `<strong>${this.parser.parseInline(token.tokens)}</strong>`;
+          }
+        },
+        {
+          name: 'wikiLink',
+          level: 'inline',
+          start(source) { return source.indexOf('[['); },
+          tokenizer(source) {
+            const match = /^(!?)\[\[([^\]\n]+)\]\]/.exec(source);
+            if (!match) return;
+            if (match[1]) return { type: 'wikiLink', raw: match[0], text: match[0], literal: true };
+            const parsed = parseWikiLink(match[2]);
+            if (!parsed) return;
+            return { type: 'wikiLink', raw: match[0], ...parsed };
+          },
+          renderer(token) {
+            if (token.literal) return escapeHtml(token.text);
+            return `<a data-internal-link="true" data-date="${encodeURIComponent(token.date)}" data-heading="${encodeURIComponent(token.heading)}">${escapeHtml(token.label)}</a>`;
+          }
+        },
+        {
+          name: 'ragCitation',
+          level: 'inline',
+          start(source) { return source.indexOf('{{study-log-citation:'); },
+          tokenizer(source) {
+            const match = /^\{\{study-log-citation:([^|}\n]+)\|([^|}\n]+)\|(-?\d+)\|([^}\n]*)}}/.exec(source);
+            if (!match) return;
+            return {
+              type: 'ragCitation',
+              raw: match[0],
+              sourceId: match[1],
+              date: match[2],
+              headingIndex: match[3],
+              heading: match[4]
+            };
+          },
+          renderer(token) {
+            return `<a class="markdown-citation-link" data-citation-link="true" data-source-id="${token.sourceId}" data-date="${token.date}" data-heading-index="${token.headingIndex}" data-heading="${token.heading}">${escapeHtml(decodeURIComponent(token.sourceId))}</a>`;
+          }
+        },
+        {
+          name: 'wikiCitation',
+          level: 'inline',
+          start(source) { return source.indexOf('{{study-log-wiki-citation:'); },
+          tokenizer(source) {
+            const match = /^\{\{study-log-wiki-citation:([^|}\n]+)\|([^|}\n]*)\|([^}\n]*)}}/.exec(source);
+            if (!match) return;
+            return { type: 'wikiCitation', raw: match[0], sourceId: match[1], pageId: match[2], title: match[3] };
+          },
+          renderer(token) {
+            return `<a class="markdown-citation-link" data-wiki-citation="true" data-page-id="${token.pageId}" data-title="${token.title}">${escapeHtml(decodeURIComponent(token.sourceId))}</a>`;
+          }
+        },
+        {
+          name: 'wikiSourceCitation',
+          level: 'inline',
+          start(source) { return source.indexOf('{{study-log-wiki-source-citation:'); },
+          tokenizer(source) {
+            const match = /^\{\{study-log-wiki-source-citation:([^;|}\n]+)[;|]([^}\n]+)}}/.exec(source);
+            if (!match) return;
+            return { type: 'wikiSourceCitation', raw: match[0], label: match[1], sourceId: match[2] };
+          },
+          renderer(token) {
+            const label = escapeHtml(decodeURIComponent(token.label));
+            return `<a class="markdown-citation-link" href="#wiki-source-${token.sourceId}" aria-label="定位到来源 ${label}">${label}</a>`;
+          }
+        },
+        {
+          name: 'wikiSource',
+          level: 'inline',
+          start(source) { return source.indexOf('{{study-log-wiki-source:'); },
+          tokenizer(source) {
+            const match = /^\{\{study-log-wiki-source:([^|}\n]*)\|([^|}\n]*)\|([^|}\n]*)\|([^}\n]*)}}/.exec(source);
+            if (!match) return;
+            return { type: 'wikiSource', raw: match[0], kind: match[1], date: match[2], heading: match[3], noteId: match[4] };
+          },
+          renderer(token) {
+            return `<a data-wiki-source="true" data-kind="${token.kind}" data-date="${token.date}" data-heading="${token.heading}" data-note-id="${token.noteId}">查看原文</a>`;
+          }
+        }
+      ]
+    });
+
+    function resolveAssetUrl(src) {
+      if (!src || /^(https?:|data:|blob:)/i.test(src)) return src;
+      if (!instanceOrigin) return src;
+      const clean = src.replace(/\\/g, '/').split(/[?#]/, 1)[0];
+      const parts = clean.split('/').filter(Boolean);
+      const assetIndex = parts.indexOf('assets');
+      if (assetIndex < 0 || parts.slice(assetIndex + 1).some((part) => part === '..')) return src;
+      return `${instanceOrigin}/study-log/api/assets/${parts.slice(assetIndex + 1).map(encodeURIComponent).join('/')}`;
+    }
+
+    async function authorizeImages() {
+      const images = Array.from(reader.querySelectorAll('img'));
+      await Promise.all(images.map(async (image) => {
+        image.style.cursor = 'zoom-in';
+        const url = resolveAssetUrl(image.getAttribute('src'));
+        if (!instanceOrigin || !url || !url.startsWith(`${instanceOrigin}/study-log/api/assets/`)) {
+          image.src = url || '';
+          return;
+        }
+        try {
+          const response = await fetch(url, { headers: { Authorization: `Bearer ${bearerToken}` } });
+          if (!response.ok) throw new Error(String(response.status));
+          image.src = URL.createObjectURL(await response.blob());
+        } catch (_) {
+          image.alt = image.alt || '图片加载失败';
+          image.classList.add('image-error');
+        }
+      }));
+    }
+
+    async function renderDiagrams(theme) {
+      mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: theme === 'dark' ? 'dark' : 'neutral' });
+      const blocks = Array.from(reader.querySelectorAll('pre code.language-mermaid'));
+      for (let index = 0; index < blocks.length; index += 1) {
+        const code = blocks[index];
+        const host = document.createElement('div');
+        host.className = 'mermaid-host';
+        if (code.closest('pre').dataset.wikiDiff) host.dataset.wikiDiff = code.closest('pre').dataset.wikiDiff;
+        try {
+          const result = await mermaid.render(`diagram-${Date.now()}-${index}`, code.textContent || '');
+          host.innerHTML = result.svg;
+          code.closest('pre').replaceWith(host);
+        } catch (_) {
+          host.textContent = 'Mermaid 图表无法渲染';
+          code.closest('pre').replaceWith(host);
+        }
+      }
+    }
+
+    function resolveTheme(theme) {
+      if (theme === 'dark' || theme === 'light') return theme;
+      return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+
+    function normalizedHeading(value) {
+      return String(value || '').replace(/\s+/g, ' ').trim();
+    }
+
+    function headingWithoutNumber(value) {
+      return normalizedHeading(value).replace(/^\d+[.、)]\s*/, '');
+    }
+
+    function slugifyHeading(value) {
+      return normalizedHeading(value)
+        .normalize('NFKC')
+        .toLocaleLowerCase()
+        .replace(/[`*_~()[\]{}<>，。、“”‘’：；！？]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/[^\w\u3400-\u9fff-]+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '') || 'section';
+    }
+
+    function assignHeadingIds() {
+      const used = new Map();
+      reader.querySelectorAll('h2, h3, h4, h5, h6').forEach((element) => {
+        const baseId = slugifyHeading(element.textContent);
+        const count = used.get(baseId) || 0;
+        used.set(baseId, count + 1);
+        element.id = count === 0 ? baseId : `${baseId}-${count + 1}`;
+      });
+    }
+
+    reader.addEventListener('click', async (event) => {
+      const image = event.target.closest('img');
+      if (!image || image.classList.contains('image-error')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const source = image.currentSrc || image.src;
+      if (!source.startsWith('blob:')) {
+        window.readerFrames.previewImage(source);
+        return;
+      }
+      // Reuse the authenticated bytes; blob URLs cannot cross the ArkWeb boundary.
+      try {
+        const blob = await (await fetch(source)).blob();
+        const file = new FileReader();
+        file.onload = () => window.readerFrames.previewImage(file.result);
+        file.readAsDataURL(blob);
+      } catch (_) {
+        image.alt = '图片预览加载失败';
+      }
+    }, true);
+
+    function renderQaConversation(payload) {
+      let messages = [];
+      try {
+        const parsed = JSON.parse(String(payload || '[]'));
+        if (Array.isArray(parsed)) messages = parsed;
+      } catch (_) {
+        messages = [];
+      }
+
+      const fragment = document.createDocumentFragment();
+      messages.forEach((message) => {
+        const isUser = message && message.role === 'user';
+        const article = document.createElement('article');
+        article.className = `qa-message qa-message-${isUser ? 'user' : 'assistant'}`;
+
+        const label = document.createElement('div');
+        label.className = 'qa-message-label';
+        label.textContent = isUser ? '你' : '日志问答';
+        article.appendChild(label);
+
+        if (isUser) {
+          const bubble = document.createElement('p');
+          bubble.textContent = String(message.content || '');
+          article.appendChild(bubble);
+        } else {
+          const answer = document.createElement('div');
+          answer.className = 'qa-answer-body';
+          answer.innerHTML = DOMPurify.sanitize(marked.parse(String(message.content || ''), { gfm: true, breaks: false }));
+          article.appendChild(answer);
+          if (message.failure && message.attemptId) {
+            const failure = document.createElement('div');
+            failure.className = 'qa-failure';
+            const description = document.createElement('div');
+            description.setAttribute('role', 'status');
+            description.textContent = String(message.failure);
+            failure.appendChild(description);
+            const actions = document.createElement('div');
+            actions.className = 'qa-failure-actions';
+            [['retry', '重试'], ['edit', '编辑问题']].forEach(([action, title]) => {
+              const link = document.createElement('a');
+              link.href = `study-log://qa-attempt?id=${encodeURIComponent(String(message.attemptId))}&action=${action}`;
+              link.textContent = title;
+              actions.appendChild(link);
+            });
+            failure.appendChild(actions);
+            article.appendChild(failure);
+          }
+        }
+        fragment.appendChild(article);
+      });
+      reader.replaceChildren(fragment);
+    }
+
+    let locatedHeadingId = '';
+    let renderedOutlineContent = null;
+    let renderedOutlineMode = '';
+
+    window.clearLocatedHeading = function() {
+      locatedHeadingId = '';
+    };
+
+    function releaseLocatedHeading() {
+      if (!locatedHeadingId) return;
+      window.clearLocatedHeading();
+      // At a scroll boundary there may be no scroll callback to refresh the outline.
+      if (window.readerFrames) window.readerFrames.activeHeading(window.currentHeadingId());
+    }
+
+    window.addEventListener('wheel', (event) => {
+      if (event.deltaY !== 0 && !event.ctrlKey) releaseLocatedHeading();
+    }, { passive: true });
+    window.addEventListener('touchmove', releaseLocatedHeading, { passive: true });
+    window.addEventListener('keydown', (event) => {
+      if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey ||
+          event.target?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+      if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) releaseLocatedHeading();
+    });
+
+    function scrollToElement(element, behavior = 'auto') {
+      const top = element.getBoundingClientRect().top + window.scrollY - 12;
+      window.scrollTo({ top: Math.max(0, top), behavior });
+    }
+
+    window.scrollToTop = function() {
+      window.clearLocatedHeading();
+      window.scrollTo({ top: 0, behavior: 'auto' });
+      return true;
+    };
+
+    window.currentHeadingId = function() {
+      const headings = Array.from(reader.querySelectorAll('h2, h3, h4, h5, h6'));
+      if (headings.length === 0) return '';
+      if (locatedHeadingId && headings.some((heading) => heading.id === locatedHeadingId)) return locatedHeadingId;
+      if (reader.classList.contains('log-document')) {
+        const starts = headings.map((heading) => heading.getBoundingClientRect().top + window.scrollY);
+        const range = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+        const progress = range > 0 ? Math.min(1, Math.max(0, window.scrollY / range)) : 0;
+        // Project scroll progress continuously onto the reachable heading range.
+        // Short tail sections cannot reach the viewport top: account for that
+        // across the whole range, never by abruptly forcing the last entry.
+        const start = Math.min(starts[0], 24);
+        const end = Math.max(range + start, starts[starts.length - 1]);
+        const position = start + progress * (end - start);
+        let selected = headings[0];
+        starts.forEach((top, index) => {
+          if (top <= position + 0.5) selected = headings[index];
+        });
+        return selected.id || '';
+      }
+      if (window.scrollY <= 8) return headings[0].id || '';
+      const pageBottom = window.scrollY + window.innerHeight;
+      const documentBottom = document.documentElement.scrollHeight;
+      if (pageBottom >= documentBottom - 2) return headings[headings.length - 1].id || '';
+      const threshold = window.scrollY + 24;
+      let active = headings[0];
+      headings.forEach((heading) => {
+        if (heading.offsetTop <= threshold) active = heading;
+      });
+      return active.id || '';
+    };
+
+    window.scrollToHeading = function(heading, headingIndex, headingId) {
+      const headings = Array.from(reader.querySelectorAll('h1, h2, h3, h4, h5, h6'));
+      const sections = headings.filter((element) => element.tagName === 'H3');
+      const indexed = Number.isInteger(headingIndex) && headingIndex >= 0 ? sections[headingIndex] : null;
+      const identified = headingId ? document.getElementById(headingId) : null;
+      const normalized = normalizedHeading(heading);
+      const withoutNumber = headingWithoutNumber(normalized);
+      const target = identified && reader.contains(identified)
+        ? identified
+        : indexed && headingWithoutNumber(indexed.textContent) === withoutNumber
+        ? indexed
+        : headings.find((element) => normalizedHeading(element.textContent) === normalized) ||
+          headings.find((element) => headingWithoutNumber(element.textContent) === withoutNumber);
+      if (!target) return false;
+      locatedHeadingId = reader.classList.contains('log-document') ? target.id : '';
+      const reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      scrollToElement(target, reader.classList.contains('log-document') && !reducedMotion ? 'smooth' : 'auto');
+      return true;
+    };
+
+    window.scrollToText = function(query, ignoreCase) {
+      window.clearLocatedHeading();
+      const rawNeedle = String(query || '').trim();
+      const needle = ignoreCase ? rawNeedle.toLocaleLowerCase() : rawNeedle;
+      if (!needle) return false;
+
+      const walker = document.createTreeWalker(reader, NodeFilter.SHOW_TEXT);
+      let node = walker.nextNode();
+      while (node) {
+        const text = node.textContent || '';
+        const source = ignoreCase ? text.toLocaleLowerCase() : text;
+        const index = source.indexOf(needle);
+        if (index >= 0 && node.parentElement) {
+          const mark = document.createElement('mark');
+          mark.className = 'search-hit-highlight';
+          mark.textContent = text.slice(index, index + rawNeedle.length);
+          const fragment = document.createDocumentFragment();
+          if (index > 0) fragment.appendChild(document.createTextNode(text.slice(0, index)));
+          fragment.appendChild(mark);
+          if (index + rawNeedle.length < text.length) {
+            fragment.appendChild(document.createTextNode(text.slice(index + rawNeedle.length)));
+          }
+          node.parentElement.replaceChild(fragment, node);
+          scrollToElement(mark);
+          window.setTimeout(() => {
+            if (mark.isConnected) mark.replaceWith(document.createTextNode(mark.textContent || ''));
+          }, 5000);
+          return true;
+        }
+        node = walker.nextNode();
+      }
+      return false;
+    };
+
+    let outlineFramePending = false;
+    function refreshOutlineGeometry() {
+      if (outlineFramePending || !reader.classList.contains('log-document')) return;
+      outlineFramePending = true;
+      requestAnimationFrame(() => {
+        outlineFramePending = false;
+        if (window.readerFrames) window.readerFrames.activeHeading(window.currentHeadingId());
+      });
+    }
+    window.addEventListener('resize', refreshOutlineGeometry);
+    new ResizeObserver(refreshOutlineGeometry).observe(reader);
+
+    let viewportRevision = 0;
+    window.waitForReaderViewport = function(widthPx, stableViewport = false, requestSequence = 0) {
+      const revision = ++viewportRevision;
+      const contentWidth = widthPx / window.devicePixelRatio;
+      document.body.style.width = stableViewport ? `${contentWidth}px` : '';
+      if (stableViewport) document.body.style.setProperty('--reader-inset', contentWidth < 600 ? '16px' : '24px');
+      else document.body.style.removeProperty('--reader-inset');
+      const check = () => {
+        if (revision !== viewportRevision) return;
+        const width = stableViewport ? document.body.getBoundingClientRect().width : window.innerWidth;
+        if (Math.abs(width * window.devicePixelRatio - widthPx) > 2) {
+          requestAnimationFrame(check);
+          return;
+        }
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          if (revision === viewportRevision) window.readerFrames.viewportReady(requestSequence);
+        }));
+      };
+      requestAnimationFrame(check);
+    };
+    window.renderMarkdown = async function(markdown, token, theme, contentMode, origin) {
+      if (markdown !== renderedOutlineContent || contentMode !== renderedOutlineMode) {
+        window.clearLocatedHeading();
+      }
+      renderedOutlineContent = markdown;
+      renderedOutlineMode = contentMode;
+      bearerToken = token || '';
+      instanceOrigin = origin || '';
+      const resolvedTheme = resolveTheme(theme);
+      document.documentElement.dataset.theme = resolvedTheme;
+      const isQa = contentMode === 'qa';
+      reader.classList.toggle('qa-conversation', isQa);
+      reader.classList.toggle('wiki-document', contentMode === 'wiki');
+      reader.classList.toggle('log-document', contentMode === 'log');
+      if (isQa) {
+        renderQaConversation(markdown);
+      } else {
+        const withoutDateHeading = String(markdown || '').replace(/^##\s+\d{4}-\d{2}-\d{2}\s*\n+/, '');
+        reader.innerHTML = DOMPurify.sanitize(marked.parse(withoutDateHeading, { gfm: true, breaks: false }));
+      }
+      if (contentMode === 'wiki' && window.renderWikiReview) window.renderWikiReview(reader);
+      assignHeadingIds();
+      reader.querySelectorAll('[data-internal-link="true"]').forEach((link) => {
+        const params = new URLSearchParams();
+        const date = decodeURIComponent(link.dataset.date || '');
+        const heading = decodeURIComponent(link.dataset.heading || '');
+        if (date) params.set('date', date);
+        if (heading) params.set('heading', heading);
+        link.href = `study-log://wikilink?${params.toString()}`;
+      });
+      reader.querySelectorAll('[data-citation-link="true"]').forEach((link) => {
+        const params = new URLSearchParams();
+        params.set('date', decodeURIComponent(link.dataset.date || ''));
+        params.set('heading', decodeURIComponent(link.dataset.heading || ''));
+        params.set('headingIndex', link.dataset.headingIndex || '-1');
+        link.href = `study-log://citation?${params.toString()}`;
+      });
+      reader.querySelectorAll('[data-wiki-citation="true"]').forEach((link) => {
+        const params = new URLSearchParams();
+        params.set('pageId', decodeURIComponent(link.dataset.pageId || ''));
+        params.set('title', decodeURIComponent(link.dataset.title || ''));
+        link.href = `study-log://wiki-citation?${params.toString()}`;
+      });
+      reader.querySelectorAll('[data-wiki-review]').forEach((link) => {
+        link.href = `study-log://wiki-review?${new URLSearchParams({ id: link.dataset.wikiReview }).toString()}`;
+      });
+      reader.querySelectorAll('[data-wiki-source="true"]').forEach((link) => {
+        const params = new URLSearchParams();
+        params.set('kind', decodeURIComponent(link.dataset.kind || ''));
+        params.set('date', decodeURIComponent(link.dataset.date || ''));
+        params.set('heading', decodeURIComponent(link.dataset.heading || ''));
+        params.set('noteId', decodeURIComponent(link.dataset.noteId || ''));
+        link.href = `study-log://wiki-source?${params.toString()}`;
+      });
+      renderMathInElement(reader, {
+        throwOnError: false,
+        delimiters: [
+          { left: '$$', right: '$$', display: true },
+          { left: '$', right: '$', display: false }
+        ]
+      });
+      await authorizeImages();
+      await renderDiagrams(resolvedTheme);
+      return true;
+    };
+  </script>
+</body>
+</html>

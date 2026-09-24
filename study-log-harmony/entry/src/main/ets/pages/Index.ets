@@ -14,10 +14,35 @@ struct Index {
   @State private origin: string = '';
 
   aboutToAppear(): void {
-    let path = '/system/fonts/NotoSerifCJK-Regular.ttc';
-    try { fileIo.statSync('/system/fonts/FZShuS-SC.ttf'); path = '/system/fonts/FZShuS-SC.ttf'; }
+    this.registerFonts();
+  }
+
+  private registerFonts(): void {
+    const fonts = this.getUIContext().getFont();
+    fonts.registerFont({ familyName: 'StudyLogSerif',
+      familySrc: 'file:///system/fonts/NotoSerifCJK-Regular.ttc' });
+    fonts.registerFont({ familyName: 'StudyLogSlogan',
+      familySrc: $rawfile('fonts/study_log_serif_slogan.otf') });
+    fonts.registerFont({ familyName: 'StudyLogDate',
+      familySrc: $rawfile('fonts/noto_serif_sc_bold_date.otf') });
+    fonts.registerFont({ familyName: 'StudyLogMono',
+      familySrc: $rawfile('fonts/jetbrains_mono_variable.ttf') });
+    fonts.registerFont({ familyName: 'StudyLogDesktopLatinSerif',
+      familySrc: $rawfile('fonts/gelasio_variable.ttf') });
+    fonts.registerFont({ familyName: 'StudyLogPaperMono',
+      familySrc: $rawfile('fonts/paper_mono_variable.ttf') });
+    let serif = '/system/fonts/NotoSerifCJK-Regular.ttc';
+    try { fileIo.statSync('/system/fonts/FZShuS-SC.ttf'); serif = '/system/fonts/FZShuS-SC.ttf'; }
     catch (_) { /* Use the system serif fallback. */ }
-    this.getUIContext().getFont().registerFont({ familyName: 'StudyLogDesktopSerif', familySrc: `file://${path}` });
+    fonts.registerFont({ familyName: 'StudyLogDesktopSerif', familySrc: `file://${serif}` });
+    try {
+      fileIo.statSync('/system/fonts/NotoSansMono[wdth,wght].ttf');
+      fonts.registerFont({ familyName: 'StudyLogDesktopCode',
+        familySrc: 'file:///system/fonts/NotoSansMono[wdth,wght].ttf' });
+    } catch (_) {
+      fonts.registerFont({ familyName: 'StudyLogDesktopCode',
+        familySrc: $rawfile('fonts/jetbrains_mono_variable.ttf') });
+    }
   }
 
   private connectedTo(origin: string, _capabilities: InstanceCapabilities): void {

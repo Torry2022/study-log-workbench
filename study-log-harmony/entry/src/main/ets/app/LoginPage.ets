@@ -384,10 +384,6 @@ export struct LoginPage {
     .onAppear(() => {
       this.previousKeyboardAvoidMode = this.getUIContext().getKeyboardAvoidMode();
       this.getUIContext().setKeyboardAvoidMode(KeyboardAvoidMode.RESIZE);
-      this.getUIContext().getFont().registerFont({
-        familyName: 'StudyLogSerif',
-        familySrc: 'file:///system/fonts/NotoSerifCJK-Regular.ttc'
-      });
     })
     .onDisAppear(() => {
       if (this.previousKeyboardAvoidMode !== undefined) {

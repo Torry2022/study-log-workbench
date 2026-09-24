@@ -1,0 +1,15 @@
+{
+  "color": [
+    { "name": "start_window_background", "value": "#151412" },
+    { "name": "canvas", "value": "#151412" },
+    { "name": "surface_soft", "value": "#1C1A17" },
+    { "name": "hairline", "value": "#353028" },
+    { "name": "logo_surface", "value": "#1C1A17" },
+    { "name": "ink", "value": "#F5F0E8" },
+    { "name": "muted", "value": "#AAA39A" },
+    { "name": "muted_soft", "value": "#8F8880" },
+    { "name": "primary", "value": "#D4876A" },
+    { "name": "on_primary", "value": "#FFFFFF" },
+    { "name": "error", "value": "#E16B6B" }
+  ]
+}

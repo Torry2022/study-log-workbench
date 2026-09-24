@@ -52,6 +52,30 @@ export class ApiClient {
   put<T>(path: string, body: object): Promise<T> { return this.request<T>(path, 'PUT', body); }
   delete<T>(path: string, body: object): Promise<T> { return this.request<T>(path, 'DELETE', body); }
 
+  async download(path: string): Promise<ArrayBuffer> {
+    const instanceRevision = activeInstance.revision;
+    const sessionRevision = this.sessionRevision;
+    const requestToken = this.token;
+    const headers: rcp.RequestHeaders = { accept: 'application/zip' };
+    if (requestToken) headers['authorization'] = `Bearer ${requestToken}`;
+    const session = rcp.createSession({ requestConfiguration: {
+      transfer: { autoRedirect: false, timeout: { connectMs: 15000, transferMs: 240000 } }
+    } });
+    try {
+      const response = await session.fetch(new rcp.Request(activeInstance.apiUrl(path), 'GET', headers));
+      if (instanceRevision !== activeInstance.revision || sessionRevision !== this.sessionRevision) {
+        throw new Error('会话已切换，请重新操作');
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        if (response.statusCode === 401 && requestToken) this.onUnauthorized();
+        let payload: ApiErrorPayload = {};
+        try { payload = JSON.parse(response.toString() || '') as ApiErrorPayload; } catch (_) { payload = {}; }
+        throw new ApiError(payload.error || `请求失败（${response.statusCode}）`, response.statusCode, payload.code || '');
+      }
+      return response.body || new ArrayBuffer(0);
+    } finally { session.close(); }
+  }
+
   async postFiles<T>(path: string, files: ApiUploadFile[]): Promise<T> {
     const instanceRevision = activeInstance.revision;
     const sessionRevision = this.sessionRevision;

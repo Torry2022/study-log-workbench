@@ -7,6 +7,7 @@ import { workspaceDateFamily, workspaceSansFamily } from '../../common/ui/Typogr
 import { AppLogo } from '../../common/ui/AppLogo';
 import { SourceEditor, SourceEditorSession, EditorSnapshot, EditorImageData } from '../../common/editor/SourceEditor';
 import { common } from '@kit.AbilityKit';
+import { saveExport } from '../../common/files/DocumentExport';
 import { EditorLinkPicker } from '../../common/editor/EditorLinkPicker';
 import { DayEntry, DaySummary, MonthSummary } from './LogModels';
 import { LogReadRepository } from './LogReadRepository';
@@ -62,6 +63,8 @@ export struct LogsReaderPage {
   @State private linkOpen: boolean = false;
   @State private linkOpening: boolean = false;
   @State private imageBusy: boolean = false;
+  @State private exportBusy: boolean = false;
+  @State private exportMenuOpen: boolean = false;
   @State private linkAlias: string = '';
   @State private moreOpen: boolean = false;
   @State private saveError: string = '';
@@ -391,6 +394,56 @@ export struct LogsReaderPage {
       uploader.clear(files);
       this.editor.release(target).catch(() => {});
       if (lifecycle === this.lifecycle) this.imageBusy = false;
+    }
+  }
+
+  private exportName(scope: string, date: string): string {
+    if (scope === 'day') return `${date}.zip`;
+    if (scope === 'file') return `${date.slice(0, 7)}_学习日志.zip`;
+    const today = new Date();
+    const pad = (value: number): string => value.toString().padStart(2, '0');
+    return `study-log-export-${today.getFullYear()}${pad(today.getMonth() + 1)}${pad(today.getDate())}.zip`;
+  }
+
+  private async confirmSavedExport(): Promise<boolean> {
+    if (this.day && this.editorReady) {
+      const snapshot = await this.editor.command('snapshot');
+      if (snapshot.documentKey !== this.selectedDate) return false;
+      this.draftText = snapshot.text;
+      this.dirty = snapshot.text !== this.savedText;
+      this.reportDraft();
+    }
+    if (!this.dirty) return true;
+    return new Promise<boolean>((resolve) => {
+      AlertDialog.show({ title: '导出已保存内容？',
+        message: '当前编辑器有未保存修改，导出内容将以已保存的 Markdown 文件为准。',
+        primaryButton: { value: '取消', action: () => resolve(false) },
+        secondaryButton: { value: '继续导出', action: () => resolve(true) },
+        cancel: () => resolve(false) });
+    });
+  }
+
+  private async exportLogs(scope: string): Promise<void> {
+    this.moreOpen = false;
+    this.exportMenuOpen = false;
+    if (this.exportBusy || this.imageBusy || this.saving || this.deleting || this.linkOpen ||
+      (scope !== 'all' && !this.selectedDate)) return;
+    const lifecycle = this.lifecycle;
+    const date = this.selectedDate;
+    this.exportBusy = true;
+    this.saveError = '';
+    try {
+      if (!await this.confirmSavedExport() || lifecycle !== this.lifecycle || date !== this.selectedDate) return;
+      const query = scope === 'all' ? '' : `&date=${encodeURIComponent(date)}`;
+      const data = await apiClient.download(`/export?scope=${scope}${query}`);
+      if (lifecycle !== this.lifecycle || date !== this.selectedDate) return;
+      await saveExport(this.getUIContext().getHostContext() as common.UIAbilityContext,
+        this.exportName(scope, date), data,
+        () => lifecycle === this.lifecycle && date === this.selectedDate);
+    } catch (error) {
+      if (lifecycle === this.lifecycle) this.saveError = error instanceof Error ? error.message : '日志导出失败';
+    } finally {
+      if (lifecycle === this.lifecycle) this.exportBusy = false;
     }
   }
 
@@ -750,6 +803,15 @@ export struct LogsReaderPage {
   @Builder
   private moreActions() {
     Column({ space: 4 }) {
+      Button('导出当前日块', { type: ButtonType.Normal }).width('100%').height(40)
+        .fontSize(13).fontColor($r('app.color.body')).backgroundColor(Color.Transparent)
+        .enabled(!!this.day && !this.exportBusy).onClick(() => this.exportLogs('day'))
+      Button('导出当前源文件', { type: ButtonType.Normal }).width('100%').height(40)
+        .fontSize(13).fontColor($r('app.color.body')).backgroundColor(Color.Transparent)
+        .enabled(!!this.day && !this.exportBusy).onClick(() => this.exportLogs('file'))
+      Button('导出全部日志', { type: ButtonType.Normal }).width('100%').height(40)
+        .fontSize(13).fontColor($r('app.color.body')).backgroundColor(Color.Transparent)
+        .enabled(!this.exportBusy).onClick(() => this.exportLogs('all'))
       Button(this.imageBusy ? '上传中' : '插入图片', { type: ButtonType.Normal }).width('100%').height(40)
         .fontSize(13).fontColor($r('app.color.body')).backgroundColor(Color.Transparent)
         .enabled(!!this.day && this.editorReady && !this.imageBusy).onClick(() => this.insertImages())
@@ -767,6 +829,21 @@ export struct LogsReaderPage {
         .enabled(!!this.day?.exists && !this.saving && !this.deleting)
         .onClick(() => this.confirmDelete())
     }.width(170).padding(8)
+  }
+
+  @Builder
+  private exportActions() {
+    Column({ space: 4 }) {
+      Button('当前日块', { type: ButtonType.Normal }).width('100%').height(40)
+        .fontSize(13).fontColor($r('app.color.body')).backgroundColor(Color.Transparent)
+        .enabled(!!this.day && !this.exportBusy).onClick(() => this.exportLogs('day'))
+      Button('当前源文件', { type: ButtonType.Normal }).width('100%').height(40)
+        .fontSize(13).fontColor($r('app.color.body')).backgroundColor(Color.Transparent)
+        .enabled(!!this.day && !this.exportBusy).onClick(() => this.exportLogs('file'))
+      Button('全部日志', { type: ButtonType.Normal }).width('100%').height(40)
+        .fontSize(13).fontColor($r('app.color.body')).backgroundColor(Color.Transparent)
+        .enabled(!this.exportBusy).onClick(() => this.exportLogs('all'))
+    }.width(150).padding(8)
   }
 
   @Builder
@@ -792,6 +869,12 @@ export struct LogsReaderPage {
         .enabled(this.editorReady && this.dirty && !this.saving)
         .onClick(() => this.save())
       if (this.isWide() && this.headerWidth >= 760) {
+        Button('导出').fontSize(13)
+          .fontColor($r('app.color.body')).backgroundColor($r('app.color.surface_soft'))
+          .enabled(!this.exportBusy).onClick(() => this.exportMenuOpen = true)
+          .bindPopup(this.exportMenuOpen, { builder: this.exportActions(), placement: Placement.BottomRight,
+            enableArrow: false, popupColor: $r('app.color.canvas'), radius: 8,
+            onStateChange: (event) => { if (!event.isVisible) this.exportMenuOpen = false; } })
         Button(this.imageBusy ? '上传中' : '插入图片').fontSize(13)
           .fontColor($r('app.color.body')).backgroundColor($r('app.color.surface_soft'))
           .enabled(!!this.day && this.editorReady && !this.imageBusy).onClick(() => this.insertImages())

@@ -96,3 +96,22 @@ test('multipart uploads use only the active instance and reject a late response 
   pending[1]({ statusCode: 200, toString: () => '{"assets":[{"markdown":"![image](./assets/image.png)"}]}' });
   assert.equal((await next).assets[0].markdown, '![image](./assets/image.png)');
 });
+
+test('export ZIP uses the current instance and does not treat binary data as JSON', async () => {
+  const requests = [], pending = [];
+  const { ApiClient } = await loadEts('ApiClient', {
+    '@kit.RemoteCommunicationKit': { rcp: {
+      Request: class { constructor(...args) { this.args = args; requests.push(this); } },
+      createSession() { return { fetch: () => new Promise(resolve => pending.push(resolve)), close() {} }; }
+    } },
+    './InstanceConfig': { activeInstance }
+  });
+  const client = new ApiClient();
+  activeInstance.activate('https://export.example', 'export'); client.setToken('export-token');
+  const request = client.download('/export?scope=day&date=2026-09-24');
+  assert.equal(requests[0].args[0], 'https://export.example/study-log/api/export?scope=day&date=2026-09-24');
+  assert.equal(requests[0].args[2].authorization, 'Bearer export-token');
+  const body = new Uint8Array([0x50, 0x4b, 0x03, 0x04]).buffer;
+  pending[0]({ statusCode: 200, body, toString: () => 'not JSON' });
+  assert.deepEqual(Array.from(new Uint8Array(await request)), [0x50, 0x4b, 0x03, 0x04]);
+});

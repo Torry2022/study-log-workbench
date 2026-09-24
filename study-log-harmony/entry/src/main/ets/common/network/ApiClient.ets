@@ -26,6 +26,7 @@ export class ApiClient {
   }
 
   getToken(): string { return this.token; }
+  getSessionRevision(): number { return this.sessionRevision; }
 
   setUnauthorizedHandler(handler: () => void): () => void {
     this.onUnauthorized = handler;

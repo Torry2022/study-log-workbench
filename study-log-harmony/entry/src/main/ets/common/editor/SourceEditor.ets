@@ -9,7 +9,6 @@ export interface EditorSnapshot {
   from: number;
   to: number;
   bookmark?: string;
-  continuation?: string;
 }
 
 export interface EditorImageData {
@@ -44,8 +43,6 @@ interface EditorRequest {
   to?: number;
   expectedRevision?: number;
   bookmark?: string;
-  lease?: string;
-  continuation?: string;
 }
 
 interface PendingEditorRequest {
@@ -176,21 +173,6 @@ export class SourceEditorSession {
 
   command(action: string): Promise<EditorSnapshot> {
     return this.request({ action: action, documentKey: this.documentKey, requestId: 0 });
-  }
-
-  captureContinuation(lease: string): Promise<EditorSnapshot> {
-    if (this.imageTarget) return Promise.reject(new Error('请先完成图片传输'));
-    return this.request({ action: 'captureContinuation', documentKey: this.documentKey, requestId: 0, lease: lease });
-  }
-
-  resumeContinuation(lease: string): Promise<EditorSnapshot> {
-    return this.request({ action: 'resumeContinuation', documentKey: this.documentKey, requestId: 0, lease: lease });
-  }
-
-  restoreContinuation(continuation: string, expectedRevision: number): Promise<EditorSnapshot> {
-    if (this.imageTarget) return Promise.reject(new Error('请先完成图片传输'));
-    return this.request({ action: 'restoreContinuation', documentKey: this.documentKey, requestId: 0,
-      continuation: continuation, expectedRevision: expectedRevision });
   }
 
   replace(text: string, resetHistory: boolean = false): Promise<EditorSnapshot> {

@@ -4,7 +4,7 @@ import { InstanceCapabilities, activeInstance } from '../common/network/Instance
 import { apiClient } from '../common/network/ApiClient';
 import { LoginPage } from '../app/LoginPage';
 import { TokenStore } from '../common/storage/TokenStore';
-import { LogsReaderPage } from '../features/logs/LogsReaderPage';
+import { LogsReaderPage, PreservedLogDraft } from '../features/logs/LogsReaderPage';
 
 @Entry
 @Component
@@ -13,18 +13,35 @@ struct Index {
   @State private connected: boolean = false;
   @State private restoreOnAppear: boolean = true;
   private removeUnauthorizedHandler: () => void = () => {};
+  private drafts: Map<string, PreservedLogDraft> = new Map();
+  private captureDraft: () => Promise<PreservedLogDraft | undefined> = async () => undefined;
+  private expiring: boolean = false;
 
   aboutToAppear(): void {
     this.registerFonts();
-    this.removeUnauthorizedHandler = apiClient.setUnauthorizedHandler(() => {
-      apiClient.setToken('');
-      this.restoreOnAppear = false;
-      this.connected = false;
-      TokenStore.clear().catch(() => {});
-    });
+    this.removeUnauthorizedHandler = apiClient.setUnauthorizedHandler(() => { this.expireSession(); });
   }
 
   aboutToDisappear(): void { this.removeUnauthorizedHandler(); }
+
+  private async expireSession(): Promise<void> {
+    if (this.expiring) return;
+    this.expiring = true;
+    try {
+      const draft = await this.captureDraft();
+      if (draft) this.drafts.set(draft.namespace, draft);
+    } catch (_) { /* Retain the last editor change already recorded. */ }
+    apiClient.setToken('');
+    this.restoreOnAppear = false;
+    await TokenStore.clear().catch(() => {});
+    this.connected = false;
+    this.expiring = false;
+  }
+
+  private recordDraft(draft: PreservedLogDraft | undefined): void {
+    if (draft) this.drafts.set(draft.namespace, draft);
+    else if (activeInstance.namespace) this.drafts.delete(activeInstance.namespace);
+  }
 
   private registerFonts(): void {
     const fonts = this.getUIContext().getFont();
@@ -74,7 +91,10 @@ struct Index {
   build() {
     Stack() {
       if (this.connected) {
-        LogsReaderPage({ onChangeServer: () => this.changeServer() })
+        LogsReaderPage({ onChangeServer: () => this.changeServer(),
+          initialDraft: this.drafts.get(activeInstance.namespace),
+          onDraftChange: (draft: PreservedLogDraft | undefined) => this.recordDraft(draft),
+          onCaptureDraft: (capture: () => Promise<PreservedLogDraft | undefined>) => this.captureDraft = capture })
       } else {
         LoginPage({ restoreOnAppear: this.restoreOnAppear,
           onConnected: (origin: string, capabilities: InstanceCapabilities) => this.connectedTo(origin, capabilities) })

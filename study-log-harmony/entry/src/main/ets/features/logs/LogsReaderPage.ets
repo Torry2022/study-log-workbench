@@ -1,5 +1,6 @@
 import { WorkspaceBreakpoint } from '../../common/AppConfig';
 import { apiClient, ApiError } from '../../common/network/ApiClient';
+import { activeInstance } from '../../common/network/InstanceConfig';
 import { EmptyState, LoadFailure } from '../../common/ui/FeedbackStates';
 import { MarkdownReader } from '../../common/ui/MarkdownReader';
 import { workspaceDateFamily, workspaceSansFamily } from '../../common/ui/Typography';
@@ -11,10 +12,19 @@ import { LogWriteRepository } from './LogWriteRepository';
 import { LogNavigation } from './components/LogNavigation';
 import { DesktopLogHeader } from './components/DesktopLogHeader';
 
+export interface PreservedLogDraft {
+  namespace: string;
+  date: string;
+  text: string;
+}
+
 @Component
 export struct LogsReaderPage {
   @Consume('workspaceBreakpoint') private workspaceBreakpoint: WorkspaceBreakpoint;
   onChangeServer: () => void = () => {};
+  onDraftChange: (draft: PreservedLogDraft | undefined) => void = () => {};
+  onCaptureDraft: (capture: () => Promise<PreservedLogDraft | undefined>) => void = () => {};
+  initialDraft: PreservedLogDraft | undefined = undefined;
   @State private months: MonthSummary[] = [];
   @State private days: DaySummary[] = [];
   @State private month: string = '';
@@ -48,16 +58,21 @@ export struct LogsReaderPage {
   private lifecycle: number = 0;
   private listRevision: number = 0;
   private dayRevision: number = 0;
+  private restoredDraftApplied: boolean = false;
 
   aboutToAppear(): void {
     this.lifecycle++;
+    this.onCaptureDraft(() => this.captureDraft());
     this.editor.onReadyChange = (ready: boolean) => this.editorReady = ready;
     this.editor.onChange = (snapshot: EditorSnapshot) => {
       if (snapshot.documentKey !== this.selectedDate) return;
       this.draftText = snapshot.text;
       this.dirty = snapshot.text !== this.savedText;
+      this.reportDraft();
     };
-    this.editor.onDirty = (key: string) => { if (key === this.selectedDate) this.dirty = true; };
+    this.editor.onDirty = (key: string) => {
+      if (key === this.selectedDate) { this.dirty = true; this.reportDraft(); }
+    };
     this.editor.onFailure = (message: string) => this.saveError = message;
     this.loadMonths();
   }
@@ -71,6 +86,7 @@ export struct LogsReaderPage {
     this.editor.onDirty = () => {};
     this.editor.onFailure = () => {};
     this.editor.onReadyChange = () => {};
+    this.onCaptureDraft(async () => undefined);
   }
 
   private isWide(): boolean {
@@ -80,6 +96,24 @@ export struct LogsReaderPage {
 
   private message(error: Error): string {
     return error instanceof ApiError ? error.message : '服务器暂时无法读取日志';
+  }
+
+  private reportDraft(): void {
+    this.onDraftChange(this.dirty && this.selectedDate ? {
+      namespace: activeInstance.namespace, date: this.selectedDate, text: this.draftText
+    } : undefined);
+  }
+
+  private async captureDraft(): Promise<PreservedLogDraft | undefined> {
+    if (!this.dirty || !this.selectedDate) return undefined;
+    let text = this.draftText;
+    if (this.editorReady) {
+      try {
+        const snapshot = await this.editor.command('snapshot');
+        if (snapshot.documentKey === this.selectedDate) text = snapshot.text;
+      } catch (_) { /* Keep the last observed draft if the editor is closing. */ }
+    }
+    return { namespace: activeInstance.namespace, date: this.selectedDate, text };
   }
 
   private bodyFromDay(day: DayEntry): string {
@@ -94,6 +128,7 @@ export struct LogsReaderPage {
       primaryButton: { value: '继续编辑', action: () => {} },
       secondaryButton: { value: '放弃修改', fontColor: $r('app.color.error'), action: () => {
         this.dirty = false;
+        this.reportDraft();
         next();
       } }
     });
@@ -107,6 +142,7 @@ export struct LogsReaderPage {
         if (snapshot.documentKey !== this.selectedDate) return;
         this.draftText = snapshot.text;
         this.dirty = snapshot.text !== this.savedText;
+        this.reportDraft();
         this.previewText = snapshot.text;
       } catch (error) {
         this.saveError = error instanceof Error ? error.message : '编辑器尚未就绪';
@@ -127,12 +163,15 @@ export struct LogsReaderPage {
       const snapshot = await this.editor.command('snapshot');
       if (snapshot.documentKey !== date || lifecycle !== this.lifecycle || revision !== this.dayRevision) return;
       this.draftText = snapshot.text;
+      this.dirty = snapshot.text !== this.savedText;
+      this.reportDraft();
       const response = await this.writes.save({ date, content: snapshot.text, baseVersion: this.day.version });
       if (lifecycle !== this.lifecycle || revision !== this.dayRevision || this.day?.date !== date) return;
       if (!response.day || response.day.date !== date || !response.day.version) throw new Error('保存响应格式异常');
       this.day = response.day;
       this.savedText = snapshot.text;
       this.dirty = this.draftText !== snapshot.text;
+      this.reportDraft();
       this.previewText = this.draftText;
       this.reads.invalidate();
     } catch (error) {
@@ -154,7 +193,10 @@ export struct LogsReaderPage {
       if (lifecycle !== this.lifecycle) return;
       if (!Array.isArray(response.months)) throw new Error('月份响应格式异常');
       this.months = response.months;
-      if (response.months.length > 0) await this.loadDays(response.months[0].id);
+      const restoreDate = this.initialDraft?.namespace === activeInstance.namespace ? this.initialDraft.date : '';
+      if (restoreDate || response.months.length > 0) {
+        await this.loadDays(restoreDate ? restoreDate.slice(0, 7) : response.months[0].id, restoreDate);
+      }
       else { this.month = ''; this.days = []; this.day = undefined; this.selectedDate = ''; }
     } catch (error) {
       if (lifecycle === this.lifecycle) this.errorMessage = this.message(error as Error);
@@ -207,10 +249,15 @@ export struct LogsReaderPage {
       }
       this.day = response.day;
       const body = this.bodyFromDay(response.day);
+      const restore = !this.restoredDraftApplied && this.initialDraft?.namespace === activeInstance.namespace &&
+        this.initialDraft.date === date ? this.initialDraft : undefined;
+      if (restore) this.restoredDraftApplied = true;
       this.savedText = body;
-      this.draftText = body;
-      this.editorInitialText = body;
-      this.previewText = body;
+      this.draftText = restore ? restore.text : body;
+      this.editorInitialText = this.draftText;
+      this.previewText = this.draftText;
+      this.dirty = this.draftText !== body;
+      this.reportDraft();
       this.saveError = '';
       this.targetHeading = heading;
       this.targetHeadingIndex = headingIndex;

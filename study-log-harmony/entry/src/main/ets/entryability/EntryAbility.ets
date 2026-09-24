@@ -1,5 +1,7 @@
 import { Configuration, ConfigurationConstant, UIAbility } from '@kit.AbilityKit';
 import { window } from '@kit.ArkUI';
+import { deviceInfo } from '@kit.BasicServicesKit';
+import { DesktopWindow } from '../app/DesktopMenu';
 
 export default class EntryAbility extends UIAbility {
   private mainWindow?: window.Window;
@@ -39,12 +41,25 @@ export default class EntryAbility extends UIAbility {
     AppStorage.setOrCreate('softwareKeyboardVisible', false);
     this.mainWindow.on('keyboardHeightChange', this.keyboardHeightChanged);
     this.updateSystemBars(this.context.config.colorMode);
-    stage.loadContent('pages/Index');
+    stage.loadContent('pages/Index', (error) => {
+      if (error.code || deviceInfo.deviceType !== '2in1' || !this.mainWindow) return;
+      try {
+        this.mainWindow.setWindowDecorHeight(40);
+        this.mainWindow.setWindowTitleMoveEnabled(false);
+        this.mainWindow.setWindowDecorVisible(false);
+        DesktopWindow.mainWindow = this.mainWindow;
+        AppStorage.setOrCreate<boolean>('desktopWindowChrome', true);
+      } catch (_) {
+        this.mainWindow.setWindowDecorVisible(true);
+        this.mainWindow.setWindowTitleMoveEnabled(true);
+      }
+    });
   }
 
   onWindowStageDestroy(): void {
     this.mainWindow?.off('keyboardHeightChange', this.keyboardHeightChanged);
     AppStorage.setOrCreate('softwareKeyboardVisible', false);
     this.mainWindow = undefined;
+    DesktopWindow.mainWindow = undefined;
   }
 }

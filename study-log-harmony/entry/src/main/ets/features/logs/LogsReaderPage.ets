@@ -23,6 +23,7 @@ import { LogDisplayModeControl } from './components/LogDisplayModeControl';
 import { SearchField } from '../../common/ui/FormControls';
 import { workspaceKey } from '../../common/ui/WorkspaceKeys';
 import { KeyCode } from '@kit.InputKit';
+import { DesktopLogCommands, DesktopMenuEntry } from '../../app/DesktopMenu';
 
 export interface PreservedLogDraft {
   namespace: string;
@@ -36,6 +37,7 @@ export struct LogsReaderPage {
   onChangeServer: () => void = () => {};
   onDraftChange: (draft: PreservedLogDraft | undefined) => void = () => {};
   onCaptureDraft: (capture: () => Promise<PreservedLogDraft | undefined>) => void = () => {};
+  onRegisterDesktopCommands: (commands: DesktopLogCommands) => void = () => {};
   initialDraft: PreservedLogDraft | undefined = undefined;
   @State private months: MonthSummary[] = [];
   @State private days: DaySummary[] = [];
@@ -107,6 +109,33 @@ export struct LogsReaderPage {
 
   aboutToAppear(): void {
     this.lifecycle++;
+    const commands = new DesktopLogCommands();
+    commands.entries = (menu: string): DesktopMenuEntry[] => {
+      if (menu === '文件') return [
+        new DesktopMenuEntry('newLog', '新建日志…', true, false, 'Ctrl+Alt+N'),
+        new DesktopMenuEntry('refresh', '刷新', !!this.day && !this.dirty),
+        new DesktopMenuEntry('export', '导出', !!this.day?.exists),
+        new DesktopMenuEntry('backup', '备份', !!this.day?.exists)
+      ];
+      if (menu === '编辑') return [new DesktopMenuEntry('save', '保存', this.dirty && !this.saving, false, 'Ctrl+S')];
+      if (menu === '视图') return [
+        new DesktopMenuEntry('preview', '浏览', !!this.day, !this.sourceMode && !this.splitMode),
+        new DesktopMenuEntry('source', '源码', !!this.day, this.sourceMode),
+        new DesktopMenuEntry('split', '分屏', !!this.day, this.splitMode)
+      ];
+      return [];
+    };
+    commands.execute = (id: string): void => {
+      if (id === 'newLog') this.openCalendar('create');
+      else if (id === 'refresh') this.refreshLog();
+      else if (id === 'export') this.exportMenuOpen = true;
+      else if (id === 'backup') this.backupOpen = true;
+      else if (id === 'save') this.save();
+      else if (id === 'preview') this.switchMode(false);
+      else if (id === 'source') this.switchMode(true);
+      else if (id === 'split') this.switchMode(false, true);
+    };
+    this.onRegisterDesktopCommands(commands);
     this.onCaptureDraft(() => this.captureDraft());
     this.editor.onReadyChange = (ready: boolean) => this.editorReady = ready;
     this.editor.onChange = (snapshot: EditorSnapshot) => {

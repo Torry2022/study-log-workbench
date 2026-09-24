@@ -5,6 +5,8 @@ import { apiClient } from '../common/network/ApiClient';
 import { LoginPage } from '../app/LoginPage';
 import { TokenStore } from '../common/storage/TokenStore';
 import { LogsReaderPage, PreservedLogDraft } from '../features/logs/LogsReaderPage';
+import { DesktopLogCommands, DesktopMenuEntry } from '../app/DesktopMenu';
+import { DesktopTitleBar } from '../app/components/DesktopTitleBar';
 
 @Entry
 @Component
@@ -12,6 +14,8 @@ struct Index {
   @Provide('workspaceBreakpoint') private workspaceBreakpoint: WorkspaceBreakpoint = WorkspaceBreakpoint.COMPACT;
   @State private connected: boolean = false;
   @State private restoreOnAppear: boolean = true;
+  @StorageLink('desktopWindowChrome') private desktopWindowChrome: boolean = false;
+  private desktopCommands: DesktopLogCommands = new DesktopLogCommands();
   private removeUnauthorizedHandler: () => void = () => {};
   private drafts: Map<string, PreservedLogDraft> = new Map();
   private captureDraft: () => Promise<PreservedLogDraft | undefined> = async () => undefined;
@@ -88,10 +92,29 @@ struct Index {
         width < 1440 ? WorkspaceBreakpoint.LARGE : WorkspaceBreakpoint.EXTRA_LARGE;
   }
 
+  private windowMenuEntries(menu: string): DesktopMenuEntry[] {
+    if (menu === '帮助') return [new DesktopMenuEntry('about', '关于学习日志工作台', false)];
+    const entries = this.desktopCommands.entries(menu);
+    return entries.map((entry: DesktopMenuEntry) => new DesktopMenuEntry(entry.id, entry.label,
+      this.connected && entry.enabled, entry.checked, entry.shortcut));
+  }
+
+  private executeWindowMenu(id: string): void {
+    const enabled = ['文件', '编辑', '视图'].flatMap((menu: string) => this.windowMenuEntries(menu))
+      .some((entry: DesktopMenuEntry) => entry.id === id && entry.enabled);
+    if (enabled) this.desktopCommands.execute(id);
+  }
+
   build() {
-    Stack() {
+    Column() {
+      if (this.desktopWindowChrome) {
+        DesktopTitleBar({ getEntries: (menu: string) => this.windowMenuEntries(menu),
+          onAction: (id: string) => this.executeWindowMenu(id) })
+      }
+      Stack() {
       if (this.connected) {
         LogsReaderPage({ onChangeServer: () => this.changeServer(),
+          onRegisterDesktopCommands: (commands: DesktopLogCommands) => this.desktopCommands = commands,
           initialDraft: this.drafts.get(activeInstance.namespace),
           onDraftChange: (draft: PreservedLogDraft | undefined) => this.recordDraft(draft),
           onCaptureDraft: (capture: () => Promise<PreservedLogDraft | undefined>) => this.captureDraft = capture })
@@ -99,8 +122,9 @@ struct Index {
         LoginPage({ restoreOnAppear: this.restoreOnAppear,
           onConnected: (origin: string, capabilities: InstanceCapabilities) => this.connectedTo(origin, capabilities) })
       }
-    }.width('100%').height('100%')
+      }.width('100%').layoutWeight(1)
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+    }.width('100%').height('100%')
       .onAreaChange((_oldArea, area) => this.updateBreakpoint(Number(area.width)))
   }
 }

@@ -1,12 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
+import ts from 'typescript';
 import { activeInstance } from '../entry/src/main/ets/common/network/InstanceConfig.ts';
 
-const webRequire = createRequire(new URL('../../study-log-web/package.json', import.meta.url));
-const ts = webRequire('typescript');
 async function loadEts(name, dependencies = {}) {
   const source = await readFile(new URL(`../entry/src/main/ets/common/network/${name}.ets`, import.meta.url), 'utf8');
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS,

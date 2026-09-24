@@ -16,6 +16,8 @@ import { LogNavigation } from './components/LogNavigation';
 import { DesktopLogHeader } from './components/DesktopLogHeader';
 import { BackupPanel } from './components/BackupPanel';
 import { LogImageUpload } from './LogImageUpload';
+import { LogSearchPanel, LogSearchResult } from './LogSearchPanel';
+import { LogSearchRepository } from './LogSearchRepository';
 
 export interface PreservedLogDraft {
   namespace: string;
@@ -65,6 +67,14 @@ export struct LogsReaderPage {
   @State private imageBusy: boolean = false;
   @State private exportBusy: boolean = false;
   @State private exportMenuOpen: boolean = false;
+  @State private searchOpen: boolean = false;
+  @State private searchQuery: string = '';
+  @State private searchHeadingsOnly: boolean = false;
+  @State private searchIgnoreCase: boolean = true;
+  @State private searchLoading: boolean = false;
+  @State private searchSubmitted: boolean = false;
+  @State private searchError: string = '';
+  @State private searchResults: LogSearchResult[] = [];
   @State private linkAlias: string = '';
   @State private moreOpen: boolean = false;
   @State private saveError: string = '';
@@ -77,6 +87,7 @@ export struct LogsReaderPage {
   @State private calendarError: boolean = false;
   private reads: LogReadRepository = new LogReadRepository(apiClient);
   private writes: LogWriteRepository = new LogWriteRepository(apiClient);
+  private searches: LogSearchRepository = new LogSearchRepository(apiClient);
   private editor: SourceEditorSession = new SourceEditorSession();
   private lifecycle: number = 0;
   private listRevision: number = 0;
@@ -85,6 +96,7 @@ export struct LogsReaderPage {
   private leaveCheckPending: boolean = false;
   private calendarRevision: number = 0;
   private linkTarget: EditorSnapshot | undefined = undefined;
+  private searchRevision: number = 0;
 
   aboutToAppear(): void {
     this.lifecycle++;
@@ -101,7 +113,10 @@ export struct LogsReaderPage {
       if (key === this.selectedDate) { this.dirty = true; this.reportDraft(); }
     };
     this.editor.onFailure = (message: string) => this.saveError = message;
-    this.editor.onCommand = (command: string) => { if (command === 'save') this.save(); };
+    this.editor.onCommand = (command: string) => {
+      if (command === 'save') this.save();
+      else if (command === 'globalSearch') this.searchOpen = true;
+    };
     this.editor.onImages = (target: EditorSnapshot, images: EditorImageData[]) => this.receiveImages(target, images);
     this.loadMonths();
   }
@@ -111,6 +126,7 @@ export struct LogsReaderPage {
     this.listRevision++;
     this.dayRevision++;
     this.calendarRevision++;
+    this.searchRevision++;
     this.reads.invalidate();
     this.editor.onChange = () => {};
     this.editor.onDirty = () => {};
@@ -445,6 +461,53 @@ export struct LogsReaderPage {
     } finally {
       if (lifecycle === this.lifecycle) this.exportBusy = false;
     }
+  }
+
+  private changeSearch(query: string): void {
+    this.searchQuery = query;
+    this.searchRevision++;
+    this.searchLoading = false;
+    this.searchSubmitted = false;
+    this.searchResults = [];
+    this.searchError = '';
+  }
+
+  private closeSearch(): void {
+    this.searchOpen = false;
+    this.searchRevision++;
+    this.searchLoading = false;
+  }
+
+  private async searchLogs(): Promise<void> {
+    const query = this.searchQuery.trim();
+    if (!query || this.searchLoading) return;
+    const revision = ++this.searchRevision;
+    const lifecycle = this.lifecycle;
+    this.searchLoading = true;
+    this.searchSubmitted = true;
+    this.searchError = '';
+    this.searchResults = [];
+    try {
+      const response = await this.searches.search(query, this.searchHeadingsOnly, this.searchIgnoreCase);
+      if (revision !== this.searchRevision || lifecycle !== this.lifecycle || !this.searchOpen) return;
+      if (!Array.isArray(response.results)) throw new Error('搜索响应格式异常');
+      this.searchResults = response.results;
+    } catch (error) {
+      if (revision === this.searchRevision && lifecycle === this.lifecycle && this.searchOpen) {
+        this.searchError = error instanceof Error ? error.message : '搜索失败，请重试';
+      }
+    } finally {
+      if (revision === this.searchRevision && lifecycle === this.lifecycle) this.searchLoading = false;
+    }
+  }
+
+  private selectSearchResult(result: LogSearchResult): void {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(result.date)) return;
+    const heading = (result.matches[0] || '').replace(/^#{1,6}\s+/, '').replace(/^\d+\.\s+/, '').trim();
+    this.confirmDiscard(() => {
+      this.closeSearch();
+      this.openInternalLink(result.date, result.headings.includes(heading) ? heading : '');
+    });
   }
 
   private async confirmDelete(): Promise<void> {
@@ -977,6 +1040,9 @@ export struct LogsReaderPage {
           AppLogo({ iconSize: 28, cornerRadius: 6 })
           Text('学习日志工作台').fontFamily(workspaceSansFamily(this.workspaceBreakpoint))
             .fontSize(16).fontWeight(FontWeight.Medium).fontColor($r('app.color.ink')).layoutWeight(1)
+          Button('搜索').fontSize(13).fontColor($r('app.color.body'))
+            .backgroundColor($r('app.color.surface_soft'))
+            .onClick(() => this.searchOpen = true)
           Button('更换服务器').fontSize(13).fontColor($r('app.color.body'))
             .backgroundColor($r('app.color.surface_soft'))
             .enabled(!this.backupOpen && !this.linkOpen)
@@ -1030,6 +1096,17 @@ export struct LogsReaderPage {
             .height(this.isWide() ? 620 : '100%')
             .borderRadius(this.isWide() ? 12 : 0).clip(true)
         }.width('100%').height('100%')
+      }
+      if (this.searchOpen) {
+        LogSearchPanel({ query: this.searchQuery, headingsOnly: this.searchHeadingsOnly,
+          ignoreCase: this.searchIgnoreCase, loading: this.searchLoading,
+          submitted: this.searchSubmitted, error: this.searchError, results: this.searchResults,
+          onClose: () => this.closeSearch(), onQuery: (query: string) => this.changeSearch(query),
+          onSearch: () => this.searchLogs(),
+          onHeadings: () => { this.searchHeadingsOnly = !this.searchHeadingsOnly; this.changeSearch(this.searchQuery); },
+          onCase: () => { this.searchIgnoreCase = !this.searchIgnoreCase; this.changeSearch(this.searchQuery); },
+          onSelect: (result: LogSearchResult) => this.selectSearchResult(result) })
+          .width('100%').height('100%')
       }
     }.width('100%').height('100%')
   }

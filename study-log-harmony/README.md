@@ -6,6 +6,8 @@
 
 本机需要 HarmonyOS SDK `6.1.1(24)` 及匹配的 DevEco Studio。在本目录创建不入库的 `local.properties`，设置本机 `sdk.dir`，然后运行：
 
+地址与能力契约的纯逻辑测试可用 `npm run test:protocol` 执行；当前使用 Node.js 的实验性 TypeScript 类型剥离功能，测试通过不代表真机网络链路通过。
+
 ```powershell
 $devEcoStudio = '<DevEco Studio 安装目录>'
 node (Join-Path $devEcoStudio 'tools\hvigor\bin\hvigorw.js') --mode module -p product=default -p module=entry@default -p buildMode=debug assembleHap --no-daemon

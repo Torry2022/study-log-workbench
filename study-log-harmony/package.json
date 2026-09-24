@@ -1,0 +1,8 @@
+{
+  "name": "study-log-public-harmony",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:protocol": "node --experimental-strip-types --test test/*.test.mjs"
+  }
+}

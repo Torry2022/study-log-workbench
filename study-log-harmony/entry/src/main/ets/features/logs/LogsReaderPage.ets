@@ -51,6 +51,7 @@ export struct LogsReaderPage {
   @State private savedText: string = '';
   @State private dirty: boolean = false;
   @State private saving: boolean = false;
+  @State private deleting: boolean = false;
   @State private saveError: string = '';
   @State private newLogDate: string = '';
   @State private calendarMonth: string = '';
@@ -140,7 +141,7 @@ export struct LogsReaderPage {
   }
 
   private async checkBeforeLeaving(next: () => void): Promise<void> {
-    if (this.saving) { this.saveError = '保存进行中，请稍候'; return; }
+    if (this.saving || this.deleting) { this.saveError = '操作进行中，请稍候'; return; }
     if (this.day && this.editorReady) {
       try {
         const snapshot = await this.editor.command('snapshot');
@@ -183,7 +184,7 @@ export struct LogsReaderPage {
   }
 
   private async save(): Promise<void> {
-    if (!this.day || !this.editorReady || this.saving) return;
+    if (!this.day || !this.editorReady || this.saving || this.deleting) return;
     const lifecycle = this.lifecycle;
     const revision = this.dayRevision;
     const date = this.day.date;
@@ -231,6 +232,61 @@ export struct LogsReaderPage {
       if (lifecycle === this.lifecycle && this.month === month && this.selectedDate === date) {
         this.navigationError = this.message(error as Error);
       }
+    }
+  }
+
+  private async confirmDelete(): Promise<void> {
+    if (!this.day?.exists || !this.day.version || this.saving || this.deleting) return;
+    const date = this.day.date;
+    const version = this.day.version;
+    if (this.editorReady) {
+      try {
+        const snapshot = await this.editor.command('snapshot');
+        if (snapshot.documentKey !== date || this.day?.version !== version) return;
+        this.draftText = snapshot.text;
+        this.dirty = snapshot.text !== this.savedText;
+        this.reportDraft();
+      } catch (error) {
+        this.saveError = error instanceof Error ? error.message : '请完成当前输入后重试';
+        return;
+      }
+    }
+    AlertDialog.show({
+      message: this.dirty ? `确认删除 ${date} 日块？当前有未保存修改，删除会保留写入前备份。` :
+        `确认删除 ${date} 日块？此操作会保留写入前备份。`,
+      primaryButton: { value: '取消', action: () => {} },
+      secondaryButton: { value: '删除', fontColor: $r('app.color.error'),
+        action: () => { if (this.day?.date === date && this.day.version === version) this.deleteDay(date, version); } }
+    });
+  }
+
+  private async deleteDay(date: string, version: string): Promise<void> {
+    if (this.deleting || this.saving) return;
+    const lifecycle = this.lifecycle;
+    const revision = this.dayRevision;
+    this.deleting = true;
+    this.saveError = '';
+    try {
+      const response = await this.writes.delete({ date, baseVersion: version });
+      if (lifecycle !== this.lifecycle || revision !== this.dayRevision || this.day?.date !== date) return;
+      if (!response.day || response.day.date !== date || response.day.exists) throw new Error('删除响应格式异常');
+      this.day = response.day;
+      const body = this.bodyFromDay(response.day);
+      this.savedText = body;
+      this.draftText = body;
+      this.editorInitialText = body;
+      this.previewText = body;
+      this.dirty = false;
+      this.reportDraft();
+      this.sourceMode = false;
+      this.reads.invalidate();
+      this.refreshNavigation(date);
+    } catch (error) {
+      if (lifecycle !== this.lifecycle || revision !== this.dayRevision) return;
+      this.saveError = error instanceof ApiError && error.statusCode === 409 ?
+        '源文件已变化，未删除。请刷新后核对。' : error instanceof Error ? error.message : '删除失败，请重试';
+    } finally {
+      if (lifecycle === this.lifecycle && revision === this.dayRevision) this.deleting = false;
     }
   }
 
@@ -545,6 +601,10 @@ export struct LogsReaderPage {
         .fontColor($r('app.color.on_primary')).backgroundColor($r('app.color.primary'))
         .enabled(this.editorReady && this.dirty && !this.saving)
         .onClick(() => this.save())
+      Button(this.deleting ? '删除中' : '删除').fontSize(13)
+        .fontColor($r('app.color.error')).backgroundColor($r('app.color.surface_soft'))
+        .enabled(!!this.day?.exists && !this.saving && !this.deleting)
+        .onClick(() => this.confirmDelete())
     }
   }
 

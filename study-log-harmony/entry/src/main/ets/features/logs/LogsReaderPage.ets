@@ -18,6 +18,8 @@ import { BackupPanel } from './components/BackupPanel';
 import { LogImageUpload } from './LogImageUpload';
 import { LogSearchPanel, LogSearchResult } from './LogSearchPanel';
 import { LogSearchRepository } from './LogSearchRepository';
+import { ToolbarAction } from '../../common/ui/ToolbarAction';
+import { LogDisplayModeControl } from './components/LogDisplayModeControl';
 
 export interface PreservedLogDraft {
   namespace: string;
@@ -926,60 +928,51 @@ export struct LogsReaderPage {
 
   @Builder
   private editorActions() {
-    Row({ space: 6 }) {
-      Button('浏览').fontSize(13)
-        .fontColor(!this.sourceMode && !this.splitMode ? $r('app.color.ink') : $r('app.color.muted'))
-        .backgroundColor(!this.sourceMode && !this.splitMode ? $r('app.color.surface_card') : $r('app.color.surface_soft'))
-        .onClick(() => this.switchMode(false))
-      Button('源码').fontSize(13)
-        .fontColor(this.sourceMode || this.splitMode && !this.isWide() ? $r('app.color.ink') : $r('app.color.muted'))
-        .backgroundColor(this.sourceMode || this.splitMode && !this.isWide() ?
-          $r('app.color.surface_card') : $r('app.color.surface_soft'))
-        .onClick(() => this.switchMode(true))
-      if (this.isWide()) {
-        Button('分屏').fontSize(13)
-          .fontColor(this.splitMode ? $r('app.color.ink') : $r('app.color.muted'))
-          .backgroundColor(this.splitMode ? $r('app.color.surface_card') : $r('app.color.surface_soft'))
-          .onClick(() => this.switchMode(false, true))
-      }
-      Button(this.saving ? '保存中' : '保存').fontSize(13)
-        .fontColor($r('app.color.on_primary')).backgroundColor($r('app.color.primary'))
-        .enabled(this.editorReady && this.dirty && !this.saving)
-        .onClick(() => this.save())
-      if (this.isWide() && this.headerWidth >= 760) {
-        Button('刷新').fontSize(13)
-          .fontColor($r('app.color.body')).backgroundColor($r('app.color.surface_soft'))
-          .enabled(!this.saving && !this.deleting && !this.imageBusy).onClick(() => this.refreshLog())
-        Button('导出').fontSize(13)
-          .fontColor($r('app.color.body')).backgroundColor($r('app.color.surface_soft'))
-          .enabled(!this.exportBusy).onClick(() => this.exportMenuOpen = true)
+    Row({ space: this.headerWidth < 900 ? 4 : 8 }) {
+      LogDisplayModeControl({ sourceMode: this.sourceMode, splitMode: this.splitMode,
+        expanded: this.isWide() && this.headerWidth >= 900,
+        showLabels: this.isWide() && this.headerWidth >= 1200,
+        onMode: (mode: string) => this.switchMode(mode === 'source', mode === 'split') })
+      if (this.isWide() && this.headerWidth >= 900) {
+        ToolbarAction({ label: '刷新', icon: $r('app.media.refresh_cw'), iconSize: 15,
+          showLabel: this.headerWidth >= 1200,
+          available: !this.saving && !this.deleting && !this.imageBusy,
+          onAction: () => this.refreshLog() })
+        ToolbarAction({ label: '导出', icon: $r('app.media.download'), iconSize: 15,
+          showLabel: this.headerWidth >= 1200, available: !this.exportBusy,
+          onAction: () => this.exportMenuOpen = true })
           .bindPopup(this.exportMenuOpen, { builder: this.exportActions(), placement: Placement.BottomRight,
             enableArrow: false, popupColor: $r('app.color.canvas'), radius: 8,
             onStateChange: (event) => { if (!event.isVisible) this.exportMenuOpen = false; } })
-        Button(this.imageBusy ? '上传中' : '插入图片').fontSize(13)
-          .fontColor($r('app.color.body')).backgroundColor($r('app.color.surface_soft'))
-          .enabled(!!this.day && this.editorReady && !this.imageBusy).onClick(() => this.insertImages())
+        ToolbarAction({ label: '插入图片', icon: $r('app.media.upload'), iconSize: 15,
+          showLabel: this.headerWidth >= 1200, busy: this.imageBusy,
+          available: !!this.day && this.editorReady,
+          onAction: () => this.insertImages() })
         if (this.sourceMode || this.splitMode) {
-          Button('内部链接').fontSize(13)
-            .fontColor($r('app.color.body')).backgroundColor($r('app.color.surface_soft'))
-            .enabled(this.editorReady && !this.linkOpening).onClick(() => this.openLink())
+          ToolbarAction({ label: '内部链接', icon: $r('app.media.link_2'), iconSize: 15,
+            showLabel: this.headerWidth >= 1200,
+            available: this.editorReady && !this.linkOpening,
+            onAction: () => this.openLink() })
         }
-        Button('备份').fontSize(13)
-          .fontColor($r('app.color.body')).backgroundColor($r('app.color.surface_soft'))
-          .enabled(!!this.day && !this.saving && !this.deleting)
-          .onClick(() => this.backupOpen = true)
-        Button(this.deleting ? '删除中' : '删除').fontSize(13)
-          .fontColor($r('app.color.error')).backgroundColor($r('app.color.surface_soft'))
-          .enabled(!!this.day?.exists && !this.saving && !this.deleting)
-          .onClick(() => this.confirmDelete())
+        ToolbarAction({ label: '备份', icon: $r('app.media.database_backup'), iconSize: 15,
+          showLabel: this.headerWidth >= 1200,
+          available: !!this.day && !this.saving && !this.deleting,
+          onAction: () => this.backupOpen = true })
+        ToolbarAction({ label: '删除', icon: $r('app.media.trash_2'), iconSize: 15,
+          showLabel: this.headerWidth >= 1200, danger: true, busy: this.deleting,
+          available: !!this.day?.exists && !this.saving,
+          onAction: () => this.confirmDelete() })
       } else {
-        Button('更多', { type: ButtonType.Normal }).fontSize(13)
-          .fontColor($r('app.color.body')).backgroundColor($r('app.color.surface_soft'))
-          .onClick(() => this.moreOpen = true)
+        ToolbarAction({ label: '更多日志操作', icon: $r('app.media.more_horizontal'),
+          showLabel: false, onAction: () => this.moreOpen = true })
           .bindPopup(this.moreOpen, { builder: this.moreActions(), placement: Placement.BottomRight,
             enableArrow: false, popupColor: $r('app.color.canvas'), radius: 8,
             onStateChange: (event) => { if (!event.isVisible) this.moreOpen = false; } })
       }
+      ToolbarAction({ label: this.saving ? '保存中' : '保存', reservedLabel: '保存中',
+        icon: $r('app.media.save'), iconSize: 15,
+        showLabel: this.headerWidth >= 900, primary: true, busy: this.saving,
+        available: this.editorReady && this.dirty, onAction: () => this.save() })
     }
   }
 
@@ -1048,24 +1041,44 @@ export struct LogsReaderPage {
   build() {
     Stack() {
       Column() {
-        Row({ space: 8 }) {
+        Row({ space: 12 }) {
           if (!this.isWide()) {
             Button({ type: ButtonType.Normal }) {
               SymbolGlyph($r('sys.symbol.line_3_horizontal')).fontSize(20).fontColor([$r('app.color.ink')])
             }.width(42).height(42).backgroundColor(Color.Transparent).accessibilityText('打开日期导航')
               .onClick(() => this.navigationOpen = true)
           }
-          AppLogo({ iconSize: 28, cornerRadius: 6 })
-          Text('学习日志工作台').fontFamily(workspaceSansFamily(this.workspaceBreakpoint))
-            .fontSize(16).fontWeight(FontWeight.Medium).fontColor($r('app.color.ink')).layoutWeight(1)
-          Button('搜索').fontSize(13).fontColor($r('app.color.body'))
-            .backgroundColor($r('app.color.surface_soft'))
-            .onClick(() => this.searchOpen = true)
-          Button('更换服务器').fontSize(13).fontColor($r('app.color.body'))
-            .backgroundColor($r('app.color.surface_soft'))
-            .enabled(!this.backupOpen && !this.linkOpen)
-            .onClick(() => this.confirmDiscard(() => this.onChangeServer()))
-        }.width('100%').height(54).padding({ left: 12, right: 12 })
+          Row({ space: 10 }) {
+            AppLogo({ iconSize: 38, cornerRadius: 8 })
+            Column({ space: 2 }) {
+              Text('学习日志工作台').fontFamily(workspaceSansFamily(this.workspaceBreakpoint))
+                .fontSize(15).fontWeight(FontWeight.Bold).fontColor($r('app.color.ink')).maxLines(1)
+              Text(this.day?.headings[0] || this.selectedDate || '日志')
+                .fontFamily(workspaceSansFamily(this.workspaceBreakpoint)).fontSize(12)
+                .fontColor($r('app.color.muted')).maxLines(1)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
+            }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+          }.layoutWeight(1).constraintSize({ minWidth: 208 })
+          if (this.isWide()) {
+            Button({ type: ButtonType.Normal }) {
+              Row({ space: 8 }) {
+                Image($r('app.media.search')).width(17).height(17)
+                Text('搜索日志、术语、代码标识').fontSize(14).fontColor($r('app.color.muted'))
+                  .layoutWeight(1).textAlign(TextAlign.Start)
+              }.width('100%')
+            }.width(360).height(42).padding({ left: 12, right: 12 })
+              .backgroundColor($r('app.color.surface_soft'))
+              .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8)
+              .accessibilityText('搜索日志内容').onClick(() => this.searchOpen = true)
+          } else {
+            ToolbarAction({ label: '搜索日志内容', icon: $r('app.media.search'),
+              showLabel: false, onAction: () => this.searchOpen = true })
+          }
+          ToolbarAction({ label: '更换服务器', icon: $r('app.media.log_out'), iconSize: 17,
+            showLabel: this.isWide(), available: !this.backupOpen && !this.linkOpen,
+            onAction: () => this.confirmDiscard(() => this.onChangeServer()) })
+        }.width('100%').height(64).padding({ left: 12, right: 12 })
+          .backgroundColor($r('app.color.canvas'))
           .border({ width: { bottom: 1 }, color: $r('app.color.hairline') })
         Stack() {
           Row() {
@@ -1085,14 +1098,15 @@ export struct LogsReaderPage {
                 this.navigation()
               }.width('86%').height('100%')
                 .backgroundColor($r('app.color.canvas'))
+                .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
               Blank().layoutWeight(1).height('100%').onClick(() => this.navigationOpen = false)
             }.width('100%').height('100%').backgroundColor($r('app.color.scrim'))
+              .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
           }
         }.layoutWeight(1).width('100%')
       }.width('100%').height('100%').backgroundColor($r('app.color.canvas'))
       if (this.backupOpen && this.day) {
         Stack() {
-          Column() {}.width('100%').height('100%').backgroundColor($r('app.color.scrim'))
           BackupPanel({ date: this.day.date,
             onClose: () => { if (!this.backupBusy) this.backupOpen = false; },
             onBeforeRestore: () => this.beforeRestore(),
@@ -1103,10 +1117,11 @@ export struct LogsReaderPage {
             .borderRadius(this.isWide() ? 12 : 0)
             .clip(true)
         }.width('100%').height('100%')
+          .backgroundColor($r('app.color.scrim'))
+          .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
       }
       if (this.linkOpen) {
         Stack() {
-          Column() {}.width('100%').height('100%').backgroundColor($r('app.color.scrim'))
           EditorLinkPicker({ initialAlias: this.linkAlias,
             onClose: () => this.closeLink(),
             onInsert: (markup: string) => this.insertLink(markup) })
@@ -1114,6 +1129,8 @@ export struct LogsReaderPage {
             .height(this.isWide() ? 620 : '100%')
             .borderRadius(this.isWide() ? 12 : 0).clip(true)
         }.width('100%').height('100%')
+          .backgroundColor($r('app.color.scrim'))
+          .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
       }
       if (this.searchOpen) {
         LogSearchPanel({ query: this.searchQuery, headingsOnly: this.searchHeadingsOnly,
@@ -1127,5 +1144,6 @@ export struct LogsReaderPage {
           .width('100%').height('100%')
       }
     }.width('100%').height('100%')
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 }

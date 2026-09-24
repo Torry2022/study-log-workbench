@@ -100,6 +100,7 @@ struct Index {
           onConnected: (origin: string, capabilities: InstanceCapabilities) => this.connectedTo(origin, capabilities) })
       }
     }.width('100%').height('100%')
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
       .onAreaChange((_oldArea, area) => this.updateBreakpoint(Number(area.width)))
   }
 }

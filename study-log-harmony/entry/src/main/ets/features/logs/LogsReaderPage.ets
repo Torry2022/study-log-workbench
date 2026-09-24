@@ -45,6 +45,7 @@ export struct LogsReaderPage {
   @State private headerWidth: number = 900;
   @State private headerDateWidth: number = 190;
   @State private sourceMode: boolean = false;
+  @State private splitMode: boolean = false;
   @State private editorReady: boolean = false;
   @State private draftText: string = '';
   @State private editorInitialText: string = '';
@@ -81,6 +82,7 @@ export struct LogsReaderPage {
       if (snapshot.documentKey !== this.selectedDate) return;
       this.draftText = snapshot.text;
       this.dirty = snapshot.text !== this.savedText;
+      if (this.splitMode) this.previewText = snapshot.text;
       this.reportDraft();
     };
     this.editor.onDirty = (key: string) => {
@@ -168,9 +170,9 @@ export struct LogsReaderPage {
     });
   }
 
-  private async switchMode(source: boolean): Promise<void> {
-    if (source === this.sourceMode) return;
-    if (!source && this.editorReady && this.day) {
+  private async switchMode(source: boolean, split: boolean = false): Promise<void> {
+    if (source === this.sourceMode && split === this.splitMode) return;
+    if (this.editorReady && this.day) {
       try {
         const snapshot = await this.editor.command('snapshot');
         if (snapshot.documentKey !== this.selectedDate) return;
@@ -184,6 +186,7 @@ export struct LogsReaderPage {
       }
     }
     this.sourceMode = source;
+    this.splitMode = split;
   }
 
   private async save(): Promise<void> {
@@ -268,6 +271,7 @@ export struct LogsReaderPage {
     this.dirty = false;
     this.reportDraft();
     this.sourceMode = false;
+    this.splitMode = false;
     this.saveError = '';
     this.reads.invalidate();
     this.refreshNavigation(day.date);
@@ -318,6 +322,7 @@ export struct LogsReaderPage {
       this.dirty = false;
       this.reportDraft();
       this.sourceMode = false;
+      this.splitMode = false;
       this.reads.invalidate();
       this.refreshNavigation(date);
     } catch (error) {
@@ -487,7 +492,7 @@ export struct LogsReaderPage {
   private async openDate(date: string, edit: boolean): Promise<void> {
     if (date.slice(0, 7) === this.month) await this.loadDay(date);
     else await this.loadDays(date.slice(0, 7), date);
-    if (edit && this.day?.date === date) this.sourceMode = true;
+    if (edit && this.day?.date === date) { this.sourceMode = true; this.splitMode = false; }
   }
 
   private openNewLog(date: string): void {
@@ -629,13 +634,20 @@ export struct LogsReaderPage {
   private editorActions() {
     Row({ space: 6 }) {
       Button('浏览').fontSize(13)
-        .fontColor(!this.sourceMode ? $r('app.color.ink') : $r('app.color.muted'))
-        .backgroundColor(!this.sourceMode ? $r('app.color.surface_card') : $r('app.color.surface_soft'))
+        .fontColor(!this.sourceMode && !this.splitMode ? $r('app.color.ink') : $r('app.color.muted'))
+        .backgroundColor(!this.sourceMode && !this.splitMode ? $r('app.color.surface_card') : $r('app.color.surface_soft'))
         .onClick(() => this.switchMode(false))
       Button('源码').fontSize(13)
-        .fontColor(this.sourceMode ? $r('app.color.ink') : $r('app.color.muted'))
-        .backgroundColor(this.sourceMode ? $r('app.color.surface_card') : $r('app.color.surface_soft'))
+        .fontColor(this.sourceMode || this.splitMode && !this.isWide() ? $r('app.color.ink') : $r('app.color.muted'))
+        .backgroundColor(this.sourceMode || this.splitMode && !this.isWide() ?
+          $r('app.color.surface_card') : $r('app.color.surface_soft'))
         .onClick(() => this.switchMode(true))
+      if (this.isWide()) {
+        Button('分屏').fontSize(13)
+          .fontColor(this.splitMode ? $r('app.color.ink') : $r('app.color.muted'))
+          .backgroundColor(this.splitMode ? $r('app.color.surface_card') : $r('app.color.surface_soft'))
+          .onClick(() => this.switchMode(false, true))
+      }
       Button(this.saving ? '保存中' : '保存').fontSize(13)
         .fontColor($r('app.color.on_primary')).backgroundColor($r('app.color.primary'))
         .enabled(this.editorReady && this.dirty && !this.saving)
@@ -689,14 +701,18 @@ export struct LogsReaderPage {
           Row() {
             SourceEditor({ session: this.editor, documentKey: this.day.date,
               initialText: this.editorInitialText })
-              .width(this.sourceMode ? '100%' : 0).height('100%')
-              .visibility(this.sourceMode ? Visibility.Visible : Visibility.None)
+              .width(this.isWide() && this.splitMode ? '50%' : (this.sourceMode || this.splitMode ? '100%' : 0))
+              .height('100%')
+              .visibility(this.sourceMode || this.splitMode ? Visibility.Visible : Visibility.None)
+              .border({ width: { right: this.isWide() && this.splitMode ? 1 : 0 },
+                color: $r('app.color.hairline') })
             MarkdownReader({ content: this.previewText, contentMode: 'log', documentKey: this.day.date,
               targetHeading: this.targetHeading, targetHeadingIndex: this.targetHeadingIndex,
               targetRevision: this.targetRevision,
               onInternalLink: (date: string, heading: string) => this.confirmDiscard(() => this.openInternalLink(date, heading)) })
-              .width(this.sourceMode ? 0 : '100%').height('100%')
-              .visibility(this.sourceMode ? Visibility.None : Visibility.Visible)
+              .width(this.isWide() && this.splitMode ? '50%' : (this.sourceMode || this.splitMode && !this.isWide() ? 0 : '100%'))
+              .height('100%')
+              .visibility(this.sourceMode || this.splitMode && !this.isWide() ? Visibility.None : Visibility.Visible)
           }.width('100%').height('100%')
           if (this.saveError) {
             Text(this.saveError).fontSize(13).fontColor($r('app.color.error'))

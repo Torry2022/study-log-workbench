@@ -1,0 +1,12 @@
+/.hvigor/
+/.idea/
+/build/
+/entry/build/
+/local.properties
+*.hap
+*.hsp
+*.p7b
+*.p12
+*.cer
+*.key
+*.pem

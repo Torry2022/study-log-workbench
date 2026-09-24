@@ -1,0 +1,16 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "学习日志工作台鸿蒙客户端"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "查看、编辑并检索个人学习日志"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "学习日志工作台开源版"
+    }
+  ]
+}

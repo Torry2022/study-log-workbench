@@ -1,0 +1,10 @@
+{
+  "app": {
+    "bundleName": "org.studylog.workbench.publicedition",
+    "vendor": "Study Log Workbench contributors",
+    "versionCode": 10000,
+    "versionName": "0.1.0",
+    "icon": "$media:app_icon_layered",
+    "label": "$string:app_name"
+  }
+}

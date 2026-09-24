@@ -1,0 +1,8 @@
+{
+  "color": [
+    { "name": "start_window_background", "value": "#FAF9F5" },
+    { "name": "canvas", "value": "#FAF9F5" },
+    { "name": "ink", "value": "#141413" },
+    { "name": "muted", "value": "#6C6A64" }
+  ]
+}

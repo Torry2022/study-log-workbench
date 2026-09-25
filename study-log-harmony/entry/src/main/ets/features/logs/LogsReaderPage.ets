@@ -25,6 +25,7 @@ import { workspaceKey } from '../../common/ui/WorkspaceKeys';
 import { KeyCode } from '@kit.InputKit';
 import { DesktopLogCommands, DesktopMenuEntry } from '../../app/DesktopMenu';
 import { iconTint } from '../../common/ui/IconTint';
+import { InteractiveSurface, animateHover } from '../../common/ui/InteractiveSurface';
 
 export interface PreservedLogDraft {
   namespace: string;
@@ -90,6 +91,7 @@ export struct LogsReaderPage {
   @State private searchResults: LogSearchResult[] = [];
   @State private linkAlias: string = '';
   @State private moreOpen: boolean = false;
+  @State private hoveredMoreAction: string = '';
   @State private saveError: string = '';
   @State private newLogDate: string = '';
   @State private calendarMonth: string = '';
@@ -446,7 +448,7 @@ export struct LogsReaderPage {
   }
 
   private async insertImages(): Promise<void> {
-    if (!this.day || !this.editorReady || this.imageBusy || this.linkOpen || this.backupOpen) return;
+    if (!this.day || this.imageBusy || this.linkOpen || this.backupOpen) return;
     this.moreOpen = false;
     this.imageBusy = true;
     const lifecycle = this.lifecycle;
@@ -458,6 +460,11 @@ export struct LogsReaderPage {
       if (!this.sourceMode && !this.splitMode) await this.switchMode(true);
       if (lifecycle !== this.lifecycle || date !== this.selectedDate ||
         (!this.sourceMode && !this.splitMode)) return;
+      for (let attempt = 0; attempt < 50 && this.editor.loadedDocumentKey !== date; attempt += 1) {
+        if (lifecycle !== this.lifecycle || date !== this.selectedDate) return;
+        await new Promise<void>((resolve) => setTimeout(resolve, 100));
+      }
+      if (this.editor.loadedDocumentKey !== date) throw new Error('编辑器尚未就绪，请稍后重试');
       target = await this.editor.command('capture');
       files = await uploader.pick();
       if (!files.length || lifecycle !== this.lifecycle || date !== this.selectedDate) return;
@@ -982,6 +989,43 @@ export struct LogsReaderPage {
     } else this.confirmDiscard(() => this.loadDay(day.date, heading, index));
   }
 
+  private adjacentDay(offset: number): string {
+    const index = this.days.findIndex((item: DaySummary) => item.date === this.selectedDate);
+    if (index < 0) return '';
+    return this.days[index + offset]?.date || '';
+  }
+
+  private navigateDay(offset: number): void {
+    const date = this.adjacentDay(offset);
+    if (date) this.confirmDiscard(() => this.loadDay(date));
+  }
+
+  @Builder
+  private desktopAdjacentButton(label: string, direction: number) {
+    Button({ type: ButtonType.Normal }) {
+      if (this.headerWidth >= 1200) {
+        Row({ space: 4 }) {
+          if (direction > 0) {
+            SymbolGlyph($r('sys.symbol.chevron_left')).fontSize(12).fontColor([$r('app.color.body')])
+          }
+          Text(label).fontSize(12).fontColor($r('app.color.body'))
+          if (direction < 0) {
+            SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(12).fontColor([$r('app.color.body')])
+          }
+        }.justifyContent(FlexAlign.Center)
+      } else {
+        SymbolGlyph(direction > 0 ? $r('sys.symbol.chevron_left') : $r('sys.symbol.chevron_right'))
+          .fontSize(16).fontColor([$r('app.color.body')])
+      }
+    }.id(direction > 0 ? 'log_previous_day' : 'log_next_day')
+      .width(this.headerWidth >= 1200 ? undefined : 32).height(32)
+      .padding({ left: this.headerWidth >= 1200 ? 12 : 0, right: this.headerWidth >= 1200 ? 12 : 0 })
+      .backgroundColor($r('app.color.canvas'))
+      .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(7)
+      .accessibilityText(label).enabled(this.adjacentDay(direction).length > 0)
+      .onClick(() => this.navigateDay(direction))
+  }
+
   @Builder
   private navigation() {
     Column() {
@@ -1056,37 +1100,50 @@ export struct LogsReaderPage {
   }
 
   @Builder
+  private desktopMoreItem(icon: Resource, label: string, enabled: boolean, action: () => void) {
+    Button({ type: ButtonType.Normal }) {
+      Row({ space: 8 }) {
+        Image(icon).width(16).height(16).colorFilter(iconTint($r('app.color.body')))
+        Text(label).fontSize(13)
+          .fontColor(label === '删除日块' ? $r('app.color.error') : $r('app.color.body'))
+      }.width('100%')
+    }.width('100%').height(40).padding({ left: 10, right: 10 }).borderRadius(8)
+      .attributeModifier(new InteractiveSurface(Color.Transparent, this.hoveredMoreAction === label))
+      .enabled(enabled).opacity(enabled ? 1 : 0.45)
+      .onHover((hover: boolean) => animateHover(this.getUIContext(), () => this.hoveredMoreAction = hover ? label : ''))
+      .onClick(() => { this.moreOpen = false; action(); })
+  }
+
+  @Builder
   private moreActions() {
-    Column({ space: 4 }) {
-      Button('刷新日志', { type: ButtonType.Normal }).width('100%').height(40)
-        .fontSize(13).fontColor($r('app.color.body')).backgroundColor(Color.Transparent)
-        .enabled(!this.saving && !this.deleting && !this.imageBusy).onClick(() => this.refreshLog())
-      Button('导出当前日块', { type: ButtonType.Normal }).width('100%').height(40)
-        .fontSize(13).fontColor($r('app.color.body')).backgroundColor(Color.Transparent)
-        .enabled(!!this.day && !this.exportBusy).onClick(() => this.exportLogs('day'))
-      Button('导出当前源文件', { type: ButtonType.Normal }).width('100%').height(40)
-        .fontSize(13).fontColor($r('app.color.body')).backgroundColor(Color.Transparent)
-        .enabled(!!this.day && !this.exportBusy).onClick(() => this.exportLogs('file'))
-      Button('导出全部日志', { type: ButtonType.Normal }).width('100%').height(40)
-        .fontSize(13).fontColor($r('app.color.body')).backgroundColor(Color.Transparent)
-        .enabled(!this.exportBusy).onClick(() => this.exportLogs('all'))
-      Button(this.imageBusy ? '上传中' : '插入图片', { type: ButtonType.Normal }).width('100%').height(40)
-        .fontSize(13).fontColor($r('app.color.body')).backgroundColor(Color.Transparent)
-        .enabled(!!this.day && this.editorReady && !this.imageBusy).onClick(() => this.insertImages())
-      if (this.sourceMode || this.splitMode) {
-        Button('内部链接', { type: ButtonType.Normal }).width('100%').height(40)
-          .fontSize(13).fontColor($r('app.color.body')).backgroundColor(Color.Transparent)
-          .enabled(this.editorReady && !this.linkOpening).onClick(() => this.openLink())
+    Column() {
+      if (!this.isWide() || this.headerWidth < 900) {
+        this.desktopMoreItem($r('app.media.refresh_cw'), '刷新', !this.saving && !this.deleting,
+          () => this.refreshLog())
+        this.desktopMoreItem($r('app.media.database_backup'), '备份', !!this.day && !this.saving,
+          () => this.backupOpen = true)
       }
-      Button('备份与恢复', { type: ButtonType.Normal }).width('100%').height(40)
-        .fontSize(13).fontColor($r('app.color.body')).backgroundColor(Color.Transparent)
-        .enabled(!!this.day && !this.saving && !this.deleting)
-        .onClick(() => { this.moreOpen = false; this.backupOpen = true; })
-      Button('删除日块', { type: ButtonType.Normal }).width('100%').height(40)
-        .fontSize(13).fontColor($r('app.color.error')).backgroundColor(Color.Transparent)
-        .enabled(!!this.day?.exists && !this.saving && !this.deleting)
-        .onClick(() => this.confirmDelete())
-    }.width(170).padding(8)
+      if (this.sourceMode || this.splitMode) {
+        if (!this.isWide() || this.headerWidth < 900) {
+          this.desktopMoreItem($r('app.media.link_2'), '内部链接', this.editorReady && !this.linkOpening,
+            () => this.openLink())
+        }
+      } else {
+        this.desktopMoreItem($r('app.media.upload'), '插入图片', !!this.day && !this.imageBusy,
+          () => this.insertImages())
+      }
+      if (!this.isWide() || this.headerWidth < 900) {
+        this.desktopMoreItem($r('app.media.trash_2'), '删除日块', !!this.day?.exists && !this.deleting,
+          () => this.confirmDelete())
+        Divider().color($r('app.color.hairline')).margin({ top: 4, bottom: 4 })
+        this.desktopMoreItem($r('app.media.download'), '导出当前日块', !!this.day && !this.exportBusy,
+          () => this.exportLogs('day'))
+        this.desktopMoreItem($r('app.media.download'), '导出当前源文件', !!this.day && !this.exportBusy,
+          () => this.exportLogs('file'))
+      }
+      this.desktopMoreItem($r('app.media.download'), '导出全部日志', !this.exportBusy,
+        () => this.exportLogs('all'))
+    }.width(220).padding(8)
   }
 
   @Builder
@@ -1122,11 +1179,11 @@ export struct LogsReaderPage {
           .bindPopup(this.exportMenuOpen, { builder: this.exportActions(), placement: Placement.BottomRight,
             enableArrow: false, popupColor: $r('app.color.canvas'), radius: 8,
             onStateChange: (event) => { if (!event.isVisible) this.exportMenuOpen = false; } })
-        ToolbarAction({ label: '插入图片', icon: $r('app.media.upload'), iconSize: 15,
-          showLabel: this.headerWidth >= 1200, busy: this.imageBusy,
-          available: !!this.day && this.editorReady,
-          onAction: () => this.insertImages() })
         if (this.sourceMode || this.splitMode) {
+          ToolbarAction({ label: '插入图片', icon: $r('app.media.upload'), iconSize: 15,
+            showLabel: this.headerWidth >= 1200, busy: this.imageBusy,
+            available: !!this.day && this.editorReady,
+            onAction: () => this.insertImages() })
           ToolbarAction({ label: '内部链接', icon: $r('app.media.link_2'), iconSize: 15,
             showLabel: this.headerWidth >= 1200,
             available: this.editorReady && !this.linkOpening,
@@ -1140,17 +1197,17 @@ export struct LogsReaderPage {
           showLabel: this.headerWidth >= 1200, danger: true, busy: this.deleting,
           available: !!this.day?.exists && !this.saving,
           onAction: () => this.confirmDelete() })
-      } else {
-        ToolbarAction({ label: '更多日志操作', icon: $r('app.media.more_horizontal'),
-          showLabel: false, onAction: () => this.moreOpen = true })
-          .bindPopup(this.moreOpen, { builder: this.moreActions(), placement: Placement.BottomRight,
-            enableArrow: false, popupColor: $r('app.color.canvas'), radius: 8,
-            onStateChange: (event) => { if (!event.isVisible) this.moreOpen = false; } })
       }
       ToolbarAction({ label: this.saving ? '保存中' : '保存', reservedLabel: '保存中',
         icon: $r('app.media.save'), iconSize: 15,
         showLabel: this.headerWidth >= 900, primary: true, busy: this.saving,
         available: this.editorReady && this.dirty, onAction: () => this.save() })
+      ToolbarAction({ label: '更多日志操作', icon: $r('app.media.more_horizontal'),
+        showLabel: false, active: this.moreOpen, onAction: () => this.moreOpen = !this.moreOpen })
+        .id('log_more_actions')
+        .bindPopup(this.moreOpen, { builder: this.moreActions(), placement: Placement.BottomRight,
+          enableArrow: false, popupColor: $r('app.color.canvas'), radius: 8,
+          onStateChange: (event) => { if (!event.isVisible) this.moreOpen = false; } })
     }
   }
 
@@ -1160,6 +1217,8 @@ export struct LogsReaderPage {
       DesktopLogHeader({ fileName: this.day?.fileName || '', selectedDate: this.selectedDate,
         workspaceBreakpoint: this.workspaceBreakpoint,
         toolbarWidth: this.headerWidth, dateWidth: this.headerDateWidth,
+        previousButton: (): void => this.desktopAdjacentButton('上一篇', 1),
+        nextButton: (): void => this.desktopAdjacentButton('下一篇', -1),
         actions: (): void => this.editorActions(),
         onWidth: (width: number) => this.headerWidth = width,
         onDateWidth: (width: number) => this.headerDateWidth = Math.max(120, width) })

@@ -41,6 +41,10 @@ import { NotesNavigation } from '../notes/components/NotesNavigation';
 import { StudyNoteFacet } from '../notes/NoteModels';
 import { SearchHistoryStore } from './SearchHistoryStore';
 import { SearchHistoryList } from '../../app/components/SearchHistoryList';
+import { LogAiController } from './LogAiController';
+import { LogAiMaterialImport } from './LogAiMaterialImport';
+import { LogAiPanel } from './components/LogAiPanel';
+import { LogHighlightReview } from './components/LogHighlightReview';
 
 export interface PreservedLogDraft {
   namespace: string;
@@ -130,6 +134,9 @@ export struct LogsReaderPage {
   @State private searchError: string = '';
   @State private searchResults: LogSearchResult[] = [];
   @State private searchHistory: string[] = [];
+  @State private aiOpen: boolean = false;
+  @State private aiMode: string = 'generate';
+  @State private ai: LogAiController = new LogAiController(apiClient);
   @StorageProp('pref_rememberSearch') private rememberSearch: boolean = true;
   @State private linkAlias: string = '';
   @State private moreOpen: boolean = false;
@@ -214,6 +221,7 @@ export struct LogsReaderPage {
   }
 
   aboutToDisappear(): void {
+    this.ai.dispose();
     this.favoritesData.dispose();
     this.lifecycle++;
     this.listRevision++;
@@ -1351,6 +1359,12 @@ export struct LogsReaderPage {
   @Builder
   private moreActions() {
     Column() {
+      if (!this.isWide()) {
+        this.desktopMoreItem($r('app.media.wand_sparkles'), 'AI生成', !!this.day,
+          () => { this.aiMode = 'generate'; this.aiOpen = true; })
+        this.desktopMoreItem($r('app.media.edit_3'), '重点标注', !!this.day,
+          () => { this.aiMode = 'highlight'; this.aiOpen = true; })
+      }
       if (this.sourceMode || this.splitMode) {
         if (!this.editorActionsInHeader()) {
           this.desktopMoreItem($r('app.media.link_2'), '内部链接', this.editorReady && !this.linkOpening,
@@ -1529,6 +1543,89 @@ export struct LogsReaderPage {
       }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
     }.width(224).height('100%').padding({ left: 8, right: 8, top: 28, bottom: 18 })
       .border({ width: { left: 1 }, color: $r('app.color.hairline_soft') })
+  }
+
+  private async importAiMaterial(): Promise<void> {
+    if (this.ai.importing || this.ai.busy) return;
+    const lifecycle = this.lifecycle;
+    const instance = activeInstance.revision;
+    this.ai.importing = true;
+    try {
+      const document = await new LogAiMaterialImport(
+        this.getUIContext().getHostContext() as common.UIAbilityContext).pickAndExtract();
+      if (!document || lifecycle !== this.lifecycle || instance !== activeInstance.revision) return;
+      this.ai.material = `${this.ai.material}\n\n[文件：${document.fileName}]\n${document.text}`.trim();
+      this.ai.message = (document.warnings || []).join('\n');
+    } catch (error) {
+      if (lifecycle === this.lifecycle) this.ai.message = error instanceof Error ? error.message : '材料导入失败';
+    } finally { if (lifecycle === this.lifecycle) this.ai.importing = false; }
+  }
+
+  private async highlightAiDraft(): Promise<void> {
+    if (!this.day || !this.editorReady) return;
+    try {
+      const date = this.day.date;
+      const snapshot = await this.editor.command('snapshot');
+      if (snapshot.documentKey !== date || this.day?.date !== date) return;
+      this.draftText = snapshot.text;
+      this.dirty = snapshot.text !== this.savedText;
+      this.reportDraft();
+      await this.ai.highlight(date, snapshot.text);
+    } catch (error) { this.ai.message = error instanceof Error ? error.message : '编辑器尚未就绪'; }
+  }
+
+  private async applyAiOutput(): Promise<void> {
+    if (!this.day || !this.editorReady || !this.ai.output.trim() || this.ai.busy) return;
+    const date = this.day.date;
+    if (this.ai.outputDate !== date) { this.ai.message = '请切回生成草稿时的日块'; return; }
+    try {
+      const snapshot = await this.editor.command('snapshot');
+      if (snapshot.documentKey !== date || this.day?.date !== date) return;
+      const body = snapshot.text.trimEnd();
+      await this.editor.replace(`${body}${body ? '\n\n' : ''}${this.ai.output.trim()}\n`);
+      if (this.day?.date !== date) return;
+      this.sourceMode = true; this.splitMode = false;
+      appFeedback.show('AI 草稿已写入当前编辑草稿，尚未保存');
+    } catch (error) { this.ai.message = error instanceof Error ? error.message : '写入编辑草稿失败'; }
+  }
+
+  private async applyAiHighlight(): Promise<void> {
+    if (!this.day || !this.editorReady || this.ai.busy) return;
+    const date = this.day.date;
+    try {
+      const snapshot = await this.editor.command('snapshot');
+      if (snapshot.documentKey !== date || this.ai.highlightDate !== date ||
+        snapshot.text !== this.ai.originalDraft) {
+        this.ai.message = '当前日块或编辑草稿已变化，请重新标注重点'; return;
+      }
+      await this.editor.replace(this.ai.highlighted);
+      if (this.day?.date !== date) return;
+      this.ai.reviewOpen = false;
+      this.sourceMode = true; this.splitMode = false;
+      appFeedback.show('已应用重点标注，尚未保存');
+    } catch (error) { this.ai.message = error instanceof Error ? error.message : '应用重点标注失败'; }
+  }
+
+  @Builder
+  private aiToolsPanel() {
+    LogAiPanel({ mode: $aiMode, instruction: this.ai.instruction,
+      material: this.ai.material, output: this.ai.output,
+      onInstruction: (value: string) => this.ai.instruction = value,
+      onMaterial: (value: string) => this.ai.material = value,
+      onOutput: (value: string) => this.ai.output = value,
+      busy: this.ai.busy, importing: this.ai.importing, ready: !!this.day,
+      generateConfigured: !!activeInstance.capabilities?.features.aiWriting.configured,
+      highlightConfigured: !!activeInstance.capabilities?.features.aiHighlighting.configured,
+      canHighlight: !!this.draftText.trim(),
+      canApply: !!this.ai.output.trim() && this.ai.outputDate === this.selectedDate,
+      message: this.ai.message || (this.aiMode === 'generate' &&
+        !activeInstance.capabilities?.features.aiWriting.configured || this.aiMode === 'highlight' &&
+        !activeInstance.capabilities?.features.aiHighlighting.configured ?
+        '当前实例尚未配置对应模型能力' : ''),
+      desktop: this.isWide(), onClose: () => this.aiOpen = false,
+      onImport: () => this.importAiMaterial(),
+      onGenerate: () => this.ai.generate(this.selectedDate),
+      onHighlight: () => this.highlightAiDraft(), onApply: () => this.applyAiOutput() })
   }
 
   @Builder
@@ -1737,6 +1834,21 @@ export struct LogsReaderPage {
                 .border({ width: { right: 1 }, color: $r('app.color.hairline') })
             }
             this.reader()
+            if (this.isWide()) {
+              Column({ space: 12 }) {
+                ToolbarAction({ label: 'AI生成', icon: $r('app.media.wand_sparkles'),
+                  showLabel: false, active: this.aiOpen && this.aiMode === 'generate',
+                  onAction: () => { this.aiMode = 'generate'; this.aiOpen = true; } })
+                ToolbarAction({ label: '重点标注', icon: $r('app.media.edit_3'),
+                  showLabel: false, active: this.aiOpen && this.aiMode === 'highlight',
+                  onAction: () => { this.aiMode = 'highlight'; this.aiOpen = true; } })
+              }.width(52).height('100%').padding({ top: 12 })
+                .backgroundColor($r('app.color.surface_soft'))
+                .border({ width: { left: 1 }, color: $r('app.color.hairline') })
+              if (this.aiOpen) {
+                Column() { this.aiToolsPanel() }.width(360).height('100%')
+              }
+            }
           }.width('100%').height('100%')
           if (!this.isWide() && this.navigationOpen) {
             Row() {
@@ -1797,6 +1909,16 @@ export struct LogsReaderPage {
           onHeadings: () => { this.searchHeadingsOnly = !this.searchHeadingsOnly; this.changeSearch(this.searchQuery); },
           onCase: () => { this.searchIgnoreCase = !this.searchIgnoreCase; this.changeSearch(this.searchQuery); },
           onSelect: (result: LogSearchResult) => this.selectSearchResult(result) })
+          .width('100%').height('100%')
+      }
+      if (this.aiOpen && !this.isWide() && !this.notesOpen && !this.favoritesOpen && !this.statsOpen) {
+        Column() { this.aiToolsPanel() }.width('100%').height('100%')
+      }
+      if (this.ai.reviewOpen) {
+        LogHighlightReview({ original: this.ai.originalDraft, highlighted: this.ai.highlighted,
+          date: this.ai.highlightDate,
+          available: this.ai.highlightDate === this.selectedDate && this.ai.originalDraft === this.draftText,
+          onClose: () => this.ai.reviewOpen = false, onApply: () => this.applyAiHighlight() })
           .width('100%').height('100%')
       }
     }.width('100%').height('100%')

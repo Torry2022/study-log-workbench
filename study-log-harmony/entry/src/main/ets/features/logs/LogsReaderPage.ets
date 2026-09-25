@@ -45,6 +45,10 @@ import { LogAiController } from './LogAiController';
 import { LogAiMaterialImport } from './LogAiMaterialImport';
 import { LogAiPanel } from './components/LogAiPanel';
 import { LogHighlightReview } from './components/LogHighlightReview';
+import { QaPage } from '../qa/QaPage';
+import { QaNavigation } from '../qa/components/QaNavigation';
+import { QaNavigationController } from '../qa/QaNavigationController';
+import { RagSessionSummary } from '../qa/QaModels';
 
 export interface PreservedLogDraft {
   namespace: string;
@@ -78,6 +82,19 @@ export struct LogsReaderPage {
   @State private statsOpen: boolean = false;
   @State private favoritesOpen: boolean = false;
   @State private notesOpen: boolean = false;
+  @State private qaOpen: boolean = false;
+  @State private qaBusy: boolean = false;
+  @State private qaDirty: boolean = false;
+  @State private qaPending: boolean = false;
+  @State private qaSessionId: string = '';
+  @State private qaRequestRevision: number = 0;
+  @State private qaQuery: string = '';
+  @State private qaNavigation: QaNavigationController = new QaNavigationController(apiClient, {
+    active: () => this.qaOpen, busy: () => this.qaBusy,
+    setBusy: (value: boolean) => this.qaBusy = value,
+    activeSession: () => this.qaSessionId,
+    clearSession: () => { this.qaSessionId = ''; this.qaRequestRevision++; }
+  });
   @State private notesDirty: boolean = false;
   @State private notesBusy: boolean = false;
   @State private noteYears: StudyNoteFacet[] = [];
@@ -246,6 +263,7 @@ export struct LogsReaderPage {
 
   private openStats(): void {
     if (this.notesOpen) { this.confirmNotesLeave(() => this.openStats()); return; }
+    if (this.qaOpen) { this.confirmQaLeave(() => this.openStats()); return; }
     this.confirmDiscard(() => {
       this.draftText = this.savedText;
       this.editorInitialText = this.savedText;
@@ -253,6 +271,7 @@ export struct LogsReaderPage {
       this.statsOpen = true;
       this.favoritesOpen = false;
       this.notesOpen = false;
+      this.qaOpen = false;
       this.navigationOpen = false;
       this.closeSearch();
     });
@@ -274,6 +293,7 @@ export struct LogsReaderPage {
 
   private openFavorites(): void {
     if (this.notesOpen) { this.confirmNotesLeave(() => this.openFavorites()); return; }
+    if (this.qaOpen) { this.confirmQaLeave(() => this.openFavorites()); return; }
     this.confirmDiscard(() => {
       this.draftText = this.savedText;
       this.editorInitialText = this.savedText;
@@ -281,12 +301,14 @@ export struct LogsReaderPage {
       this.favoritesOpen = true;
       this.statsOpen = false;
       this.notesOpen = false;
+      this.qaOpen = false;
       this.navigationOpen = false;
       this.closeSearch();
     });
   }
 
   private openNotes(): void {
+    if (this.qaOpen) { this.confirmQaLeave(() => this.openNotes()); return; }
     this.confirmDiscard(() => {
       this.draftText = this.savedText;
       this.editorInitialText = this.savedText;
@@ -294,6 +316,7 @@ export struct LogsReaderPage {
       this.notesOpen = true;
       this.statsOpen = false;
       this.favoritesOpen = false;
+      this.qaOpen = false;
       this.navigationOpen = false;
       this.closeSearch();
     });
@@ -309,6 +332,62 @@ export struct LogsReaderPage {
         this.notesOpen = false;
         action();
       } } });
+  }
+
+  private confirmQaLeave(action: () => void): void {
+    if (this.qaBusy) { appFeedback.show('请先停止当前回答', 'error'); return; }
+    if (!this.qaDirty && !this.qaPending) { this.qaOpen = false; action(); return; }
+    AlertDialog.show({ message: this.qaPending ? '当前问答尚未保存，确定放弃吗？' : '问答输入尚未提交，确定放弃吗？',
+      primaryButton: { value: '继续编辑', action: () => {} },
+      secondaryButton: { value: '放弃', fontColor: $r('app.color.error'), action: () => {
+        this.qaDirty = false; this.qaPending = false; this.qaOpen = false; action();
+      } } });
+  }
+
+  private switchQaSession(id: string): void {
+    if (this.qaBusy) return;
+    const change = (): void => {
+      this.qaDirty = false; this.qaPending = false;
+      this.qaSessionId = id; this.qaRequestRevision++;
+    };
+    if (!this.qaDirty && !this.qaPending) { change(); return; }
+    AlertDialog.show({ message: this.qaPending ? '当前问答尚未保存，确定切换会话吗？' : '问答输入尚未提交，确定切换会话吗？',
+      primaryButton: { value: '继续编辑', action: () => {} },
+      secondaryButton: { value: '放弃', fontColor: $r('app.color.error'), action: change } });
+  }
+
+  private openQa(): void {
+    if (this.notesOpen) { this.confirmNotesLeave(() => this.openQa()); return; }
+    this.confirmDiscard(() => {
+      this.draftText = this.savedText;
+      this.editorInitialText = this.savedText;
+      this.previewText = this.savedText;
+      this.qaOpen = true; this.notesOpen = false; this.favoritesOpen = false; this.statsOpen = false;
+      this.navigationOpen = false; this.closeSearch();
+      this.qaNavigation.loadQaNavigation();
+    });
+  }
+
+  private openQaCitation(date: string, heading: string, headingIndex: number): void {
+    this.confirmQaLeave(async () => {
+      if (date.slice(0, 7) !== this.month) await this.loadDays(date.slice(0, 7), date);
+      else await this.loadDay(date);
+      this.targetHeading = heading;
+      this.targetHeadingIndex = headingIndex;
+      this.targetKind = 'citation';
+      this.targetRevision++;
+    });
+  }
+
+  private confirmQaDelete(session: RagSessionSummary): void {
+    if (this.qaBusy) return;
+    if (session.id === this.qaSessionId && (this.qaDirty || this.qaPending)) {
+      appFeedback.show('请先处理当前未保存的问答', 'error'); return;
+    }
+    AlertDialog.show({ message: `确认删除问答“${session.title}”吗？`,
+      primaryButton: { value: '取消', action: () => {} },
+      secondaryButton: { value: '删除', fontColor: $r('app.color.error'),
+        action: () => this.qaNavigation.deleteQaSession(session.id) } });
   }
 
   private openNoteLink(date: string, heading: string): void {
@@ -1680,7 +1759,7 @@ export struct LogsReaderPage {
     Stack() {
       Column() {
         Row({ space: 12 }) {
-          if (!this.isWide() && !this.statsOpen && !this.favoritesOpen && !this.notesOpen) {
+          if (!this.isWide() && !this.statsOpen && !this.favoritesOpen && !this.notesOpen && !this.qaOpen) {
             Button({ type: ButtonType.Normal }) {
               SymbolGlyph($r('sys.symbol.line_3_horizontal')).fontSize(20).fontColor([$r('app.color.ink')])
             }.width(42).height(42).backgroundColor(Color.Transparent).accessibilityText('打开日期导航')
@@ -1691,7 +1770,7 @@ export struct LogsReaderPage {
             Column({ space: 2 }) {
               Text('学习日志工作台').fontFamily(workspaceSansFamily(this.workspaceBreakpoint))
                 .fontSize(15).fontWeight(FontWeight.Bold).fontColor($r('app.color.ink')).maxLines(1)
-              Text(this.notesOpen ? '随记' : this.statsOpen ? '学习统计' : this.favoritesOpen ? '收藏中心' :
+              Text(this.notesOpen ? '随记' : this.qaOpen ? '知识问答' : this.statsOpen ? '学习统计' : this.favoritesOpen ? '收藏中心' :
                 (this.day?.headings[0] || this.selectedDate || '日志'))
                 .fontFamily(workspaceSansFamily(this.workspaceBreakpoint)).fontSize(12)
                 .fontColor($r('app.color.muted')).maxLines(1)
@@ -1726,6 +1805,9 @@ export struct LogsReaderPage {
             ToolbarAction({ label: '收藏', icon: $r('app.media.tab_star_active'),
               showLabel: this.isWide(), active: this.favoritesOpen,
               onAction: () => this.favoritesOpen ? this.favoritesOpen = false : this.openFavorites() })
+            ToolbarAction({ label: '问答', icon: $r('app.media.tab_message_square_text_active'),
+              showLabel: this.isWide(), active: this.qaOpen,
+              onAction: () => this.qaOpen ? this.confirmQaLeave(() => {}) : this.openQa() })
             ToolbarAction({ label: '统计', icon: $r('app.media.tab_chart_column'),
               showLabel: this.isWide(), active: this.statsOpen,
               onAction: () => this.statsOpen ? this.statsOpen = false : this.openStats() })
@@ -1737,7 +1819,52 @@ export struct LogsReaderPage {
           .zIndex(30)
           .border({ width: { bottom: 1 }, color: $r('app.color.hairline') })
         Stack() {
-          if (this.notesOpen) {
+          if (this.qaOpen) {
+            Row() {
+              if (this.isWide()) {
+                Column() {
+                  Row() {
+                    Text('知识问答').fontSize(14).fontWeight(FontWeight.Medium)
+                      .fontColor($r('app.color.body_strong'))
+                  }.width('100%').height(52).padding({ left: 16 })
+                    .border({ width: { bottom: 1 }, color: $r('app.color.hairline_soft') })
+                  QaNavigation({ qaSessions: this.qaNavigation.qaSessions, qaSessionQuery: this.qaQuery,
+                    qaActiveSessionId: this.qaSessionId, qaBusy: this.qaBusy,
+                    qaNavigationLoading: this.qaNavigation.qaNavigationLoading,
+                    qaNavigationError: this.qaNavigation.qaNavigationError,
+                    qaRenameId: this.qaNavigation.qaRenameId,
+                    qaRenameTitle: this.qaNavigation.qaRenameTitle,
+                    qaMenuId: this.qaNavigation.qaMenuId,
+                    onQuery: (query: string) => this.qaQuery = query,
+                    onSession: (id: string) => this.switchQaSession(id),
+                    onMenu: (id: string) => this.qaNavigation.qaMenuId = id,
+                    onStartRename: (session: RagSessionSummary) => {
+                      this.qaNavigation.qaRenameId = session.id;
+                      this.qaNavigation.qaRenameTitle = session.title;
+                    },
+                    onRenameTitle: (title: string) => this.qaNavigation.qaRenameTitle = title,
+                    onCommitRename: () => this.qaNavigation.commitQaRename(),
+                    onCancelRename: () => this.qaNavigation.qaRenameId = '',
+                    onDelete: (session: RagSessionSummary) => this.confirmQaDelete(session),
+                    onRetry: () => this.qaNavigation.loadQaNavigation() })
+                    .layoutWeight(1)
+                }.width(this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE ? 260 : 220)
+                  .height('100%').backgroundColor($r('app.color.surface_soft'))
+                  .border({ width: { right: 1 }, color: $r('app.color.hairline') })
+              }
+              QaPage({ navigationSessionId: this.qaSessionId, navigationRequestRevision: this.qaRequestRevision,
+                configured: !!activeInstance.capabilities?.features.rag.configured,
+                onSessionsChange: (sessions: RagSessionSummary[]) => this.qaNavigation.acceptQaNavigation(sessions),
+                onSessionsError: (message: string) => this.qaNavigation.qaNavigationError = message,
+                onActiveSessionChange: (id: string) => this.qaSessionId = id,
+                onBusyChange: (busy: boolean) => this.qaBusy = busy,
+                onDraftChange: (dirty: boolean) => this.qaDirty = dirty,
+                onPendingChange: (pending: boolean) => this.qaPending = pending,
+                onOpenLog: () => this.confirmQaLeave(() => {}),
+                onCitation: (date: string, heading: string, headingIndex: number) =>
+                  this.openQaCitation(date, heading, headingIndex) }).layoutWeight(1)
+            }.width('100%').height('100%')
+          } else if (this.notesOpen) {
             Row() {
               if (this.isWide()) {
                 Column() {

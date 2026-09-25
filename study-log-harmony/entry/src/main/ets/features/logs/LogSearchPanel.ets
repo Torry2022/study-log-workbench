@@ -2,6 +2,7 @@ import { SearchField } from '../../common/ui/FormControls';
 import { EmptyState } from '../../common/ui/FeedbackStates';
 import { workspaceKey } from '../../common/ui/WorkspaceKeys';
 import { KeyCode } from '@kit.InputKit';
+import { SearchHistoryList } from '../../app/components/SearchHistoryList';
 
 export interface LogSearchResult {
   date: string;
@@ -22,12 +23,16 @@ export struct LogSearchPanel {
   @Prop submitted: boolean = false;
   @Prop error: string = '';
   @Prop results: LogSearchResult[] = [];
+  @Prop history: string[] = [];
   onClose: () => void = () => {};
   onQuery: (query: string) => void = () => {};
   onSearch: () => void = () => {};
   onHeadings: () => void = () => {};
   onCase: () => void = () => {};
   onSelect: (result: LogSearchResult) => void = () => {};
+  onHistorySelect: (query: string) => void = () => {};
+  onHistoryRemove: (query: string) => void = () => {};
+  onHistoryClear: () => void = () => {};
   @State private activeIndex: number = -1;
 
   private searchKey(event: KeyEvent): boolean {
@@ -70,7 +75,11 @@ export struct LogSearchPanel {
             .onClick(() => { this.activeIndex = -1; this.onCase(); })
         }.width('100%')
       }.width('100%').padding({ left: 16, right: 16, top: 12, bottom: 12 })
-      if (this.error) {
+      if (this.history.length > 0) {
+        SearchHistoryList({ searchHistory: this.history, listHeight: 400,
+          onSelect: this.onHistorySelect, onRemove: this.onHistoryRemove,
+          onClear: this.onHistoryClear }).width('100%').layoutWeight(1)
+      } else if (this.error) {
         Row() {
           Text(this.error).fontSize(13).fontColor($r('app.color.error')).layoutWeight(1)
           Button('重试').fontSize(12).onClick(() => this.onSearch())

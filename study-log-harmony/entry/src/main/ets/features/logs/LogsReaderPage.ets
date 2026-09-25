@@ -26,6 +26,7 @@ import { KeyCode } from '@kit.InputKit';
 import { DesktopLogCommands, DesktopMenuEntry } from '../../app/DesktopMenu';
 import { iconTint } from '../../common/ui/IconTint';
 import { InteractiveSurface, animateHover } from '../../common/ui/InteractiveSurface';
+import { ToolbarDensity, resolveToolbarDensity, toolbarActionWidth, toolbarActionsWidth } from '../../common/ui/ToolbarLayout';
 
 export interface PreservedLogDraft {
   namespace: string;
@@ -64,6 +65,7 @@ export struct LogsReaderPage {
   @State private activeOutlineIndex: number = 0;
   @State private headerWidth: number = 600;
   @State private headerDateWidth: number = 190;
+  @State private toolbarDensity: ToolbarDensity = ToolbarDensity.OVERFLOW;
   @State private sourceMode: boolean = false;
   @State private splitMode: boolean = false;
   @State private editorReady: boolean = false;
@@ -186,6 +188,39 @@ export struct LogsReaderPage {
       this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE;
   }
 
+  private updateToolbarWidth(width: number): void {
+    this.headerWidth = width;
+    const compactHeading = 32 + this.headerDateWidth + 80 + 24;
+    const compact = compactHeading + 32 + 126 + 80 + 7 * 8;
+    const fullHeading = 32 + this.headerDateWidth + toolbarActionsWidth(['上一篇', '下一篇']) + 24;
+    const documentActions = toolbarActionsWidth(['刷新', '导出', '备份', '删除']);
+    const editorActions = this.sourceMode || this.splitMode ?
+      toolbarActionsWidth(['内部链接', '插入图片']) + 8 : 0;
+    const full = fullHeading + 3 * toolbarActionWidth('浏览') + 6 + documentActions +
+      toolbarActionWidth('保存中') + 40 + editorActions + 9 * 8;
+    this.toolbarDensity = resolveToolbarDensity(width, compact, full, this.toolbarDensity);
+  }
+
+  private showToolbarLabels(): boolean {
+    return this.toolbarDensity === ToolbarDensity.FULL;
+  }
+
+  private expandedModeSelector(): boolean {
+    return this.isWide() && this.toolbarDensity !== ToolbarDensity.OVERFLOW;
+  }
+
+  private documentActionsInHeader(action: string): boolean {
+    if (!this.expandedModeSelector()) return false;
+    if (this.showToolbarLabels()) return true;
+    const priority = ['refresh', 'export', 'backup', 'delete'].indexOf(action);
+    const compact = 32 + this.headerDateWidth + 80 + 24 + 32 + 126 + 80 + 7 * 8;
+    return priority >= 0 && this.headerWidth >= compact + (priority + 1) * 48 + 12;
+  }
+
+  private editorActionsInHeader(): boolean {
+    return this.isWide() && this.showToolbarLabels() && (this.sourceMode || this.splitMode);
+  }
+
   private showDesktopOutline(): boolean {
     return this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE && !this.sourceMode &&
       !this.splitMode && this.outlineHeadings().length > 0;
@@ -306,6 +341,7 @@ export struct LogsReaderPage {
     }
     this.sourceMode = source;
     this.splitMode = split;
+    this.updateToolbarWidth(this.headerWidth);
   }
 
   private async save(): Promise<void> {
@@ -1011,7 +1047,7 @@ export struct LogsReaderPage {
   @Builder
   private desktopAdjacentButton(label: string, direction: number) {
     Button({ type: ButtonType.Normal }) {
-      if (this.headerWidth >= 1200) {
+      if (this.showToolbarLabels()) {
         Row({ space: 4 }) {
           if (direction > 0) {
             SymbolGlyph($r('sys.symbol.chevron_left')).fontSize(12).fontColor([$r('app.color.body')])
@@ -1026,8 +1062,8 @@ export struct LogsReaderPage {
           .fontSize(16).fontColor([$r('app.color.body')])
       }
     }.id(direction > 0 ? 'log_previous_day' : 'log_next_day')
-      .width(this.headerWidth >= 1200 ? undefined : 32).height(32)
-      .padding({ left: this.headerWidth >= 1200 ? 12 : 0, right: this.headerWidth >= 1200 ? 12 : 0 })
+      .width(this.showToolbarLabels() ? undefined : 32).height(32)
+      .padding({ left: this.showToolbarLabels() ? 12 : 0, right: this.showToolbarLabels() ? 12 : 0 })
       .backgroundColor($r('app.color.canvas'))
       .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(7)
       .accessibilityText(label).enabled(this.adjacentDay(direction).length > 0)
@@ -1125,24 +1161,30 @@ export struct LogsReaderPage {
   @Builder
   private moreActions() {
     Column() {
-      if (!this.isWide() || this.headerWidth < 900) {
-        this.desktopMoreItem($r('app.media.refresh_cw'), '刷新', !this.saving && !this.deleting,
-          () => this.refreshLog())
-        this.desktopMoreItem($r('app.media.database_backup'), '备份', !!this.day && !this.saving,
-          () => this.backupOpen = true)
-      }
       if (this.sourceMode || this.splitMode) {
-        if (!this.isWide() || this.headerWidth < 900) {
+        if (!this.editorActionsInHeader()) {
           this.desktopMoreItem($r('app.media.link_2'), '内部链接', this.editorReady && !this.linkOpening,
             () => this.openLink())
+          this.desktopMoreItem($r('app.media.upload'), '插入图片', !!this.day && !this.imageBusy,
+            () => this.insertImages())
         }
       } else {
         this.desktopMoreItem($r('app.media.upload'), '插入图片', !!this.day && !this.imageBusy,
           () => this.insertImages())
       }
-      if (!this.isWide() || this.headerWidth < 900) {
+      if (!this.documentActionsInHeader('refresh')) {
+        this.desktopMoreItem($r('app.media.refresh_cw'), '刷新', !this.saving && !this.deleting,
+          () => this.refreshLog())
+      }
+      if (!this.documentActionsInHeader('backup')) {
+        this.desktopMoreItem($r('app.media.database_backup'), '备份', !!this.day && !this.saving,
+          () => this.backupOpen = true)
+      }
+      if (!this.documentActionsInHeader('delete')) {
         this.desktopMoreItem($r('app.media.trash_2'), '删除日块', !!this.day?.exists && !this.deleting,
           () => this.confirmDelete())
+      }
+      if (!this.documentActionsInHeader('export')) {
         Divider().color($r('app.color.hairline')).margin({ top: 4, bottom: 4 })
         this.desktopMoreItem($r('app.media.download'), '导出当前日块', !!this.day && !this.exportBusy,
           () => this.exportLogs('day'))
@@ -1171,44 +1213,47 @@ export struct LogsReaderPage {
 
   @Builder
   private editorActions() {
-    Row({ space: this.headerWidth < 900 ? 4 : 8 }) {
+    Row({ space: this.headerWidth < 440 ? 4 : 8 }) {
+      if (this.editorActionsInHeader()) {
+        ToolbarAction({ label: '内部链接', icon: $r('app.media.link_2'), iconSize: 15,
+          showLabel: true, available: this.editorReady && !this.linkOpening,
+          onAction: () => this.openLink() })
+        ToolbarAction({ label: '插入图片', icon: $r('app.media.upload'), iconSize: 15,
+          showLabel: true, busy: this.imageBusy, available: !!this.day && this.editorReady,
+          onAction: () => this.insertImages() })
+      }
       LogDisplayModeControl({ sourceMode: this.sourceMode, splitMode: this.splitMode,
-        expanded: this.isWide() && this.headerWidth >= 900,
-        showLabels: this.isWide() && this.headerWidth >= 1200,
+        expanded: this.expandedModeSelector(), showLabels: this.showToolbarLabels(),
         onMode: (mode: string) => this.switchMode(mode === 'source', mode === 'split') })
-      if (this.isWide() && this.headerWidth >= 900) {
+      if (this.documentActionsInHeader('refresh')) {
         ToolbarAction({ label: '刷新', icon: $r('app.media.refresh_cw'), iconSize: 15,
-          showLabel: this.headerWidth >= 1200,
+          showLabel: this.showToolbarLabels(),
           available: !this.saving && !this.deleting && !this.imageBusy,
           onAction: () => this.refreshLog() })
+      }
+      if (this.documentActionsInHeader('export')) {
         ToolbarAction({ label: '导出', icon: $r('app.media.download'), iconSize: 15,
-          showLabel: this.headerWidth >= 1200, available: !this.exportBusy,
+          showLabel: this.showToolbarLabels(), available: !this.exportBusy,
           onAction: () => this.exportMenuOpen = true })
           .bindPopup(this.exportMenuOpen, { builder: this.exportActions(), placement: Placement.BottomRight,
             enableArrow: false, popupColor: $r('app.color.canvas'), radius: 8,
             onStateChange: (event) => { if (!event.isVisible) this.exportMenuOpen = false; } })
-        if (this.sourceMode || this.splitMode) {
-          ToolbarAction({ label: '插入图片', icon: $r('app.media.upload'), iconSize: 15,
-            showLabel: this.headerWidth >= 1200, busy: this.imageBusy,
-            available: !!this.day && this.editorReady,
-            onAction: () => this.insertImages() })
-          ToolbarAction({ label: '内部链接', icon: $r('app.media.link_2'), iconSize: 15,
-            showLabel: this.headerWidth >= 1200,
-            available: this.editorReady && !this.linkOpening,
-            onAction: () => this.openLink() })
-        }
+      }
+      if (this.documentActionsInHeader('backup')) {
         ToolbarAction({ label: '备份', icon: $r('app.media.database_backup'), iconSize: 15,
-          showLabel: this.headerWidth >= 1200,
+          showLabel: this.showToolbarLabels(),
           available: !!this.day && !this.saving && !this.deleting,
           onAction: () => this.backupOpen = true })
+      }
+      if (this.documentActionsInHeader('delete')) {
         ToolbarAction({ label: '删除', icon: $r('app.media.trash_2'), iconSize: 15,
-          showLabel: this.headerWidth >= 1200, danger: true, busy: this.deleting,
+          showLabel: this.showToolbarLabels(), danger: true, busy: this.deleting,
           available: !!this.day?.exists && !this.saving,
           onAction: () => this.confirmDelete() })
       }
       ToolbarAction({ label: this.saving ? '保存中' : '保存', reservedLabel: '保存中',
         icon: $r('app.media.save'), iconSize: 15,
-        showLabel: this.headerWidth >= 900, primary: true, busy: this.saving,
+        showLabel: this.showToolbarLabels(), primary: true, busy: this.saving,
         available: this.editorReady && this.dirty, onAction: () => this.save() })
       ToolbarAction({ label: '更多日志操作', icon: $r('app.media.more_horizontal'),
         showLabel: false, active: this.moreOpen, onAction: () => this.moreOpen = !this.moreOpen })
@@ -1228,8 +1273,13 @@ export struct LogsReaderPage {
         previousButton: (): void => this.desktopAdjacentButton('上一篇', 1),
         nextButton: (): void => this.desktopAdjacentButton('下一篇', -1),
         actions: (): void => this.editorActions(),
-        onWidth: (width: number) => this.headerWidth = width,
-        onDateWidth: (width: number) => this.headerDateWidth = Math.max(120, width) })
+        onWidth: (width: number) => this.updateToolbarWidth(width),
+        onDateWidth: (width: number) => {
+          if (width !== this.headerDateWidth) {
+            this.headerDateWidth = Math.max(120, width);
+            this.updateToolbarWidth(this.headerWidth);
+          }
+        } })
     } else {
       Row() {
         Text(this.selectedDate)

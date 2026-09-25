@@ -9,6 +9,7 @@ import { common } from '@kit.AbilityKit';
 import { saveExport } from '../../common/files/DocumentExport';
 import { apiClient } from '../../common/network/ApiClient';
 import { NoteEditorFields } from './components/NoteEditorFields';
+import { NoteCandidateExtractor } from './components/NoteCandidateExtractor';
 import { NoteRecordedAt } from './components/NoteRecordedAt';
 import { NoteMarkdownText } from './components/NoteMarkdownText';
 import { ToolbarAction } from '../../common/ui/ToolbarAction';
@@ -50,6 +51,8 @@ export struct NotesPage {
   @State private query: string = '';
   @State private resultSurface: ResultSurfaceController = new ResultSurfaceController();
   @State private imageUploading: boolean = false;
+  @State private extracting: boolean = false;
+  @State private extractRevision: number = 0;
   @State private highlightedNoteId: string = '';
   @State private scrollOffset: number = 0;
   @State private scrollProgress: number = 0;
@@ -109,7 +112,7 @@ export struct NotesPage {
   }
 
   private navigationNewRevisionChanged(): void {
-    if (this.navigationNewRevision <= 0 || this.data.saving || this.imageUploading) return;
+    if (this.navigationNewRevision <= 0 || this.extracting || this.data.saving || this.imageUploading) return;
     if (!this.noteEditor.editing || this.editorValue() === this.noteEditor.baseline) {
       this.startNew();
       return;
@@ -400,11 +403,27 @@ export struct NotesPage {
       this.getUIContext().getHostContext() as common.UIAbilityContext, 'study-notes-export.zip', data, current));
   }
 
+  private beginExtraction(): void {
+    if (this.noteEditor.editing || this.extracting) return;
+    this.extractRevision++;
+    this.extracting = true;
+    this.onEditorBusyChange(true);
+  }
+
+  private closeExtraction(saved: boolean = false, createNew: boolean = false): void {
+    this.extracting = false;
+    this.onEditorBusyChange(false);
+    if (createNew) this.startNew();
+    else if (saved) this.load();
+  }
+
   @Builder
   private desktopHeader() {
     Row({ space: 8 }) {
       ModulePageTitle({ title: '随记' }).layoutWeight(1)
-      Row() { this.searchField() }.width(Math.max(220, Math.min(360, this.headerWidth - 440)))
+      Row() { this.searchField() }.width(Math.max(220, Math.min(360, this.headerWidth - 520)))
+      ToolbarAction({ label: 'AI提取', icon: $r('app.media.wand_sparkles'), showLabel: this.headerWidth >= 720,
+        available: !this.noteEditor.editing, onAction: () => this.beginExtraction() })
       ToolbarAction({ label: '导出', icon: $r('app.media.download'), showLabel: this.headerWidth >= 720,
         busy: this.data.exporting, onAction: () => this.exportNotes() })
       ModuleLogButton({ onOpenLog: this.onOpenLog })
@@ -427,6 +446,9 @@ export struct NotesPage {
           onChange: (value: string) => { this.query = value; this.applyFilter(); },
           onSubmit: () => this.applyFilter()
         }).layoutWeight(1)
+        ToolbarAction({ label: 'AI 提取', tooltip: '从学习材料中提取随记候选',
+          icon: $r('app.media.wand_sparkles'), showLabel: this.toolbarLabels,
+          onAction: () => this.beginExtraction() }).accessibilityText('AI提取随记')
         ToolbarAction({
           label: '新建随记', symbol: $r('sys.symbol.plus'), useSymbol: true, showLabel: this.toolbarLabels,
           onAction: () => this.startNew()
@@ -434,7 +456,7 @@ export struct NotesPage {
       }
       .width('100%').padding({ left: 16, right: 16, top: 8, bottom: 12 })
       .onAreaChange((_oldArea, area) => {
-        const required = 32 + 280 + 8 + toolbarActionsWidth(['新建随记']);
+        const required = 32 + 280 + 16 + toolbarActionsWidth(['AI 提取', '新建随记']);
         this.toolbarLabels = this.workspaceBreakpoint !== WorkspaceBreakpoint.COMPACT &&
           Number(area.width) >= required + (this.toolbarLabels ? 0 : 12);
       })
@@ -511,7 +533,7 @@ export struct NotesPage {
             ResultSurfaceCover({ controller: this.resultSurface })
           }.width('100%').height('100%').id('notes_result_surface')
           BackToTopControl({
-            visible: this.scrollOffset > 8,
+            visible: this.scrollOffset > 8 && !this.extracting,
             progress: this.scrollProgress,
             scrollOffset: this.scrollOffset,
             onBackToTop: () => this.scrollToTop()
@@ -534,13 +556,19 @@ export struct NotesPage {
       Stack() {
         Column() { this.pageBody() }.width('100%').height('100%')
         Row() {
-          LoadingHintAnchor({ loading: this.data.loading && this.data.notes.length > 0 && !this.noteEditor.editing,
+          LoadingHintAnchor({ loading: this.data.loading && this.data.notes.length > 0 && !this.noteEditor.editing && !this.extracting,
             onChange: this.onLoadingHintChange })
         }.width('100%').height('100%').justifyContent(FlexAlign.Center).hitTestBehavior(HitTestMode.None)
-      if (this.noteEditor.editing) {
+      if (this.noteEditor.editing || this.extracting) {
         Row() {
           Column() {
-            this.editor()
+            if (this.noteEditor.editing) this.editor()
+            else NoteCandidateExtractor({ tagOptions: this.data.availableTags, importRevision: this.extractRevision,
+              newRevision: this.navigationNewRevision,
+              onNew: () => this.closeExtraction(false, true),
+              onBusyChange: (busy: boolean) => this.onEditorBusyChange(busy || this.extracting),
+              onClose: () => this.closeExtraction(),
+              onSaved: () => this.closeExtraction(true) })
           }
             .width('100%').constraintSize({ maxWidth: READING_MAX_WIDTH }).height('100%')
         }.width('100%').height('100%').justifyContent(FlexAlign.Center)

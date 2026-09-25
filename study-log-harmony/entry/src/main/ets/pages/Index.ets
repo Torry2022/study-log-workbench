@@ -11,6 +11,7 @@ import { DesktopTitleBar } from '../app/components/DesktopTitleBar';
 import { ImagePreview } from '../common/ui/ImagePreview';
 import { appFeedback } from '../common/ui/AppFeedback';
 import { workspacePreferences } from '../common/storage/WorkspacePreferences';
+import { SettingsPanel } from '../app/components/SettingsPanel';
 
 @Entry
 @Component
@@ -21,6 +22,7 @@ struct Index {
   @StorageLink('desktopWindowChrome') private desktopWindowChrome: boolean = false;
   @StorageLink('previewImageSource') private previewImageSource: string = '';
   @State private imagePreviewOpacity: number = 0;
+  @State private settingsOpen: boolean = false;
   private imagePreviewClosing: boolean = false;
   private desktopCommands: DesktopLogCommands = new DesktopLogCommands();
   private removeUnauthorizedHandler: () => void = () => {};
@@ -104,14 +106,17 @@ struct Index {
   private windowMenuEntries(menu: string): DesktopMenuEntry[] {
     if (menu === '帮助') return [new DesktopMenuEntry('about', '关于学习日志工作台', false)];
     const entries = this.desktopCommands.entries(menu);
-    return entries.map((entry: DesktopMenuEntry) => new DesktopMenuEntry(entry.id, entry.label,
+    const available = entries.map((entry: DesktopMenuEntry) => new DesktopMenuEntry(entry.id, entry.label,
       this.connected && entry.enabled, entry.checked, entry.shortcut));
+    if (menu === '编辑') available.push(new DesktopMenuEntry('settings', '设置', this.connected && !this.settingsOpen));
+    return available;
   }
 
   private executeWindowMenu(id: string): void {
     const enabled = ['文件', '编辑', '视图'].flatMap((menu: string) => this.windowMenuEntries(menu))
       .some((entry: DesktopMenuEntry) => entry.id === id && entry.enabled);
-    if (enabled) this.desktopCommands.execute(id);
+    if (enabled && id === 'settings') this.settingsOpen = true;
+    else if (enabled) this.desktopCommands.execute(id);
   }
 
   private revealImagePreview(): void {
@@ -136,7 +141,7 @@ struct Index {
       }
       Stack() {
       if (this.connected) {
-        LogsReaderPage({ onChangeServer: () => this.changeServer(),
+        LogsReaderPage({ onChangeServer: () => this.changeServer(), onOpenSettings: () => this.settingsOpen = true,
           onRegisterDesktopCommands: (commands: DesktopLogCommands) => this.desktopCommands = commands,
           initialDraft: this.drafts.get(activeInstance.namespace),
           onDraftChange: (draft: PreservedLogDraft | undefined) => this.recordDraft(draft),
@@ -153,6 +158,9 @@ struct Index {
           ImagePreview({ source: this.previewImageSource,
             onReady: () => this.revealImagePreview(), onClose: () => this.closeImagePreview() })
         }.width('100%').height('100%').opacity(this.imagePreviewOpacity).zIndex(110)
+      }
+      if (this.settingsOpen) {
+        SettingsPanel({ onClose: () => this.settingsOpen = false }).zIndex(100)
       }
       }.width('100%').layoutWeight(1)
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])

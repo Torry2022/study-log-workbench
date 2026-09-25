@@ -64,6 +64,7 @@ interface AddFavoriteRequest { date: string; headingText: string; headingId: str
 export struct LogsReaderPage {
   @Consume('workspaceBreakpoint') private workspaceBreakpoint: WorkspaceBreakpoint;
   onChangeServer: () => void = () => {};
+  onOpenSettings: () => void = () => {};
   onDraftChange: (draft: PreservedLogDraft | undefined) => void = () => {};
   onCaptureDraft: (capture: () => Promise<PreservedLogDraft | undefined>) => void = () => {};
   onRegisterDesktopCommands: (commands: DesktopLogCommands) => void = () => {};
@@ -157,6 +158,7 @@ export struct LogsReaderPage {
   @StorageProp('pref_rememberSearch') private rememberSearch: boolean = true;
   @State private linkAlias: string = '';
   @State private moreOpen: boolean = false;
+  @State private topMoreOpen: boolean = false;
   @State private hoveredMoreAction: string = '';
   @State private saveError: string = '';
   @State private newLogDate: string = '';
@@ -1480,6 +1482,17 @@ export struct LogsReaderPage {
   }
 
   @Builder
+  private topMoreActions() {
+    Column() {
+      this.desktopMoreItem($r('app.media.settings_2'), '设置', true,
+        () => { this.topMoreOpen = false; this.onOpenSettings(); })
+      this.desktopMoreItem($r('app.media.log_out'), '更换服务器', !this.backupOpen && !this.linkOpen,
+        () => { this.topMoreOpen = false;
+          this.confirmQaLeave(() => this.confirmNotesLeave(() => this.confirmDiscard(() => this.onChangeServer()))); })
+    }.width(176).padding(6)
+  }
+
+  @Builder
   private exportActions() {
     Column({ space: 4 }) {
       Button('当前日块', { type: ButtonType.Normal }).width('100%').height(40)
@@ -1811,9 +1824,11 @@ export struct LogsReaderPage {
             ToolbarAction({ label: '统计', icon: $r('app.media.tab_chart_column'),
               showLabel: this.isWide(), active: this.statsOpen,
               onAction: () => this.statsOpen ? this.statsOpen = false : this.openStats() })
-          ToolbarAction({ label: '更换服务器', icon: $r('app.media.log_out'), iconSize: 17,
-            showLabel: this.isWide(), available: !this.backupOpen && !this.linkOpen,
-            onAction: () => this.confirmNotesLeave(() => this.confirmDiscard(() => this.onChangeServer())) })
+          ToolbarAction({ label: '更多设置', icon: $r('app.media.more_horizontal'), showLabel: false,
+            active: this.topMoreOpen, onAction: () => this.topMoreOpen = !this.topMoreOpen })
+            .bindPopup(this.topMoreOpen, { builder: this.topMoreActions(), placement: Placement.BottomRight,
+              enableArrow: false, popupColor: $r('app.color.canvas'), radius: 8,
+              onStateChange: (event) => { if (!event.isVisible) this.topMoreOpen = false; } })
         }.width('100%').height(64).padding({ left: 12, right: 12 })
           .backgroundColor($r('app.color.canvas'))
           .zIndex(30)

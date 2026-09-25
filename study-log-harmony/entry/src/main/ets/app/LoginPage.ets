@@ -11,6 +11,23 @@ import { AppLogo } from '../common/ui/AppLogo';
 interface AppLoginResponse { ok: boolean; token: string; expiresAt: string; }
 interface AppLoginRequest { password: string; }
 
+function loginErrorMessage(error: Object, fallback: string): string {
+  if (error instanceof ApiError) return error.message;
+  if (!(error instanceof Error)) return fallback;
+  switch (error.message) {
+    case '请输入 HTTPS 服务器地址，可包含 /study-log，不含账号或查询参数':
+    case '服务器地址无效':
+    case '端口无效':
+    case 'HTTP 仅允许明确启用的本地或局域网测试地址':
+    case '服务器实例身份已变化，请重新输入密码连接':
+    case '服务器登录响应无效':
+    case '服务器不支持当前公开版接口':
+      return error.message;
+    default:
+      return fallback;
+  }
+}
+
 @Component
 export struct LoginPage {
   @Consume('workspaceBreakpoint') private workspaceBreakpoint: WorkspaceBreakpoint;
@@ -60,7 +77,7 @@ export struct LoginPage {
         if (generation !== this.generation) return;
         this.errorMessage = '登录已过期，请重新输入密码';
       } else {
-        this.errorMessage = error instanceof Error ? error.message : '无法恢复连接，请重新输入密码';
+        this.errorMessage = loginErrorMessage(error, '无法恢复连接，请检查服务器地址和网络后重试');
       }
     } finally {
       if (generation === this.generation) this.ready = true;
@@ -167,8 +184,7 @@ export struct LoginPage {
     } catch (error) {
       if (generation !== this.generation) return;
       apiClient.setToken('');
-      this.errorMessage = error instanceof ApiError ? error.message : '无法连接学习日志服务';
-      if (error instanceof Error && !(error instanceof ApiError)) this.errorMessage = error.message;
+      this.errorMessage = loginErrorMessage(error, '无法连接学习日志服务，请检查服务器地址和网络');
     } finally { if (generation === this.generation) this.submitting = false; }
   }
 

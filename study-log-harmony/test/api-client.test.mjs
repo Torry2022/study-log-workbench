@@ -11,7 +11,14 @@ async function loadEts(name, dependencies = {}) {
     target: ts.ScriptTarget.ES2022 } }).outputText;
   const module = { exports: {} };
   runInNewContext(code, { module, exports: module.exports, Error, SyntaxError, JSON, Date, ArrayBuffer,
-    require(name) { if (!(name in dependencies)) throw new Error(`Missing dependency: ${name}`); return dependencies[name]; }
+    Uint8Array,
+    require(name) {
+      if (name === '@kit.ArkTS') return { util: { TextDecoder: { create: () => {
+        const decoder = new TextDecoder();
+        return { decodeToString: (bytes, options) => decoder.decode(bytes, options) };
+      } } } };
+      if (!(name in dependencies)) throw new Error(`Missing dependency: ${name}`); return dependencies[name];
+    }
   });
   return module.exports;
 }
@@ -74,6 +81,41 @@ test('native requests stay on the selected origin and ignore a late old-instance
   assert.equal(requests[7].args[3], undefined);
   pending[7]({ statusCode: 200, toString: () => '{"ok":true}' });
   assert.equal((await unfavorite).ok, true);
+});
+
+test('SSE transport accepts only current instance, cancels stale streams and preserves chunks', async () => {
+  const requests = [], pending = [], sessions = [];
+  const { ApiClient, ApiStreamCancelledError } = await loadEts('ApiClient', {
+    '@kit.RemoteCommunicationKit': { rcp: {
+      Request: class { constructor(...args) { this.args = args; requests.push(this); } },
+      createSession(configuration) { const session = {
+        configuration, cancelled: false, closed: false,
+        fetch: () => new Promise(resolve => pending.push(resolve)),
+        cancel() { session.cancelled = true; }, close() { session.closed = true; }
+      }; sessions.push(session); return session; }
+    } },
+    './InstanceConfig': { activeInstance }
+  });
+  const client = new ApiClient(); let unauthorized = 0;
+  client.setUnauthorizedHandler(() => unauthorized++);
+  activeInstance.activate('https://qa-one.example', 'one'); client.setToken('one-token');
+  const chunks = [];
+  const old = client.postStream('/rag/query', { question: 'synthetic' }, chunk => chunks.push(chunk));
+  assert.equal(requests[0].args[0], 'https://qa-one.example/study-log/api/rag/query');
+  assert.equal(requests[0].args[2].authorization, 'Bearer one-token');
+  assert.equal(sessions[0].configuration.requestConfiguration.transfer.autoRedirect, false);
+  sessions[0].configuration.requestConfiguration.tracing.httpEventsHandler.onDataReceive(
+    new TextEncoder().encode('event: delta\\ndata: {"text":"A"}\\n\\n').buffer);
+  assert.equal(chunks.length, 1);
+  activeInstance.activate('https://qa-two.example', 'two'); client.setToken('two-token');
+  assert.equal(sessions[0].cancelled, true);
+  sessions[0].configuration.requestConfiguration.tracing.httpEventsHandler.onDataReceive(
+    new TextEncoder().encode('stale').buffer);
+  pending[0]({ statusCode: 401, toString: () => '{}' });
+  await assert.rejects(old, error => error instanceof ApiStreamCancelledError);
+  assert.equal(chunks.length, 1);
+  assert.equal(unauthorized, 0);
+  assert.equal(sessions[0].closed, true);
 });
 
 test('multipart uploads use only the active instance and reject a late response after switching', async () => {

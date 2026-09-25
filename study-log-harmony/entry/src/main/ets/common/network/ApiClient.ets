@@ -1,4 +1,5 @@
 import { rcp } from '@kit.RemoteCommunicationKit';
+import { util } from '@kit.ArkTS';
 import { activeInstance } from './InstanceConfig';
 
 interface ApiErrorPayload { error?: string; code?: string; }
@@ -29,12 +30,20 @@ export class ApiError extends Error {
   }
 }
 
+export class ApiStreamCancelledError extends Error {
+  constructor() { super('请求已取消'); this.name = 'ApiStreamCancelledError'; }
+}
+
 export class ApiClient {
   private token: string = '';
   private sessionRevision: number = 0;
   private onUnauthorized: () => void = () => {};
+  private streamRevision: number = 0;
+  private activeStreamSession?: rcp.Session;
+  private activeStreamRequest?: rcp.Request;
 
   setToken(token: string): void {
+    this.cancelStream();
     this.token = token;
     this.sessionRevision++;
   }
@@ -52,6 +61,54 @@ export class ApiClient {
   put<T>(path: string, body: object): Promise<T> { return this.request<T>(path, 'PUT', body); }
   patch<T>(path: string, body: object): Promise<T> { return this.request<T>(path, 'PATCH', body); }
   delete<T>(path: string, body?: object): Promise<T> { return this.request<T>(path, 'DELETE', body); }
+
+  cancelStream(): void {
+    this.streamRevision++;
+    if (!this.activeStreamSession || !this.activeStreamRequest) return;
+    try { this.activeStreamSession.cancel(this.activeStreamRequest); }
+    catch (_) { /* The request may have completed. */ }
+  }
+
+  async postStream(path: string, body: object, onChunk: (chunk: string) => void): Promise<void> {
+    const revision = ++this.streamRevision;
+    const instanceRevision = activeInstance.revision;
+    const sessionRevision = this.sessionRevision;
+    const requestToken = this.token;
+    const current = (): boolean => revision === this.streamRevision &&
+      instanceRevision === activeInstance.revision && sessionRevision === this.sessionRevision;
+    const decoder = util.TextDecoder.create('utf-8');
+    const events: rcp.HttpEventsHandler = { onDataReceive: (data: ArrayBuffer): void => {
+      if (current()) onChunk(decoder.decodeToString(new Uint8Array(data), { stream: true }));
+    } };
+    const session = rcp.createSession({ requestConfiguration: {
+      transfer: { autoRedirect: false, timeout: { connectMs: 15000, transferMs: 120000 } },
+      tracing: { httpEventsHandler: events }
+    } });
+    const headers: rcp.RequestHeaders = { accept: 'text/event-stream', 'content-type': 'application/json' };
+    if (requestToken) headers['authorization'] = `Bearer ${requestToken}`;
+    const request = new rcp.Request(activeInstance.apiUrl(path), 'POST', headers, JSON.stringify(body));
+    this.activeStreamSession = session;
+    this.activeStreamRequest = request;
+    try {
+      const response = await session.fetch(request);
+      if (!current()) throw new ApiStreamCancelledError();
+      const tail = decoder.decodeToString(new Uint8Array(), { stream: false });
+      if (tail) onChunk(tail);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        if (response.statusCode === 401 && requestToken) this.onUnauthorized();
+        throw new ApiError(`请求失败（${response.statusCode}）`, response.statusCode);
+      }
+    } catch (error) {
+      if (!current()) throw new ApiStreamCancelledError();
+      throw error instanceof Error ? error : new Error('问答请求失败');
+    } finally {
+      if (this.activeStreamRequest === request) {
+        this.activeStreamSession = undefined;
+        this.activeStreamRequest = undefined;
+      }
+      session.close();
+    }
+  }
 
   async download(path: string): Promise<ArrayBuffer> {
     const instanceRevision = activeInstance.revision;

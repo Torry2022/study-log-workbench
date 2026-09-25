@@ -3,7 +3,7 @@ import { apiClient, ApiError, ApiUploadFile } from '../../common/network/ApiClie
 import { activeInstance } from '../../common/network/InstanceConfig';
 import { EmptyState, LoadFailure } from '../../common/ui/FeedbackStates';
 import { MarkdownReader } from '../../common/ui/MarkdownReader';
-import { workspaceDateFamily, workspaceSansFamily } from '../../common/ui/Typography';
+import { workspaceSansFamily } from '../../common/ui/Typography';
 import { AppLogo } from '../../common/ui/AppLogo';
 import { SourceEditor, SourceEditorSession, EditorSnapshot, EditorImageData } from '../../common/editor/SourceEditor';
 import { common } from '@kit.AbilityKit';
@@ -14,6 +14,7 @@ import { LogReadRepository } from './LogReadRepository';
 import { LogWriteRepository } from './LogWriteRepository';
 import { LogNavigation } from './components/LogNavigation';
 import { DesktopLogHeader } from './components/DesktopLogHeader';
+import { CompactLogHeader } from './components/CompactLogHeader';
 import { BackupPanel } from './components/BackupPanel';
 import { LogImageUpload } from './LogImageUpload';
 import { LogSearchPanel, LogSearchResult } from './LogSearchPanel';
@@ -21,6 +22,7 @@ import { LogSearchRepository } from './LogSearchRepository';
 import { ToolbarAction } from '../../common/ui/ToolbarAction';
 import { LogDisplayModeControl } from './components/LogDisplayModeControl';
 import { SearchField } from '../../common/ui/FormControls';
+import { ActionPanelHeader } from '../../common/ui/WorkspaceChrome';
 import { workspaceKey } from '../../common/ui/WorkspaceKeys';
 import { KeyCode } from '@kit.InputKit';
 import { DesktopLogCommands, DesktopMenuEntry } from '../../app/DesktopMenu';
@@ -1498,7 +1500,17 @@ export struct LogsReaderPage {
       }
       this.desktopMoreItem($r('app.media.download'), '导出全部日志', !this.exportBusy,
         () => this.exportLogs('all'))
-    }.width(220).padding(8)
+    }.width(this.isWide() ? 220 : '100%').padding(8)
+  }
+
+  @Builder
+  private compactMoreActionsPanel() {
+    Column() {
+      ActionPanelHeader({ title: '日志操作', showDragBar: true,
+        closeLabel: '关闭日志操作', onClose: () => this.moreOpen = false })
+      this.moreActions()
+    }.width('100%').padding({ left: 16, right: 16, top: 8, bottom: 18 })
+      .backgroundColor($r('app.color.canvas'))
   }
 
   @Builder
@@ -1641,13 +1653,11 @@ export struct LogsReaderPage {
           }
         } })
     } else {
-      Row() {
-        Text(this.selectedDate)
-          .fontFamily(workspaceDateFamily(this.workspaceBreakpoint)).fontSize(24).fontWeight(600)
-          .fontColor($r('app.color.ink')).layoutWeight(1)
-        this.editorActions()
-      }.height(60).width('100%').padding({ left: 16, right: 16 })
-        .border({ width: { bottom: 1 }, color: $r('app.color.hairline') })
+      CompactLogHeader({ selectedDate: this.selectedDate, workspaceBreakpoint: this.workspaceBreakpoint,
+        sourceMode: this.sourceMode, saving: this.saving, dirty: this.editorReady && this.dirty,
+        moreOpen: $moreOpen, moreActionsPanel: (): void => this.compactMoreActionsPanel(),
+        onMode: (mode: string) => this.switchMode(mode === 'source'),
+        onSave: () => this.save() })
     }
   }
 
@@ -2074,7 +2084,11 @@ export struct LogsReaderPage {
                   Text(this.notesOpen ? '随记' : this.favoritesOpen ? '收藏中心' :
                     this.qaOpen ? '知识问答' : this.statsOpen ? '学习统计' : '日期')
                     .fontSize(16).fontColor($r('app.color.ink')).layoutWeight(1)
-                  Button('关闭').fontSize(13).onClick(() => this.navigationOpen = false)
+                  Button('关闭', { type: ButtonType.Normal }).fontSize(13)
+                    .fontColor($r('app.color.body')).backgroundColor($r('app.color.canvas'))
+                    .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8)
+                    .height(32).padding({ left: 12, right: 12 })
+                    .onClick(() => this.navigationOpen = false)
                 }.height(48).padding({ left: 16, right: 16 })
                 this.compactNavigationContent()
               }.width('86%').height('100%')

@@ -37,6 +37,8 @@ export interface StatsEntry {
   domain: string;
 }
 
+export interface UnclassifiedTag { tag: string; count: number; }
+
 export interface MonthlyStats {
   month: string;
   previousMonth: string;
@@ -48,7 +50,7 @@ export interface MonthlyStats {
   domainCounts: DomainCount[];
   tags: TagCount[];
   topTags: TagCount[];
-  unclassifiedTags: { tag: string; count: number }[];
+  unclassifiedTags: UnclassifiedTag[];
   days: StatsDayActivity[];
   entries: StatsEntry[];
 }

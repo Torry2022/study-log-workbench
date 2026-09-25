@@ -27,6 +27,9 @@ import { DesktopLogCommands, DesktopMenuEntry } from '../../app/DesktopMenu';
 import { iconTint } from '../../common/ui/IconTint';
 import { InteractiveSurface, animateHover } from '../../common/ui/InteractiveSurface';
 import { ToolbarDensity, resolveToolbarDensity, toolbarActionWidth, toolbarActionsWidth } from '../../common/ui/ToolbarLayout';
+import { StatsPage } from '../stats/StatsPage';
+import { StatsEntry } from '../stats/StatsModels';
+import { StatsNavigation } from '../stats/components/StatsNavigation';
 
 export interface PreservedLogDraft {
   namespace: string;
@@ -53,6 +56,13 @@ export struct LogsReaderPage {
   @State private errorMessage: string = '';
   @State private navigationError: string = '';
   @State private navigationOpen: boolean = false;
+  @State private statsOpen: boolean = false;
+  @State private statsMonths: MonthSummary[] = [];
+  @State private statsMonth: string = '';
+  @State private statsMonthsLoading: boolean = false;
+  @State private statsMonthsError: string = '';
+  @State private statsMonthRevision: number = 0;
+  @State private statsRefreshRevision: number = 0;
   @State private desktopNavigationCollapsed: boolean = false;
   @State private navigationRailHover: string = '';
   @State private navigationMonthsExpanded: boolean = false;
@@ -186,6 +196,31 @@ export struct LogsReaderPage {
   private isWide(): boolean {
     return this.workspaceBreakpoint === WorkspaceBreakpoint.LARGE ||
       this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE;
+  }
+
+  private openStats(): void {
+    this.confirmDiscard(() => {
+      this.draftText = this.savedText;
+      this.editorInitialText = this.savedText;
+      this.previewText = this.savedText;
+      this.statsOpen = true;
+      this.navigationOpen = false;
+      this.closeSearch();
+    });
+  }
+
+  private async openStatsEntry(entry: StatsEntry): Promise<void> {
+    this.statsOpen = false;
+    if (entry.date.slice(0, 7) !== this.month) {
+      await this.loadDays(entry.date.slice(0, 7), entry.date);
+      if (this.day?.date === entry.date) {
+        this.targetHeading = entry.rawHeading;
+        this.targetHeadingIndex = entry.headingIndex;
+        this.targetRevision++;
+      }
+      return;
+    }
+    await this.loadDay(entry.date, entry.rawHeading, entry.headingIndex);
   }
 
   private updateToolbarWidth(width: number): void {
@@ -1374,7 +1409,7 @@ export struct LogsReaderPage {
     Stack() {
       Column() {
         Row({ space: 12 }) {
-          if (!this.isWide()) {
+          if (!this.isWide() && !this.statsOpen) {
             Button({ type: ButtonType.Normal }) {
               SymbolGlyph($r('sys.symbol.line_3_horizontal')).fontSize(20).fontColor([$r('app.color.ink')])
             }.width(42).height(42).backgroundColor(Color.Transparent).accessibilityText('打开日期导航')
@@ -1385,7 +1420,7 @@ export struct LogsReaderPage {
             Column({ space: 2 }) {
               Text('学习日志工作台').fontFamily(workspaceSansFamily(this.workspaceBreakpoint))
                 .fontSize(15).fontWeight(FontWeight.Bold).fontColor($r('app.color.ink')).maxLines(1)
-              Text(this.day?.headings[0] || this.selectedDate || '日志')
+              Text(this.statsOpen ? '学习统计' : (this.day?.headings[0] || this.selectedDate || '日志'))
                 .fontFamily(workspaceSansFamily(this.workspaceBreakpoint)).fontSize(12)
                 .fontColor($r('app.color.muted')).maxLines(1)
                 .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -1413,6 +1448,9 @@ export struct LogsReaderPage {
             ToolbarAction({ label: '搜索日志内容', icon: $r('app.media.search'),
               showLabel: false, onAction: () => this.searchOpen = true })
           }
+          ToolbarAction({ label: '统计', icon: $r('app.media.tab_chart_column'),
+            showLabel: this.isWide(), active: this.statsOpen,
+            onAction: () => this.statsOpen ? this.statsOpen = false : this.openStats() })
           ToolbarAction({ label: '更换服务器', icon: $r('app.media.log_out'), iconSize: 17,
             showLabel: this.isWide(), available: !this.backupOpen && !this.linkOpen,
             onAction: () => this.confirmDiscard(() => this.onChangeServer()) })
@@ -1421,6 +1459,38 @@ export struct LogsReaderPage {
           .zIndex(30)
           .border({ width: { bottom: 1 }, color: $r('app.color.hairline') })
         Stack() {
+          if (this.statsOpen) {
+            Row() {
+              if (this.isWide()) {
+                Column() {
+                  Row() {
+                    Image($r('app.media.tab_chart_column')).width(19).height(19)
+                    Text('学习统计').fontSize(14).fontWeight(FontWeight.Medium)
+                      .fontColor($r('app.color.body_strong'))
+                  }.width('100%').height(52).padding({ left: 16, right: 10 })
+                    .border({ width: { bottom: 1 }, color: $r('app.color.hairline_soft') })
+                  StatsNavigation({ monthsOnly: true, statsMonths: this.statsMonths,
+                    statsMonth: this.statsMonth, statsMonthsLoading: this.statsMonthsLoading,
+                    statsMonthsError: this.statsMonthsError,
+                    onMonth: (month: string) => {
+                      this.statsMonth = month;
+                      this.statsMonthRevision++;
+                    },
+                    onRetry: () => this.statsRefreshRevision++ })
+                }.width(this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE ? 260 : 220)
+                  .height('100%').backgroundColor($r('app.color.surface_soft'))
+                  .border({ width: { right: 1 }, color: $r('app.color.hairline') })
+              }
+              StatsPage({ requestedMonth: this.statsMonth, requestedMonthRevision: this.statsMonthRevision,
+                refreshRevision: this.statsRefreshRevision,
+                onMonthsChange: (months: MonthSummary[]) => this.statsMonths = months,
+                onMonthsLoadingChange: (loading: boolean) => this.statsMonthsLoading = loading,
+                onMonthsErrorChange: (error: string) => this.statsMonthsError = error,
+                onSelectedMonthChange: (month: string) => this.statsMonth = month,
+                onOpenLog: () => this.statsOpen = false,
+                onOpenEntry: (entry: StatsEntry) => this.openStatsEntry(entry) }).layoutWeight(1)
+            }.width('100%').height('100%')
+          } else {
           Row() {
             if (this.isWide()) {
               Column() {
@@ -1447,6 +1517,7 @@ export struct LogsReaderPage {
               Blank().layoutWeight(1).height('100%').onClick(() => this.navigationOpen = false)
             }.width('100%').height('100%').backgroundColor($r('app.color.scrim'))
               .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+          }
           }
         }.layoutWeight(1).width('100%')
       }.width('100%').height('100%').backgroundColor($r('app.color.canvas'))

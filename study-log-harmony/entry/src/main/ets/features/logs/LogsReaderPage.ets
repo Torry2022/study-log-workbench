@@ -470,7 +470,11 @@ export struct LogsReaderPage {
       if (!files.length || lifecycle !== this.lifecycle || date !== this.selectedDate) return;
       const markdown = await uploader.upload(files);
       if (lifecycle !== this.lifecycle || date !== this.selectedDate) return;
-      await this.editor.insert(target, markdown);
+      const before = target.text.slice(0, target.from);
+      const after = target.text.slice(target.to);
+      const prefix = before ? (before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n') : '';
+      const suffix = after ? (after.startsWith('\n\n') ? '' : after.startsWith('\n') ? '\n' : '\n\n') : '';
+      await this.editor.insert(target, `${prefix}${markdown}${suffix}`);
     } catch (error) {
       if (lifecycle === this.lifecycle) this.saveError = error instanceof Error ? error.message : '图片插入失败';
     } finally {

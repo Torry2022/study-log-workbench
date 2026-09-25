@@ -66,6 +66,7 @@ export struct LogsReaderPage {
   onChangeServer: () => void = () => {};
   onOpenSettings: () => void = () => {};
   onOpenAbout: () => void = () => {};
+  onOpenHelp: () => void = () => {};
   onDraftChange: (draft: PreservedLogDraft | undefined) => void = () => {};
   onCaptureDraft: (capture: () => Promise<PreservedLogDraft | undefined>) => void = () => {};
   onRegisterDesktopCommands: (commands: DesktopLogCommands) => void = () => {};
@@ -1489,6 +1490,8 @@ export struct LogsReaderPage {
         () => { this.topMoreOpen = false; this.onOpenSettings(); })
       this.desktopMoreItem($r('app.media.info'), '关于', true,
         () => { this.topMoreOpen = false; this.onOpenAbout(); })
+      this.desktopMoreItem($r('app.media.circle_help'), '使用帮助', true,
+        () => { this.topMoreOpen = false; this.onOpenHelp(); })
       this.desktopMoreItem($r('app.media.log_out'), '更换服务器', !this.backupOpen && !this.linkOpen,
         () => { this.topMoreOpen = false;
           this.confirmQaLeave(() => this.confirmNotesLeave(() => this.confirmDiscard(() => this.onChangeServer()))); })

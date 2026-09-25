@@ -24,6 +24,7 @@ import { SearchField } from '../../common/ui/FormControls';
 import { workspaceKey } from '../../common/ui/WorkspaceKeys';
 import { KeyCode } from '@kit.InputKit';
 import { DesktopLogCommands, DesktopMenuEntry } from '../../app/DesktopMenu';
+import { iconTint } from '../../common/ui/IconTint';
 
 export interface PreservedLogDraft {
   namespace: string;
@@ -50,6 +51,8 @@ export struct LogsReaderPage {
   @State private errorMessage: string = '';
   @State private navigationError: string = '';
   @State private navigationOpen: boolean = false;
+  @State private desktopNavigationCollapsed: boolean = false;
+  @State private navigationRailHover: string = '';
   @State private navigationMonthsExpanded: boolean = false;
   @State private navigationDayQuery: string = '';
   @State private targetHeading: string = '';
@@ -106,6 +109,7 @@ export struct LogsReaderPage {
   private calendarRevision: number = 0;
   private linkTarget: EditorSnapshot | undefined = undefined;
   private searchRevision: number = 0;
+  private logNavigationScroller: Scroller = new Scroller();
 
   aboutToAppear(): void {
     this.lifecycle++;
@@ -936,8 +940,22 @@ export struct LogsReaderPage {
   @Builder
   private navigation() {
     Column() {
+      if (this.isWide()) {
+        Row({ space: 6 }) {
+          Image($r('app.media.tab_file_text_active')).width(19).height(19).objectFit(ImageFit.Contain)
+          Text('学习日志').fontSize(14).fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.body_strong')).layoutWeight(1)
+          Button({ type: ButtonType.Normal }) {
+            SymbolGlyph($r('sys.symbol.chevron_left')).fontSize(16).fontColor([$r('app.color.body')])
+          }.width(34).height(34).padding(0).backgroundColor(Color.Transparent).borderRadius(8)
+            .id('sidebar_collapse').accessibilityText('折叠侧栏')
+            .onClick(() => this.desktopNavigationCollapsed = true)
+        }.width('100%').height(52).padding({ left: 16, right: 10 })
+          .border({ width: { bottom: 1 }, color: $r('app.color.hairline_soft') })
+      }
       LogNavigation({ navigationMonths: this.months, navigationDays: this.days,
         navigationMonth: this.month, requestedDate: this.selectedDate,
+        logNavigationScroller: this.logNavigationScroller,
         navigationMonthsExpanded: this.navigationMonthsExpanded,
         navigationDayQuery: this.navigationDayQuery,
         navigationLoading: this.monthsLoading || this.daysLoading,
@@ -952,7 +970,44 @@ export struct LogsReaderPage {
         onRetry: () => this.month ? this.loadDays(this.month) : this.loadMonths() })
     }
     .width('100%').height('100%')
-    .backgroundColor($r('app.color.canvas'))
+    .backgroundColor(this.isWide() ? $r('app.color.surface_soft') : $r('app.color.canvas'))
+  }
+
+  private expandNavigation(section: number = -1): void {
+    this.desktopNavigationCollapsed = false;
+    if (section >= 0) {
+      setTimeout((): void => { this.logNavigationScroller.scrollToIndex(section, false, ScrollAlign.START); }, 0);
+    }
+  }
+
+  @Builder
+  private navigationRailButton(id: string, icon: Resource, label: string, action: () => void) {
+    Button({ type: ButtonType.Normal }) {
+      Image(icon).width(id === 'expand' ? 18 : 17).height(id === 'expand' ? 18 : 17)
+        .objectFit(ImageFit.Contain)
+        .colorFilter(iconTint(this.navigationRailHover === id || id === 'expand' ?
+          $r('app.color.ink') : $r('app.color.muted')))
+    }.id(`sidebar_rail_${id}`).width(38).height(38).padding(0).borderRadius(8)
+      .backgroundColor(this.navigationRailHover === id ? $r('app.color.interaction_hover') :
+        $r('app.color.interaction_hover_clear'))
+      .hoverEffect(HoverEffect.None)
+      .onHover((hovered: boolean) => this.navigationRailHover = hovered ? id : '')
+      .accessibilityText(label).onClick(action)
+  }
+
+  @Builder
+  private desktopNavigationRail() {
+    Column({ space: 8 }) {
+      this.navigationRailButton('expand', $r('app.media.rail_chevron_right'), '展开侧栏',
+        () => this.expandNavigation())
+      this.navigationRailButton('months', $r('app.media.rail_calendar_days'), '展开月份列表',
+        () => this.expandNavigation(0))
+      this.navigationRailButton('dates', $r('app.media.rail_file_text'), '展开日期列表',
+        () => this.expandNavigation(2))
+      this.navigationRailButton('today', $r('app.media.rail_plus'), '新建今日日志',
+        () => this.openNewLog(this.calendarDate(new Date())))
+    }.id('sidebar_rail').width('100%').height('100%')
+      .alignItems(HorizontalAlign.Center).padding({ top: 14, bottom: 14 })
   }
 
   @Builder
@@ -1169,7 +1224,12 @@ export struct LogsReaderPage {
         Stack() {
           Row() {
             if (this.isWide()) {
-              Column() { this.navigation() }.width(260).height('100%')
+              Column() {
+                if (this.desktopNavigationCollapsed) this.desktopNavigationRail()
+                else this.navigation()
+              }.width(this.desktopNavigationCollapsed ? 52 :
+                (this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE ? 260 : 220))
+                .height('100%').backgroundColor($r('app.color.surface_soft'))
                 .border({ width: { right: 1 }, color: $r('app.color.hairline') })
             }
             this.reader()

@@ -7,6 +7,7 @@ import { TokenStore } from '../common/storage/TokenStore';
 import { LogsReaderPage, PreservedLogDraft } from '../features/logs/LogsReaderPage';
 import { DesktopLogCommands, DesktopMenuEntry } from '../app/DesktopMenu';
 import { DesktopTitleBar } from '../app/components/DesktopTitleBar';
+import { ImagePreview } from '../common/ui/ImagePreview';
 
 @Entry
 @Component
@@ -15,6 +16,9 @@ struct Index {
   @State private connected: boolean = false;
   @State private restoreOnAppear: boolean = true;
   @StorageLink('desktopWindowChrome') private desktopWindowChrome: boolean = false;
+  @StorageLink('previewImageSource') private previewImageSource: string = '';
+  @State private imagePreviewOpacity: number = 0;
+  private imagePreviewClosing: boolean = false;
   private desktopCommands: DesktopLogCommands = new DesktopLogCommands();
   private removeUnauthorizedHandler: () => void = () => {};
   private drafts: Map<string, PreservedLogDraft> = new Map();
@@ -105,6 +109,20 @@ struct Index {
     if (enabled) this.desktopCommands.execute(id);
   }
 
+  private revealImagePreview(): void {
+    if (this.imagePreviewClosing || this.imagePreviewOpacity > 0) return;
+    this.getUIContext().animateTo({ duration: 180, curve: Curve.EaseOut }, () => this.imagePreviewOpacity = 1);
+  }
+
+  private closeImagePreview(): void {
+    if (this.imagePreviewClosing || !this.previewImageSource) return;
+    this.imagePreviewClosing = true;
+    this.getUIContext().animateTo({ duration: 140, curve: Curve.EaseIn, onFinish: () => {
+      this.previewImageSource = '';
+      this.imagePreviewClosing = false;
+    } }, () => this.imagePreviewOpacity = 0);
+  }
+
   build() {
     Column() {
       if (this.desktopWindowChrome) {
@@ -121,6 +139,15 @@ struct Index {
       } else {
         LoginPage({ restoreOnAppear: this.restoreOnAppear,
           onConnected: (origin: string, capabilities: InstanceCapabilities) => this.connectedTo(origin, capabilities) })
+      }
+      if (this.previewImageSource) {
+        Stack() {
+          Row().width('100%').height('100%').backgroundColor($r('app.color.image_preview_mask'))
+            .backdropBlur(3)
+            .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+          ImagePreview({ source: this.previewImageSource,
+            onReady: () => this.revealImagePreview(), onClose: () => this.closeImagePreview() })
+        }.width('100%').height('100%').opacity(this.imagePreviewOpacity).zIndex(110)
       }
       }.width('100%').layoutWeight(1)
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])

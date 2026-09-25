@@ -12,6 +12,7 @@ import { ImagePreview } from '../common/ui/ImagePreview';
 import { appFeedback } from '../common/ui/AppFeedback';
 import { workspacePreferences } from '../common/storage/WorkspacePreferences';
 import { SettingsPanel } from '../app/components/SettingsPanel';
+import { AboutPanel } from '../app/components/AboutPanel';
 
 @Entry
 @Component
@@ -23,6 +24,7 @@ struct Index {
   @StorageLink('previewImageSource') private previewImageSource: string = '';
   @State private imagePreviewOpacity: number = 0;
   @State private settingsOpen: boolean = false;
+  @State private aboutOpen: boolean = false;
   private imagePreviewClosing: boolean = false;
   private desktopCommands: DesktopLogCommands = new DesktopLogCommands();
   private removeUnauthorizedHandler: () => void = () => {};
@@ -104,7 +106,8 @@ struct Index {
   }
 
   private windowMenuEntries(menu: string): DesktopMenuEntry[] {
-    if (menu === '帮助') return [new DesktopMenuEntry('about', '关于学习日志工作台', false)];
+    if (menu === '帮助') return [new DesktopMenuEntry('about', '关于学习日志工作台',
+      this.connected && !this.aboutOpen && !this.settingsOpen)];
     const entries = this.desktopCommands.entries(menu);
     const available = entries.map((entry: DesktopMenuEntry) => new DesktopMenuEntry(entry.id, entry.label,
       this.connected && entry.enabled, entry.checked, entry.shortcut));
@@ -113,9 +116,10 @@ struct Index {
   }
 
   private executeWindowMenu(id: string): void {
-    const enabled = ['文件', '编辑', '视图'].flatMap((menu: string) => this.windowMenuEntries(menu))
+    const enabled = ['文件', '编辑', '视图', '帮助'].flatMap((menu: string) => this.windowMenuEntries(menu))
       .some((entry: DesktopMenuEntry) => entry.id === id && entry.enabled);
     if (enabled && id === 'settings') this.settingsOpen = true;
+    else if (enabled && id === 'about') this.aboutOpen = true;
     else if (enabled) this.desktopCommands.execute(id);
   }
 
@@ -142,6 +146,7 @@ struct Index {
       Stack() {
       if (this.connected) {
         LogsReaderPage({ onChangeServer: () => this.changeServer(), onOpenSettings: () => this.settingsOpen = true,
+          onOpenAbout: () => this.aboutOpen = true,
           onRegisterDesktopCommands: (commands: DesktopLogCommands) => this.desktopCommands = commands,
           initialDraft: this.drafts.get(activeInstance.namespace),
           onDraftChange: (draft: PreservedLogDraft | undefined) => this.recordDraft(draft),
@@ -161,6 +166,9 @@ struct Index {
       }
       if (this.settingsOpen) {
         SettingsPanel({ onClose: () => this.settingsOpen = false }).zIndex(100)
+      }
+      if (this.aboutOpen) {
+        AboutPanel({ onClose: () => this.aboutOpen = false }).zIndex(100)
       }
       }.width('100%').layoutWeight(1)
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])

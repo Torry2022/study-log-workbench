@@ -60,6 +60,7 @@ export struct LogsReaderPage {
   @State private targetKind: string = '';
   @State private targetQuery: string = '';
   @State private targetRevision: number = 0;
+  @State private activeOutlineIndex: number = 0;
   @State private headerWidth: number = 600;
   @State private headerDateWidth: number = 190;
   @State private sourceMode: boolean = false;
@@ -181,6 +182,49 @@ export struct LogsReaderPage {
   private isWide(): boolean {
     return this.workspaceBreakpoint === WorkspaceBreakpoint.LARGE ||
       this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE;
+  }
+
+  private showDesktopOutline(): boolean {
+    return this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE && !this.sourceMode &&
+      !this.splitMode && this.outlineHeadings().length > 0;
+  }
+
+  private outlineHeadings(): string[] {
+    const headings: string[] = [];
+    let inFence = false;
+    this.previewText.split('\n').forEach((line: string) => {
+      if (/^\s*(```|~~~)/.test(line)) {
+        inFence = !inFence;
+        return;
+      }
+      if (inFence) return;
+      const match = /^(#{2,6})\s+(.+?)\s*#*\s*$/.exec(line.trim());
+      if (!match) return;
+      const title = match[2]
+        .replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1')
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+        .replace(/`([^`]+)`/g, '$1')
+        .replace(/<\/?[^>]+>/g, '')
+        .replace(/[*_~]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (title && !/^\d{4}-\d{2}-\d{2}$/.test(title)) headings.push(title);
+    });
+    return headings;
+  }
+
+  private updateActiveOutline(headingId: string): void {
+    const used: Map<string, number> = new Map<string, number>();
+    const index = this.outlineHeadings().findIndex((heading: string) => {
+      const rawId = heading.normalize('NFKC').toLowerCase()
+        .replace(/[`*_~()[\]{}<>，。、“”‘’：；！？]/g, '')
+        .replace(/\s+/g, '-').replace(/[^\w\u3400-\u9fff-]+/g, '-')
+        .replace(/-+/g, '-').replace(/^-|-$/g, '') || 'section';
+      const count = used.get(rawId) || 0;
+      used.set(rawId, count + 1);
+      return (count === 0 ? rawId : `${rawId}-${count + 1}`) === headingId;
+    });
+    if (index >= 0) this.activeOutlineIndex = index;
   }
 
   private message(error: Error): string {
@@ -725,6 +769,7 @@ export struct LogsReaderPage {
         throw new Error('日块响应格式异常');
       }
       this.day = response.day;
+      this.activeOutlineIndex = Math.max(0, headingIndex);
       const body = this.bodyFromDay(response.day);
       const restore = !this.restoredDraftApplied && this.initialDraft?.namespace === activeInstance.namespace &&
         this.initialDraft.date === date ? this.initialDraft : undefined;
@@ -1130,6 +1175,37 @@ export struct LogsReaderPage {
   }
 
   @Builder
+  private desktopOutline() {
+    Column({ space: 10 }) {
+      Text('目录').fontSize(12).fontWeight(FontWeight.Medium).fontColor($r('app.color.muted'))
+        .width('100%').padding({ left: 8 })
+      List({ space: 2 }) {
+        ForEach(this.outlineHeadings(), (heading: string, index: number) => {
+          ListItem() {
+            Button({ type: ButtonType.Normal, stateEffect: false }) {
+              Text(heading).width('100%').maxLines(1)
+                .textOverflow({ overflow: TextOverflow.Ellipsis }).textAlign(TextAlign.Start)
+                .fontSize(12).fontWeight(this.activeOutlineIndex === index ? FontWeight.Medium : FontWeight.Regular)
+                .fontColor(this.activeOutlineIndex === index ? $r('app.color.ink') : $r('app.color.muted'))
+            }.width('100%').constraintSize({ minHeight: 30 })
+              .padding({ left: 8, right: 4, top: 4, bottom: 4 })
+              .onClick(() => {
+                this.activeOutlineIndex = index;
+                this.targetHeading = heading;
+                this.targetHeadingIndex = index;
+                this.targetRevision++;
+              })
+              .backgroundColor(this.activeOutlineIndex === index ? $r('app.color.surface_soft') : Color.Transparent)
+              .border({ width: { left: this.activeOutlineIndex === index ? 2 : 0 },
+                color: $r('app.color.primary') }).borderRadius(6)
+          }
+        }, (_heading: string, index: number) => index.toString())
+      }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
+    }.width(224).height('100%').padding({ left: 8, right: 8, top: 28, bottom: 18 })
+      .border({ width: { left: 1 }, color: $r('app.color.hairline_soft') })
+  }
+
+  @Builder
   private reader() {
     Column() {
       this.heading()
@@ -1152,13 +1228,19 @@ export struct LogsReaderPage {
               .visibility(this.sourceMode || this.splitMode ? Visibility.Visible : Visibility.None)
               .border({ width: { right: this.isWide() && this.splitMode ? 1 : 0 },
                 color: $r('app.color.hairline') })
-            MarkdownReader({ content: this.previewText, contentMode: 'log', documentKey: this.day.date,
-              targetHeading: this.targetHeading, targetHeadingIndex: this.targetHeadingIndex,
-              targetKind: this.targetKind, targetQuery: this.targetQuery, targetRevision: this.targetRevision,
-              onInternalLink: (date: string, heading: string) => this.confirmDiscard(() => this.openInternalLink(date, heading)) })
-              .width(this.isWide() && this.splitMode ? '50%' : (this.sourceMode || this.splitMode && !this.isWide() ? 0 : '100%'))
-              .height('100%')
-              .visibility(this.sourceMode || this.splitMode && !this.isWide() ? Visibility.None : Visibility.Visible)
+            Row() {
+              MarkdownReader({ content: this.previewText, contentMode: 'log', documentKey: this.day.date,
+                targetHeading: this.targetHeading, targetHeadingIndex: this.targetHeadingIndex,
+                targetKind: this.targetKind, targetQuery: this.targetQuery, targetRevision: this.targetRevision,
+                trackActiveHeading: this.showDesktopOutline(),
+                onActiveHeading: (headingId: string) => this.updateActiveOutline(headingId),
+                onInternalLink: (date: string, heading: string) => this.confirmDiscard(() => this.openInternalLink(date, heading)) })
+                .layoutWeight(1).height('100%')
+              if (this.showDesktopOutline()) this.desktopOutline()
+            }.width(this.isWide() && this.splitMode ? '50%' :
+              (this.sourceMode || this.splitMode && !this.isWide() ? 0 : '100%'))
+              .height('100%').visibility(this.sourceMode || this.splitMode && !this.isWide() ?
+                Visibility.None : Visibility.Visible)
           }.width('100%').height('100%')
           if (this.saveError) {
             Text(this.saveError).fontSize(13).fontColor($r('app.color.error'))

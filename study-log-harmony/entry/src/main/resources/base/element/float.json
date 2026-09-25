@@ -1,0 +1,10 @@
+{
+  "float": [
+    { "name": "toast_shadow_radius", "value": "16vp" },
+    { "name": "toast_shadow_offset", "value": "4vp" },
+    {
+      "name": "page_text_font_size",
+      "value": "50fp"
+    }
+  ]
+}

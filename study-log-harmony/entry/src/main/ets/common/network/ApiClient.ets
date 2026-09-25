@@ -50,7 +50,8 @@ export class ApiClient {
   get<T>(path: string): Promise<T> { return this.request<T>(path, 'GET'); }
   post<T>(path: string, body: object): Promise<T> { return this.request<T>(path, 'POST', body); }
   put<T>(path: string, body: object): Promise<T> { return this.request<T>(path, 'PUT', body); }
-  delete<T>(path: string, body: object): Promise<T> { return this.request<T>(path, 'DELETE', body); }
+  patch<T>(path: string, body: object): Promise<T> { return this.request<T>(path, 'PATCH', body); }
+  delete<T>(path: string, body?: object): Promise<T> { return this.request<T>(path, 'DELETE', body); }
 
   async download(path: string): Promise<ArrayBuffer> {
     const instanceRevision = activeInstance.revision;

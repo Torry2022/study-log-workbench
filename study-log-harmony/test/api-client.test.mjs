@@ -64,6 +64,16 @@ test('native requests stay on the selected origin and ignore a late old-instance
   assert.equal(JSON.parse(requests[5].args[3]).baseVersion, 'v2');
   pending[5]({ statusCode: 200, toString: () => '{"day":{"exists":false,"version":null}}' });
   assert.equal((await remove).day.exists, false);
+  const group = client.patch('/favorites', { action: 'renameGroup', groupId: 'synthetic', name: '合成分组' });
+  assert.equal(requests[6].args[1], 'PATCH');
+  assert.equal(JSON.parse(requests[6].args[3]).groupId, 'synthetic');
+  pending[6]({ statusCode: 200, toString: () => '{"group":{"id":"synthetic"}}' });
+  assert.equal((await group).group.id, 'synthetic');
+  const unfavorite = client.delete('/favorites?id=synthetic');
+  assert.equal(requests[7].args[1], 'DELETE');
+  assert.equal(requests[7].args[3], undefined);
+  pending[7]({ statusCode: 200, toString: () => '{"ok":true}' });
+  assert.equal((await unfavorite).ok, true);
 });
 
 test('multipart uploads use only the active instance and reject a late response after switching', async () => {

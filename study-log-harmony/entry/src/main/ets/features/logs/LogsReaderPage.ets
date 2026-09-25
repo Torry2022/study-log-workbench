@@ -30,12 +30,22 @@ import { ToolbarDensity, resolveToolbarDensity, toolbarActionWidth, toolbarActio
 import { StatsPage } from '../stats/StatsPage';
 import { StatsEntry } from '../stats/StatsModels';
 import { StatsNavigation } from '../stats/components/StatsNavigation';
+import { FavoritesController } from '../favorites/FavoritesController';
+import { FavoritesPage } from '../favorites/FavoritesPage';
+import { FavoritesNavigation } from '../favorites/components/FavoritesNavigation';
+import { FavoriteHeading } from '../favorites/FavoriteModels';
+import { workspacePreferences } from '../../common/storage/WorkspacePreferences';
+import { appFeedback } from '../../common/ui/AppFeedback';
 
 export interface PreservedLogDraft {
   namespace: string;
   date: string;
   text: string;
 }
+
+interface LogOutlineHeading { id: string; text: string; level: number; }
+interface AddFavoriteResponse { favorite: FavoriteHeading; }
+interface AddFavoriteRequest { date: string; headingText: string; headingId: string; level: number; }
 
 @Component
 export struct LogsReaderPage {
@@ -57,6 +67,10 @@ export struct LogsReaderPage {
   @State private navigationError: string = '';
   @State private navigationOpen: boolean = false;
   @State private statsOpen: boolean = false;
+  @State private favoritesOpen: boolean = false;
+  @State private favoritesData: FavoritesController = new FavoritesController(apiClient);
+  @State private favoriteBusy: boolean = false;
+  @StorageProp('pref_favoritesView') private favoritesViewMode: string = 'list';
   @State private statsMonths: MonthSummary[] = [];
   @State private statsMonth: string = '';
   @State private statsMonthsLoading: boolean = false;
@@ -128,6 +142,7 @@ export struct LogsReaderPage {
 
   aboutToAppear(): void {
     this.lifecycle++;
+    this.favoritesData.load();
     const commands = new DesktopLogCommands();
     commands.entries = (menu: string): DesktopMenuEntry[] => {
       if (menu === '文件') return [
@@ -177,6 +192,7 @@ export struct LogsReaderPage {
   }
 
   aboutToDisappear(): void {
+    this.favoritesData.dispose();
     this.lifecycle++;
     this.listRevision++;
     this.dayRevision++;
@@ -204,6 +220,7 @@ export struct LogsReaderPage {
       this.editorInitialText = this.savedText;
       this.previewText = this.savedText;
       this.statsOpen = true;
+      this.favoritesOpen = false;
       this.navigationOpen = false;
       this.closeSearch();
     });
@@ -221,6 +238,28 @@ export struct LogsReaderPage {
       return;
     }
     await this.loadDay(entry.date, entry.rawHeading, entry.headingIndex);
+  }
+
+  private openFavorites(): void {
+    this.confirmDiscard(() => {
+      this.draftText = this.savedText;
+      this.editorInitialText = this.savedText;
+      this.previewText = this.savedText;
+      this.favoritesOpen = true;
+      this.statsOpen = false;
+      this.navigationOpen = false;
+      this.closeSearch();
+    });
+  }
+
+  private async openFavorite(favorite: FavoriteHeading): Promise<void> {
+    this.favoritesOpen = false;
+    if (favorite.date.slice(0, 7) !== this.month) await this.loadDays(favorite.month, favorite.date);
+    else await this.loadDay(favorite.date);
+    this.targetHeading = favorite.exists ? favorite.headingText : '';
+    this.targetHeadingIndex = -1;
+    this.targetKind = 'favorite';
+    this.targetRevision++;
   }
 
   private updateToolbarWidth(width: number): void {
@@ -261,8 +300,9 @@ export struct LogsReaderPage {
       !this.splitMode && this.outlineHeadings().length > 0;
   }
 
-  private outlineHeadings(): string[] {
-    const headings: string[] = [];
+  private outlineHeadings(): LogOutlineHeading[] {
+    const headings: LogOutlineHeading[] = [];
+    const used: Map<string, number> = new Map<string, number>();
     let inFence = false;
     this.previewText.split('\n').forEach((line: string) => {
       if (/^\s*(```|~~~)/.test(line)) {
@@ -280,23 +320,51 @@ export struct LogsReaderPage {
         .replace(/[*_~]/g, '')
         .replace(/\s+/g, ' ')
         .trim();
-      if (title && !/^\d{4}-\d{2}-\d{2}$/.test(title)) headings.push(title);
+      if (title && !/^\d{4}-\d{2}-\d{2}$/.test(title)) {
+        const rawId = title.normalize('NFKC').toLowerCase()
+          .replace(/[`*_~()[\]{}<>，。、“”‘’：；！？]/g, '')
+          .replace(/\s+/g, '-').replace(/[^\w\u3400-\u9fff-]+/g, '-')
+          .replace(/-+/g, '-').replace(/^-|-$/g, '') || 'section';
+        const count = used.get(rawId) || 0;
+        used.set(rawId, count + 1);
+        headings.push({ id: count === 0 ? rawId : `${rawId}-${count + 1}`,
+          text: title, level: match[1].length });
+      }
     });
     return headings;
   }
 
   private updateActiveOutline(headingId: string): void {
-    const used: Map<string, number> = new Map<string, number>();
-    const index = this.outlineHeadings().findIndex((heading: string) => {
-      const rawId = heading.normalize('NFKC').toLowerCase()
-        .replace(/[`*_~()[\]{}<>，。、“”‘’：；！？]/g, '')
-        .replace(/\s+/g, '-').replace(/[^\w\u3400-\u9fff-]+/g, '-')
-        .replace(/-+/g, '-').replace(/^-|-$/g, '') || 'section';
-      const count = used.get(rawId) || 0;
-      used.set(rawId, count + 1);
-      return (count === 0 ? rawId : `${rawId}-${count + 1}`) === headingId;
-    });
+    const index = this.outlineHeadings().findIndex((heading: LogOutlineHeading) => heading.id === headingId);
     if (index >= 0) this.activeOutlineIndex = index;
+  }
+
+  private outlineFavorite(heading: LogOutlineHeading): FavoriteHeading | undefined {
+    return this.favoritesData.favorites.find((item: FavoriteHeading) =>
+      item.date === this.selectedDate && (item.resolvedHeadingId || item.headingId) === heading.id);
+  }
+
+  private async addOutlineFavorite(heading: LogOutlineHeading): Promise<void> {
+    if (!this.selectedDate || this.favoriteBusy) return;
+    this.favoriteBusy = true;
+    try {
+      const request: AddFavoriteRequest = {
+        date: this.selectedDate, headingText: heading.text, headingId: heading.id, level: heading.level
+      };
+      const response = await apiClient.post<AddFavoriteResponse>('/favorites', request);
+      this.favoritesData.favorites = [...this.favoritesData.favorites, response.favorite];
+      appFeedback.show('收藏成功', 'success');
+    } catch (error) { appFeedback.show(error instanceof ApiError ? error.message : '收藏失败', 'error'); }
+    finally { this.favoriteBusy = false; }
+  }
+
+  private removeOutlineFavorite(favorite: FavoriteHeading): void {
+    AlertDialog.show({ message: `取消收藏“${favorite.headingText}”吗？`,
+      primaryButton: { value: '保留', action: () => {} },
+      secondaryButton: { value: '取消收藏', action: async () => {
+        if (await this.favoritesData.remove(favorite.id)) appFeedback.show('已取消收藏', 'success');
+        else appFeedback.show(this.favoritesData.errorMessage, 'error');
+      } } });
   }
 
   private message(error: Error): string {
@@ -1332,26 +1400,45 @@ export struct LogsReaderPage {
       Text('目录').fontSize(12).fontWeight(FontWeight.Medium).fontColor($r('app.color.muted'))
         .width('100%').padding({ left: 8 })
       List({ space: 2 }) {
-        ForEach(this.outlineHeadings(), (heading: string, index: number) => {
+        ForEach(this.outlineHeadings(), (heading: LogOutlineHeading, index: number) => {
           ListItem() {
+            Row({ space: 2 }) {
             Button({ type: ButtonType.Normal, stateEffect: false }) {
-              Text(heading).width('100%').maxLines(1)
+              Text(heading.text).width('100%').maxLines(1)
                 .textOverflow({ overflow: TextOverflow.Ellipsis }).textAlign(TextAlign.Start)
                 .fontSize(12).fontWeight(this.activeOutlineIndex === index ? FontWeight.Medium : FontWeight.Regular)
                 .fontColor(this.activeOutlineIndex === index ? $r('app.color.ink') : $r('app.color.muted'))
-            }.width('100%').constraintSize({ minHeight: 30 })
+            }.layoutWeight(1).constraintSize({ minHeight: 30 })
               .padding({ left: 8, right: 4, top: 4, bottom: 4 })
               .onClick(() => {
                 this.activeOutlineIndex = index;
-                this.targetHeading = heading;
+                this.targetHeading = heading.text;
                 this.targetHeadingIndex = index;
                 this.targetRevision++;
               })
+              .backgroundColor(Color.Transparent).borderRadius(6)
+            if (heading.level === 3) {
+              Button({ type: ButtonType.Normal }) {
+                if (this.outlineFavorite(heading)) {
+                  SymbolGlyph($r('sys.symbol.star_fill')).fontSize(14).fontColor([$r('app.color.ink')])
+                } else {
+                  SymbolGlyph($r('sys.symbol.star')).fontSize(14).fontColor([$r('app.color.muted_soft')])
+                }
+              }.width(28).height(28).padding(0).backgroundColor(Color.Transparent).borderRadius(6)
+                .enabled(!this.favoriteBusy)
+                .accessibilityText(this.outlineFavorite(heading) ? '取消收藏' : '收藏小节')
+                .onClick(() => {
+                  const favorite = this.outlineFavorite(heading);
+                  if (favorite) this.removeOutlineFavorite(favorite);
+                  else this.addOutlineFavorite(heading);
+                })
+            }
+            }.width('100%').padding({ right: 3 })
               .backgroundColor(this.activeOutlineIndex === index ? $r('app.color.surface_soft') : Color.Transparent)
               .border({ width: { left: this.activeOutlineIndex === index ? 2 : 0 },
                 color: $r('app.color.primary') }).borderRadius(6)
           }
-        }, (_heading: string, index: number) => index.toString())
+        }, (heading: LogOutlineHeading) => heading.id)
       }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
     }.width(224).height('100%').padding({ left: 8, right: 8, top: 28, bottom: 18 })
       .border({ width: { left: 1 }, color: $r('app.color.hairline_soft') })
@@ -1409,7 +1496,7 @@ export struct LogsReaderPage {
     Stack() {
       Column() {
         Row({ space: 12 }) {
-          if (!this.isWide() && !this.statsOpen) {
+          if (!this.isWide() && !this.statsOpen && !this.favoritesOpen) {
             Button({ type: ButtonType.Normal }) {
               SymbolGlyph($r('sys.symbol.line_3_horizontal')).fontSize(20).fontColor([$r('app.color.ink')])
             }.width(42).height(42).backgroundColor(Color.Transparent).accessibilityText('打开日期导航')
@@ -1420,7 +1507,8 @@ export struct LogsReaderPage {
             Column({ space: 2 }) {
               Text('学习日志工作台').fontFamily(workspaceSansFamily(this.workspaceBreakpoint))
                 .fontSize(15).fontWeight(FontWeight.Bold).fontColor($r('app.color.ink')).maxLines(1)
-              Text(this.statsOpen ? '学习统计' : (this.day?.headings[0] || this.selectedDate || '日志'))
+              Text(this.statsOpen ? '学习统计' : this.favoritesOpen ? '收藏中心' :
+                (this.day?.headings[0] || this.selectedDate || '日志'))
                 .fontFamily(workspaceSansFamily(this.workspaceBreakpoint)).fontSize(12)
                 .fontColor($r('app.color.muted')).maxLines(1)
                 .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -1451,6 +1539,9 @@ export struct LogsReaderPage {
           ToolbarAction({ label: '统计', icon: $r('app.media.tab_chart_column'),
             showLabel: this.isWide(), active: this.statsOpen,
             onAction: () => this.statsOpen ? this.statsOpen = false : this.openStats() })
+          ToolbarAction({ label: '收藏', icon: $r('app.media.tab_star_active'),
+            showLabel: this.isWide(), active: this.favoritesOpen,
+            onAction: () => this.favoritesOpen ? this.favoritesOpen = false : this.openFavorites() })
           ToolbarAction({ label: '更换服务器', icon: $r('app.media.log_out'), iconSize: 17,
             showLabel: this.isWide(), available: !this.backupOpen && !this.linkOpen,
             onAction: () => this.confirmDiscard(() => this.onChangeServer()) })
@@ -1459,7 +1550,31 @@ export struct LogsReaderPage {
           .zIndex(30)
           .border({ width: { bottom: 1 }, color: $r('app.color.hairline') })
         Stack() {
-          if (this.statsOpen) {
+          if (this.favoritesOpen) {
+            Row() {
+              if (this.isWide()) {
+                Column() {
+                  Row({ space: 7 }) {
+                    Image($r('app.media.tab_star_active')).width(19).height(19)
+                    Text('收藏中心').fontSize(14).fontWeight(FontWeight.Medium)
+                      .fontColor($r('app.color.body_strong'))
+                  }.width('100%').height(52).padding({ left: 16, right: 10 })
+                    .border({ width: { bottom: 1 }, color: $r('app.color.hairline_soft') })
+                  FavoritesNavigation({ data: this.favoritesData, wide: true,
+                    onRetry: () => this.favoritesData.load() })
+                }.width(this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE ? 260 : 220)
+                  .height('100%').backgroundColor($r('app.color.surface_soft'))
+                  .border({ width: { right: 1 }, color: $r('app.color.hairline') })
+              }
+              FavoritesPage({ data: this.favoritesData, viewMode: this.favoritesViewMode,
+                onViewModeChange: (mode: string) => {
+                  workspacePreferences.set('favoritesView', mode)
+                    .catch(() => appFeedback.show('收藏显示方式保存失败', 'error'));
+                },
+                onOpenLog: () => this.favoritesOpen = false,
+                onOpenFavorite: (favorite: FavoriteHeading) => this.openFavorite(favorite) }).layoutWeight(1)
+            }.width('100%').height('100%')
+          } else if (this.statsOpen) {
             Row() {
               if (this.isWide()) {
                 Column() {

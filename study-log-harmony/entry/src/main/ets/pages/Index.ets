@@ -1,4 +1,5 @@
 import { fileIo } from '@kit.CoreFileKit';
+import { common } from '@kit.AbilityKit';
 import { WorkspaceBreakpoint } from '../common/AppConfig';
 import { InstanceCapabilities, activeInstance } from '../common/network/InstanceConfig';
 import { apiClient } from '../common/network/ApiClient';
@@ -8,6 +9,8 @@ import { LogsReaderPage, PreservedLogDraft } from '../features/logs/LogsReaderPa
 import { DesktopLogCommands, DesktopMenuEntry } from '../app/DesktopMenu';
 import { DesktopTitleBar } from '../app/components/DesktopTitleBar';
 import { ImagePreview } from '../common/ui/ImagePreview';
+import { appFeedback } from '../common/ui/AppFeedback';
+import { workspacePreferences } from '../common/storage/WorkspacePreferences';
 
 @Entry
 @Component
@@ -27,10 +30,12 @@ struct Index {
 
   aboutToAppear(): void {
     this.registerFonts();
+    appFeedback.attach(this.getUIContext(), () => false);
+    workspacePreferences.initialize(this.getUIContext().getHostContext() as common.UIAbilityContext);
     this.removeUnauthorizedHandler = apiClient.setUnauthorizedHandler(() => { this.expireSession(); });
   }
 
-  aboutToDisappear(): void { this.removeUnauthorizedHandler(); }
+  aboutToDisappear(): void { this.removeUnauthorizedHandler(); appFeedback.detach(); }
 
   private async expireSession(): Promise<void> {
     if (this.expiring) return;

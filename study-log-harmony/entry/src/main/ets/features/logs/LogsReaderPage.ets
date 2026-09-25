@@ -36,6 +36,9 @@ import { FavoritesNavigation } from '../favorites/components/FavoritesNavigation
 import { FavoriteHeading } from '../favorites/FavoriteModels';
 import { workspacePreferences } from '../../common/storage/WorkspacePreferences';
 import { appFeedback } from '../../common/ui/AppFeedback';
+import { NotesPage } from '../notes/NotesPage';
+import { NotesNavigation } from '../notes/components/NotesNavigation';
+import { StudyNoteFacet } from '../notes/NoteModels';
 
 export interface PreservedLogDraft {
   namespace: string;
@@ -68,6 +71,15 @@ export struct LogsReaderPage {
   @State private navigationOpen: boolean = false;
   @State private statsOpen: boolean = false;
   @State private favoritesOpen: boolean = false;
+  @State private notesOpen: boolean = false;
+  @State private notesDirty: boolean = false;
+  @State private notesBusy: boolean = false;
+  @State private noteYears: StudyNoteFacet[] = [];
+  @State private noteTags: StudyNoteFacet[] = [];
+  @State private noteCount: number = 0;
+  @State private noteYearFilter: string = 'all';
+  @State private noteTagFilter: string = 'all';
+  @State private noteNewRevision: number = 0;
   @State private favoritesData: FavoritesController = new FavoritesController(apiClient);
   @State private favoriteBusy: boolean = false;
   @StorageProp('pref_favoritesView') private favoritesViewMode: string = 'list';
@@ -215,12 +227,14 @@ export struct LogsReaderPage {
   }
 
   private openStats(): void {
+    if (this.notesOpen) { this.confirmNotesLeave(() => this.openStats()); return; }
     this.confirmDiscard(() => {
       this.draftText = this.savedText;
       this.editorInitialText = this.savedText;
       this.previewText = this.savedText;
       this.statsOpen = true;
       this.favoritesOpen = false;
+      this.notesOpen = false;
       this.navigationOpen = false;
       this.closeSearch();
     });
@@ -241,14 +255,52 @@ export struct LogsReaderPage {
   }
 
   private openFavorites(): void {
+    if (this.notesOpen) { this.confirmNotesLeave(() => this.openFavorites()); return; }
     this.confirmDiscard(() => {
       this.draftText = this.savedText;
       this.editorInitialText = this.savedText;
       this.previewText = this.savedText;
       this.favoritesOpen = true;
       this.statsOpen = false;
+      this.notesOpen = false;
       this.navigationOpen = false;
       this.closeSearch();
+    });
+  }
+
+  private openNotes(): void {
+    this.confirmDiscard(() => {
+      this.draftText = this.savedText;
+      this.editorInitialText = this.savedText;
+      this.previewText = this.savedText;
+      this.notesOpen = true;
+      this.statsOpen = false;
+      this.favoritesOpen = false;
+      this.navigationOpen = false;
+      this.closeSearch();
+    });
+  }
+
+  private confirmNotesLeave(action: () => void): void {
+    if (this.notesBusy) return;
+    if (!this.notesDirty) { this.notesOpen = false; action(); return; }
+    AlertDialog.show({ message: '随记尚未保存，确定放弃修改吗？',
+      primaryButton: { value: '继续编辑', action: () => {} },
+      secondaryButton: { value: '放弃修改', fontColor: $r('app.color.error'), action: () => {
+        this.notesDirty = false;
+        this.notesOpen = false;
+        action();
+      } } });
+  }
+
+  private openNoteLink(date: string, heading: string): void {
+    this.confirmNotesLeave(async () => {
+      if (date.slice(0, 7) !== this.month) await this.loadDays(date.slice(0, 7), date);
+      else await this.loadDay(date);
+      this.targetHeading = heading;
+      this.targetHeadingIndex = -1;
+      this.targetKind = 'internal';
+      this.targetRevision++;
     });
   }
 
@@ -1496,7 +1548,7 @@ export struct LogsReaderPage {
     Stack() {
       Column() {
         Row({ space: 12 }) {
-          if (!this.isWide() && !this.statsOpen && !this.favoritesOpen) {
+          if (!this.isWide() && !this.statsOpen && !this.favoritesOpen && !this.notesOpen) {
             Button({ type: ButtonType.Normal }) {
               SymbolGlyph($r('sys.symbol.line_3_horizontal')).fontSize(20).fontColor([$r('app.color.ink')])
             }.width(42).height(42).backgroundColor(Color.Transparent).accessibilityText('打开日期导航')
@@ -1507,7 +1559,7 @@ export struct LogsReaderPage {
             Column({ space: 2 }) {
               Text('学习日志工作台').fontFamily(workspaceSansFamily(this.workspaceBreakpoint))
                 .fontSize(15).fontWeight(FontWeight.Bold).fontColor($r('app.color.ink')).maxLines(1)
-              Text(this.statsOpen ? '学习统计' : this.favoritesOpen ? '收藏中心' :
+              Text(this.notesOpen ? '随记' : this.statsOpen ? '学习统计' : this.favoritesOpen ? '收藏中心' :
                 (this.day?.headings[0] || this.selectedDate || '日志'))
                 .fontFamily(workspaceSansFamily(this.workspaceBreakpoint)).fontSize(12)
                 .fontColor($r('app.color.muted')).maxLines(1)
@@ -1536,21 +1588,54 @@ export struct LogsReaderPage {
             ToolbarAction({ label: '搜索日志内容', icon: $r('app.media.search'),
               showLabel: false, onAction: () => this.searchOpen = true })
           }
-          ToolbarAction({ label: '统计', icon: $r('app.media.tab_chart_column'),
-            showLabel: this.isWide(), active: this.statsOpen,
-            onAction: () => this.statsOpen ? this.statsOpen = false : this.openStats() })
-          ToolbarAction({ label: '收藏', icon: $r('app.media.tab_star_active'),
-            showLabel: this.isWide(), active: this.favoritesOpen,
-            onAction: () => this.favoritesOpen ? this.favoritesOpen = false : this.openFavorites() })
+            ToolbarAction({ label: '随记', icon: $r('app.media.tab_lightbulb_active'),
+              showLabel: this.isWide(), active: this.notesOpen,
+              onAction: () => this.notesOpen ? this.confirmNotesLeave(() => {}) : this.openNotes() })
+            ToolbarAction({ label: '收藏', icon: $r('app.media.tab_star_active'),
+              showLabel: this.isWide(), active: this.favoritesOpen,
+              onAction: () => this.favoritesOpen ? this.favoritesOpen = false : this.openFavorites() })
+            ToolbarAction({ label: '统计', icon: $r('app.media.tab_chart_column'),
+              showLabel: this.isWide(), active: this.statsOpen,
+              onAction: () => this.statsOpen ? this.statsOpen = false : this.openStats() })
           ToolbarAction({ label: '更换服务器', icon: $r('app.media.log_out'), iconSize: 17,
             showLabel: this.isWide(), available: !this.backupOpen && !this.linkOpen,
-            onAction: () => this.confirmDiscard(() => this.onChangeServer()) })
+            onAction: () => this.confirmNotesLeave(() => this.confirmDiscard(() => this.onChangeServer())) })
         }.width('100%').height(64).padding({ left: 12, right: 12 })
           .backgroundColor($r('app.color.canvas'))
           .zIndex(30)
           .border({ width: { bottom: 1 }, color: $r('app.color.hairline') })
         Stack() {
-          if (this.favoritesOpen) {
+          if (this.notesOpen) {
+            Row() {
+              if (this.isWide()) {
+                Column() {
+                  Row({ space: 7 }) {
+                    Image($r('app.media.tab_lightbulb_active')).width(19).height(19)
+                    Text('随记').fontSize(14).fontWeight(FontWeight.Medium)
+                      .fontColor($r('app.color.body_strong'))
+                  }.width('100%').height(52).padding({ left: 16, right: 10 })
+                    .border({ width: { bottom: 1 }, color: $r('app.color.hairline_soft') })
+                  NotesNavigation({ noteYearFilter: this.noteYearFilter, noteTagFilter: this.noteTagFilter,
+                    noteCount: this.noteCount, noteYears: this.noteYears, noteTags: this.noteTags,
+                    noteEditorBusy: this.notesBusy,
+                    onNew: () => this.noteNewRevision++,
+                    onYear: (year: string) => this.noteYearFilter = year,
+                    onTag: (tag: string) => this.noteTagFilter = tag })
+                }.width(this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE ? 260 : 220)
+                  .height('100%').backgroundColor($r('app.color.surface_soft'))
+                  .border({ width: { right: 1 }, color: $r('app.color.hairline') })
+              }
+              NotesPage({ navigationYear: this.noteYearFilter, navigationTag: this.noteTagFilter,
+                navigationNewRevision: this.noteNewRevision,
+                onNavigationDataChange: (years: StudyNoteFacet[], tags: StudyNoteFacet[], total: number) => {
+                  this.noteYears = years; this.noteTags = tags; this.noteCount = total;
+                },
+                onEditorBusyChange: (busy: boolean) => this.notesBusy = busy,
+                onDirtyChange: (dirty: boolean) => this.notesDirty = dirty,
+                onOpenLog: () => this.confirmNotesLeave(() => {}),
+                onInternalLink: (date: string, heading: string) => this.openNoteLink(date, heading) }).layoutWeight(1)
+            }.width('100%').height('100%')
+          } else if (this.favoritesOpen) {
             Row() {
               if (this.isWide()) {
                 Column() {

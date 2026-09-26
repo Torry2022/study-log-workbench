@@ -20,6 +20,7 @@ import { LogImageUpload } from './LogImageUpload';
 import { LogSearchPanel, LogSearchResult } from './LogSearchPanel';
 import { LogSearchRepository } from './LogSearchRepository';
 import { ToolbarAction } from '../../common/ui/ToolbarAction';
+import { WORKSPACE_TIPS } from '../../common/ui/WorkspaceTips';
 import { LogDisplayModeControl } from './components/LogDisplayModeControl';
 import { SearchField } from '../../common/ui/FormControls';
 import { ActionPanelHeader } from '../../common/ui/WorkspaceChrome';
@@ -1818,15 +1819,18 @@ export struct LogsReaderPage {
       Button({ type: ButtonType.Normal }) {
         SymbolGlyph($r('sys.symbol.chevron_backward')).fontSize(17).fontColor([$r('app.color.muted')])
       }.width(38).height(38).padding(0).backgroundColor(Color.Transparent).borderRadius(8)
-        .accessibilityText('展开右侧栏').onClick(() => this.aiOpen = true)
+        .id('log_ai_expand_button').accessibilityText('展开右侧栏')
+        .bindTips('展开右侧栏', WORKSPACE_TIPS).onClick(() => this.aiOpen = true)
       Button({ type: ButtonType.Normal }) {
         Image($r('app.media.wand_sparkles')).width(17).height(17).objectFit(ImageFit.Contain)
       }.width(38).height(38).padding(0).backgroundColor(Color.Transparent).borderRadius(8)
-        .accessibilityText('AI生成').onClick(() => { this.aiMode = 'generate'; this.aiOpen = true; })
+        .id('log_ai_generate_button').accessibilityText('AI生成')
+        .bindTips('AI生成', WORKSPACE_TIPS).onClick(() => { this.aiMode = 'generate'; this.aiOpen = true; })
       Button({ type: ButtonType.Normal }) {
         Image($r('app.media.edit_3')).width(17).height(17).objectFit(ImageFit.Contain)
       }.width(38).height(38).padding(0).backgroundColor(Color.Transparent).borderRadius(8)
-        .accessibilityText('重点标注').onClick(() => { this.aiMode = 'highlight'; this.aiOpen = true; })
+        .id('log_ai_highlight_button').accessibilityText('重点标注')
+        .bindTips('重点标注', WORKSPACE_TIPS).onClick(() => { this.aiMode = 'highlight'; this.aiOpen = true; })
     }.width(52).height('100%').padding({ top: 14 }).alignItems(HorizontalAlign.Center)
       .backgroundColor($r('app.color.surface_soft'))
       .border({ width: { left: 1 }, color: $r('app.color.hairline') })

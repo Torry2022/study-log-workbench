@@ -448,8 +448,25 @@ export struct LogsReaderPage {
     this.toolbarDensity = resolveToolbarDensity(width, compact, full, this.toolbarDensity);
   }
 
-  private showToolbarLabels(): boolean {
-    return this.toolbarDensity === ToolbarDensity.FULL;
+  private showToolbarLabels(group: string = 'mode'): boolean {
+    if (this.toolbarDensity === ToolbarDensity.FULL) return true;
+    let required = 32 + this.headerDateWidth + 80 + 24 + 32 + 126 + 80;
+    for (const action of ['refresh', 'export', 'backup', 'delete']) {
+      if (this.documentActionsInHeader(action)) required += 48;
+    }
+    required += 2 * (toolbarActionWidth('上一篇') - 44 + 24 + 16) - 64;
+    if (group === 'navigation') return this.headerWidth >= required + 12;
+    required += 3 * (toolbarActionWidth('浏览') - 40);
+    if (group === 'mode') return this.headerWidth >= required + 12;
+    required += toolbarActionWidth('保存中') - 40;
+    if (group === 'save') return this.headerWidth >= required + 12;
+    const actions = ['refresh', 'export', 'backup', 'delete'];
+    const labels = ['刷新中', '导出', '备份', '删除'];
+    for (let index = 0; index < actions.length; index++) {
+      if (this.documentActionsInHeader(actions[index])) required += toolbarActionWidth(labels[index]) - 40;
+      if (group === actions[index]) return this.headerWidth >= required + 12;
+    }
+    return false;
   }
 
   private expandedModeSelector(): boolean {
@@ -458,14 +475,14 @@ export struct LogsReaderPage {
 
   private documentActionsInHeader(action: string): boolean {
     if (!this.expandedModeSelector()) return false;
-    if (this.showToolbarLabels()) return true;
+    if (this.toolbarDensity === ToolbarDensity.FULL) return true;
     const priority = ['refresh', 'export', 'backup', 'delete'].indexOf(action);
     const compact = 32 + this.headerDateWidth + 80 + 24 + 32 + 126 + 80 + 7 * 8;
     return priority >= 0 && this.headerWidth >= compact + (priority + 1) * 48 + 12;
   }
 
   private editorActionsInHeader(): boolean {
-    return this.isWide() && this.showToolbarLabels() && (this.sourceMode || this.splitMode);
+    return this.isWide() && this.toolbarDensity === ToolbarDensity.FULL && (this.sourceMode || this.splitMode);
   }
 
   private showDesktopOutline(): boolean {
@@ -1348,7 +1365,7 @@ export struct LogsReaderPage {
   @Builder
   private desktopAdjacentButton(label: string, direction: number) {
     Button({ type: ButtonType.Normal }) {
-      if (this.showToolbarLabels()) {
+      if (this.showToolbarLabels('navigation')) {
         Row({ space: 4 }) {
           if (direction > 0) {
             SymbolGlyph($r('sys.symbol.chevron_left')).fontSize(12).fontColor([$r('app.color.body')])
@@ -1363,8 +1380,9 @@ export struct LogsReaderPage {
           .fontSize(16).fontColor([$r('app.color.body')])
       }
     }.id(direction > 0 ? 'log_previous_day' : 'log_next_day')
-      .width(this.showToolbarLabels() ? undefined : 32).height(32)
-      .padding({ left: this.showToolbarLabels() ? 12 : 0, right: this.showToolbarLabels() ? 12 : 0 })
+      .width(this.showToolbarLabels('navigation') ? undefined : 32).height(32)
+      .padding({ left: this.showToolbarLabels('navigation') ? 12 : 0,
+        right: this.showToolbarLabels('navigation') ? 12 : 0 })
       .backgroundColor($r('app.color.canvas'))
       .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(7)
       .accessibilityText(label).enabled(this.adjacentDay(direction).length > 0)
@@ -1595,17 +1613,17 @@ export struct LogsReaderPage {
           onAction: () => this.insertImages() })
       }
       LogDisplayModeControl({ sourceMode: this.sourceMode, splitMode: this.splitMode,
-        expanded: this.expandedModeSelector(), showLabels: this.showToolbarLabels(),
+        expanded: this.expandedModeSelector(), showLabels: this.showToolbarLabels('mode'),
         onMode: (mode: string) => this.switchMode(mode === 'source', mode === 'split') })
       if (this.documentActionsInHeader('refresh')) {
         ToolbarAction({ label: '刷新', icon: $r('app.media.refresh_cw'), iconSize: 15,
-          showLabel: this.showToolbarLabels(),
+          showLabel: this.showToolbarLabels('refresh'),
           available: !this.saving && !this.deleting && !this.imageBusy,
           onAction: () => this.refreshLog() })
       }
       if (this.documentActionsInHeader('export')) {
         ToolbarAction({ label: '导出', icon: $r('app.media.download'), iconSize: 15,
-          showLabel: this.showToolbarLabels(), available: !this.exportBusy,
+          showLabel: this.showToolbarLabels('export'), available: !this.exportBusy,
           onAction: () => this.exportMenuOpen = true })
           .bindPopup(this.exportMenuOpen, { builder: this.exportActions(), placement: Placement.BottomRight,
             enableArrow: false, popupColor: $r('app.color.canvas'), radius: 8,
@@ -1613,19 +1631,19 @@ export struct LogsReaderPage {
       }
       if (this.documentActionsInHeader('backup')) {
         ToolbarAction({ label: '备份', icon: $r('app.media.database_backup'), iconSize: 15,
-          showLabel: this.showToolbarLabels(),
+          showLabel: this.showToolbarLabels('backup'),
           available: !!this.day && !this.saving && !this.deleting,
           onAction: () => this.backupOpen = true })
       }
       if (this.documentActionsInHeader('delete')) {
         ToolbarAction({ label: '删除', icon: $r('app.media.trash_2'), iconSize: 15,
-          showLabel: this.showToolbarLabels(), danger: true, busy: this.deleting,
+          showLabel: this.showToolbarLabels('delete'), danger: true, busy: this.deleting,
           available: !!this.day?.exists && !this.saving,
           onAction: () => this.confirmDelete() })
       }
       ToolbarAction({ label: this.saving ? '保存中' : '保存', reservedLabel: '保存中',
         icon: $r('app.media.save'), iconSize: 15,
-        showLabel: this.showToolbarLabels(), primary: true, busy: this.saving,
+        showLabel: this.showToolbarLabels('save'), primary: true, busy: this.saving,
         available: this.editorReady && this.dirty, onAction: () => this.save() })
       ToolbarAction({ label: '更多日志操作', icon: $r('app.media.more_horizontal'),
         showLabel: false, active: this.moreOpen, onAction: () => this.moreOpen = !this.moreOpen })

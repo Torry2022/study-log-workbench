@@ -483,14 +483,6 @@ export struct NotesPage {
         Column() {
           LoadFailure({ title: '随记读取失败', message: this.data.errorMessage, onRetry: () => this.load() })
         }.width('100%').layoutWeight(1)
-      } else if (this.visibleNotes.length === 0) {
-        this.topTools()
-        InlineStatus({ text: this.data.errorMessage, error: true })
-        EmptyState({
-          symbol: $r('sys.symbol.lightbulb'),
-          title: this.query ? '未找到匹配随记' : '暂无随记',
-          description: this.query ? '换一个关键词再试试' : '记录一个值得长期保留的观点'
-        })
       } else {
         List({ scroller: this.noteScroller }) {
           ListItem() {
@@ -498,6 +490,17 @@ export struct NotesPage {
               this.topTools()
               InlineStatus({ text: this.data.errorMessage, error: true,
                 retry: this.data.loadFailed && !this.data.loading, onRetry: () => this.load() })
+            }
+          }
+          if (this.visibleNotes.length === 0) {
+            ListItem() {
+              Column() {
+                EmptyState({
+                  symbol: $r('sys.symbol.lightbulb'),
+                  title: this.query ? '未找到匹配随记' : '暂无随记',
+                  description: this.query ? '换一个关键词再试试' : '记录一个值得长期保留的观点'
+                })
+              }.width('100%').height(Math.max(0, this.noteViewportHeight - this.topToolsHeight))
             }
           }
           ForEach(this.visibleNotes, (note: StudyNote) => {

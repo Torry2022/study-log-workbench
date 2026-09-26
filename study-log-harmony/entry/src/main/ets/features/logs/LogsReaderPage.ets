@@ -1771,15 +1771,25 @@ export struct LogsReaderPage {
   }
 
   private async applyAiOutput(): Promise<void> {
-    if (!this.day || !this.editorReady || !this.ai.output.trim() || this.ai.busy) return;
+    if (!this.day || !this.ai.output.trim() || this.ai.busy) return;
+    const lifecycle = this.lifecycle;
     const date = this.day.date;
     if (this.ai.outputDate !== date) { this.ai.message = '请切回生成草稿时的日块'; return; }
     try {
+      if (!this.sourceMode && !this.splitMode) await this.switchMode(true);
+      if (lifecycle !== this.lifecycle || this.day?.date !== date) return;
+      for (let attempt = 0; attempt < 50 && this.editor.loadedDocumentKey !== date; attempt += 1) {
+        if (lifecycle !== this.lifecycle || this.day?.date !== date) return;
+        await new Promise<void>((resolve) => setTimeout(resolve, 100));
+      }
+      if (!this.editorReady || this.editor.loadedDocumentKey !== date) {
+        throw new Error('编辑器尚未就绪，请稍后重试');
+      }
       const snapshot = await this.editor.command('snapshot');
-      if (snapshot.documentKey !== date || this.day?.date !== date) return;
+      if (snapshot.documentKey !== date || lifecycle !== this.lifecycle || this.day?.date !== date) return;
       const body = snapshot.text.trimEnd();
       await this.editor.replace(`${body}${body ? '\n\n' : ''}${this.ai.output.trim()}\n`);
-      if (this.day?.date !== date) return;
+      if (lifecycle !== this.lifecycle || this.day?.date !== date) return;
       this.sourceMode = true; this.splitMode = false;
       appFeedback.show('AI 草稿已写入当前编辑草稿，尚未保存');
     } catch (error) { this.ai.message = error instanceof Error ? error.message : '写入编辑草稿失败'; }

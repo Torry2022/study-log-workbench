@@ -91,7 +91,7 @@ export class ApiClient {
     this.activeStreamRequest = request;
     try {
       const response = await session.fetch(request).catch(() => {
-        throw new Error('无法连接服务器，请检查网络后重试');
+        throw new ApiError('无法连接服务器，请检查网络后重试', 0, 'NETWORK_ERROR');
       });
       if (!current()) throw new ApiStreamCancelledError();
       const tail = decoder.decodeToString(new Uint8Array(), { stream: false });
@@ -123,7 +123,7 @@ export class ApiClient {
     } });
     try {
       const response = await session.fetch(new rcp.Request(activeInstance.apiUrl(path), 'GET', headers)).catch(() => {
-        throw new Error('无法连接服务器，请检查网络后重试');
+        throw new ApiError('无法连接服务器，请检查网络后重试', 0, 'NETWORK_ERROR');
       });
       if (instanceRevision !== activeInstance.revision || sessionRevision !== this.sessionRevision) {
         throw new Error('会话已切换，请重新操作');
@@ -151,7 +151,7 @@ export class ApiClient {
     } });
     try {
       const response = await session.fetch(new rcp.Request(activeInstance.apiUrl(path), 'POST', headers, form)).catch(() => {
-        throw new Error('无法连接服务器，请检查网络后重试');
+        throw new ApiError('无法连接服务器，请检查网络后重试', 0, 'NETWORK_ERROR');
       });
       if (instanceRevision !== activeInstance.revision || sessionRevision !== this.sessionRevision) {
         throw new Error('会话已切换，请重新操作');
@@ -182,7 +182,7 @@ export class ApiClient {
       const request = new rcp.Request(activeInstance.apiUrl(path), method, headers,
         body ? JSON.stringify(body) : undefined);
       const response = await session.fetch(request).catch(() => {
-        throw new Error('无法连接服务器，请检查网络后重试');
+        throw new ApiError('无法连接服务器，请检查网络后重试', 0, 'NETWORK_ERROR');
       });
       if (instanceRevision !== activeInstance.revision || sessionRevision !== this.sessionRevision) {
         throw new Error('会话已切换，请重新操作');

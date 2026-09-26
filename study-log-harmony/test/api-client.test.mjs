@@ -83,6 +83,26 @@ test('native requests stay on the selected origin and ignore a late old-instance
   assert.equal((await unfavorite).ok, true);
 });
 
+test('transport failures expose one actionable Chinese API error across request types', async () => {
+  const { ApiClient } = await loadEts('ApiClient', {
+    '@kit.RemoteCommunicationKit': { rcp: {
+      Request: class { constructor() {} }, MultipartForm: class { constructor() {} },
+      createSession() { return { fetch: () => Promise.reject(new Error("Couldn't connect to server")),
+        cancel() {}, close() {} }; }
+    } },
+    './InstanceConfig': { activeInstance }
+  });
+  activeInstance.activate('https://offline.example', 'offline');
+  const client = new ApiClient();
+  const expected = error => error.statusCode === 0 && error.code === 'NETWORK_ERROR' &&
+    error.message === '无法连接服务器，请检查网络后重试';
+  await assert.rejects(client.get('/notes'), expected);
+  await assert.rejects(client.download('/notes/export'), expected);
+  await assert.rejects(client.postFiles('/assets/upload', [{ path: '/synthetic.png',
+    name: 'synthetic.png', contentType: 'image/png' }]), expected);
+  await assert.rejects(client.postStream('/rag/query', { question: 'synthetic' }, () => {}), expected);
+});
+
 test('SSE transport accepts only current instance, cancels stale streams and preserves chunks', async () => {
   const requests = [], pending = [], sessions = [];
   const { ApiClient, ApiStreamCancelledError } = await loadEts('ApiClient', {

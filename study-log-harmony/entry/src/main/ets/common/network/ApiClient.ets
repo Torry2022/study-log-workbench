@@ -90,7 +90,9 @@ export class ApiClient {
     this.activeStreamSession = session;
     this.activeStreamRequest = request;
     try {
-      const response = await session.fetch(request);
+      const response = await session.fetch(request).catch(() => {
+        throw new Error('无法连接服务器，请检查网络后重试');
+      });
       if (!current()) throw new ApiStreamCancelledError();
       const tail = decoder.decodeToString(new Uint8Array(), { stream: false });
       if (tail) onChunk(tail);
@@ -120,7 +122,9 @@ export class ApiClient {
       transfer: { autoRedirect: false, timeout: { connectMs: 15000, transferMs: 240000 } }
     } });
     try {
-      const response = await session.fetch(new rcp.Request(activeInstance.apiUrl(path), 'GET', headers));
+      const response = await session.fetch(new rcp.Request(activeInstance.apiUrl(path), 'GET', headers)).catch(() => {
+        throw new Error('无法连接服务器，请检查网络后重试');
+      });
       if (instanceRevision !== activeInstance.revision || sessionRevision !== this.sessionRevision) {
         throw new Error('会话已切换，请重新操作');
       }
@@ -146,7 +150,9 @@ export class ApiClient {
       transfer: { autoRedirect: false, timeout: { connectMs: 15000, transferMs: 240000 } }
     } });
     try {
-      const response = await session.fetch(new rcp.Request(activeInstance.apiUrl(path), 'POST', headers, form));
+      const response = await session.fetch(new rcp.Request(activeInstance.apiUrl(path), 'POST', headers, form)).catch(() => {
+        throw new Error('无法连接服务器，请检查网络后重试');
+      });
       if (instanceRevision !== activeInstance.revision || sessionRevision !== this.sessionRevision) {
         throw new Error('会话已切换，请重新操作');
       }
@@ -175,7 +181,9 @@ export class ApiClient {
     try {
       const request = new rcp.Request(activeInstance.apiUrl(path), method, headers,
         body ? JSON.stringify(body) : undefined);
-      const response = await session.fetch(request);
+      const response = await session.fetch(request).catch(() => {
+        throw new Error('无法连接服务器，请检查网络后重试');
+      });
       if (instanceRevision !== activeInstance.revision || sessionRevision !== this.sessionRevision) {
         throw new Error('会话已切换，请重新操作');
       }

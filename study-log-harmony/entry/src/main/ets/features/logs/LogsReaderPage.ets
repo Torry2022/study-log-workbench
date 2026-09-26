@@ -1813,6 +1813,26 @@ export struct LogsReaderPage {
   }
 
   @Builder
+  private aiToolsRail() {
+    Column({ space: 8 }) {
+      Button({ type: ButtonType.Normal }) {
+        SymbolGlyph($r('sys.symbol.chevron_backward')).fontSize(17).fontColor([$r('app.color.muted')])
+      }.width(38).height(38).padding(0).backgroundColor(Color.Transparent).borderRadius(8)
+        .accessibilityText('展开右侧栏').onClick(() => this.aiOpen = true)
+      Button({ type: ButtonType.Normal }) {
+        Image($r('app.media.wand_sparkles')).width(17).height(17).objectFit(ImageFit.Contain)
+      }.width(38).height(38).padding(0).backgroundColor(Color.Transparent).borderRadius(8)
+        .accessibilityText('AI生成').onClick(() => { this.aiMode = 'generate'; this.aiOpen = true; })
+      Button({ type: ButtonType.Normal }) {
+        Image($r('app.media.edit_3')).width(17).height(17).objectFit(ImageFit.Contain)
+      }.width(38).height(38).padding(0).backgroundColor(Color.Transparent).borderRadius(8)
+        .accessibilityText('重点标注').onClick(() => { this.aiMode = 'highlight'; this.aiOpen = true; })
+    }.width(52).height('100%').padding({ top: 14 }).alignItems(HorizontalAlign.Center)
+      .backgroundColor($r('app.color.surface_soft'))
+      .border({ width: { left: 1 }, color: $r('app.color.hairline') })
+  }
+
+  @Builder
   private reader() {
     Column() {
       this.heading()
@@ -2080,19 +2100,8 @@ export struct LogsReaderPage {
             }
             this.reader()
             if (this.isWide()) {
-              Column({ space: 12 }) {
-                ToolbarAction({ label: 'AI生成', icon: $r('app.media.wand_sparkles'),
-                  showLabel: false, active: this.aiOpen && this.aiMode === 'generate',
-                  onAction: () => { this.aiMode = 'generate'; this.aiOpen = true; } })
-                ToolbarAction({ label: '重点标注', icon: $r('app.media.edit_3'),
-                  showLabel: false, active: this.aiOpen && this.aiMode === 'highlight',
-                  onAction: () => { this.aiMode = 'highlight'; this.aiOpen = true; } })
-              }.width(52).height('100%').padding({ top: 12 })
-                .backgroundColor($r('app.color.surface_soft'))
-                .border({ width: { left: 1 }, color: $r('app.color.hairline') })
-              if (this.aiOpen) {
-                Column() { this.aiToolsPanel() }.width(360).height('100%')
-              }
+              if (this.aiOpen) Column() { this.aiToolsPanel() }.width(340).height('100%')
+              else this.aiToolsRail()
             }
           }.width('100%').height('100%')
           if (!this.isWide() && this.navigationOpen) {

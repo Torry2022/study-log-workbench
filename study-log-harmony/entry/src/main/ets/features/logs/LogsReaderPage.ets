@@ -2239,6 +2239,7 @@ export struct LogsReaderPage {
               this.moveAiTools(0);
             }
           })
+          }
           if (!this.isWide() && this.navigationOpen) {
             Row() {
               Column() {
@@ -2259,7 +2260,6 @@ export struct LogsReaderPage {
               Blank().layoutWeight(1).height('100%').onClick(() => this.navigationOpen = false)
             }.width('100%').height('100%').backgroundColor($r('app.color.scrim'))
               .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
-          }
           }
         }.layoutWeight(1).width('100%')
         if (!this.isWide() && !this.softwareKeyboardVisible) {

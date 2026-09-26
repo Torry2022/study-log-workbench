@@ -40,12 +40,16 @@ export struct FavoritesNavigation {
     }
     this.groupMenuId = group.id;
     this.groupRenameId = '';
-    this.groupRenameName = group.name;
+    this.groupRenameName = this.currentGroup(group.id)?.name || group.name;
   }
 
   private startGroupRename(group: FavoriteGroup): void {
     this.groupRenameId = group.id;
-    this.groupRenameName = group.name;
+    this.groupRenameName = this.currentGroup(group.id)?.name || group.name;
+  }
+
+  private currentGroup(id: string): FavoriteGroup | undefined {
+    return this.data.groups.find((item: FavoriteGroup) => item.id === id);
   }
 
   private async renameGroup(group: FavoriteGroup): Promise<void> {
@@ -58,10 +62,12 @@ export struct FavoritesNavigation {
 
   private confirmDeleteGroup(group: FavoriteGroup): void {
     if (this.data.groupActionBusy) return;
+    const current = this.currentGroup(group.id);
+    if (!current) return;
     const revision = this.viewRevision;
     const generation = this.data.generation();
     AlertDialog.show({
-      message: `删除分组“${group.name}”吗？收藏内容不会被删除。`,
+      message: `删除分组“${current.name}”吗？收藏内容不会被删除。`,
       primaryButton: { value: '保留', action: () => {} },
       secondaryButton: {
         value: '删除',

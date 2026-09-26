@@ -25,7 +25,8 @@ import { LogDisplayModeControl } from './components/LogDisplayModeControl';
 import { SearchField } from '../../common/ui/FormControls';
 import { ActionPanelHeader } from '../../common/ui/WorkspaceChrome';
 import { workspaceKey } from '../../common/ui/WorkspaceKeys';
-import { KeyCode } from '@kit.InputKit';
+import { KeyCode, pointer } from '@kit.InputKit';
+import { FrameAction } from '../../common/ui/FrameAction';
 import { DesktopLogCommands, DesktopMenuEntry } from '../../app/DesktopMenu';
 import { iconTint } from '../../common/ui/IconTint';
 import { InteractiveSurface, animateHover } from '../../common/ui/InteractiveSurface';
@@ -160,6 +161,16 @@ export struct LogsReaderPage {
   @State private searchResults: LogSearchResult[] = [];
   @State private searchHistory: string[] = [];
   @State private aiOpen: boolean = false;
+  @State private aiOffset: number = 420;
+  @State private aiPanelWidth: number = 340;
+  @State private aiAvailableWidth: number = 800;
+  @State private aiResizeHovered: boolean = false;
+  @State private aiResizing: boolean = false;
+  private aiWidthAdjusted: boolean = false;
+  private aiResizeStart: number = 340;
+  private aiClosing: boolean = false;
+  private aiAnimating: boolean = false;
+  private aiMotionRevision: number = 0;
   @State private aiMode: string = 'generate';
   @State private ai: LogAiController = new LogAiController(apiClient);
   @StorageProp('pref_rememberSearch') private rememberSearch: boolean = true;
@@ -1483,9 +1494,9 @@ export struct LogsReaderPage {
     Column() {
       if (!this.isWide()) {
         this.desktopMoreItem($r('app.media.wand_sparkles'), 'AI生成', !!this.day,
-          () => { this.aiMode = 'generate'; this.aiOpen = true; })
+          () => this.openAiTools('generate'))
         this.desktopMoreItem($r('app.media.edit_3'), '重点标注', !!this.day,
-          () => { this.aiMode = 'highlight'; this.aiOpen = true; })
+          () => this.openAiTools('highlight'))
       }
       if (this.sourceMode || this.splitMode) {
         if (!this.editorActionsInHeader()) {
@@ -1791,6 +1802,100 @@ export struct LogsReaderPage {
     } catch (error) { this.ai.message = error instanceof Error ? error.message : '应用重点标注失败'; }
   }
 
+  private openAiTools(mode: string = 'generate'): void {
+    this.aiMode = mode;
+    if (!this.isWide()) { this.aiOffset = 420; this.aiOpen = true; return; }
+    if (this.aiOpen && !this.aiClosing) return;
+    this.aiClosing = false;
+    this.aiOpen = true;
+    this.moveAiTools(0);
+  }
+
+  private closeAiTools(): void {
+    if (!this.isWide()) { this.aiMotionRevision++; this.aiAnimating = false; this.aiOffset = 420; this.aiOpen = false; return; }
+    if (!this.aiOpen || this.aiClosing) return;
+    this.aiClosing = true;
+    this.moveAiTools(420);
+  }
+
+  private moveAiTools(target: number): void {
+    const revision = ++this.aiMotionRevision;
+    this.aiAnimating = true;
+    const origin = this.aiOffset;
+    const started = Date.now();
+    const step = (): void => {
+      if (revision !== this.aiMotionRevision) return;
+      if (!this.isWide()) {
+        this.aiOffset = 420;
+        this.aiAnimating = false;
+        if (target === 420) this.aiOpen = false;
+        this.aiClosing = false;
+        return;
+      }
+      const progress = Math.min(1, Math.max(0, (Date.now() - started) / 240));
+      const eased = progress * progress * (3 - 2 * progress);
+      this.aiOffset = origin + (target - origin) * eased;
+      if (progress < 1) this.getUIContext().postFrameCallback(new FrameAction(step));
+      else {
+        this.aiAnimating = false;
+        if (target === 420) {
+          this.aiOpen = false;
+          this.aiClosing = false;
+        }
+      }
+    };
+    this.getUIContext().postFrameCallback(new FrameAction(step));
+  }
+
+  private resizeAiPanel(width: number): void {
+    this.aiPanelWidth = Math.max(220, Math.min(width, 720, Math.max(220, this.aiAvailableWidth - 400)));
+  }
+
+  private finishAiResize(): void {
+    this.aiResizing = false;
+    if (!this.aiResizeHovered) this.getUIContext().getCursorController().restoreDefault();
+  }
+
+  @Builder
+  private aiResizer() {
+    Stack({ alignContent: Alignment.Start }) {
+      Row().width(2).height('100%')
+        .backgroundColor(this.aiResizeHovered || this.aiResizing ? $r('app.color.primary') : Color.Transparent)
+        .hitTestBehavior(HitTestMode.None)
+    }.width(8).height('100%').backgroundColor(Color.Transparent)
+      .position({ x: 0, y: 0 }).zIndex(15).focusable(true)
+      .accessibilityText('调整右侧栏宽度').bindTips('拖拽调整右侧栏宽度', WORKSPACE_TIPS)
+      .id('log_ai_resizer')
+      .onHover((hovered: boolean) => {
+        this.aiResizeHovered = hovered;
+        if (hovered || this.aiResizing) this.getUIContext().getCursorController().setCursor(pointer.PointerStyle.WEST_EAST);
+        else this.getUIContext().getCursorController().restoreDefault();
+      })
+      .onDisAppear(() => {
+        this.aiResizeHovered = false;
+        this.aiResizing = false;
+        this.getUIContext().getCursorController().restoreDefault();
+      })
+      .gesture(PanGesture({ direction: PanDirection.Horizontal, distance: 1 })
+        .onActionStart(() => {
+          this.aiWidthAdjusted = true;
+          this.aiResizeStart = this.aiPanelWidth;
+          this.aiResizing = true;
+          this.getUIContext().getCursorController().setCursor(pointer.PointerStyle.WEST_EAST);
+        })
+        .onActionUpdate((event: GestureEvent) => this.resizeAiPanel(this.aiResizeStart - event.offsetX))
+        .onActionEnd(() => this.finishAiResize())
+        .onActionCancel(() => this.finishAiResize()))
+      .onKeyEvent((event: KeyEvent) => {
+        if (event.type !== KeyType.Down) return;
+        if (event.keyCode === KeyCode.KEYCODE_DPAD_LEFT || event.keyCode === KeyCode.KEYCODE_DPAD_RIGHT) {
+          event.stopPropagation();
+          this.aiWidthAdjusted = true;
+          this.resizeAiPanel(this.aiPanelWidth + (event.keyCode === KeyCode.KEYCODE_DPAD_LEFT ? 16 : -16));
+        }
+      })
+  }
+
   @Builder
   private aiToolsPanel() {
     LogAiPanel({ mode: $aiMode, instruction: this.ai.instruction,
@@ -1807,10 +1912,13 @@ export struct LogsReaderPage {
         !activeInstance.capabilities?.features.aiWriting.configured || this.aiMode === 'highlight' &&
         !activeInstance.capabilities?.features.aiHighlighting.configured ?
         '当前实例尚未配置对应模型能力' : ''),
-      desktop: this.isWide(), onClose: () => this.aiOpen = false,
+      desktop: this.isWide(), onClose: () => this.closeAiTools(),
       onImport: () => this.importAiMaterial(),
       onGenerate: () => this.ai.generate(this.selectedDate),
       onHighlight: () => this.highlightAiDraft(), onApply: () => this.applyAiOutput() })
+    .width(this.isWide() ? this.aiPanelWidth : '100%').height('100%')
+    .translate({ x: this.isWide() ? this.aiPanelWidth * this.aiOffset / 420 : 0 })
+    .flexShrink(0).id('log_ai_panel')
   }
 
   @Builder
@@ -1820,18 +1928,21 @@ export struct LogsReaderPage {
         SymbolGlyph($r('sys.symbol.chevron_backward')).fontSize(17).fontColor([$r('app.color.muted')])
       }.width(38).height(38).padding(0).backgroundColor(Color.Transparent).borderRadius(8)
         .id('log_ai_expand_button').accessibilityText('展开右侧栏')
-        .bindTips('展开右侧栏', WORKSPACE_TIPS).onClick(() => this.aiOpen = true)
+        .bindTips('展开右侧栏', WORKSPACE_TIPS).onClick(() => this.openAiTools(this.aiMode))
       Button({ type: ButtonType.Normal }) {
         Image($r('app.media.wand_sparkles')).width(17).height(17).objectFit(ImageFit.Contain)
       }.width(38).height(38).padding(0).backgroundColor(Color.Transparent).borderRadius(8)
         .id('log_ai_generate_button').accessibilityText('AI生成')
-        .bindTips('AI生成', WORKSPACE_TIPS).onClick(() => { this.aiMode = 'generate'; this.aiOpen = true; })
+        .bindTips('AI生成', WORKSPACE_TIPS).onClick(() => this.openAiTools('generate'))
       Button({ type: ButtonType.Normal }) {
         Image($r('app.media.edit_3')).width(17).height(17).objectFit(ImageFit.Contain)
       }.width(38).height(38).padding(0).backgroundColor(Color.Transparent).borderRadius(8)
         .id('log_ai_highlight_button').accessibilityText('重点标注')
-        .bindTips('重点标注', WORKSPACE_TIPS).onClick(() => { this.aiMode = 'highlight'; this.aiOpen = true; })
+        .bindTips('重点标注', WORKSPACE_TIPS).onClick(() => this.openAiTools('highlight'))
     }.width(52).height('100%').padding({ top: 14 }).alignItems(HorizontalAlign.Center)
+      .opacity(this.aiOffset / 420)
+      .hitTestBehavior(this.aiOpen && !this.aiClosing ? HitTestMode.None : HitTestMode.Default)
+      .id('log_ai_rail')
       .backgroundColor($r('app.color.surface_soft'))
       .border({ width: { left: 1 }, color: $r('app.color.hairline') })
   }
@@ -2104,10 +2215,20 @@ export struct LogsReaderPage {
             }
             this.reader()
             if (this.isWide()) {
-              if (this.aiOpen) Column() { this.aiToolsPanel() }.width(340).height('100%')
-              else this.aiToolsRail()
+              Stack({ alignContent: Alignment.TopEnd }) {
+                this.aiToolsRail()
+                if (this.aiOpen) this.aiToolsPanel()
+                if (this.aiOpen && this.aiOffset === 0) this.aiResizer()
+              }.width(52 + (this.aiPanelWidth - 52) * (1 - this.aiOffset / 420))
+                .height('100%').clip(true).id('log_ai_dock')
             }
-          }.width('100%').height('100%')
+          }.width('100%').height('100%').onAreaChange((_: Area, area: Area) => {
+            this.aiAvailableWidth = Number(area.width);
+            this.resizeAiPanel(this.aiWidthAdjusted ? this.aiPanelWidth : 340);
+            if (this.isWide() && this.aiOpen && !this.aiClosing && !this.aiAnimating && this.aiOffset === 420) {
+              this.moveAiTools(0);
+            }
+          })
           if (!this.isWide() && this.navigationOpen) {
             Row() {
               Column() {

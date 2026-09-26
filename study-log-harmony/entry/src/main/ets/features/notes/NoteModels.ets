@@ -76,7 +76,11 @@ export interface StudyNoteCandidateResponse {
 }
 
 export interface StudyNoteBatchRequest {
-  notes: StudyNoteRequest[];
+  notes: StudyNoteBatchItem[];
+}
+
+export interface StudyNoteBatchItem extends StudyNoteRequest {
+  clientId: string;
 }
 
 export interface StudyNoteBatchResponse {

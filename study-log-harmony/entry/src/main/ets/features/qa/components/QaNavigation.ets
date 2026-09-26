@@ -144,7 +144,7 @@ export struct QaNavigation {
             .borderRadius(8).clip(true)
           }
         }
-      }, (session: RagSessionSummary) => session.id)
+      }, (session: RagSessionSummary) => `${session.id}:${session.version}`)
     }
   }
 

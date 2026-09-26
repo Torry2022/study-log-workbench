@@ -3,7 +3,7 @@ import { fileIo, picker } from '@kit.CoreFileKit';
 import { droppedFileUris } from '../../../common/files/DroppedFiles';
 import { ApiError, apiClient, ApiUploadFile } from '../../../common/network/ApiClient';
 import { activeInstance } from '../../../common/network/InstanceConfig';
-import { StudyNoteBatchResponse, StudyNoteBatchRequest, StudyNoteCandidate, StudyNoteCandidateResponse, StudyNoteFacet, StudyNoteRequest } from '../NoteModels';
+import { StudyNoteBatchResponse, StudyNoteBatchRequest, StudyNoteBatchItem, StudyNoteCandidate, StudyNoteCandidateResponse, StudyNoteFacet } from '../NoteModels';
 import { cacheImportUri, NoteImportFile } from '../../../common/files/NoteImportFile';
 import { WorkspaceBreakpoint } from '../../../common/AppConfig';
 import { InlineStatus } from '../../../common/ui/FeedbackStates';
@@ -41,17 +41,18 @@ class CandidateDraft {
 @Component
 struct CandidateListItem {
   @ObjectLink draft: CandidateDraft;
+  @Prop selected: boolean = false;
   @Prop active: boolean = false;
   @Prop locked: boolean = false;
   @Prop ordinal: number = 1;
-  onToggle: () => void = () => {};
+  onToggle: (selected: boolean) => void = () => {};
   onActivate: () => void = () => {};
 
   build() {
     Row({ space: 8 }) {
-      Checkbox({ name: this.draft.id, group: 'candidate' }).select(this.draft.selected)
+      Checkbox({ name: this.draft.id, group: 'candidate' }).select(this.selected)
         .width(20).height(20).selectedColor($r('app.color.primary')).enabled(!this.locked)
-        .accessibilityText(`保存候选：${this.draft.title || '未命名随记'}`).onChange(() => this.onToggle())
+        .accessibilityText(`保存候选：${this.draft.title || '未命名随记'}`).onChange((selected: boolean) => this.onToggle(selected))
       Column({ space: 4 }) {
         Text(this.active ? `候选 ${this.ordinal}` : this.draft.title || '未命名随记').fontSize(14).fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.ink')).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -80,7 +81,8 @@ class UploadFile implements ApiUploadFile {
   }
 }
 
-class CandidateNote implements StudyNoteRequest {
+class CandidateNote implements StudyNoteBatchItem {
+  clientId: string;
   title: string;
   body: string;
   insight: string;
@@ -89,6 +91,7 @@ class CandidateNote implements StudyNoteRequest {
   recordedAt: string;
 
   constructor(draft: CandidateDraft, recordedAt: string, values: (value: string) => string[]) {
+    this.clientId = draft.id;
     this.title = draft.title.trim();
     this.body = draft.body.trim();
     this.insight = draft.insight.trim();
@@ -99,9 +102,9 @@ class CandidateNote implements StudyNoteRequest {
 }
 
 class CandidateBatch implements StudyNoteBatchRequest {
-  notes: StudyNoteRequest[];
+  notes: StudyNoteBatchItem[];
 
-  constructor(notes: StudyNoteRequest[]) {
+  constructor(notes: StudyNoteBatchItem[]) {
     this.notes = notes;
   }
 }
@@ -230,8 +233,8 @@ export struct NoteCandidateExtractor {
     this.drafts = this.drafts.slice();
   }
 
-  private toggle(index: number): void {
-    this.drafts[index].selected = !this.drafts[index].selected;
+  private toggle(index: number, selected: boolean): void {
+    this.drafts[index].selected = selected;
     this.refresh();
   }
 
@@ -335,7 +338,7 @@ export struct NoteCandidateExtractor {
     this.onBusyChange(true);
     this.message = '';
     const recordedAt = this.recordedAt;
-    const notes: StudyNoteRequest[] = [];
+    const notes: StudyNoteBatchItem[] = [];
     selected.forEach((draft: CandidateDraft) => notes.push(new CandidateNote(draft, recordedAt,
       (value: string): string[] => this.values(value))));
     try {
@@ -391,8 +394,9 @@ export struct NoteCandidateExtractor {
 
   @Builder
   private candidateRow(draft: CandidateDraft, index: number) {
-    CandidateListItem({ draft: this.drafts[index], active: this.activeId === draft.id, locked: this.saving, ordinal: index + 1,
-      onToggle: () => this.toggle(index), onActivate: () => this.activate(draft.id) })
+    CandidateListItem({ draft: this.drafts[index], selected: draft.selected,
+      active: this.activeId === draft.id, locked: this.saving, ordinal: index + 1,
+      onToggle: (selected: boolean) => this.toggle(index, selected), onActivate: () => this.activate(draft.id) })
   }
 
   @Builder

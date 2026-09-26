@@ -83,3 +83,47 @@ test('completed answers use versioned writes and retry an uncertain save without
   assert.equal(writes[2].body.baseVersion, 'v1');
   assert.equal(controller.sessionVersion, 'v2');
 });
+
+test('late stopped-answer save cannot reactivate a session after starting a new one', async () => {
+  const QaSessionController = await loadController();
+  let finishSave;
+  const controller = new QaSessionController({
+    cancelStream() {},
+    post: () => new Promise(resolve => { finishSave = resolve; }),
+    get: async () => ({ sessions: [] })
+  }, view());
+  controller.messages = [
+    { id: 'user-1', role: 'user', content: 'question' },
+    { id: 'assistant-1', role: 'assistant', content: 'partial' }
+  ];
+  controller.sending = true;
+  controller.stop();
+  await controller.newSession();
+  finishSave({ session: { id: 'old-session', version: 'v1' } });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(controller.sessionId, '');
+  assert.equal(controller.messages.length, 0);
+});
+
+test('late stopped-answer save cannot replace a newly opened session', async () => {
+  const QaSessionController = await loadController();
+  let finishSave;
+  const controller = new QaSessionController({
+    cancelStream() {},
+    post: () => new Promise(resolve => { finishSave = resolve; }),
+    get: async path => path === '/rag/sessions/new-session' ? {
+      session: { id: 'new-session', version: 'v2', messages: [], answerMode: 'logs_only' }
+    } : { sessions: [] }
+  }, view());
+  controller.messages = [
+    { id: 'user-1', role: 'user', content: 'question' },
+    { id: 'assistant-1', role: 'assistant', content: 'partial' }
+  ];
+  controller.sending = true;
+  controller.stop();
+  await controller.openSession('new-session');
+  finishSave({ session: { id: 'old-session', version: 'v1' } });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(controller.sessionId, 'new-session');
+  assert.equal(controller.sessionVersion, 'v2');
+});

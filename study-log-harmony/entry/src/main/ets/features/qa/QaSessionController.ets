@@ -102,6 +102,7 @@ export class QaSessionController {
     this.view.onActiveSessionChange('');
     if (this.messages.length > 0) await this.view.onBeforeSessionChange();
     if (revision !== this.sessionRequestRevision) return;
+    this.sendRevision += 1;
     this.pendingSessionKey = '';
     this.sessionDocumentKey = '';
     this.sessionId = '';
@@ -132,6 +133,7 @@ export class QaSessionController {
       if (revision !== this.sessionRequestRevision) return;
       await this.view.onBeforeSessionChange();
       if (revision !== this.sessionRequestRevision) return;
+      this.sendRevision += 1;
       this.sessionDocumentKey = `session:${response.session.id}:${revision}`;
       this.pendingSessionKey = this.sessionDocumentKey;
       this.sessionId = response.session.id;

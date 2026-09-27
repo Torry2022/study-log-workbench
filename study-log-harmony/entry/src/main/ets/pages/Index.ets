@@ -6,6 +6,7 @@ import { apiClient } from '../common/network/ApiClient';
 import { LoginPage } from '../app/LoginPage';
 import { TokenStore } from '../common/storage/TokenStore';
 import { LogsReaderPage, PreservedLogDraft } from '../features/logs/LogsReaderPage';
+import { logDraftStore } from '../features/logs/LogDraftStore';
 import { DesktopLogCommands, DesktopMenuEntry } from '../app/DesktopMenu';
 import { DesktopTitleBar } from '../app/components/DesktopTitleBar';
 import { ImagePreview } from '../common/ui/ImagePreview';
@@ -33,6 +34,7 @@ struct Index {
   private drafts: Map<string, PreservedLogDraft> = new Map();
   private captureDraft: () => Promise<PreservedLogDraft | undefined> = async () => undefined;
   private expiring: boolean = false;
+  private draftStoreErrorShown: boolean = false;
 
   aboutToAppear(): void {
     this.registerFonts();
@@ -48,7 +50,7 @@ struct Index {
     this.expiring = true;
     try {
       const draft = await this.captureDraft();
-      if (draft) this.drafts.set(draft.namespace, draft);
+      if (draft) this.recordDraft(draft.namespace, draft);
     } catch (_) { /* Retain the last editor change already recorded. */ }
     apiClient.setToken('');
     this.restoreOnAppear = false;
@@ -57,9 +59,20 @@ struct Index {
     this.expiring = false;
   }
 
-  private recordDraft(draft: PreservedLogDraft | undefined): void {
-    if (draft) this.drafts.set(draft.namespace, draft);
-    else if (activeInstance.namespace) this.drafts.delete(activeInstance.namespace);
+  private recordDraft(namespace: string, draft: PreservedLogDraft | undefined): void {
+    if (!namespace || namespace !== activeInstance.namespace) return;
+    if (draft) this.drafts.set(namespace, draft);
+    else this.drafts.delete(namespace);
+    try {
+      if (draft) logDraftStore.save(draft);
+      else logDraftStore.clear(namespace);
+      this.draftStoreErrorShown = false;
+    } catch (_) {
+      if (!this.draftStoreErrorShown) {
+        this.draftStoreErrorShown = true;
+        appFeedback.show('本机草稿暂存失败，请及时复制或保存当前内容', 'error');
+      }
+    }
   }
 
   private registerFonts(): void {
@@ -90,7 +103,19 @@ struct Index {
     }
   }
 
-  private connectedTo(_origin: string, _capabilities: InstanceCapabilities): void {
+  private async connectedTo(_origin: string, _capabilities: InstanceCapabilities): Promise<void> {
+    const revision = activeInstance.revision;
+    const namespace = activeInstance.namespace;
+    try {
+      await logDraftStore.initialize(this.getUIContext().getHostContext() as common.Context);
+      if (revision !== activeInstance.revision) return;
+      const draft = logDraftStore.load(namespace);
+      if (draft) this.drafts.set(namespace, draft);
+      else this.drafts.delete(namespace);
+    } catch (_) {
+      appFeedback.show('本机草稿读取失败，请检查设备存储', 'error');
+    }
+    if (revision !== activeInstance.revision) return;
     this.connected = true;
   }
 
@@ -156,7 +181,8 @@ struct Index {
           onOpenHelp: () => this.helpOpen = true,
           onRegisterDesktopCommands: (commands: DesktopLogCommands) => this.desktopCommands = commands,
           initialDraft: this.drafts.get(activeInstance.namespace),
-          onDraftChange: (draft: PreservedLogDraft | undefined) => this.recordDraft(draft),
+          onDraftChange: (namespace: string, draft: PreservedLogDraft | undefined) =>
+            this.recordDraft(namespace, draft),
           onCaptureDraft: (capture: () => Promise<PreservedLogDraft | undefined>) => this.captureDraft = capture })
       } else {
         LoginPage({ restoreOnAppear: this.restoreOnAppear,

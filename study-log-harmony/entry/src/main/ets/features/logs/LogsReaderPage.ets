@@ -54,12 +54,9 @@ import { QaNavigation } from '../qa/components/QaNavigation';
 import { QaNavigationController } from '../qa/QaNavigationController';
 import { RagSessionSummary } from '../qa/QaModels';
 import { AppTopBar, BottomNavigation } from '../../app/components/WorkspaceNavigation';
+import { PreservedLogDraft, restoredLogDraft } from './LogDraftPolicy';
 
-export interface PreservedLogDraft {
-  namespace: string;
-  date: string;
-  text: string;
-}
+export { PreservedLogDraft } from './LogDraftPolicy';
 
 interface LogOutlineHeading { id: string; text: string; level: number; }
 interface AddFavoriteResponse { favorite: FavoriteHeading; }
@@ -73,7 +70,7 @@ export struct LogsReaderPage {
   onOpenSettings: () => void = () => {};
   onOpenAbout: () => void = () => {};
   onOpenHelp: () => void = () => {};
-  onDraftChange: (draft: PreservedLogDraft | undefined) => void = () => {};
+  onDraftChange: (namespace: string, draft: PreservedLogDraft | undefined) => void = () => {};
   onCaptureDraft: (capture: () => Promise<PreservedLogDraft | undefined>) => void = () => {};
   onRegisterDesktopCommands: (commands: DesktopLogCommands) => void = () => {};
   initialDraft: PreservedLogDraft | undefined = undefined;
@@ -146,6 +143,7 @@ export struct LogsReaderPage {
   @State private editorInitialText: string = '';
   @State private previewText: string = '';
   @State private savedText: string = '';
+  private draftBaseVersion: string | null = null;
   @State private dirty: boolean = false;
   @State private saving: boolean = false;
   @State private deleting: boolean = false;
@@ -592,8 +590,9 @@ export struct LogsReaderPage {
   }
 
   private reportDraft(): void {
-    this.onDraftChange(this.dirty && this.selectedDate ? {
-      namespace: activeInstance.namespace, date: this.selectedDate, text: this.draftText
+    const namespace = activeInstance.namespace;
+    this.onDraftChange(namespace, this.dirty && this.selectedDate ? {
+      namespace, date: this.selectedDate, text: this.draftText, baseVersion: this.draftBaseVersion
     } : undefined);
   }
 
@@ -606,7 +605,8 @@ export struct LogsReaderPage {
         if (snapshot.documentKey === this.selectedDate) text = snapshot.text;
       } catch (_) { /* Keep the last observed draft if the editor is closing. */ }
     }
-    return text !== this.savedText ? { namespace: activeInstance.namespace, date: this.selectedDate, text } : undefined;
+    return text !== this.savedText ? { namespace: activeInstance.namespace, date: this.selectedDate,
+      text, baseVersion: this.draftBaseVersion } : undefined;
   }
 
   private bodyFromDay(day: DayEntry): string {
@@ -681,11 +681,16 @@ export struct LogsReaderPage {
       this.dirty = snapshot.text !== this.savedText;
       this.reportDraft();
       if (!this.dirty) return;
+      if (this.draftBaseVersion !== this.day.version) {
+        this.saveError = '恢复的草稿基于旧版本，服务器内容已变化。请复制草稿并刷新核对，未覆盖服务器。';
+        return;
+      }
       const response = await this.writes.save({ date, content: snapshot.text, baseVersion: this.day.version });
       if (lifecycle !== this.lifecycle || revision !== this.dayRevision || this.day?.date !== date) return;
       if (!response.day || response.day.date !== date || !response.day.version) throw new Error('保存响应格式异常');
       this.day = response.day;
       this.savedText = snapshot.text;
+      this.draftBaseVersion = response.day.version;
       this.dirty = this.draftText !== snapshot.text;
       this.reportDraft();
       this.previewText = this.draftText;
@@ -743,6 +748,7 @@ export struct LogsReaderPage {
     this.day = day;
     const body = this.bodyFromDay(day);
     this.savedText = body;
+    this.draftBaseVersion = day.version;
     this.draftText = body;
     this.editorInitialText = body;
     this.previewText = body;
@@ -1086,6 +1092,7 @@ export struct LogsReaderPage {
       this.day = response.day;
       const body = this.bodyFromDay(response.day);
       this.savedText = body;
+      this.draftBaseVersion = response.day.version;
       this.draftText = body;
       this.editorInitialText = body;
       this.previewText = body;
@@ -1170,16 +1177,20 @@ export struct LogsReaderPage {
       this.day = response.day;
       this.activeOutlineIndex = Math.max(0, headingIndex);
       const body = this.bodyFromDay(response.day);
-      const restore = !this.restoredDraftApplied && this.initialDraft?.namespace === activeInstance.namespace &&
-        this.initialDraft.date === date ? this.initialDraft : undefined;
-      if (restore) this.restoredDraftApplied = true;
+      const restore = !this.restoredDraftApplied ? restoredLogDraft(this.initialDraft,
+        activeInstance.namespace, date, body, response.day.version) : undefined;
+      if (this.initialDraft?.namespace === activeInstance.namespace && this.initialDraft.date === date) {
+        this.restoredDraftApplied = true;
+      }
       this.savedText = body;
+      this.draftBaseVersion = restore ? this.initialDraft!.baseVersion : response.day.version;
       this.draftText = restore ? restore.text : body;
       this.editorInitialText = this.draftText;
       this.previewText = this.draftText;
       this.dirty = this.draftText !== body;
       this.reportDraft();
-      this.saveError = '';
+      this.saveError = restore?.conflict ?
+        '已恢复本机草稿，但服务器版本已变化。请核对后复制草稿并刷新，保存不会覆盖新版本。' : '';
       this.targetHeading = heading;
       this.targetHeadingIndex = headingIndex;
       if (heading) this.targetRevision++;

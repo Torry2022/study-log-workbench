@@ -1467,21 +1467,30 @@ export struct LogsReaderPage {
   }
 
   private setDesktopNavigationCollapsed(collapsed: boolean, section: number = -1): void {
-    if (collapsed === this.desktopNavigationCollapsed || this.sidebarAnimating) return;
+    if (collapsed === this.desktopNavigationCollapsed || this.sidebarAnimating || this.aiAnimating) return;
     const revision = ++this.sidebarMotionRevision;
     const origin = this.desktopNavigationCollapsed ? 0 : 1;
     const target = collapsed ? 0 : 1;
-    const started = Date.now();
     this.sidebarExpansion = origin;
     this.sidebarAnimating = true;
     this.desktopNavigationCollapsed = collapsed;
+    const targetNavigationWidth = collapsed ? 52 :
+      (this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE ? 260 : 220);
+    const toolbarWidths = this.beginToolbarMotion(this.aiAvailableWidth - targetNavigationWidth -
+      (52 + (this.aiPanelWidth - 52) * (1 - this.aiOffset / 420)));
+    const started = Date.now();
     const step = (): void => {
       if (revision !== this.sidebarMotionRevision) return;
       const progress = Math.min(1, (Date.now() - started) / 240);
-      this.sidebarExpansion = origin + (target - origin) * progress * progress * (3 - 2 * progress);
+      const eased = progress * progress * (3 - 2 * progress);
+      this.sidebarExpansion = origin + (target - origin) * eased;
+      this.advanceToolbarMotion(toolbarWidths, eased);
       if (progress < 1) this.getUIContext().postFrameCallback(new FrameAction(step));
       else {
         this.sidebarAnimating = false;
+        this.getUIContext().postFrameCallback(new FrameAction(() => {
+          if (revision === this.sidebarMotionRevision && !this.aiAnimating) this.finishToolbarMotion();
+        }));
         if (!collapsed && section >= 0) this.logNavigationScroller.scrollToIndex(section, false, ScrollAlign.START);
       }
     };
@@ -1887,6 +1896,7 @@ export struct LogsReaderPage {
   }
 
   private openAiTools(mode: string = 'generate'): void {
+    if (this.sidebarAnimating) return;
     this.aiMode = mode;
     if (!this.isWide()) { this.aiOffset = 420; this.aiOpen = true; return; }
     if (this.aiOpen && !this.aiClosing) return;
@@ -1896,6 +1906,7 @@ export struct LogsReaderPage {
   }
 
   private closeAiTools(): void {
+    if (this.sidebarAnimating) return;
     if (!this.isWide()) { this.aiMotionRevision++; this.aiAnimating = false; this.aiOffset = 420;
       this.toolbarMotionWidth = -1; this.toolbarActionWidths = []; this.aiOpen = false; return; }
     if (!this.aiOpen || this.aiClosing) return;
@@ -1903,23 +1914,38 @@ export struct LogsReaderPage {
     this.moveAiTools(420);
   }
 
-  private moveAiTools(target: number): void {
-    const revision = ++this.aiMotionRevision;
-    this.aiAnimating = true;
-    const origin = this.aiOffset;
+  private beginToolbarMotion(width: number): number[][] {
     const actions = ['refresh', 'export', 'backup', 'delete'];
     const labels = ['刷新', '导出', '备份', '删除'];
     const originalWidths = actions.map((action: string, index: number) =>
       this.desktopActionSlotWidth(action, labels[index]));
     this.toolbarActionWidths = originalWidths;
-    this.toolbarMotionWidth = Math.max(0, this.aiAvailableWidth - this.desktopNavigationWidth() -
-      (target === 0 ? this.aiPanelWidth : 52));
+    this.toolbarMotionWidth = Math.max(0, width);
     this.getUIContext().animateTo({ duration: 240, curve: Curve.EaseInOut }, () => {
       this.updateToolbarWidth(this.toolbarMotionWidth);
     });
     const targetWidths = actions.map((action: string, index: number) =>
       !this.documentActionsInHeader(action) ? 0 :
         (this.showToolbarLabels(action) ? toolbarActionWidth(labels[index]) : 40));
+    return [originalWidths, targetWidths];
+  }
+
+  private advanceToolbarMotion(widths: number[][], progress: number): void {
+    this.toolbarActionWidths = widths[0].map((width: number, index: number) =>
+      width + (widths[1][index] - width) * progress);
+  }
+
+  private finishToolbarMotion(): void {
+    this.toolbarMotionWidth = -1;
+    this.toolbarActionWidths = [];
+  }
+
+  private moveAiTools(target: number): void {
+    const revision = ++this.aiMotionRevision;
+    this.aiAnimating = true;
+    const origin = this.aiOffset;
+    const toolbarWidths = this.beginToolbarMotion(this.aiAvailableWidth - this.desktopNavigationWidth() -
+      (target === 0 ? this.aiPanelWidth : 52));
     const started = Date.now();
     const step = (): void => {
       if (revision !== this.aiMotionRevision) return;
@@ -1935,8 +1961,7 @@ export struct LogsReaderPage {
       const progress = Math.min(1, Math.max(0, (Date.now() - started) / 240));
       const eased = progress * progress * (3 - 2 * progress);
       this.aiOffset = origin + (target - origin) * eased;
-      this.toolbarActionWidths = originalWidths.map((width: number, index: number) =>
-        width + (targetWidths[index] - width) * eased);
+      this.advanceToolbarMotion(toolbarWidths, eased);
       if (progress < 1) this.getUIContext().postFrameCallback(new FrameAction(step));
       else {
         this.aiAnimating = false;
@@ -1945,9 +1970,8 @@ export struct LogsReaderPage {
           this.aiClosing = false;
         }
         this.getUIContext().postFrameCallback(new FrameAction(() => {
-          if (revision !== this.aiMotionRevision) return;
-          this.toolbarMotionWidth = -1;
-          this.toolbarActionWidths = [];
+          if (revision !== this.aiMotionRevision || this.sidebarAnimating) return;
+          this.finishToolbarMotion();
         }));
       }
     };

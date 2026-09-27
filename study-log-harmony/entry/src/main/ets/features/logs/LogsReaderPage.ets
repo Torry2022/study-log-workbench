@@ -122,6 +122,9 @@ export struct LogsReaderPage {
   @State private statsMonthRevision: number = 0;
   @State private statsRefreshRevision: number = 0;
   @State private desktopNavigationCollapsed: boolean = false;
+  @State private sidebarExpansion: number = 1;
+  @State private sidebarAnimating: boolean = false;
+  private sidebarMotionRevision: number = 0;
   @State private navigationRailHover: string = '';
   @State private navigationMonthsExpanded: boolean = false;
   @State private navigationDayQuery: string = '';
@@ -134,6 +137,8 @@ export struct LogsReaderPage {
   @State private headerWidth: number = 600;
   @State private headerDateWidth: number = 190;
   @State private toolbarDensity: ToolbarDensity = ToolbarDensity.OVERFLOW;
+  private toolbarMotionWidth: number = -1;
+  @State private toolbarActionWidths: number[] = [];
   @State private sourceMode: boolean = false;
   @State private splitMode: boolean = false;
   @State private editorReady: boolean = false;
@@ -258,6 +263,7 @@ export struct LogsReaderPage {
   }
 
   aboutToDisappear(): void {
+    this.sidebarMotionRevision++;
     this.ai.dispose();
     this.favoritesData.dispose();
     this.lifecycle++;
@@ -448,6 +454,7 @@ export struct LogsReaderPage {
   }
 
   private updateToolbarWidth(width: number): void {
+    if (this.toolbarMotionWidth >= 0) width = this.toolbarMotionWidth;
     this.headerWidth = width;
     const compactHeading = 32 + this.headerDateWidth + 80 + 24;
     const compact = compactHeading + 32 + 126 + 80 + 7 * 8;
@@ -458,6 +465,17 @@ export struct LogsReaderPage {
     const full = fullHeading + 3 * toolbarActionWidth('浏览') + 6 + documentActions +
       toolbarActionWidth('保存中') + 40 + editorActions + 9 * 8;
     this.toolbarDensity = resolveToolbarDensity(width, compact, full, this.toolbarDensity);
+  }
+
+  private desktopActionSlotWidth(action: string, label: string): number {
+    const index = ['refresh', 'export', 'backup', 'delete'].indexOf(action);
+    if (index >= 0 && this.toolbarActionWidths.length > index) return this.toolbarActionWidths[index];
+    if (!this.documentActionsInHeader(action)) return 0;
+    return this.showToolbarLabels(action) ? toolbarActionWidth(label) : 40;
+  }
+
+  private desktopActionSlotPresence(action: string, label: string): number {
+    return Math.min(1, this.desktopActionSlotWidth(action, label) / 40);
   }
 
   private showToolbarLabels(group: string = 'mode'): boolean {
@@ -1413,7 +1431,7 @@ export struct LogsReaderPage {
             SymbolGlyph($r('sys.symbol.chevron_left')).fontSize(16).fontColor([$r('app.color.body')])
           }.width(34).height(34).padding(0).backgroundColor(Color.Transparent).borderRadius(8)
             .id('sidebar_collapse').accessibilityText('折叠侧栏')
-            .onClick(() => this.desktopNavigationCollapsed = true)
+            .onClick(() => this.setDesktopNavigationCollapsed(true))
         }.width('100%').height(52).padding({ left: 16, right: 10 })
           .border({ width: { bottom: 1 }, color: $r('app.color.hairline_soft') })
       }
@@ -1437,11 +1455,36 @@ export struct LogsReaderPage {
     .backgroundColor(this.isWide() ? $r('app.color.surface_soft') : $r('app.color.canvas'))
   }
 
+  private setDesktopNavigationCollapsed(collapsed: boolean, section: number = -1): void {
+    if (collapsed === this.desktopNavigationCollapsed || this.sidebarAnimating) return;
+    const revision = ++this.sidebarMotionRevision;
+    const origin = this.desktopNavigationCollapsed ? 0 : 1;
+    const target = collapsed ? 0 : 1;
+    const started = Date.now();
+    this.sidebarExpansion = origin;
+    this.sidebarAnimating = true;
+    this.desktopNavigationCollapsed = collapsed;
+    const step = (): void => {
+      if (revision !== this.sidebarMotionRevision) return;
+      const progress = Math.min(1, (Date.now() - started) / 240);
+      this.sidebarExpansion = origin + (target - origin) * progress * progress * (3 - 2 * progress);
+      if (progress < 1) this.getUIContext().postFrameCallback(new FrameAction(step));
+      else {
+        this.sidebarAnimating = false;
+        if (!collapsed && section >= 0) this.logNavigationScroller.scrollToIndex(section, false, ScrollAlign.START);
+      }
+    };
+    this.getUIContext().postFrameCallback(new FrameAction(step));
+  }
+
   private expandNavigation(section: number = -1): void {
-    this.desktopNavigationCollapsed = false;
-    if (section >= 0) {
-      setTimeout((): void => { this.logNavigationScroller.scrollToIndex(section, false, ScrollAlign.START); }, 0);
-    }
+    this.setDesktopNavigationCollapsed(false, section);
+  }
+
+  private desktopNavigationWidth(): number {
+    const full = this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE ? 260 : 220;
+    return 52 + (full - 52) * (this.sidebarAnimating ? this.sidebarExpansion :
+      (this.desktopNavigationCollapsed ? 0 : 1));
   }
 
   @Builder
@@ -1627,32 +1670,52 @@ export struct LogsReaderPage {
       LogDisplayModeControl({ sourceMode: this.sourceMode, splitMode: this.splitMode,
         expanded: this.expandedModeSelector(), showLabels: this.showToolbarLabels('mode'),
         onMode: (mode: string) => this.switchMode(mode === 'source', mode === 'split') })
-      if (this.documentActionsInHeader('refresh')) {
+      Column() {
         ToolbarAction({ label: '刷新', icon: $r('app.media.refresh_cw'), iconSize: 15,
           showLabel: this.showToolbarLabels('refresh'),
           available: !this.saving && !this.deleting && !this.imageBusy,
           onAction: () => this.refreshLog() })
-      }
-      if (this.documentActionsInHeader('export')) {
+      }.width(this.desktopActionSlotWidth('refresh', '刷新')).clip(true)
+        .margin({ left: (this.headerWidth < 440 ? 4 : 8) *
+          (this.desktopActionSlotPresence('refresh', '刷新') - 1) })
+        .opacity(this.desktopActionSlotPresence('refresh', '刷新'))
+        .hitTestBehavior(this.documentActionsInHeader('refresh') ? HitTestMode.Default : HitTestMode.None)
+        .accessibilityLevel(this.documentActionsInHeader('refresh') ? 'auto' : 'no-hide-descendants')
+      Column() {
         ToolbarAction({ label: '导出', icon: $r('app.media.download'), iconSize: 15,
           showLabel: this.showToolbarLabels('export'), available: !this.exportBusy,
           onAction: () => this.exportMenuOpen = true })
           .bindPopup(this.exportMenuOpen, { builder: this.exportActions(), placement: Placement.BottomRight,
             enableArrow: false, popupColor: $r('app.color.canvas'), radius: 8,
             onStateChange: (event) => { if (!event.isVisible) this.exportMenuOpen = false; } })
-      }
-      if (this.documentActionsInHeader('backup')) {
+      }.width(this.desktopActionSlotWidth('export', '导出')).clip(true)
+        .margin({ left: (this.headerWidth < 440 ? 4 : 8) *
+          (this.desktopActionSlotPresence('export', '导出') - 1) })
+        .opacity(this.desktopActionSlotPresence('export', '导出'))
+        .hitTestBehavior(this.documentActionsInHeader('export') ? HitTestMode.Default : HitTestMode.None)
+        .accessibilityLevel(this.documentActionsInHeader('export') ? 'auto' : 'no-hide-descendants')
+      Column() {
         ToolbarAction({ label: '备份', icon: $r('app.media.database_backup'), iconSize: 15,
           showLabel: this.showToolbarLabels('backup'),
           available: !!this.day && !this.saving && !this.deleting,
           onAction: () => this.backupOpen = true })
-      }
-      if (this.documentActionsInHeader('delete')) {
+      }.width(this.desktopActionSlotWidth('backup', '备份')).clip(true)
+        .margin({ left: (this.headerWidth < 440 ? 4 : 8) *
+          (this.desktopActionSlotPresence('backup', '备份') - 1) })
+        .opacity(this.desktopActionSlotPresence('backup', '备份'))
+        .hitTestBehavior(this.documentActionsInHeader('backup') ? HitTestMode.Default : HitTestMode.None)
+        .accessibilityLevel(this.documentActionsInHeader('backup') ? 'auto' : 'no-hide-descendants')
+      Column() {
         ToolbarAction({ label: '删除', icon: $r('app.media.trash_2'), iconSize: 15,
           showLabel: this.showToolbarLabels('delete'), danger: true, busy: this.deleting,
           available: !!this.day?.exists && !this.saving,
           onAction: () => this.confirmDelete() })
-      }
+      }.width(this.desktopActionSlotWidth('delete', '删除')).clip(true)
+        .margin({ left: (this.headerWidth < 440 ? 4 : 8) *
+          (this.desktopActionSlotPresence('delete', '删除') - 1) })
+        .opacity(this.desktopActionSlotPresence('delete', '删除'))
+        .hitTestBehavior(this.documentActionsInHeader('delete') ? HitTestMode.Default : HitTestMode.None)
+        .accessibilityLevel(this.documentActionsInHeader('delete') ? 'auto' : 'no-hide-descendants')
       ToolbarAction({ label: this.saving ? '保存中' : '保存', reservedLabel: '保存中',
         icon: $r('app.media.save'), iconSize: 15,
         showLabel: this.showToolbarLabels('save'), primary: true, busy: this.saving,
@@ -1822,7 +1885,8 @@ export struct LogsReaderPage {
   }
 
   private closeAiTools(): void {
-    if (!this.isWide()) { this.aiMotionRevision++; this.aiAnimating = false; this.aiOffset = 420; this.aiOpen = false; return; }
+    if (!this.isWide()) { this.aiMotionRevision++; this.aiAnimating = false; this.aiOffset = 420;
+      this.toolbarMotionWidth = -1; this.toolbarActionWidths = []; this.aiOpen = false; return; }
     if (!this.aiOpen || this.aiClosing) return;
     this.aiClosing = true;
     this.moveAiTools(420);
@@ -1832,12 +1896,27 @@ export struct LogsReaderPage {
     const revision = ++this.aiMotionRevision;
     this.aiAnimating = true;
     const origin = this.aiOffset;
+    const actions = ['refresh', 'export', 'backup', 'delete'];
+    const labels = ['刷新', '导出', '备份', '删除'];
+    const originalWidths = actions.map((action: string, index: number) =>
+      this.desktopActionSlotWidth(action, labels[index]));
+    this.toolbarActionWidths = originalWidths;
+    this.toolbarMotionWidth = Math.max(0, this.aiAvailableWidth - this.desktopNavigationWidth() -
+      (target === 0 ? this.aiPanelWidth : 52));
+    this.getUIContext().animateTo({ duration: 240, curve: Curve.EaseInOut }, () => {
+      this.updateToolbarWidth(this.toolbarMotionWidth);
+    });
+    const targetWidths = actions.map((action: string, index: number) =>
+      !this.documentActionsInHeader(action) ? 0 :
+        (this.showToolbarLabels(action) ? toolbarActionWidth(labels[index]) : 40));
     const started = Date.now();
     const step = (): void => {
       if (revision !== this.aiMotionRevision) return;
       if (!this.isWide()) {
         this.aiOffset = 420;
         this.aiAnimating = false;
+        this.toolbarMotionWidth = -1;
+        this.toolbarActionWidths = [];
         if (target === 420) this.aiOpen = false;
         this.aiClosing = false;
         return;
@@ -1845,6 +1924,8 @@ export struct LogsReaderPage {
       const progress = Math.min(1, Math.max(0, (Date.now() - started) / 240));
       const eased = progress * progress * (3 - 2 * progress);
       this.aiOffset = origin + (target - origin) * eased;
+      this.toolbarActionWidths = originalWidths.map((width: number, index: number) =>
+        width + (targetWidths[index] - width) * eased);
       if (progress < 1) this.getUIContext().postFrameCallback(new FrameAction(step));
       else {
         this.aiAnimating = false;
@@ -1852,6 +1933,11 @@ export struct LogsReaderPage {
           this.aiOpen = false;
           this.aiClosing = false;
         }
+        this.getUIContext().postFrameCallback(new FrameAction(() => {
+          if (revision !== this.aiMotionRevision) return;
+          this.toolbarMotionWidth = -1;
+          this.toolbarActionWidths = [];
+        }));
       }
     };
     this.getUIContext().postFrameCallback(new FrameAction(step));
@@ -1954,7 +2040,6 @@ export struct LogsReaderPage {
       .hitTestBehavior(this.aiOpen && !this.aiClosing ? HitTestMode.None : HitTestMode.Default)
       .id('log_ai_rail')
       .backgroundColor($r('app.color.surface_soft'))
-      .border({ width: { left: 1 }, color: $r('app.color.hairline') })
   }
 
   @Builder
@@ -2113,6 +2198,7 @@ export struct LogsReaderPage {
                     .layoutWeight(1)
                 }.width(this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE ? 260 : 220)
                   .height('100%').backgroundColor($r('app.color.surface_soft'))
+                  .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
                   .border({ width: { right: 1 }, color: $r('app.color.hairline') })
               }
               QaPage({ navigationSessionId: this.qaSessionId, navigationRequestRevision: this.qaRequestRevision,
@@ -2145,6 +2231,7 @@ export struct LogsReaderPage {
                     onTag: (tag: string) => this.noteTagFilter = tag })
                 }.width(this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE ? 260 : 220)
                   .height('100%').backgroundColor($r('app.color.surface_soft'))
+                  .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
                   .border({ width: { right: 1 }, color: $r('app.color.hairline') })
               }
               NotesPage({ navigationYear: this.noteYearFilter, navigationTag: this.noteTagFilter,
@@ -2171,6 +2258,7 @@ export struct LogsReaderPage {
                     onRetry: () => this.favoritesData.load() })
                 }.width(this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE ? 260 : 220)
                   .height('100%').backgroundColor($r('app.color.surface_soft'))
+                  .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
                   .border({ width: { right: 1 }, color: $r('app.color.hairline') })
               }
               FavoritesPage({ data: this.favoritesData, viewMode: this.favoritesViewMode,
@@ -2201,6 +2289,7 @@ export struct LogsReaderPage {
                     onRetry: () => this.statsRefreshRevision++ })
                 }.width(this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE ? 260 : 220)
                   .height('100%').backgroundColor($r('app.color.surface_soft'))
+                  .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
                   .border({ width: { right: 1 }, color: $r('app.color.hairline') })
               }
               StatsPage({ requestedMonth: this.statsMonth, requestedMonthRevision: this.statsMonthRevision,
@@ -2215,12 +2304,29 @@ export struct LogsReaderPage {
           } else {
           Row() {
             if (this.isWide()) {
-              Column() {
-                if (this.desktopNavigationCollapsed) this.desktopNavigationRail()
-                else this.navigation()
-              }.width(this.desktopNavigationCollapsed ? 52 :
-                (this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE ? 260 : 220))
+              Stack({ alignContent: Alignment.TopStart }) {
+                Column() { this.navigation() }
+                  .width(this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE ? 260 : 220)
+                  .height('100%')
+                  .opacity(this.sidebarAnimating ? this.sidebarExpansion :
+                    (this.desktopNavigationCollapsed ? 0 : 1))
+                  .visibility(!this.desktopNavigationCollapsed || this.sidebarAnimating ?
+                    Visibility.Visible : Visibility.Hidden)
+                  .hitTestBehavior(this.desktopNavigationCollapsed || this.sidebarAnimating ?
+                    HitTestMode.None : HitTestMode.Default)
+                  .accessibilityLevel(this.desktopNavigationCollapsed ? 'no-hide-descendants' : 'auto')
+                Column() { this.desktopNavigationRail() }.width(52).height('100%')
+                  .opacity(this.sidebarAnimating ? 1 - this.sidebarExpansion :
+                    (this.desktopNavigationCollapsed ? 1 : 0))
+                  .visibility(this.desktopNavigationCollapsed || this.sidebarAnimating ?
+                    Visibility.Visible : Visibility.Hidden)
+                  .hitTestBehavior(!this.desktopNavigationCollapsed || this.sidebarAnimating ?
+                    HitTestMode.None : HitTestMode.Default)
+                  .accessibilityLevel(this.desktopNavigationCollapsed ? 'auto' : 'no-hide-descendants')
+              }.width(this.desktopNavigationWidth())
                 .height('100%').backgroundColor($r('app.color.surface_soft'))
+                .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
+                .clip(this.sidebarAnimating)
                 .border({ width: { right: 1 }, color: $r('app.color.hairline') })
             }
             this.reader()
@@ -2230,7 +2336,11 @@ export struct LogsReaderPage {
                 if (this.aiOpen) this.aiToolsPanel()
                 if (this.aiOpen && this.aiOffset === 0) this.aiResizer()
               }.width(52 + (this.aiPanelWidth - 52) * (1 - this.aiOffset / 420))
-                .height('100%').clip(true).id('log_ai_dock')
+                .height('100%')
+                .backgroundColor(this.aiOpen ? $r('app.color.canvas') : $r('app.color.surface_soft'))
+                .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
+                .border({ width: { left: 1 }, color: $r('app.color.hairline') })
+                .clip(true).id('log_ai_dock')
             }
           }.width('100%').height('100%').onAreaChange((_: Area, area: Area) => {
             this.aiAvailableWidth = Number(area.width);

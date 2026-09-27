@@ -3,6 +3,7 @@ import { SegmentIndicator } from '../../../common/ui/SegmentIndicator';
 import { InteractiveSurface, animateHover } from '../../../common/ui/InteractiveSurface';
 import { iconTint } from '../../../common/ui/IconTint';
 import { KeyCode } from '@kit.InputKit';
+import { KeyboardAvoidMode } from '@kit.ArkUI';
 
 @Component
 export struct LogAiPanel {
@@ -26,6 +27,7 @@ export struct LogAiPanel {
   @State private hovered: string = '';
   @State private instructionHasText: boolean = false;
   @State private materialHasText: boolean = false;
+  private previousKeyboardAvoidMode?: KeyboardAvoidMode;
   onClose: () => void = () => {};
   onImport: () => void = () => {};
   onGenerate: () => void = () => {};
@@ -36,6 +38,23 @@ export struct LogAiPanel {
     this.instructionHasText = !!this.instruction.trim();
     this.materialHasText = !!this.material.trim();
   }
+
+  private focusInput(): void {
+    const context = this.getUIContext();
+    if (this.previousKeyboardAvoidMode === undefined) {
+      this.previousKeyboardAvoidMode = context.getKeyboardAvoidMode();
+    }
+    context.setKeyboardAvoidMode(KeyboardAvoidMode.RESIZE);
+  }
+
+  private blurInput(): void {
+    if (this.previousKeyboardAvoidMode !== undefined) {
+      this.getUIContext().setKeyboardAvoidMode(this.previousKeyboardAvoidMode);
+      this.previousKeyboardAvoidMode = undefined;
+    }
+  }
+
+  aboutToDisappear(): void { this.blurInput(); }
 
   @Builder
   private tab(mode: string, label: string, icon: Resource) {
@@ -89,7 +108,7 @@ export struct LogAiPanel {
               .onChange((value: string) => {
                 this.instructionHasText = !!value.trim();
                 this.onInstruction(value);
-              }).id('log_ai_instruction')
+              }).onFocus(() => this.focusInput()).onBlur(() => this.blurInput()).id('log_ai_instruction')
             Row({ space: 8 }) {
               Text('学习材料').layoutWeight(1).fontSize(13).fontWeight(FontWeight.Medium).fontColor($r('app.color.muted'))
               ToolbarAction({ label: this.importing ? '导入中' : '导入文件', icon: $r('app.media.upload'), iconSize: 14,
@@ -103,7 +122,7 @@ export struct LogAiPanel {
               .onChange((value: string) => {
                 this.materialHasText = !!value.trim();
                 this.onMaterial(value);
-              }).id('log_ai_material')
+              }).onFocus(() => this.focusInput()).onBlur(() => this.blurInput()).id('log_ai_material')
             Button({ type: ButtonType.Normal }) {
               Row({ space: 8 }) {
                 Image($r('app.media.wand_sparkles')).width(15).height(15)
@@ -122,18 +141,8 @@ export struct LogAiPanel {
               .fontSize(13).lineHeight(21).fontColor($r('app.color.body')).placeholderColor($r('app.color.muted'))
               .backgroundColor($r('app.color.surface_soft')).borderRadius(8)
               .border({ width: 1, color: $r('app.color.hairline') }).enabled(!this.busy)
-              .onChange((value: string) => this.onOutput(value)).id('log_ai_output')
-            Button({ type: ButtonType.Normal }) {
-              Row({ space: 8 }) {
-                Image($r('app.media.check')).width(15).height(15)
-                  .colorFilter(iconTint($r('app.color.body')))
-                Text('确认写入').fontSize(14).fontWeight(FontWeight.Medium)
-                  .fontColor($r('app.color.body'))
-              }
-            }.width('100%').height(40).padding(0)
-              .backgroundColor($r('app.color.surface_soft'))
-              .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8).clip(true)
-              .enabled(!this.busy && this.canApply).onClick(this.onApply)
+              .onChange((value: string) => this.onOutput(value))
+              .onFocus(() => this.focusInput()).onBlur(() => this.blurInput()).id('log_ai_output')
           } else {
             Column({ space: 8 }) {
               Text('AI 文本增强').fontSize(11).fontColor($r('app.color.primary'))
@@ -162,9 +171,23 @@ export struct LogAiPanel {
           }
         }.width('100%').padding(16).alignItems(HorizontalAlign.Start)
       }.width('100%').layoutWeight(1).scrollBar(BarState.Auto).align(Alignment.TopStart).id('log_ai_scroll')
+      if (this.mode === 'generate') {
+        Column() {
+          Button({ type: ButtonType.Normal }) {
+            Row({ space: 8 }) {
+              Image($r('app.media.check')).width(15).height(15)
+                .colorFilter(iconTint($r('app.color.body')))
+              Text('确认写入').fontSize(14).fontWeight(FontWeight.Medium)
+                .fontColor($r('app.color.body'))
+            }
+          }.width('100%').height(40).padding(0)
+            .backgroundColor($r('app.color.surface_soft'))
+            .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8).clip(true)
+            .enabled(!this.busy && this.canApply).onClick(this.onApply)
+        }.width('100%').padding({ left: 16, right: 16, top: 12, bottom: 6 })
+      }
     }.width('100%').height('100%').backgroundColor($r('app.color.canvas'))
       .onAreaChange((_oldArea, area) => this.panelWidth = Number(area.width))
-      .border({ width: { left: this.desktop ? 1 : 0 }, color: $r('app.color.hairline') })
       .onKeyEvent((event: KeyEvent) => {
         if (event.type === KeyType.Down && event.keyCode === KeyCode.KEYCODE_ESCAPE) {
           event.stopPropagation(); this.onClose();

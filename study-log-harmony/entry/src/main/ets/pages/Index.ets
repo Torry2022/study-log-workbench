@@ -180,9 +180,9 @@ struct Index {
       if (this.helpOpen) {
         HelpPanel({ onClose: () => this.helpOpen = false }).zIndex(100)
       }
-      }.width('100%').layoutWeight(1)
+      }.width('100%').layoutWeight(1).backgroundColor($r('app.color.canvas'))
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
-    }.width('100%').height('100%')
+    }.width('100%').height('100%').backgroundColor($r('app.color.canvas'))
       .onAreaChange((_oldArea, area) => this.updateBreakpoint(Number(area.width)))
   }
 }

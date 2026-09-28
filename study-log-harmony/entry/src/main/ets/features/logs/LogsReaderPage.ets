@@ -1,4 +1,4 @@
-import { WorkspaceBreakpoint } from '../../common/AppConfig';
+import { WorkspaceBreakpoint, WORKSPACE_TABS } from '../../common/AppConfig';
 import { apiClient, ApiError, ApiUploadFile } from '../../common/network/ApiClient';
 import { activeInstance } from '../../common/network/InstanceConfig';
 import { EmptyState, LoadFailure } from '../../common/ui/FeedbackStates';
@@ -27,6 +27,8 @@ import { ActionPanelHeader } from '../../common/ui/WorkspaceChrome';
 import { workspaceKey } from '../../common/ui/WorkspaceKeys';
 import { KeyCode, pointer } from '@kit.InputKit';
 import { FrameAction } from '../../common/ui/FrameAction';
+import { AppModalScrim } from '../../common/ui/AppModalScrim';
+import { revealPanel } from '../../common/ui/WorkspaceMotion';
 import { DesktopLogCommands, DesktopMenuEntry } from '../../app/DesktopMenu';
 import { iconTint } from '../../common/ui/IconTint';
 import { InteractiveSurface, animateHover } from '../../common/ui/InteractiveSurface';
@@ -86,6 +88,10 @@ export struct LogsReaderPage {
   @State private errorMessage: string = '';
   @State private navigationError: string = '';
   @State private navigationOpen: boolean = false;
+  @State private navigationClosing: boolean = false;
+  @State private navigationOffset: number = -340;
+  @State private navigationScrimOpacity: number = 0;
+  private navigationMotionRevision: number = 0;
   @State private taxonomyOpen: boolean = false;
   @State private taxonomyDirty: boolean = false;
   @State private taxonomyBusy: boolean = false;
@@ -306,6 +312,37 @@ export struct LogsReaderPage {
     return this.notesOpen ? 1 : this.favoritesOpen ? 2 : this.qaOpen ? 3 : this.statsOpen ? 4 : 0;
   }
 
+  private openNavigation(): void {
+    if (this.isWide() || this.navigationOpen) return;
+    const revision = ++this.navigationMotionRevision;
+    this.navigationClosing = false;
+    this.navigationOffset = -340;
+    this.navigationScrimOpacity = 0;
+    this.navigationOpen = true;
+    revealPanel(this.getUIContext(), () => revision === this.navigationMotionRevision &&
+      this.navigationOpen && !this.navigationClosing, () => {
+      this.navigationOffset = 0;
+      this.navigationScrimOpacity = 1;
+      this.getUIContext().getFocusController().requestFocus('navigation_drawer_close');
+    });
+  }
+
+  private closeNavigation(): void {
+    this.railPopover = '';
+    if (!this.navigationOpen || this.navigationClosing) return;
+    const revision = ++this.navigationMotionRevision;
+    this.navigationClosing = true;
+    animateTo({ duration: 180, curve: Curve.EaseIn, onFinish: () => {
+      if (revision !== this.navigationMotionRevision) return;
+      this.navigationOpen = false;
+      this.navigationClosing = false;
+      this.getUIContext().getFocusController().requestFocus('workspace_navigation_open');
+    } }, () => {
+      this.navigationOffset = -340;
+      this.navigationScrimOpacity = 0;
+    });
+  }
+
   private selectTab(index: number): void {
     if (index === this.selectedTab()) return;
     if (this.taxonomyOpen) { this.confirmTaxonomyLeave(() => this.selectTab(index)); return; }
@@ -319,7 +356,7 @@ export struct LogsReaderPage {
   }
 
   private openTaxonomy(): void {
-    this.navigationOpen = false;
+    this.closeNavigation();
     this.railPopover = '';
     this.taxonomyOpen = true;
   }
@@ -344,7 +381,7 @@ export struct LogsReaderPage {
       this.favoritesOpen = false;
       this.notesOpen = false;
       this.qaOpen = false;
-      this.navigationOpen = false;
+      this.closeNavigation();
       this.closeSearch();
     });
   }
@@ -374,7 +411,7 @@ export struct LogsReaderPage {
       this.statsOpen = false;
       this.notesOpen = false;
       this.qaOpen = false;
-      this.navigationOpen = false;
+      this.closeNavigation();
       this.closeSearch();
     });
   }
@@ -389,7 +426,7 @@ export struct LogsReaderPage {
       this.statsOpen = false;
       this.favoritesOpen = false;
       this.qaOpen = false;
-      this.navigationOpen = false;
+      this.closeNavigation();
       this.closeSearch();
     });
   }
@@ -420,7 +457,7 @@ export struct LogsReaderPage {
     if (this.qaBusy) return;
     const change = (): void => {
       this.qaDirty = false; this.qaPending = false;
-      this.navigationOpen = false;
+      this.closeNavigation();
       this.railPopover = '';
       this.qaSessionId = id; this.qaRequestRevision++;
     };
@@ -437,7 +474,7 @@ export struct LogsReaderPage {
       this.editorInitialText = this.savedText;
       this.previewText = this.savedText;
       this.qaOpen = true; this.notesOpen = false; this.favoritesOpen = false; this.statsOpen = false;
-      this.navigationOpen = false; this.closeSearch();
+      this.closeNavigation(); this.closeSearch();
       this.qaNavigation.loadQaNavigation();
     });
   }
@@ -1229,7 +1266,7 @@ export struct LogsReaderPage {
       this.targetHeading = heading;
       this.targetHeadingIndex = headingIndex;
       if (heading) this.targetRevision++;
-      this.navigationOpen = false;
+      this.closeNavigation();
     } catch (error) {
       if (lifecycle === this.lifecycle && revision === this.dayRevision) this.errorMessage = this.message(error as Error);
     } finally {
@@ -1423,7 +1460,7 @@ export struct LogsReaderPage {
       this.targetHeading = heading;
       this.targetHeadingIndex = index;
       this.targetRevision++;
-      this.navigationOpen = false;
+      this.closeNavigation();
     } else this.confirmDiscard(() => this.loadDay(day.date, heading, index));
   }
 
@@ -1836,9 +1873,9 @@ export struct LogsReaderPage {
       NotesNavigation({ noteYearFilter: this.noteYearFilter, noteTagFilter: this.noteTagFilter,
         noteCount: this.noteCount, noteYears: this.noteYears, noteTags: this.noteTags,
         noteEditorBusy: this.notesBusy,
-        onNew: () => { this.noteNewRevision++; this.navigationOpen = false; },
-        onYear: (year: string) => { this.noteYearFilter = year; this.navigationOpen = false; },
-        onTag: (tag: string) => { this.noteTagFilter = tag; this.navigationOpen = false; } })
+        onNew: () => { this.noteNewRevision++; this.closeNavigation(); },
+        onYear: (year: string) => { this.noteYearFilter = year; this.closeNavigation(); },
+        onTag: (tag: string) => { this.noteTagFilter = tag; this.closeNavigation(); } })
     } else if (this.favoritesOpen) {
       FavoritesNavigation({ data: this.favoritesData, wide: false,
         onRetry: () => this.favoritesData.load() })
@@ -1865,9 +1902,34 @@ export struct LogsReaderPage {
       StatsNavigation({ monthsOnly: false, onTaxonomy: () => this.openTaxonomy(), statsMonths: this.statsMonths, statsMonth: this.statsMonth,
         statsMonthsLoading: this.statsMonthsLoading, statsMonthsError: this.statsMonthsError,
         onMonth: (month: string) => {
-          this.statsMonth = month; this.statsMonthRevision++; this.navigationOpen = false;
+          this.statsMonth = month; this.statsMonthRevision++; this.closeNavigation();
         }, onRetry: () => this.statsRefreshRevision++ })
     } else this.navigation()
+  }
+
+  @Builder
+  private compactNavigationHeader() {
+    Column({ space: 1 }) {
+      Row({ space: 10 }) {
+        Image(WORKSPACE_TABS[this.selectedTab()].activeIcon).width(20).height(20).objectFit(ImageFit.Contain)
+        Text(this.notesOpen ? '随记' : this.favoritesOpen ? '收藏中心' : this.qaOpen ? '知识问答' :
+          this.statsOpen ? '学习统计' : '学习日志')
+          .fontFamily(workspaceSansFamily(this.workspaceBreakpoint)).fontSize(15)
+          .fontWeight(FontWeight.Medium).fontColor($r('app.color.body_strong'))
+          .maxLines(1).layoutWeight(1)
+        this.navigationFilterReset()
+        Button({ type: ButtonType.Normal }) {
+          SymbolGlyph($r('sys.symbol.xmark')).fontSize(17).fontColor([$r('app.color.body')])
+        }.width(40).height(40).padding(0).backgroundColor($r('app.color.canvas'))
+          .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8).clip(true)
+          .onClick(() => this.closeNavigation())
+          .id('navigation_drawer_close').accessibilityText('关闭侧栏').bindTips('关闭侧栏', WORKSPACE_TIPS)
+      }.width('100%').height(40)
+      Text(this.notesOpen ? '按年份和标签筛选' : this.favoritesOpen ? '按分组和日志月份筛选' :
+        this.qaOpen ? '历史会话' : this.statsOpen ? '切换月份与管理分类' : '按月份和日期浏览')
+        .fontSize(11).fontColor($r('app.color.muted')).maxLines(1).margin({ left: 30 })
+    }.width('100%').height(64).padding({ left: 18, right: 12 }).alignItems(HorizontalAlign.Start)
+      .border({ width: { bottom: 1 }, color: $r('app.color.hairline_soft') })
   }
 
   @Builder
@@ -2357,7 +2419,7 @@ export struct LogsReaderPage {
             Button({ type: ButtonType.Normal }) {
               SymbolGlyph($r('sys.symbol.line_3_horizontal')).fontSize(20).fontColor([$r('app.color.ink')])
             }.width(42).height(42).backgroundColor(Color.Transparent).accessibilityText('打开日期导航')
-              .onClick(() => this.navigationOpen = true)
+              .onClick(() => this.openNavigation())
           }
           Row({ space: 10 }) {
             AppLogo({ iconSize: 38, cornerRadius: 8 })
@@ -2417,7 +2479,7 @@ export struct LogsReaderPage {
         } else {
           AppTopBar({ title: this.notesOpen ? '随记' : this.favoritesOpen ? '收藏中心' :
             this.qaOpen ? '知识问答' : this.statsOpen ? '学习统计' : '学习日志',
-            onOpenNavigation: () => this.navigationOpen = true,
+            onOpenNavigation: () => this.openNavigation(),
             onOpenSearch: () => this.searchOpen = true,
             onOpenMore: () => this.topMoreOpen = true })
             .bindPopup(this.topMoreOpen, { builder: this.topMoreActions(), placement: Placement.BottomRight,
@@ -2513,32 +2575,29 @@ export struct LogsReaderPage {
             }
           })
           }
-          if (!this.isWide() && this.navigationOpen) {
-            Row() {
-              Column() {
-                Row() {
-                  Text(this.notesOpen ? '随记' : this.favoritesOpen ? '收藏中心' :
-                    this.qaOpen ? '知识问答' : this.statsOpen ? '学习统计' : '日期')
-                    .fontSize(16).fontColor($r('app.color.ink')).layoutWeight(1)
-                  Button('关闭', { type: ButtonType.Normal }).fontSize(13)
-                    .fontColor($r('app.color.body')).backgroundColor($r('app.color.canvas'))
-                    .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8)
-                    .height(32).padding({ left: 12, right: 12 })
-                    .onClick(() => this.navigationOpen = false)
-                }.height(48).padding({ left: 16, right: 16 })
-                this.compactNavigationContent()
-              }.width('86%').height('100%')
-                .backgroundColor($r('app.color.canvas'))
-                .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
-              Blank().layoutWeight(1).height('100%').onClick(() => this.navigationOpen = false)
-            }.width('100%').height('100%').backgroundColor($r('app.color.scrim'))
-              .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
-          }
         }.layoutWeight(1).width('100%')
         if (!this.isWide() && !this.softwareKeyboardVisible) {
           BottomNavigation({ selectedIndex: this.selectedTab(), onSelect: (index: number) => this.selectTab(index) })
         }
       }.width('100%').height('100%').backgroundColor($r('app.color.canvas'))
+      if (!this.isWide() && this.navigationOpen) {
+        Stack({ alignContent: Alignment.Start }) {
+          AppModalScrim({ onDismiss: () => this.closeNavigation() })
+            .opacity(this.navigationScrimOpacity)
+          Row().width('82%').height('100%').backgroundColor($r('app.color.surface_soft'))
+            .border({ width: { right: 1 }, color: $r('app.color.hairline') })
+            .shadow({ radius: 18, color: '#24141413', offsetX: 4 })
+            .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+            .translate({ x: this.navigationOffset })
+          Column() {
+            this.compactNavigationHeader()
+            this.compactNavigationContent()
+          }.width('82%').height('100%')
+            .backgroundColor($r('app.color.surface_soft'))
+            .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+            .translate({ x: this.navigationOffset })
+        }.width('100%').height('100%')
+      }
       if (this.backupOpen && this.day) {
         Stack() {
           BackupPanel({ date: this.day.date,

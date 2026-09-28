@@ -344,9 +344,12 @@ export struct LogsReaderPage {
     };
     this.onRegisterDesktopCommands(commands);
     this.onCaptureDraft(() => this.captureDraft());
-    this.editor.onReadyChange = (ready: boolean) => this.editorReady = ready;
+    this.editor.onReadyChange = (ready: boolean) =>
+      this.editorReady = ready && this.editor.loadedDocumentKey === this.selectedDate;
     this.editor.onDocumentLoaded = (documentKey: string) => {
-      if (documentKey !== this.selectedDate || !(this.sourceMode || this.splitMode && !this.isWide())) return;
+      if (documentKey !== this.selectedDate) return;
+      this.editorReady = true;
+      if (!(this.sourceMode || this.splitMode && !this.isWide())) return;
       this.getUIContext().postFrameCallback(new FrameAction(() => {
         if (documentKey === this.selectedDate && (this.sourceMode || this.splitMode && !this.isWide())) {
           this.workspaceTransition.finish('mode');

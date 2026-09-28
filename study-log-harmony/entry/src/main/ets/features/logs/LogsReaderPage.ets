@@ -29,7 +29,9 @@ import { workspaceKey } from '../../common/ui/WorkspaceKeys';
 import { KeyCode, pointer } from '@kit.InputKit';
 import { FrameAction } from '../../common/ui/FrameAction';
 import { AppModalScrim } from '../../common/ui/AppModalScrim';
+import { NavigationRefresh } from '../../common/ui/NavigationRefresh';
 import { revealPanel } from '../../common/ui/WorkspaceMotion';
+import { NavigationRefreshController, NavigationSnapshot } from '../../app/NavigationRefreshController';
 import { DesktopLogCommands, DesktopMenuEntry } from '../../app/DesktopMenu';
 import { iconTint } from '../../common/ui/IconTint';
 import { InteractiveSurface, animateHover } from '../../common/ui/InteractiveSurface';
@@ -136,6 +138,7 @@ export struct LogsReaderPage {
   @State private noteDiscardRevision: number = 0;
   @State private noteSaveRevision: number = 0;
   @State private favoritesData: FavoritesController = new FavoritesController(apiClient);
+  private navigationRefresh: NavigationRefreshController = new NavigationRefreshController(apiClient);
   @State private favoriteBusy: boolean = false;
   @State private favoriteSuccessHeadingId: string = '';
   @State private favoriteDeleteId: string = '';
@@ -371,6 +374,7 @@ export struct LogsReaderPage {
   }
 
   aboutToDisappear(): void {
+    this.navigationRefresh.invalidate();
     this.closeFavoriteFeedback();
     this.onRegisterDesktopCommands(new DesktopLogCommands());
     this.moduleSwitchRevision++;
@@ -2046,7 +2050,7 @@ export struct LogsReaderPage {
       .backgroundColor(active ? $r('app.color.surface_card') : this.navigationRailHover === id ?
         $r('app.color.interaction_hover') : $r('app.color.interaction_hover_clear'))
       .hoverEffect(HoverEffect.None)
-      .onHover((hovered: boolean) => this.navigationRailHover = hovered ? id : '')
+      .onHover((hovered: boolean) => animateHover(this.getUIContext(), () => this.navigationRailHover = hovered ? id : ''))
       .enabled(enabled).accessibilityText(label).bindTips(label, WORKSPACE_TIPS).onClick(action)
       .bindPopup(this.railPopover === id, {
         builder: this.railPopoverPanel(), placement: Placement.RightTop, enableArrow: false,
@@ -2140,6 +2144,66 @@ export struct LogsReaderPage {
     } else { this.navigation() }
   }
 
+  private async refreshNavigationLists(): Promise<void> {
+    const tab = this.selectedTab();
+    const instance = activeInstance.revision;
+    const lifecycle = this.lifecycle;
+    const month = this.month || this.selectedDate.slice(0, 7);
+    const date = this.selectedDate;
+    const months = this.months;
+    const days = this.days;
+    const years = this.noteYears;
+    const qa = this.qaNavigation.qaSessions;
+    const stats = this.statsMonths;
+    const favorites = this.favoritesData.favorites;
+    const groups = this.favoritesData.groups;
+    await this.navigationRefresh.refresh(tab, month, () => {
+      if (instance !== activeInstance.revision || lifecycle !== this.lifecycle || this.selectedTab() !== tab) return false;
+      if (tab === 0) return date === this.selectedDate && month === (this.month || this.selectedDate.slice(0, 7)) &&
+        months === this.months && days === this.days;
+      if (tab === 1) return years === this.noteYears;
+      if (tab === 2) return favorites === this.favoritesData.favorites && groups === this.favoritesData.groups &&
+        !this.favoritesData.loading && !this.favoritesData.groupSaving && !this.favoritesData.groupUpdating &&
+        !this.favoritesData.groupActionBusy;
+      if (tab === 3) return qa === this.qaNavigation.qaSessions && !this.qaNavigation.qaNavigationLoading;
+      return stats === this.statsMonths;
+    }, (snapshot: NavigationSnapshot) => {
+      if (tab === 0 && snapshot.months) {
+        this.months = snapshot.months.months;
+        if (snapshot.days) this.days = snapshot.days.days;
+        this.navigationError = '';
+      }
+      if (snapshot.notes) {
+        this.noteYears = snapshot.notes.years;
+        this.noteTags = snapshot.notes.tags;
+        this.noteCount = snapshot.notes.notes.length;
+      }
+      if (snapshot.favorites) {
+        this.favoritesData.favorites = snapshot.favorites.favorites;
+        this.favoritesData.groups = snapshot.favorites.groups;
+        this.favoritesData.loadFailed = false;
+        this.favoritesData.errorMessage = '';
+      }
+      if (snapshot.qa) this.qaNavigation.acceptQaNavigation(snapshot.qa.sessions);
+      if (tab === 4 && snapshot.months) {
+        this.statsMonths = snapshot.months.months;
+        this.statsMonthsError = '';
+      }
+    });
+  }
+
+  @Builder
+  private refreshableNavigationContent() {
+    NavigationRefresh({ onRefresh: (): Promise<void> => this.refreshNavigationLists(),
+      content: (): void => this.moduleNavigationContent() })
+  }
+
+  @Builder
+  private refreshableCompactNavigationContent() {
+    NavigationRefresh({ onRefresh: (): Promise<void> => this.refreshNavigationLists(),
+      content: (): void => this.compactNavigationContent() })
+  }
+
   private hasNavigationFilters(): boolean {
     if (this.notesOpen) return this.noteYearFilter !== 'all' || this.noteTagFilter !== 'all';
     if (this.favoritesOpen) return this.favoritesData.selectedGroup !== 'all' || this.favoritesData.selectedMonth !== 'all';
@@ -2189,7 +2253,7 @@ export struct LogsReaderPage {
     Stack({ alignContent: Alignment.TopStart }) {
       Column() {
         if (this.selectedTab() !== 0) this.moduleNavigationHeader()
-        this.moduleNavigationContent()
+        this.refreshableNavigationContent()
       }
         .width(this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE ? 260 : 220)
         .height('100%')
@@ -3406,7 +3470,7 @@ export struct LogsReaderPage {
             .translate({ x: this.navigationOffset })
           Column() {
             this.compactNavigationHeader()
-            this.compactNavigationContent()
+            this.refreshableCompactNavigationContent()
           }.width('82%').height('100%')
             .backgroundColor($r('app.color.surface_soft'))
             .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])

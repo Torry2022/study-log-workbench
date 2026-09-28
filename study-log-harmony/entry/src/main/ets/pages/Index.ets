@@ -17,6 +17,7 @@ import { AboutPanel } from '../app/components/AboutPanel';
 import { HelpPanel } from '../app/components/HelpPanel';
 import { KeyCode } from '@kit.InputKit';
 import { workspaceKey } from '../common/ui/WorkspaceKeys';
+import { floatingSurfaceTransition } from '../common/ui/WorkspaceMotion';
 
 @Entry
 @Component
@@ -249,12 +250,15 @@ struct Index {
       }
       if (this.settingsOpen) {
         SettingsPanel({ onClose: () => this.settingsOpen = false }).zIndex(100)
+          .transition(floatingSurfaceTransition())
       }
       if (this.aboutOpen) {
         AboutPanel({ onClose: () => this.aboutOpen = false }).zIndex(100)
+          .transition(floatingSurfaceTransition())
       }
       if (this.helpOpen) {
         HelpPanel({ onClose: () => this.helpOpen = false }).zIndex(100)
+          .transition(floatingSurfaceTransition())
       }
       }.width('100%').layoutWeight(1).backgroundColor($r('app.color.canvas'))
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])

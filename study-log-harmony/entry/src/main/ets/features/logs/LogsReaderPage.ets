@@ -30,7 +30,7 @@ import { KeyCode, pointer } from '@kit.InputKit';
 import { FrameAction } from '../../common/ui/FrameAction';
 import { AppModalScrim } from '../../common/ui/AppModalScrim';
 import { NavigationRefresh } from '../../common/ui/NavigationRefresh';
-import { revealPanel } from '../../common/ui/WorkspaceMotion';
+import { floatingSurfaceTransition, revealPanel, secondaryPageTransition } from '../../common/ui/WorkspaceMotion';
 import { NavigationRefreshController, NavigationSnapshot } from '../../app/NavigationRefreshController';
 import { DesktopLogCommands, DesktopMenuEntry } from '../../app/DesktopMenu';
 import { iconTint } from '../../common/ui/IconTint';
@@ -240,6 +240,7 @@ export struct LogsReaderPage {
   @State private imageBusy: boolean = false;
   @State private exportBusy: boolean = false;
   @State private exportMenuOpen: boolean = false;
+  @State private hoveredExport: string = '';
   @State private searchOpen: boolean = false;
   @State private searchFocusRevision: number = 0;
   @State private searchQuery: string = '';
@@ -2543,18 +2544,26 @@ export struct LogsReaderPage {
   }
 
   @Builder
+  private exportMenuItem(label: string, scope: string) {
+    Button({ type: ButtonType.Normal, stateEffect: false }) {
+      Text(label).fontSize(13).fontColor($r('app.color.body'))
+        .width('100%').textAlign(TextAlign.Start)
+    }
+    .width('100%').height(42).padding({ left: 12, right: 12 }).borderRadius(6)
+    .attributeModifier(new InteractiveSurface(Color.Transparent, this.hoveredExport === scope))
+    .onHover((hover: boolean) => animateHover(this.getUIContext(), () => this.hoveredExport = hover ? scope : ''))
+    .enabled(!this.exportBusy && (scope === 'all' || this.selectedDate.length > 0))
+    .id(`log_export_${scope}`)
+    .onClick(() => this.exportLogs(scope))
+  }
+
+  @Builder
   private exportActions() {
-    Column({ space: 4 }) {
-      Button('当前日块', { type: ButtonType.Normal }).width('100%').height(40)
-        .fontSize(13).fontColor($r('app.color.body')).backgroundColor(Color.Transparent)
-        .enabled(!!this.day && !this.exportBusy).onClick(() => this.exportLogs('day'))
-      Button('当前源文件', { type: ButtonType.Normal }).width('100%').height(40)
-        .fontSize(13).fontColor($r('app.color.body')).backgroundColor(Color.Transparent)
-        .enabled(!!this.day && !this.exportBusy).onClick(() => this.exportLogs('file'))
-      Button('全部日志', { type: ButtonType.Normal }).width('100%').height(40)
-        .fontSize(13).fontColor($r('app.color.body')).backgroundColor(Color.Transparent)
-        .enabled(!this.exportBusy).onClick(() => this.exportLogs('all'))
-    }.width(150).padding(8)
+    Column() {
+      this.exportMenuItem('当前日块', 'day')
+      this.exportMenuItem('当前源文件', 'file')
+      this.exportMenuItem('全部日志', 'all')
+    }.width('100%').padding(4)
   }
 
   @Builder
@@ -2591,10 +2600,12 @@ export struct LogsReaderPage {
       Column() {
         ToolbarAction({ label: '导出', icon: $r('app.media.download'), iconSize: 15,
           showLabel: this.showToolbarLabels('export'), available: !this.exportBusy,
-          onAction: () => this.exportMenuOpen = true })
+          onAction: () => this.exportMenuOpen = !this.exportMenuOpen })
           .bindPopup(this.exportMenuOpen, { builder: this.exportActions(), placement: Placement.BottomRight,
-            enableArrow: false, popupColor: $r('app.color.canvas'), radius: 8,
-            onStateChange: (event) => { if (!event.isVisible) this.exportMenuOpen = false; } })
+            popupColor: $r('app.color.canvas'), enableArrow: false, autoCancel: true,
+            targetSpace: 4, width: 160, radius: 12, backgroundBlurStyle: BlurStyle.NONE,
+            shadow: { radius: 12, color: $r('app.color.popover_shadow'), offsetY: 4 },
+            onStateChange: (event) => { this.exportMenuOpen = event.isVisible; this.hoveredExport = ''; } })
       }.width(this.desktopActionSlotWidth('export', '导出')).clip(true)
         .margin({ left: (this.headerWidth < 440 ? 4 : 8) *
           (this.desktopActionSlotPresence('export', '导出') - 1) })
@@ -3458,6 +3469,7 @@ export struct LogsReaderPage {
             .borderRadius(8).clip(true)
             .shadow({ radius: 18, color: $r('app.color.popover_shadow'), offsetY: 6 })
         }.width('100%').height('100%').zIndex(6)
+          .transition(floatingSurfaceTransition())
       }
       if (!this.isWide() && this.navigationOpen) {
         Stack({ alignContent: Alignment.Start }) {
@@ -3529,14 +3541,14 @@ export struct LogsReaderPage {
           onHeadings: () => { this.searchHeadingsOnly = !this.searchHeadingsOnly; this.changeSearch(this.searchQuery); },
           onCase: () => { this.searchIgnoreCase = !this.searchIgnoreCase; this.changeSearch(this.searchQuery); },
           onSelect: (result: LogSearchResult) => this.selectSearchResult(result) })
-          .width('100%').height('100%')
+          .width('100%').height('100%').transition(secondaryPageTransition())
       }
       if (this.ai.reviewOpen) {
         LogHighlightReview({ original: this.ai.originalDraft, highlighted: this.ai.highlighted,
           date: this.ai.highlightDate,
           available: this.ai.highlightDate === this.selectedDate && this.ai.originalDraft === this.draftText,
           onClose: () => this.ai.reviewOpen = false, onApply: () => this.applyAiHighlight() })
-          .width('100%').height('100%')
+          .width('100%').height('100%').transition(floatingSurfaceTransition())
       }
     }.width('100%').height('100%')
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])

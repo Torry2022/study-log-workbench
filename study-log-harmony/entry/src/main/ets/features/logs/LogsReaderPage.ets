@@ -1121,12 +1121,11 @@ export struct LogsReaderPage {
       }
     }
     if (!this.dirty) { next(); return; }
+    if (!this.editorReady) { this.saveError = '编辑器尚未就绪，请稍后重试'; return; }
     AlertDialog.show({ message: '当前日志修改尚未保存，是否放弃修改？', autoCancel: false,
       primaryButton: { value: '继续编辑', action: () => {} },
       secondaryButton: { value: '放弃修改', fontColor: $r('app.color.error'), action: () => {
-        this.dirty = false;
-        this.reportDraft();
-        next();
+        this.discardDraft().then(() => { if (!this.dirty) next(); });
       } }
     });
   }

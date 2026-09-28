@@ -3354,7 +3354,8 @@ export struct LogsReaderPage {
             .zIndex(this.qaOpen ? 1 : 0)
           Row() {
               if (this.isWide()) { this.desktopNavigation() }
-              NotesPage({ navigationYear: this.noteYearFilter, navigationTag: this.noteTagFilter,
+              NotesPage({ workspaceActive: this.notesOpen,
+                navigationYear: this.noteYearFilter, navigationTag: this.noteTagFilter,
                 navigationNewRevision: this.noteNewRevision, discardRevision: this.noteDiscardRevision,
                 saveRevision: this.noteSaveRevision, topRevision: this.topRequests[1],
                 onNavigationDataChange: (years: StudyNoteFacet[], tags: StudyNoteFacet[], total: number) => {

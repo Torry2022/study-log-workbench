@@ -6,6 +6,7 @@ import { EmptyState, InlineStatus, LoadFailure } from '../../common/ui/FeedbackS
 import { ModulePageTitle, ModuleLogButton } from '../../common/ui/WorkspaceChrome';
 import { SearchField } from '../../common/ui/FormControls';
 import { common } from '@kit.AbilityKit';
+import { KeyboardAvoidMode } from '@kit.ArkUI';
 import { saveExport } from '../../common/files/DocumentExport';
 import { apiClient } from '../../common/network/ApiClient';
 import { NoteEditorFields } from './components/NoteEditorFields';
@@ -28,6 +29,25 @@ import { NotesController } from './NotesController';
 export struct NotesPage {
   @StorageProp('pref_readingScale') private readingScale: number = 1;
   @Prop @Watch('topRequested') topRevision: number = 0;
+  @Prop @Watch('workspaceActiveChanged') workspaceActive: boolean = true;
+  private previousKeyboardAvoidMode?: KeyboardAvoidMode;
+
+  private workspaceActiveChanged(): void { if (!this.workspaceActive) this.blurSearch(); }
+
+  private focusSearch(): void {
+    if (!this.workspaceActive) return;
+    const context = this.getUIContext();
+    if (this.previousKeyboardAvoidMode === undefined) {
+      this.previousKeyboardAvoidMode = context.getKeyboardAvoidMode();
+    }
+    context.setKeyboardAvoidMode(KeyboardAvoidMode.RESIZE);
+  }
+
+  private blurSearch(): void {
+    if (this.previousKeyboardAvoidMode === undefined) return;
+    this.getUIContext().setKeyboardAvoidMode(this.previousKeyboardAvoidMode);
+    this.previousKeyboardAvoidMode = undefined;
+  }
 
   private topRequested(): void {
     if (this.topRevision > 0 && !this.noteEditor.editing && !this.extracting) this.scrollToTop();
@@ -59,6 +79,7 @@ export struct NotesPage {
   @State private scrollProgress: number = 0;
   @State private noteViewportHeight: number = 0;
   @State private topToolsHeight: number = 0;
+  @State private listHeaderHeight: number = 0;
   private noteScroller: Scroller = new Scroller();
   private resultChanges: ResultChangeGate = new ResultChangeGate();
   private editorScroller: Scroller = new Scroller();
@@ -153,6 +174,7 @@ export struct NotesPage {
   }
 
   aboutToDisappear(): void {
+    this.blurSearch();
     this.data.dispose();
     this.noteEditor.revision += 1;
     this.resultChanges.reset('');
@@ -400,6 +422,7 @@ export struct NotesPage {
   private searchField() {
     SearchField({ value: this.query, placeholder: '搜索随记内容、来源或标签', placeholderFontSize: 13,
       focusKey: 'notes_search', focusRevision: this.searchRevision,
+      onFocusChange: (focused: boolean) => focused ? this.focusSearch() : this.blurSearch(),
       onChange: (value: string) => { this.query = value; this.applyFilter(); },
       onSubmit: () => this.applyFilter() })
   }
@@ -449,6 +472,7 @@ export struct NotesPage {
           placeholderFontSize: 13,
           focusKey: 'notes_search',
           focusRevision: this.searchRevision,
+          onFocusChange: (focused: boolean) => focused ? this.focusSearch() : this.blurSearch(),
           onChange: (value: string) => { this.query = value; this.applyFilter(); },
           onSubmit: () => this.applyFilter()
         }).layoutWeight(1)
@@ -478,37 +502,30 @@ export struct NotesPage {
 
   @Builder
   private list() {
-    Column() {
-      if (this.data.loading && this.data.notes.length === 0) {
-        this.topTools()
-        InlineStatus({ text: this.data.errorMessage, error: true })
-
-        ContentLoadingState({ text: '正在加载随记…' }).layoutWeight(1)
-      } else if (this.data.loadFailed && this.visibleNotes.length === 0) {
-        this.topTools()
+    List({ scroller: this.noteScroller }) {
+      ListItem() {
         Column() {
-          LoadFailure({ title: '随记读取失败', message: this.data.errorMessage, onRetry: () => this.load() })
-        }.width('100%').layoutWeight(1)
+          this.topTools()
+          InlineStatus({ text: this.data.loadFailed && this.visibleNotes.length === 0 && !this.data.loading ? '' : this.data.errorMessage, error: true,
+            retry: this.data.loadFailed && !this.data.loading && this.visibleNotes.length > 0,
+            onRetry: () => this.load() })
+        }.onAreaChange((_oldArea, area) => this.listHeaderHeight = Number(area.height))
+      }
+      if (this.visibleNotes.length === 0) {
+        ListItem() {
+          Column() {
+            if (this.data.loading && this.data.notes.length === 0) {
+              ContentLoadingState({ text: '正在加载随记…' }).layoutWeight(1)
+            } else if (this.data.loadFailed) {
+              LoadFailure({ title: '随记读取失败', message: this.data.errorMessage, onRetry: () => this.load() })
+            } else {
+              EmptyState({ symbol: $r('sys.symbol.lightbulb'),
+                title: this.query ? '未找到匹配随记' : '暂无随记',
+                description: this.query ? '换一个关键词再试试' : '记录一个值得长期保留的观点' })
+            }
+          }.width('100%').height(Math.max(0, this.noteViewportHeight - this.listHeaderHeight))
+        }
       } else {
-        List({ scroller: this.noteScroller }) {
-          ListItem() {
-            Column() {
-              this.topTools()
-              InlineStatus({ text: this.data.errorMessage, error: true,
-                retry: this.data.loadFailed && !this.data.loading, onRetry: () => this.load() })
-            }
-          }
-          if (this.visibleNotes.length === 0) {
-            ListItem() {
-              Column() {
-                EmptyState({
-                  symbol: $r('sys.symbol.lightbulb'),
-                  title: this.query ? '未找到匹配随记' : '暂无随记',
-                  description: this.query ? '换一个关键词再试试' : '记录一个值得长期保留的观点'
-                })
-              }.width('100%').height(Math.max(0, this.noteViewportHeight - this.topToolsHeight))
-            }
-          }
           ForEach(this.visibleNotes, (note: StudyNote) => {
             ListItem() { this.noteItem(note) }
               .padding({ left: this.workspaceBreakpoint === WorkspaceBreakpoint.COMPACT ? 16 : 24,
@@ -518,16 +535,15 @@ export struct NotesPage {
                 this.updateNoteScrollProgress();
               })
           }, (note: StudyNote) => `${note.id}:${note.version}`)
-        }
-        .layoutWeight(1).width('100%').scrollBar(BarState.Off)
-        .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
-        .onAreaChange((_oldValue, newValue) => {
-          this.noteViewportHeight = Number(newValue.height);
-          this.updateNoteScrollProgress();
-        })
-        .onScroll(() => this.updateNoteScrollProgress())
       }
-    }.width('100%').height('100%').backgroundColor($r('app.color.canvas'))
+    }
+    .width('100%').height('100%').backgroundColor($r('app.color.canvas'))
+    .scrollBar(BarState.Off).edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
+    .onAreaChange((_oldValue, newValue) => {
+      this.noteViewportHeight = Number(newValue.height);
+      this.updateNoteScrollProgress();
+    })
+    .onScroll(() => this.updateNoteScrollProgress())
   }
 
   @Builder

@@ -39,6 +39,7 @@ export struct NotesPage {
   @Prop @Watch('navigationFilterChanged') navigationYear: string = 'all';
   @Prop @Watch('navigationFilterChanged') navigationTag: string = 'all';
   @Prop @Watch('navigationNewRevisionChanged') navigationNewRevision: number = 0;
+  @Prop @Watch('discardRequested') discardRevision: number = 0;
   @Prop searchRevision: number = 0;
   @Prop @Watch('saveRequested') saveRevision: number = 0;
   onNavigationDataChange: (years: StudyNoteFacet[], tags: StudyNoteFacet[], total: number) => void = () => {};
@@ -239,6 +240,11 @@ export struct NotesPage {
     else if (field === 'insight') this.noteEditor.insight = value;
     else if (field === 'sourcesText') this.noteEditor.sourcesText = value;
     else if (field === 'tagsText') this.noteEditor.tagsText = value;
+    this.reportDirty();
+  }
+
+  private discardRequested(): void {
+    this.noteEditor.editing = false;
     this.reportDirty();
   }
 

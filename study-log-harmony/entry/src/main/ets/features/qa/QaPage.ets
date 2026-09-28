@@ -43,6 +43,7 @@ export struct QaPage {
   @Prop configured: boolean = false;
   @Prop navigationSessionId: string = '';
   @Prop @Watch('navigationRequestChanged') navigationRequestRevision: number = 0;
+  @Prop @Watch('discardRequested') discardRevision: number = 0;
   @Prop @Watch('questionFocusRequestChanged') questionFocusRevision: number = 0;
   onSessionsChange: (sessions: RagSessionSummary[]) => void = () => {};
   onSessionsError: (message: string) => void = () => {};
@@ -118,6 +119,11 @@ export struct QaPage {
     this.onPendingChange(false);
     if (this.navigationSessionId) this.data.openSession(this.navigationSessionId);
     else this.data.newSession();
+  }
+
+  private discardRequested(): void {
+    this.onDraftChange(false);
+    this.data.newSession();
   }
 
   private questionFocusRequestChanged(): void {

@@ -58,6 +58,7 @@ import { QaNavigationController } from '../qa/QaNavigationController';
 import { RagSessionSummary } from '../qa/QaModels';
 import { AppTopBar, BottomNavigation } from '../../app/components/WorkspaceNavigation';
 import { PreservedLogDraft, restoredLogDraft } from './LogDraftPolicy';
+import { WorkspaceTransitionCoordinator } from '../../app/WorkspaceTransitionCoordinator';
 
 export { PreservedLogDraft } from './LogDraftPolicy';
 
@@ -104,6 +105,7 @@ export struct LogsReaderPage {
   @State private qaPending: boolean = false;
   @State private qaSessionId: string = '';
   @State private qaRequestRevision: number = 0;
+  @State private qaDiscardRevision: number = 0;
   @State private qaQuery: string = '';
   @State private qaNavigation: QaNavigationController = new QaNavigationController(apiClient, {
     active: () => this.qaOpen, busy: () => this.qaBusy,
@@ -119,6 +121,7 @@ export struct LogsReaderPage {
   @State private noteYearFilter: string = 'all';
   @State private noteTagFilter: string = 'all';
   @State private noteNewRevision: number = 0;
+  @State private noteDiscardRevision: number = 0;
   @State private favoritesData: FavoritesController = new FavoritesController(apiClient);
   @State private favoriteBusy: boolean = false;
   @StorageProp('pref_favoritesView') private favoritesViewMode: string = 'list';
@@ -128,6 +131,18 @@ export struct LogsReaderPage {
   @State private statsMonthsError: string = '';
   @State private statsMonthRevision: number = 0;
   @State private statsRefreshRevision: number = 0;
+  @State private outgoingTab: number = -1;
+  @State private moduleReveal: number = 1;
+  @State private moduleTransition: WorkspaceTransitionCoordinator = new WorkspaceTransitionCoordinator({
+    tab: () => this.selectedTab(),
+    canCapture: (kind: string) => this.isWide() && kind === 'module',
+    capture: () => this.getUIContext().getComponentSnapshot().get('module_frame',
+      { waitUntilRenderFinished: true }),
+    fade: (update: () => void, finished: () => void) => {
+      this.getUIContext().animateTo({ duration: 160, curve: Curve.EaseOut, onFinish: finished }, update);
+    }
+  });
+  private moduleSwitchRevision: number = 0;
   @State private collapsedModules: boolean[] = [false, false, false, false, false];
   @State private railPopover: string = '';
   @State private moduleFrameHeight: number = 0;
@@ -284,6 +299,8 @@ export struct LogsReaderPage {
   }
 
   aboutToDisappear(): void {
+    this.moduleSwitchRevision++;
+    this.moduleTransition.clear();
     this.sidebarMotionRevision++;
     this.ai.dispose();
     this.favoritesData.dispose();
@@ -345,14 +362,74 @@ export struct LogsReaderPage {
 
   private selectTab(index: number): void {
     if (index === this.selectedTab()) return;
-    if (this.taxonomyOpen) { this.confirmTaxonomyLeave(() => this.selectTab(index)); return; }
-    if (index === 1) this.openNotes();
-    else if (index === 2) this.openFavorites();
-    else if (index === 3) this.openQa();
-    else if (index === 4) this.openStats();
-    else if (this.notesOpen) this.confirmNotesLeave(() => {});
-    else if (this.qaOpen) this.confirmQaLeave(() => {});
-    else { this.favoritesOpen = false; this.statsOpen = false; }
+    this.requestModule(index);
+  }
+
+  private requestModule(index: number, discardNotes: boolean = false, discardQa: boolean = false): void {
+    if (index === this.selectedTab()) return;
+    if (this.taxonomyOpen) { this.confirmTaxonomyLeave(() => this.requestModule(index)); return; }
+    if (this.notesOpen) {
+      if (this.notesBusy) return;
+      if (this.notesDirty && !discardNotes) {
+        AlertDialog.show({ message: '随记尚未保存，确定放弃修改吗？',
+          primaryButton: { value: '继续编辑', action: () => {} },
+          secondaryButton: { value: '放弃修改', fontColor: $r('app.color.error'), action: () => {
+            this.requestModule(index, true, discardQa);
+          } } });
+        return;
+      }
+    }
+    if (this.qaOpen) {
+      if (this.qaBusy) { appFeedback.show('请先停止当前回答', 'error'); return; }
+      if ((this.qaDirty || this.qaPending) && !discardQa) {
+        AlertDialog.show({ message: this.qaPending ? '当前问答尚未保存，确定放弃吗？' :
+          '问答输入尚未提交，确定放弃吗？',
+          primaryButton: { value: '继续编辑', action: () => {} },
+          secondaryButton: { value: '放弃', fontColor: $r('app.color.error'), action: () => {
+            this.requestModule(index, discardNotes, true);
+          } } });
+        return;
+      }
+    }
+    const change = (): void => { this.switchModule(index, discardNotes, discardQa); };
+    if (index === 0) change();
+    else this.confirmDiscard(change);
+  }
+
+  private async switchModule(index: number, discardNotes: boolean, discardQa: boolean): Promise<void> {
+    const revision = ++this.moduleSwitchRevision;
+    if (this.isWide()) {
+      if (!this.moduleTransition.task) this.moduleTransition.clear();
+      await this.moduleTransition.cover('module');
+      if (revision !== this.moduleSwitchRevision) return;
+    }
+    const covered = this.moduleTransition.snapshot && this.moduleTransition.kind === 'module';
+    this.outgoingTab = covered ? -1 : this.selectedTab();
+    this.moduleReveal = covered ? 1 : 0;
+    if (discardNotes) { this.notesDirty = false; this.noteDiscardRevision++; }
+    if (discardQa) { this.qaDirty = false; this.qaPending = false; this.qaDiscardRevision++; }
+    if (index !== 0) {
+      this.draftText = this.savedText;
+      this.editorInitialText = this.savedText;
+      this.previewText = this.savedText;
+    }
+    this.notesOpen = index === 1;
+    this.favoritesOpen = index === 2;
+    this.qaOpen = index === 3;
+    this.statsOpen = index === 4;
+    this.closeNavigation();
+    this.closeSearch();
+    if (index === 3) this.qaNavigation.loadQaNavigation();
+    this.getUIContext().postFrameCallback(new FrameAction(() => {
+      if (revision !== this.moduleSwitchRevision) return;
+      if (covered) {
+        this.moduleTransition.finish('module');
+      } else {
+        this.getUIContext().animateTo({ duration: 160, curve: Curve.EaseOut, onFinish: () => {
+          if (revision === this.moduleSwitchRevision) this.outgoingTab = -1;
+        } }, () => this.moduleReveal = 1);
+      }
+    }));
   }
 
   private openTaxonomy(): void {
@@ -370,22 +447,6 @@ export struct LogsReaderPage {
       secondaryButton: { value: '放弃修改', fontColor: $r('app.color.error'), action: leave } });
   }
 
-  private openStats(): void {
-    if (this.notesOpen) { this.confirmNotesLeave(() => this.openStats()); return; }
-    if (this.qaOpen) { this.confirmQaLeave(() => this.openStats()); return; }
-    this.confirmDiscard(() => {
-      this.draftText = this.savedText;
-      this.editorInitialText = this.savedText;
-      this.previewText = this.savedText;
-      this.statsOpen = true;
-      this.favoritesOpen = false;
-      this.notesOpen = false;
-      this.qaOpen = false;
-      this.closeNavigation();
-      this.closeSearch();
-    });
-  }
-
   private async openStatsEntry(entry: StatsEntry): Promise<void> {
     this.statsOpen = false;
     if (entry.date.slice(0, 7) !== this.month) {
@@ -400,37 +461,6 @@ export struct LogsReaderPage {
     await this.loadDay(entry.date, entry.rawHeading, entry.headingIndex);
   }
 
-  private openFavorites(): void {
-    if (this.notesOpen) { this.confirmNotesLeave(() => this.openFavorites()); return; }
-    if (this.qaOpen) { this.confirmQaLeave(() => this.openFavorites()); return; }
-    this.confirmDiscard(() => {
-      this.draftText = this.savedText;
-      this.editorInitialText = this.savedText;
-      this.previewText = this.savedText;
-      this.favoritesOpen = true;
-      this.statsOpen = false;
-      this.notesOpen = false;
-      this.qaOpen = false;
-      this.closeNavigation();
-      this.closeSearch();
-    });
-  }
-
-  private openNotes(): void {
-    if (this.qaOpen) { this.confirmQaLeave(() => this.openNotes()); return; }
-    this.confirmDiscard(() => {
-      this.draftText = this.savedText;
-      this.editorInitialText = this.savedText;
-      this.previewText = this.savedText;
-      this.notesOpen = true;
-      this.statsOpen = false;
-      this.favoritesOpen = false;
-      this.qaOpen = false;
-      this.closeNavigation();
-      this.closeSearch();
-    });
-  }
-
   private confirmNotesLeave(action: () => void): void {
     if (this.notesBusy) return;
     if (!this.notesDirty) { this.notesOpen = false; action(); return; }
@@ -438,6 +468,7 @@ export struct LogsReaderPage {
       primaryButton: { value: '继续编辑', action: () => {} },
       secondaryButton: { value: '放弃修改', fontColor: $r('app.color.error'), action: () => {
         this.notesDirty = false;
+        this.noteDiscardRevision++;
         this.notesOpen = false;
         action();
       } } });
@@ -449,7 +480,7 @@ export struct LogsReaderPage {
     AlertDialog.show({ message: this.qaPending ? '当前问答尚未保存，确定放弃吗？' : '问答输入尚未提交，确定放弃吗？',
       primaryButton: { value: '继续编辑', action: () => {} },
       secondaryButton: { value: '放弃', fontColor: $r('app.color.error'), action: () => {
-        this.qaDirty = false; this.qaPending = false; this.qaOpen = false; action();
+        this.qaDirty = false; this.qaPending = false; this.qaDiscardRevision++; this.qaOpen = false; action();
       } } });
   }
 
@@ -465,18 +496,6 @@ export struct LogsReaderPage {
     AlertDialog.show({ message: this.qaPending ? '当前问答尚未保存，确定切换会话吗？' : '问答输入尚未提交，确定切换会话吗？',
       primaryButton: { value: '继续编辑', action: () => {} },
       secondaryButton: { value: '放弃', fontColor: $r('app.color.error'), action: change } });
-  }
-
-  private openQa(): void {
-    if (this.notesOpen) { this.confirmNotesLeave(() => this.openQa()); return; }
-    this.confirmDiscard(() => {
-      this.draftText = this.savedText;
-      this.editorInitialText = this.savedText;
-      this.previewText = this.savedText;
-      this.qaOpen = true; this.notesOpen = false; this.favoritesOpen = false; this.statsOpen = false;
-      this.closeNavigation(); this.closeSearch();
-      this.qaNavigation.loadQaNavigation();
-    });
   }
 
   private openQaCitation(date: string, heading: string, headingIndex: number): void {
@@ -2457,16 +2476,16 @@ export struct LogsReaderPage {
           }
             ToolbarAction({ label: '随记', icon: $r('app.media.tab_lightbulb_active'),
               showLabel: this.isWide(), active: this.notesOpen,
-              onAction: () => this.notesOpen ? this.confirmNotesLeave(() => {}) : this.openNotes() })
+              onAction: () => this.selectTab(this.notesOpen ? 0 : 1) })
             ToolbarAction({ label: '收藏', icon: $r('app.media.tab_star_active'),
               showLabel: this.isWide(), active: this.favoritesOpen,
-              onAction: () => this.favoritesOpen ? this.favoritesOpen = false : this.openFavorites() })
+              onAction: () => this.selectTab(this.favoritesOpen ? 0 : 2) })
             ToolbarAction({ label: '问答', icon: $r('app.media.tab_message_square_text_active'),
               showLabel: this.isWide(), active: this.qaOpen,
-              onAction: () => this.qaOpen ? this.confirmQaLeave(() => {}) : this.openQa() })
+              onAction: () => this.selectTab(this.qaOpen ? 0 : 3) })
             ToolbarAction({ label: '统计', icon: $r('app.media.tab_chart_column'),
               showLabel: this.isWide(), active: this.statsOpen,
-              onAction: () => this.statsOpen ? this.confirmTaxonomyLeave(() => this.statsOpen = false) : this.openStats() })
+              onAction: () => this.selectTab(this.statsOpen ? 0 : 4) })
           ToolbarAction({ label: '更多设置', icon: $r('app.media.more_horizontal'), showLabel: false,
             active: this.topMoreOpen, onAction: () => this.topMoreOpen = !this.topMoreOpen })
             .bindPopup(this.topMoreOpen, { builder: this.topMoreActions(), placement: Placement.BottomRight,
@@ -2487,10 +2506,10 @@ export struct LogsReaderPage {
               onStateChange: (event) => { if (!event.isVisible) this.topMoreOpen = false; } })
         }
         Stack() {
-          if (this.qaOpen) {
-            Row() {
+          Row() {
               if (this.isWide()) { this.desktopNavigation() }
-              QaPage({ navigationSessionId: this.qaSessionId, navigationRequestRevision: this.qaRequestRevision,
+              QaPage({ workspaceActive: this.qaOpen, navigationSessionId: this.qaSessionId,
+                navigationRequestRevision: this.qaRequestRevision, discardRevision: this.qaDiscardRevision,
                 configured: !!activeInstance.capabilities?.features.rag.configured,
                 onSessionsChange: (sessions: RagSessionSummary[]) => this.qaNavigation.acceptQaNavigation(sessions),
                 onSessionsError: (message: string) => this.qaNavigation.qaNavigationError = message,
@@ -2498,36 +2517,45 @@ export struct LogsReaderPage {
                 onBusyChange: (busy: boolean) => this.qaBusy = busy,
                 onDraftChange: (dirty: boolean) => this.qaDirty = dirty,
                 onPendingChange: (pending: boolean) => this.qaPending = pending,
-                onOpenLog: () => this.confirmQaLeave(() => {}),
+                onOpenLog: () => this.selectTab(0),
                 onCitation: (date: string, heading: string, headingIndex: number) =>
                   this.openQaCitation(date, heading, headingIndex) }).layoutWeight(1)
-            }.width('100%').height('100%')
-          } else if (this.notesOpen) {
-            Row() {
+          }.width('100%').height('100%')
+            .visibility(this.qaOpen || this.outgoingTab === 3 ? Visibility.Visible : Visibility.None)
+            .opacity(this.qaOpen ? this.moduleReveal : 1)
+            .hitTestBehavior(this.qaOpen ? HitTestMode.Default : HitTestMode.None)
+            .zIndex(this.qaOpen ? 1 : 0)
+          Row() {
               if (this.isWide()) { this.desktopNavigation() }
               NotesPage({ navigationYear: this.noteYearFilter, navigationTag: this.noteTagFilter,
-                navigationNewRevision: this.noteNewRevision,
+                navigationNewRevision: this.noteNewRevision, discardRevision: this.noteDiscardRevision,
                 onNavigationDataChange: (years: StudyNoteFacet[], tags: StudyNoteFacet[], total: number) => {
                   this.noteYears = years; this.noteTags = tags; this.noteCount = total;
                 },
                 onEditorBusyChange: (busy: boolean) => this.notesBusy = busy,
                 onDirtyChange: (dirty: boolean) => this.notesDirty = dirty,
-                onOpenLog: () => this.confirmNotesLeave(() => {}),
+                onOpenLog: () => this.selectTab(0),
                 onInternalLink: (date: string, heading: string) => this.openNoteLink(date, heading) }).layoutWeight(1)
-            }.width('100%').height('100%')
-          } else if (this.favoritesOpen) {
-            Row() {
+          }.width('100%').height('100%')
+            .visibility(this.notesOpen || this.outgoingTab === 1 ? Visibility.Visible : Visibility.None)
+            .opacity(this.notesOpen ? this.moduleReveal : 1)
+            .hitTestBehavior(this.notesOpen ? HitTestMode.Default : HitTestMode.None)
+            .zIndex(this.notesOpen ? 1 : 0)
+          Row() {
               if (this.isWide()) { this.desktopNavigation() }
               FavoritesPage({ data: this.favoritesData, viewMode: this.favoritesViewMode,
                 onViewModeChange: (mode: string) => {
                   workspacePreferences.set('favoritesView', mode)
                     .catch(() => appFeedback.show('收藏显示方式保存失败', 'error'));
                 },
-                onOpenLog: () => this.favoritesOpen = false,
+                onOpenLog: () => this.selectTab(0),
                 onOpenFavorite: (favorite: FavoriteHeading) => this.openFavorite(favorite) }).layoutWeight(1)
-            }.width('100%').height('100%')
-          } else if (this.statsOpen) {
-            Row() {
+          }.width('100%').height('100%')
+            .visibility(this.favoritesOpen || this.outgoingTab === 2 ? Visibility.Visible : Visibility.None)
+            .opacity(this.favoritesOpen ? this.moduleReveal : 1)
+            .hitTestBehavior(this.favoritesOpen ? HitTestMode.Default : HitTestMode.None)
+            .zIndex(this.favoritesOpen ? 1 : 0)
+          Row() {
               if (this.isWide()) { this.desktopNavigation() }
               if (this.taxonomyOpen) {
                 TaxonomyManagerPage({
@@ -2545,11 +2573,14 @@ export struct LogsReaderPage {
                 onMonthsLoadingChange: (loading: boolean) => this.statsMonthsLoading = loading,
                 onMonthsErrorChange: (error: string) => this.statsMonthsError = error,
                 onSelectedMonthChange: (month: string) => this.statsMonth = month,
-                onOpenLog: () => this.statsOpen = false,
+                onOpenLog: () => this.selectTab(0),
                 onOpenEntry: (entry: StatsEntry) => this.openStatsEntry(entry) }).layoutWeight(1)
               }
-            }.width('100%').height('100%')
-          } else {
+          }.width('100%').height('100%')
+            .visibility(this.statsOpen || this.outgoingTab === 4 ? Visibility.Visible : Visibility.None)
+            .opacity(this.statsOpen ? this.moduleReveal : 1)
+            .hitTestBehavior(this.statsOpen ? HitTestMode.Default : HitTestMode.None)
+            .zIndex(this.statsOpen ? 1 : 0)
           Row() {
             if (this.isWide()) {
               this.desktopNavigation()
@@ -2567,15 +2598,26 @@ export struct LogsReaderPage {
                 .border({ width: { left: 1 }, color: $r('app.color.hairline') })
                 .clip(true).id('log_ai_dock')
             }
-          }.width('100%').height('100%').onAreaChange((_: Area, area: Area) => {
+          }.width('100%').height('100%')
+            .visibility(this.selectedTab() === 0 || this.outgoingTab === 0 ? Visibility.Visible : Visibility.None)
+            .opacity(this.selectedTab() === 0 ? this.moduleReveal : 1)
+            .hitTestBehavior(this.selectedTab() === 0 ? HitTestMode.Default : HitTestMode.None)
+            .zIndex(this.selectedTab() === 0 ? 1 : 0)
+            .onAreaChange((_: Area, area: Area) => {
             this.aiAvailableWidth = Number(area.width);
             this.resizeAiPanel(this.aiWidthAdjusted ? this.aiPanelWidth : 340);
             if (this.isWide() && this.aiOpen && !this.aiClosing && !this.aiAnimating && this.aiOffset === 420) {
               this.moveAiTools(0);
             }
           })
+          if (this.moduleTransition.snapshot && this.moduleTransition.kind === 'module') {
+            Image(this.moduleTransition.snapshot).width('100%').height('100%')
+              .objectFit(ImageFit.Fill).syncLoad(true).opacity(this.moduleTransition.opacity).zIndex(10)
+              .onComplete(() => this.moduleTransition.rendered())
+              .onError(() => this.moduleTransition.clear())
+              .hitTestBehavior(HitTestMode.None)
           }
-        }.layoutWeight(1).width('100%')
+        }.id('module_frame').layoutWeight(1).width('100%')
         if (!this.isWide() && !this.softwareKeyboardVisible) {
           BottomNavigation({ selectedIndex: this.selectedTab(), onSelect: (index: number) => this.selectTab(index) })
         }

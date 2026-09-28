@@ -80,6 +80,21 @@ export struct LogAiPanel {
     Text(value).fontSize(13).fontWeight(FontWeight.Medium).fontColor($r('app.color.muted')).width('100%')
   }
 
+  @Builder
+  private action(label: () => string, icon: Resource, enabled: () => boolean, action: () => void, primary: boolean = true) {
+    Button({ type: ButtonType.Normal }) {
+      Row({ space: 8 }) {
+        Image(icon).width(15).height(15).colorFilter(iconTint(primary ? $r('app.color.on_primary') : $r('app.color.body')))
+        Text(label()).fontSize(14).fontWeight(FontWeight.Medium)
+          .fontColor(primary ? $r('app.color.on_primary') : $r('app.color.body'))
+      }
+    }.width('100%').height(40).padding(0)
+      .backgroundColor(primary ? $r('app.color.primary') : $r('app.color.surface_soft'))
+      .border({ width: primary ? 0 : 1, color: $r('app.color.hairline') })
+      .borderRadius(8).clip(true)
+      .enabled(enabled()).onClick(action)
+  }
+
   build() {
     Column() {
       Row({ space: 8 }) {
@@ -125,18 +140,10 @@ export struct LogAiPanel {
                 this.materialHasText = !!value.trim();
                 this.onMaterial(value);
               }).onFocus(() => this.focusInput()).onBlur(() => this.blurInput()).id('log_ai_material')
-            Button({ type: ButtonType.Normal }) {
-              Row({ space: 8 }) {
-                Image($r('app.media.wand_sparkles')).width(15).height(15)
-                  .colorFilter(iconTint($r('app.color.on_primary')))
-                Text(this.busy ? '生成中' : '生成日志草稿').fontSize(14).fontWeight(FontWeight.Medium)
-                  .fontColor($r('app.color.on_primary'))
-              }
-            }.width('100%').height(40).padding(0)
-              .backgroundColor($r('app.color.primary')).borderRadius(8).clip(true)
-              .enabled(this.ready && this.generateConfigured && !this.busy && !this.importing &&
-                (this.materialHasText || this.instructionHasText || !!this.material.trim() || !!this.instruction.trim()))
-              .onClick(this.onGenerate)
+            this.action(() => this.busy ? '生成中' : '生成日志草稿', $r('app.media.wand_sparkles'),
+              () => this.ready && this.generateConfigured && !this.busy && !this.importing &&
+              (this.materialHasText || this.instructionHasText || !!this.material.trim() || !!this.instruction.trim()),
+              this.onGenerate)
             this.label('生成草稿')
             TextArea({ text: this.output, placeholder: this.busy ? '正在生成，请稍候…' : '生成的草稿将在这里显示' })
               .width('100%').height(260).padding(12).fontFamily('JetBrains Mono')
@@ -154,17 +161,8 @@ export struct LogAiPanel {
             }.width('100%').padding(14).alignItems(HorizontalAlign.Start)
               .backgroundColor($r('app.color.surface_soft')).borderRadius(8)
               .border({ width: 1, color: $r('app.color.hairline') })
-            Button({ type: ButtonType.Normal }) {
-              Row({ space: 8 }) {
-                Image($r('app.media.edit_3')).width(15).height(15)
-                  .colorFilter(iconTint($r('app.color.on_primary')))
-                Text(this.busy ? '标注中' : '标注重点').fontSize(14).fontWeight(FontWeight.Medium)
-                  .fontColor($r('app.color.on_primary'))
-              }
-            }.width('100%').height(40).padding(0)
-              .backgroundColor($r('app.color.primary')).borderRadius(8).clip(true)
-              .enabled(this.ready && this.highlightConfigured && !this.busy && this.canHighlight)
-              .onClick(this.onHighlight)
+            this.action(() => this.busy ? '标注中' : '标注重点', $r('app.media.edit_3'),
+              () => this.ready && this.highlightConfigured && !this.busy && this.canHighlight, this.onHighlight)
             Text('标注结果会先进入差异查看，确认后只替换当前编辑草稿，不会自动保存到 Markdown 文件。')
               .width('100%').fontSize(12).lineHeight(19).fontColor($r('app.color.muted'))
           }

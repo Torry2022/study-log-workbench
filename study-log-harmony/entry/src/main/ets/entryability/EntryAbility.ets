@@ -8,6 +8,12 @@ export default class EntryAbility extends UIAbility {
   private keyboardHeightChanged = (height: number): void => {
     AppStorage.setOrCreate('softwareKeyboardVisible', height > 0);
   };
+  private bottomAvoidAreaChanged = (): void => {
+    if (!this.mainWindow) return;
+    const system = this.mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
+    const navigation = this.mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR);
+    AppStorage.setOrCreate('windowBottomAvoidPx', Math.max(system.bottomRect.height, navigation.bottomRect.height));
+  };
 
   onCreate(): void {
     this.publishSystemTheme(this.context.config.colorMode);
@@ -40,8 +46,10 @@ export default class EntryAbility extends UIAbility {
     this.mainWindow = stage.getMainWindowSync();
     AppStorage.setOrCreate('softwareKeyboardVisible', false);
     this.mainWindow.on('keyboardHeightChange', this.keyboardHeightChanged);
+    this.mainWindow.on('avoidAreaChange', this.bottomAvoidAreaChanged);
     this.updateSystemBars(this.context.config.colorMode);
     stage.loadContent('pages/Index', (error) => {
+      if (!error.code) this.bottomAvoidAreaChanged();
       if (error.code || deviceInfo.deviceType !== '2in1' || !this.mainWindow) return;
       try {
         this.mainWindow.setWindowDecorHeight(40);
@@ -58,6 +66,8 @@ export default class EntryAbility extends UIAbility {
 
   onWindowStageDestroy(): void {
     this.mainWindow?.off('keyboardHeightChange', this.keyboardHeightChanged);
+    this.mainWindow?.off('avoidAreaChange', this.bottomAvoidAreaChanged);
+    AppStorage.setOrCreate('windowBottomAvoidPx', 0);
     AppStorage.setOrCreate('softwareKeyboardVisible', false);
     this.mainWindow = undefined;
     DesktopWindow.mainWindow = undefined;

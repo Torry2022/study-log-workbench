@@ -7,6 +7,8 @@ import { KeyboardAvoidMode } from '@kit.ArkUI';
 
 @Component
 export struct LogAiPanel {
+  @StorageProp('windowBottomAvoidPx') private windowBottomAvoidPx: number = 0;
+  @StorageProp('softwareKeyboardVisible') private softwareKeyboardVisible: boolean = false;
   @Link mode: string;
   @Prop instruction: string = '';
   @Prop material: string = '';
@@ -177,7 +179,7 @@ export struct LogAiPanel {
             Row({ space: 8 }) {
               Image($r('app.media.check')).width(15).height(15)
                 .colorFilter(iconTint($r('app.color.body')))
-              Text('确认写入').fontSize(14).fontWeight(FontWeight.Medium)
+              Text('追加到编辑器').fontSize(14).fontWeight(FontWeight.Medium)
                 .fontColor($r('app.color.body'))
             }
           }.width('100%').height(40).padding(0)
@@ -185,7 +187,9 @@ export struct LogAiPanel {
             .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8).clip(true)
             .id('log_ai_apply')
             .enabled(!this.busy && this.canApply).onClick(this.onApply)
-        }.width('100%').padding({ left: 16, right: 16, top: 12 })
+        }.width('100%').padding({ left: 16, right: 16, top: 12,
+          bottom: this.softwareKeyboardVisible ? 16 :
+            Math.max(0, 16 - this.getUIContext().px2vp(this.windowBottomAvoidPx)) })
       }
     }.width('100%').height('100%').backgroundColor($r('app.color.canvas'))
       .onAreaChange((_oldArea, area) => this.panelWidth = Number(area.width))

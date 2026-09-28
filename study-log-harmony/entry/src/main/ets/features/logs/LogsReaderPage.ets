@@ -1495,10 +1495,12 @@ export struct LogsReaderPage {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(result.date)) return;
     const query = this.searchQuery.trim();
     const heading = (result.matches[0] || '').replace(/^#{1,6}\s+/, '').replace(/^\d+\.\s+/, '').trim();
-    this.confirmDiscard(() => {
+    const navigate = (): void => {
       this.closeSearch();
       this.openInternalLink(result.date, result.headings.includes(heading) ? heading : '', 'search', query);
-    });
+    };
+    if (result.date === this.selectedDate) navigate();
+    else this.confirmDiscard(navigate);
   }
 
   @Builder
@@ -3209,7 +3211,12 @@ export struct LogsReaderPage {
                 targetKind: this.targetKind, targetQuery: this.targetQuery, targetRevision: this.targetRevision,
                 trackActiveHeading: true,
                 onActiveHeading: (headingId: string) => this.updateActiveOutline(headingId),
-                onInternalLink: (date: string, heading: string) => this.confirmDiscard(() => this.openInternalLink(date, heading)) })
+                onInternalLink: (date: string, heading: string) => {
+                  const targetDate = date || this.selectedDate;
+                  if (!targetDate) return;
+                  if (targetDate === this.selectedDate) this.openInternalLink(targetDate, heading);
+                  else this.confirmDiscard(() => this.openInternalLink(targetDate, heading));
+                } })
                 .width('100%').height('100%').id('log_reading_surface')
                 .onAreaChange((_oldArea: Area, area: Area) => this.readingViewportChanged(area))
               if (!this.readerReady && !this.renderedPreviewDate && !this.sourceMode) {

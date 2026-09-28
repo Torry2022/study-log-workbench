@@ -32,7 +32,7 @@ import { AppModalScrim } from '../../common/ui/AppModalScrim';
 import { NavigationRefresh } from '../../common/ui/NavigationRefresh';
 import { DelayedLoadingHint } from '../../common/ui/DelayedLoadingHint';
 import { LoadingHintPlacement } from '../../common/ui/LoadingHintAnchor';
-import { floatingSurfaceTransition, revealPanel, secondaryPageTransition } from '../../common/ui/WorkspaceMotion';
+import { expandSection, floatingSurfaceTransition, revealPanel, secondaryPageTransition } from '../../common/ui/WorkspaceMotion';
 import { NavigationRefreshController, NavigationSnapshot } from '../../app/NavigationRefreshController';
 import { DesktopLogCommands, DesktopMenuEntry } from '../../app/DesktopMenu';
 import { iconTint } from '../../common/ui/IconTint';
@@ -1972,10 +1972,11 @@ export struct LogsReaderPage {
           Image($r('app.media.tab_file_text_active')).width(19).height(19).objectFit(ImageFit.Contain)
           Text('学习日志').fontSize(14).fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.body_strong')).layoutWeight(1)
+            .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
           Button({ type: ButtonType.Normal }) {
             SymbolGlyph($r('sys.symbol.chevron_left')).fontSize(16).fontColor([$r('app.color.body')])
           }.width(34).height(34).padding(0).backgroundColor(Color.Transparent).borderRadius(8)
-            .id('sidebar_collapse').accessibilityText('折叠侧栏')
+            .id('sidebar_collapse').accessibilityText('折叠侧栏').bindTips('折叠侧栏', WORKSPACE_TIPS)
             .onClick(() => this.setDesktopNavigationCollapsed(true))
         }.width('100%').height(52).padding({ left: 16, right: 10 })
           .border({ width: { bottom: 1 }, color: $r('app.color.hairline_soft') })
@@ -1993,7 +1994,9 @@ export struct LogsReaderPage {
         onDay: (date: string) => { if (date !== this.selectedDate) this.confirmDiscard(() => this.loadDay(date)); },
         onHeading: (day: DaySummary, heading: string, index: number) => this.openHeading(day, heading, index),
         onQuery: (query: string) => this.navigationDayQuery = query,
-        onToggleMonths: () => this.navigationMonthsExpanded = !this.navigationMonthsExpanded,
+        onToggleMonths: () => expandSection(this.getUIContext(), () => {
+          this.navigationMonthsExpanded = !this.navigationMonthsExpanded;
+        }),
         onRetry: () => this.month ? this.loadDays(this.month) : this.loadMonths() })
     }
     .width('100%').height('100%')

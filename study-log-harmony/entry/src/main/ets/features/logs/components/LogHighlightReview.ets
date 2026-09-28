@@ -1,4 +1,5 @@
 import { webview } from '@kit.ArkWeb';
+import { AppModalScrim } from '../../../common/ui/AppModalScrim';
 import { KeyCode } from '@kit.InputKit';
 import { ToolbarAction } from '../../../common/ui/ToolbarAction';
 import { WorkspaceBreakpoint } from '../../../common/AppConfig';
@@ -32,16 +33,14 @@ export struct LogHighlightReview {
 
   build() {
     Stack({ alignContent: Alignment.Center }) {
-      Stack().width('100%').height('100%').backgroundColor($r('app.color.scrim'))
-        .onClick(this.onClose)
+      AppModalScrim({ onDismiss: this.onClose })
       Column() {
         Row({ space: 12 }) {
           Text('重点标注对照').fontSize(18).fontWeight(FontWeight.Medium).fontColor($r('app.color.ink')).layoutWeight(1)
           Text(this.date).fontSize(12).fontColor($r('app.color.muted'))
           if (this.breakpoint !== WorkspaceBreakpoint.COMPACT) {
             ToolbarAction({ label: this.maximized ? '还原标注对照窗口' : '最大化标注对照窗口', showLabel: false,
-              useSymbol: true, symbol: this.maximized ? $r('sys.symbol.arrow_down_right_and_arrow_up_left') :
-                $r('sys.symbol.arrow_up_left_and_arrow_down_right'),
+              icon: this.maximized ? $r('app.media.minimize_2') : $r('app.media.maximize_2'),
               onAction: () => this.toggleMaximized() }).id('log_ai_review_maximize')
           }
           ToolbarAction({ label: '关闭标注对照', showLabel: false, useSymbol: true,

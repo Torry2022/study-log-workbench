@@ -1,3 +1,4 @@
+import { appFeedback } from './AppFeedback';
 import { webview } from '@kit.ArkWeb';
 import common from '@ohos.app.ability.common';
 import { apiClient } from '../network/ApiClient';
@@ -391,7 +392,7 @@ export struct MarkdownReader {
     try {
       await host.startAbility({ action: 'ohos.want.action.viewData', uri: url });
     } catch (_) {
-      AlertDialog.show({ message: '无法打开系统浏览器' });
+      appFeedback.show('无法打开系统浏览器', 'error');
     }
   }
 

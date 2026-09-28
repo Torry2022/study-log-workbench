@@ -1,3 +1,4 @@
+import { appFeedback } from '../../common/ui/AppFeedback';
 import { LengthMetrics } from '@kit.ArkUI';
 import { KeyCode } from '@kit.InputKit';
 import { ActionPanelHeader, ModulePageHeader, SectionHeading } from '../../common/ui/WorkspaceChrome';
@@ -117,7 +118,7 @@ export struct StatsPage {
   }
 
   private async refreshStats(): Promise<void> {
-    await this.data.refresh();
+    if (await this.data.refresh()) appFeedback.show('统计数据已刷新', 'success');
   }
 
   private handlePageScroll(): void {

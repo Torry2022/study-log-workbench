@@ -15,6 +15,7 @@ export interface QaSessionView {
   onSessionsError: (message: string) => void;
   onActiveSessionChange: (id: string) => void;
   onBusyChange: (busy: boolean) => void;
+  onPendingChange: (pending: boolean) => void;
   onSessionReady: () => void;
   onBeforeSessionChange: () => Promise<void>;
   resetComposerScroll: () => void;
@@ -54,6 +55,10 @@ export class QaSessionController {
   private parser: QaStreamParser = new QaStreamParser();
 
   constructor(transport: ApiClient, view: QaSessionView) { this.transport = transport; this.view = view; }
+
+  private reportPending(): void {
+    this.view.onPendingChange(!!this.failedAttempt || !!this.pendingWrite);
+  }
 
   activate(): void {
     this.pageDisposed = false;
@@ -110,6 +115,7 @@ export class QaSessionController {
     this.pendingWrite = undefined;
     this.messages = [];
     this.failedAttempt = undefined;
+    this.reportPending();
     this.question = '';
     this.statusText = '';
     this.errorMessage = '';
@@ -141,6 +147,7 @@ export class QaSessionController {
       this.pendingWrite = undefined;
       this.messages = response.session.messages;
       this.failedAttempt = undefined;
+      this.reportPending();
       this.answerMode = response.session.answerMode;
       this.errorMessage = '';
       this.view.resetComposerScroll();
@@ -243,6 +250,7 @@ export class QaSessionController {
       if (revision !== this.sendRevision) return;
       this.sending = false;
       this.view.onBusyChange(false);
+      this.reportPending();
       this.statusText = '';
     }
   }
@@ -313,6 +321,7 @@ export class QaSessionController {
     if (!this.pendingWrite) this.pendingWrite = { messages: this.messages,
       answerMode: mode, mutationId: util.generateRandomUUID(), baseVersion: this.sessionId ? this.sessionVersion : null,
       id: this.sessionId ? undefined : util.generateRandomUUID() };
+    this.reportPending();
     const request = this.pendingWrite;
     const response = this.sessionId ?
       await this.transport.put<RagSessionResponse>(`/rag/sessions/${encodeURIComponent(this.sessionId)}`, request) :
@@ -321,6 +330,7 @@ export class QaSessionController {
     this.sessionId = response.session.id;
     this.sessionVersion = response.session.version;
     this.pendingWrite = undefined;
+    this.reportPending();
     this.view.onActiveSessionChange(this.sessionId);
     if (revision === this.sendRevision) await this.loadSessions();
   }

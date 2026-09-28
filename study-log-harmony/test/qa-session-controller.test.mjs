@@ -29,7 +29,7 @@ async function loadController() {
 }
 
 function view() { return {
-  onSessionsChange() {}, onSessionsError() {}, onActiveSessionChange() {}, onBusyChange() {},
+  onSessionsChange() {}, onSessionsError() {}, onActiveSessionChange() {}, onBusyChange() {}, onPendingChange() {},
   onSessionReady() {}, onBeforeSessionChange: async () => {}, resetComposerScroll() {},
   beforeSend() {}, showComposer() {}, afterFrame(action) { action(); }
 }; }
@@ -87,11 +87,12 @@ test('completed answers use versioned writes and retry an uncertain save without
 test('late stopped-answer save cannot reactivate a session after starting a new one', async () => {
   const QaSessionController = await loadController();
   let finishSave;
+  const pending = [];
   const controller = new QaSessionController({
     cancelStream() {},
     post: () => new Promise(resolve => { finishSave = resolve; }),
     get: async () => ({ sessions: [] })
-  }, view());
+  }, { ...view(), onPendingChange: value => pending.push(value) });
   controller.messages = [
     { id: 'user-1', role: 'user', content: 'question' },
     { id: 'assistant-1', role: 'assistant', content: 'partial' }
@@ -99,10 +100,35 @@ test('late stopped-answer save cannot reactivate a session after starting a new 
   controller.sending = true;
   controller.stop();
   await controller.newSession();
+  assert.equal(pending.at(-1), false);
+  const reportsBeforeLateSave = pending.length;
   finishSave({ session: { id: 'old-session', version: 'v1' } });
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(controller.sessionId, '');
   assert.equal(controller.messages.length, 0);
+  assert.equal(pending.length, reportsBeforeLateSave);
+});
+
+test('stopped-answer persistence owns the leave guard until the save settles', async () => {
+  const Controller = await loadController();
+  for (const succeeds of [true, false]) {
+    let resolveSave, rejectSave;
+    const pending = [];
+    const controller = new Controller({ cancelStream() {},
+      post: () => new Promise((resolve, reject) => { resolveSave = resolve; rejectSave = reject; }),
+      get: async () => ({ sessions: [] })
+    }, { ...view(), onPendingChange: value => pending.push(value) });
+    controller.messages = [{ id: 'u', role: 'user', content: 'question' },
+      { id: 'a', role: 'assistant', content: 'partial' }];
+    controller.sending = true;
+    controller.stop();
+    assert.equal(pending.at(-1), true);
+    if (succeeds) resolveSave({ session: { id: 'saved', version: 'v1' } });
+    else rejectSave(new Error('offline'));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(pending.at(-1), !succeeds);
+    assert.equal(controller.messages.at(-1).status, 'stopped');
+  }
 });
 
 test('late stopped-answer save cannot replace a newly opened session', async () => {

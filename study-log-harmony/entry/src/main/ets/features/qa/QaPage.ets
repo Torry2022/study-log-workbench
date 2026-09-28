@@ -60,8 +60,8 @@ export struct QaPage {
     onBusyChange: (busy: boolean) => {
       if (busy) this.onDraftChange(false);
       this.onBusyChange(busy);
-      if (!busy) this.onPendingChange(!!this.data.failedAttempt || !!this.data.pendingWrite);
     },
+    onPendingChange: (pending: boolean) => this.onPendingChange(pending),
     onSessionReady: () => this.onSessionReady(),
     onBeforeSessionChange: () => this.onBeforeSessionChange(),
     resetComposerScroll: () => this.resetComposerScroll(),

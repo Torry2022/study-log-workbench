@@ -1,8 +1,12 @@
+import { KeyCode } from '@kit.InputKit';
 import { webview } from '@kit.ArkWeb';
 import { WorkspaceBreakpoint } from '../../../common/AppConfig';
 import { apiClient, ApiError } from '../../../common/network/ApiClient';
-import { EmptyState, InlineStatus, LoadFailure } from '../../../common/ui/FeedbackStates';
+import { ActionPanelHeader } from '../../../common/ui/WorkspaceChrome';
+import { InlineStatus, LoadFailure } from '../../../common/ui/FeedbackStates';
+import { iconTint } from '../../../common/ui/IconTint';
 import { workspaceSerifFamily } from '../../../common/ui/Typography';
+import { ToolbarAction } from '../../../common/ui/ToolbarAction';
 import { BackupPreview, BackupVersion } from '../BackupModels';
 import { BackupRepository } from '../BackupRepository';
 import { DayEntry } from '../LogModels';
@@ -11,6 +15,7 @@ import { DayEntry } from '../LogModels';
 export struct BackupPanel {
   @Consume('workspaceBreakpoint') private breakpoint: WorkspaceBreakpoint;
   @StorageProp('systemTheme') private systemTheme: string = 'light';
+  @Link maximized: boolean;
   @Prop date: string = '';
   onClose: () => void = () => {};
   onBeforeRestore: () => Promise<boolean> = async () => false;
@@ -30,6 +35,7 @@ export struct BackupPanel {
   @State private previewError: string = '';
   @State private restoreError: string = '';
   @State private panelWidth: number = 0;
+  @State private panelHeight: number = 0;
   private repository: BackupRepository = new BackupRepository(apiClient);
   private controller: webview.WebviewController = new webview.WebviewController();
   private lifecycle: number = 0;
@@ -49,7 +55,7 @@ export struct BackupPanel {
   }
 
   private busy(): boolean { return this.confirming || this.restoring; }
-  private wide(): boolean { return this.panelWidth >= 720; }
+  private wide(): boolean { return this.panelWidth >= 760; }
 
   private time(value: string): string {
     const date = new Date(value);
@@ -166,117 +172,172 @@ export struct BackupPanel {
 
   @Builder
   private versionList() {
-    Column({ space: 8 }) {
-      Row() {
-        Text('恢复目标').fontSize(11).fontColor($r('app.color.muted')).layoutWeight(1)
-        Text(this.date).fontSize(12).fontWeight(FontWeight.Medium).fontColor($r('app.color.ink'))
-      }.width('100%').padding({ bottom: 10 })
-        .border({ width: { bottom: 1 }, color: $r('app.color.hairline') })
-      Text('保存前版本').fontSize(13).fontWeight(FontWeight.Medium).fontColor($r('app.color.ink'))
-        .width('100%')
-      Text('最近 20 个不同的日块版本').fontSize(11).fontColor($r('app.color.muted'))
-        .width('100%')
-      if (this.loading) {
-        Row({ space: 8 }) {
-          LoadingProgress().width(18).height(18).color($r('app.color.primary'))
-          Text('正在读取备份').fontSize(12).fontColor($r('app.color.muted'))
-        }.width('100%')
-      } else if (this.listError && this.versions.length === 0) {
-        Button('读取失败，点击重试', { type: ButtonType.Normal }).height(36)
-          .fontSize(12).fontColor($r('app.color.body')).backgroundColor($r('app.color.surface_soft'))
-          .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8)
-          .onClick(() => this.loadVersions())
-        Text(this.listError).fontSize(12).fontColor($r('app.color.error'))
-      } else if (this.versions.length === 0) {
-        Text('没有可用版本').fontSize(12).fontColor($r('app.color.muted_soft'))
-      }
-      Scroll() {
-        Column() {
-          ForEach(this.versions, (version: BackupVersion) => {
-            Button({ type: ButtonType.Normal }) {
-              Row() {
-                Text(this.time(version.createdAt)).fontSize(12).fontColor($r('app.color.body')).layoutWeight(1)
-                Text(this.formatSize(version.sizeBytes)).fontSize(11).fontColor($r('app.color.muted'))
-              }.width('100%')
-            }.width('100%').height(38).padding({ left: 10, right: 10 })
-              .backgroundColor(this.selected?.id === version.id ? $r('app.color.surface_card') : Color.Transparent)
-              .borderRadius(6).enabled(!this.busy()).onClick(() => this.selectVersion(version))
-          }, (version: BackupVersion) => version.id)
-          if (this.nextCursor || this.listError) {
-            Button(this.loadingMore ? '正在读取' : this.listError ? '重试更早版本' : '加载更早版本',
-              { type: ButtonType.Normal }).height(36)
-              .fontSize(12).fontColor($r('app.color.body')).backgroundColor($r('app.color.surface_soft'))
-              .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8)
-              .enabled(!this.loadingMore).onClick(() => this.loadVersions(true))
-          }
-        }.width('100%')
-      }.layoutWeight(1).width('100%').scrollBar(BarState.Auto)
-    }.width(this.wide() ? 250 : '100%').height(this.wide() ? '100%' : 210)
-      .alignItems(HorizontalAlign.Start).padding(12)
+    Scroll() {
+      Column({ space: 8 }) {
+        Row() {
+          Text('恢复目标').fontSize(11).fontColor($r('app.color.muted')).layoutWeight(1)
+          Text(this.date).fontSize(12).fontWeight(FontWeight.Medium).fontColor($r('app.color.ink'))
+        }.width('100%').padding({ bottom: 10 }).margin({ bottom: 8 })
+          .border({ width: { bottom: 1 }, color: $r('app.color.hairline') })
+        Text('保存前版本').fontSize(13).fontWeight(FontWeight.Bold).fontColor($r('app.color.ink'))
+        Text('最近 20 个不同的日块版本').fontSize(11).fontColor($r('app.color.muted'))
+        if (this.loading) {
+          Row({ space: 8 }) {
+            LoadingProgress().width(18).height(18).color($r('app.color.primary'))
+            Text('正在读取备份').fontSize(12).fontColor($r('app.color.muted'))
+          }.width('100%')
+        } else if (this.listError && this.versions.length === 0) {
+          Button('读取失败，点击重试', { type: ButtonType.Normal }).height(36)
+            .fontSize(12).fontColor($r('app.color.body')).backgroundColor($r('app.color.surface_soft'))
+            .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8)
+            .onClick(() => this.loadVersions())
+          Text(this.listError).fontSize(12).fontColor($r('app.color.error'))
+        } else if (this.versions.length === 0) {
+          Text('没有可用版本').fontSize(12).fontColor($r('app.color.muted_soft'))
+        }
+        ForEach(this.versions, (version: BackupVersion) => {
+          Button({ type: ButtonType.Normal }) {
+            Row() {
+              Text(this.time(version.createdAt)).fontSize(12).fontColor($r('app.color.body')).layoutWeight(1)
+              Text(this.formatSize(version.sizeBytes)).fontSize(11).fontColor($r('app.color.muted'))
+            }
+          }.width('100%').height(36).padding({ left: 10, right: 10 }).borderRadius(6)
+            .backgroundColor(this.selected?.id === version.id ? $r('app.color.surface_card') : Color.Transparent)
+            .enabled(!this.busy()).onClick(() => this.selectVersion(version))
+        }, (version: BackupVersion) => version.id)
+        if (this.nextCursor || this.listError && this.versions.length > 0) {
+          Button(this.loadingMore ? '正在读取' : this.listError ? '重试更早版本' : '加载更早版本',
+            { type: ButtonType.Normal }).height(36)
+            .fontSize(12).fontColor($r('app.color.body')).backgroundColor($r('app.color.surface_soft'))
+            .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8)
+            .enabled(!this.loadingMore).onClick(() => this.loadVersions(true))
+        }
+      }.width('100%').padding(12).alignItems(HorizontalAlign.Start)
+    }.id('backup_versions').width(this.wide() ? 250 : '100%')
+      .height(this.wide() ? '100%' : Math.min(260, Math.max(120, this.panelHeight * 0.32)))
+      .align(Alignment.TopStart).scrollBar(BarState.Auto)
       .backgroundColor($r('app.color.canvas'))
       .border({ width: this.wide() ? { right: 1 } : { bottom: 1 }, color: $r('app.color.hairline') })
+  }
+
+  @Builder
+  private previewEmpty() {
+    Column({ space: 8 }) {
+      if (this.previewLoading) {
+        LoadingProgress().width(22).height(22).color($r('app.color.primary'))
+      } else {
+        Image($r('app.media.archive_restore')).width(22).height(22)
+          .colorFilter(iconTint($r('app.color.muted_soft')))
+      }
+      Text(this.previewLoading ? '正在读取历史日块' : '选择一个历史版本')
+        .fontSize(13).fontWeight(FontWeight.Medium).fontColor($r('app.color.muted'))
+      if (!this.previewLoading) {
+        Text('确认内容后再恢复，不会整文件覆盖。').fontSize(12)
+          .fontColor($r('app.color.muted_soft')).textAlign(TextAlign.Center)
+      }
+    }.width('100%').height('100%').justifyContent(FlexAlign.Center).padding(16)
   }
 
   @Builder
   private comparison() {
     Column() {
       if (this.previewLoading) {
-        Row({ space: 8 }) {
-          LoadingProgress().width(20).height(20).color($r('app.color.primary'))
-          Text('正在读取历史日块').fontSize(13).fontColor($r('app.color.muted'))
-        }.layoutWeight(1).justifyContent(FlexAlign.Center)
+        Column() { this.previewEmpty() }
+          .width('100%').layoutWeight(1).justifyContent(FlexAlign.Center)
       } else if (this.previewError && !this.preview) {
         LoadFailure({ title: '历史版本读取失败', message: this.previewError,
           onRetry: () => { if (this.selected) this.selectVersion(this.selected); } })
       } else if (this.preview) {
         Web({ src: $rawfile('editor/backup.html'), controller: this.controller, renderMode: RenderMode.SYNC_RENDER })
-          .width('100%').layoutWeight(1).javaScriptAccess(true).domStorageAccess(false).onlineImageAccess(false)
+          .id('backup_comparison_web').width('100%').layoutWeight(1)
+          .javaScriptAccess(true).domStorageAccess(false).onlineImageAccess(false)
+          .backgroundColor($r('app.color.canvas')).monopolizeEvents(true)
           .onOverrideUrlLoading(() => true).onPageEnd(() => this.renderPreview())
         if (this.restoreError) {
           InlineStatus({ text: this.restoreError, error: true })
         }
-        Row({ space: 8 }) {
+        Flex({ direction: FlexDirection.Row,
+          wrap: this.wide() ? FlexWrap.NoWrap : FlexWrap.Wrap,
+          justifyContent: FlexAlign.End, alignItems: ItemAlign.Center }) {
           Text(this.conflict ? '请重新预览后再恢复。' : '仅恢复当前日块，恢复前会保留现有文件。')
-            .fontSize(12).fontColor($r('app.color.muted')).layoutWeight(1)
+            .fontSize(12).fontColor($r('app.color.muted'))
+            .width(this.wide() ? undefined : '100%')
+            .layoutWeight(this.wide() ? 1 : 0)
+            .margin(this.wide() ? { right: 16 } : { bottom: 12 })
           if (this.conflict) {
             Button('重新预览', { type: ButtonType.Normal }).fontSize(13)
               .fontColor($r('app.color.body')).backgroundColor($r('app.color.canvas'))
               .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8)
               .onClick(() => { if (this.selected) this.selectVersion(this.selected); })
           } else {
-            Button(this.restoring ? '恢复中' : '恢复此版本')
-              .fontSize(13).fontColor($r('app.color.on_primary')).backgroundColor($r('app.color.primary'))
-              .enabled(!this.busy()).onClick(() => this.restore())
+            ToolbarAction({ label: this.restoring ? '恢复中' : '恢复此版本',
+              icon: $r('app.media.archive_restore'), primary: true, busy: this.restoring,
+              available: !this.busy(), onAction: () => this.restore() })
           }
-        }.width('100%').padding(12).backgroundColor($r('app.color.surface_soft'))
+        }.id('backup_restore_footer').width('100%').flexShrink(0)
+          .padding({ left: 16, right: 16, top: 12, bottom: 12 })
+          .backgroundColor($r('app.color.surface_soft'))
+          .border({ width: { top: 1 }, color: $r('app.color.hairline') })
       } else {
-        EmptyState({ title: '选择一个历史版本', description: '确认内容后再恢复当前日块。' })
+        Column() { this.previewEmpty() }
+          .width('100%').layoutWeight(1).justifyContent(FlexAlign.Center)
       }
-    }.layoutWeight(1).height('100%').width(this.wide() ? undefined : '100%')
+    }.width('100%').height('100%')
   }
 
   build() {
     Column({ space: 12 }) {
-      Row({ space: 8 }) {
-        Column({ space: 3 }) {
-          Text('备份与恢复').fontFamily(workspaceSerifFamily(this.breakpoint)).fontSize(24)
-            .fontColor($r('app.color.ink'))
-          Text('比较历史内容，恢复当前日块。').fontSize(11).fontColor($r('app.color.muted'))
-        }.layoutWeight(1).alignItems(HorizontalAlign.Start)
-        Button('关闭', { type: ButtonType.Normal }).enabled(!this.busy())
-          .fontSize(13).fontColor($r('app.color.body')).backgroundColor($r('app.color.surface_soft'))
-          .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8)
-          .onClick(() => this.onClose())
-      }.width('100%').height(48)
-      if (this.wide()) {
-        Row() { this.versionList(); this.comparison() }.width('100%').layoutWeight(1)
-          .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8).clip(true)
+      if (this.breakpoint === WorkspaceBreakpoint.COMPACT) {
+        ActionPanelHeader({ title: '备份与恢复', closeLabel: '关闭备份与恢复', showDragBar: true,
+          onClose: () => { if (!this.busy()) this.onClose(); } })
       } else {
-        Column() { this.versionList(); this.comparison() }.width('100%').layoutWeight(1)
-          .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8).clip(true)
+        Row({ space: 8 }) {
+          Image($r('app.media.database_backup')).width(24).height(24)
+            .colorFilter(iconTint($r('app.color.primary'))).margin({ right: 8 })
+          Column({ space: 3 }) {
+            Text('备份与恢复').fontFamily(workspaceSerifFamily(this.breakpoint)).fontSize(24)
+              .fontColor($r('app.color.ink'))
+            Text('比较历史内容，恢复当前日块。').fontSize(11).fontColor($r('app.color.muted'))
+          }.layoutWeight(1).alignItems(HorizontalAlign.Start)
+          ToolbarAction({ label: this.maximized ? '还原备份窗口' : '最大化备份窗口', showLabel: false,
+            icon: this.maximized ? $r('app.media.minimize_2') : $r('app.media.maximize_2'),
+            onAction: () => this.getUIContext().animateTo({ duration: 260, curve: Curve.EaseInOut }, () => {
+              this.maximized = !this.maximized;
+            }) })
+          ToolbarAction({ label: '关闭备份与恢复', showLabel: false, useSymbol: true,
+            symbol: $r('sys.symbol.xmark'), available: !this.busy(), onAction: this.onClose })
+        }.width('100%').height(48)
       }
-    }.width('100%').height('100%').padding(16)
+      if (this.loading) {
+        Column({ space: 8 }) {
+          LoadingProgress().width(22).height(22).color($r('app.color.primary'))
+          Text('正在读取备份列表').fontSize(13).fontColor($r('app.color.muted'))
+        }.width('100%').layoutWeight(1).justifyContent(FlexAlign.Center)
+      } else if (this.listError && this.versions.length === 0) {
+        Column() {
+          LoadFailure({ title: '备份列表读取失败', message: this.listError,
+            onRetry: () => this.loadVersions() })
+        }.width('100%').layoutWeight(1)
+      } else {
+        if (this.wide()) {
+          Row() { this.versionList(); Column() { this.comparison() }.layoutWeight(1).height('100%') }
+            .width('100%').layoutWeight(1)
+            .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8).clip(true)
+        } else {
+          this.versionList()
+          Column() { this.comparison() }.width('100%').layoutWeight(1)
+        }
+      }
+    }.width('100%').height('100%').padding({ left: 16, right: 16, top: 8, bottom: 18 })
       .backgroundColor($r('app.color.canvas'))
-      .onAreaChange((_old, area) => this.panelWidth = Number(area.width))
+      .onAreaChange((_old, area) => {
+        this.panelWidth = Number(area.width);
+        this.panelHeight = Number(area.height);
+      })
+      .onKeyEvent((event: KeyEvent) => {
+        if (event.type !== KeyType.Down || event.keyCode !== KeyCode.KEYCODE_ESCAPE) return false;
+        if (!this.busy()) this.onClose();
+        return true;
+      })
   }
 }

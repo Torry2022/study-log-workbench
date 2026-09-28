@@ -240,6 +240,7 @@ export struct LogsReaderPage {
   @State private saving: boolean = false;
   @State private deleting: boolean = false;
   @State private backupOpen: boolean = false;
+  @State private backupMaximized: boolean = false;
   @State private backupBusy: boolean = false;
   @State private linkOpen: boolean = false;
   @State private linkOpening: boolean = false;
@@ -3539,14 +3540,15 @@ export struct LogsReaderPage {
       }
       if (this.backupOpen && this.day) {
         Stack() {
-          BackupPanel({ date: this.day.date,
-            onClose: () => { if (!this.backupBusy) this.backupOpen = false; },
+          BackupPanel({ date: this.day.date, maximized: $backupMaximized,
+            onClose: () => { if (!this.backupBusy) { this.backupOpen = false; this.backupMaximized = false; } },
             onBeforeRestore: () => this.beforeRestore(),
             onRestored: (day: DayEntry) => this.applyRestoredDay(day),
             onBusyChange: (busy: boolean) => this.backupBusy = busy })
-            .width(this.isWide() ? '88%' : '100%')
-            .height(this.isWide() ? '88%' : '100%')
-            .borderRadius(this.isWide() ? 12 : 0)
+            .width(this.isWide() ? (this.backupMaximized ? '100%' : '92%') : '100%')
+            .constraintSize({ maxWidth: this.isWide() && !this.backupMaximized ? 1120 : '100%' })
+            .height(this.isWide() ? (this.backupMaximized ? '100%' : '85%') : '100%')
+            .borderRadius(this.isWide() && !this.backupMaximized ? 12 : 0)
             .clip(true)
         }.width('100%').height('100%')
           .backgroundColor($r('app.color.scrim'))

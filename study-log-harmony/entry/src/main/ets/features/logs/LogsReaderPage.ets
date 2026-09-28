@@ -1648,7 +1648,7 @@ export struct LogsReaderPage {
   @Builder
   private desktopAdjacentButton(label: string, direction: number) {
     Button({ type: ButtonType.Normal }) {
-      if (this.showToolbarLabels('navigation')) {
+      if (this.logsReadingMode || this.showToolbarLabels('navigation')) {
         Row({ space: 4 }) {
           if (direction > 0) {
             SymbolGlyph($r('sys.symbol.chevron_left')).fontSize(12).fontColor([$r('app.color.body')])
@@ -1663,9 +1663,10 @@ export struct LogsReaderPage {
           .fontSize(16).fontColor([$r('app.color.body')])
       }
     }.id(direction > 0 ? 'log_previous_day' : 'log_next_day')
-      .width(this.showToolbarLabels('navigation') ? undefined : 32).height(32)
-      .padding({ left: this.showToolbarLabels('navigation') ? 12 : 0,
-        right: this.showToolbarLabels('navigation') ? 12 : 0 })
+      .width(this.logsReadingMode || this.showToolbarLabels('navigation') ? undefined : 32)
+      .height(this.logsReadingMode ? 34 : 32)
+      .padding({ left: this.logsReadingMode ? 10 : this.showToolbarLabels('navigation') ? 12 : 0,
+        right: this.logsReadingMode ? 10 : this.showToolbarLabels('navigation') ? 12 : 0 })
       .backgroundColor($r('app.color.canvas'))
       .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(7)
       .accessibilityText(label).enabled(this.adjacentDay(direction).length > 0)
@@ -2218,7 +2219,9 @@ export struct LogsReaderPage {
         }.width('100%').height(64)
           .opacity(Math.max(0, 1 - 2 * this.readingProgress))
           .visibility(this.readingProgress < 1 ? Visibility.Visible : Visibility.Hidden)
+          .zIndex(this.logsReadingMode ? 0 : 1)
           .hitTestBehavior(this.logsReadingMode ? HitTestMode.None : HitTestMode.Default)
+          .accessibilityLevel(this.logsReadingMode ? 'no-hide-descendants' : 'auto')
         Column() {
           ReadingLogHeader({ selectedDate: this.selectedDate, workspaceBreakpoint: this.workspaceBreakpoint,
             hasOutline: this.outlineHeadings().length > 0,
@@ -2229,7 +2232,9 @@ export struct LogsReaderPage {
         }.width('100%').height(64)
           .opacity(Math.max(0, 2 * this.readingProgress - 1))
           .visibility(this.readingProgress > 0 ? Visibility.Visible : Visibility.Hidden)
+          .zIndex(this.logsReadingMode ? 1 : 0)
           .hitTestBehavior(this.logsReadingMode ? HitTestMode.Default : HitTestMode.None)
+          .accessibilityLevel(this.logsReadingMode ? 'auto' : 'no-hide-descendants')
       }.width('100%').height(64).clip(true).id('log_reader_header')
     } else {
       CompactLogHeader({ selectedDate: this.selectedDate, workspaceBreakpoint: this.workspaceBreakpoint,
@@ -2288,7 +2293,7 @@ export struct LogsReaderPage {
         }, (heading: LogOutlineHeading) => heading.id)
       }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
     }.width(this.readingOutlineOpen ? 320 : 224).height('100%')
-      .padding({ left: 8, right: 8, top: this.readingOutlineOpen ? 16 : 28, bottom: 18 })
+      .padding({ left: 8, right: 8, top: 28, bottom: 18 })
       .border({ width: { left: this.readingOutlineOpen ? 0 : 1 }, color: $r('app.color.hairline_soft') })
   }
 
@@ -2604,7 +2609,7 @@ export struct LogsReaderPage {
                 },
                 targetHeading: this.targetHeading, targetHeadingIndex: this.targetHeadingIndex,
                 targetKind: this.targetKind, targetQuery: this.targetQuery, targetRevision: this.targetRevision,
-                trackActiveHeading: this.showDesktopOutline(),
+                trackActiveHeading: true,
                 onActiveHeading: (headingId: string) => this.updateActiveOutline(headingId),
                 onInternalLink: (date: string, heading: string) => this.confirmDiscard(() => this.openInternalLink(date, heading)) })
                 .layoutWeight(1).height('100%').id('log_reading_surface')

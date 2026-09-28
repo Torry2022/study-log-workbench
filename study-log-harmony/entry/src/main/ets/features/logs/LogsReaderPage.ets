@@ -42,6 +42,7 @@ import { FavoritesController } from '../favorites/FavoritesController';
 import { FavoritesPage } from '../favorites/FavoritesPage';
 import { FavoritesNavigation } from '../favorites/components/FavoritesNavigation';
 import { FavoriteHeading } from '../favorites/FavoriteModels';
+import { LogFavoriteGroupPanel } from './components/LogFavoriteGroupPanel';
 import { workspacePreferences } from '../../common/storage/WorkspacePreferences';
 import { appFeedback } from '../../common/ui/AppFeedback';
 import { NotesPage } from '../notes/NotesPage';
@@ -136,6 +137,12 @@ export struct LogsReaderPage {
   @State private noteSaveRevision: number = 0;
   @State private favoritesData: FavoritesController = new FavoritesController(apiClient);
   @State private favoriteBusy: boolean = false;
+  @State private favoriteSuccessHeadingId: string = '';
+  @State private favoriteDeleteId: string = '';
+  @State private favoriteGroupDialogId: string = '';
+  @State private favoriteGroupDialogOpen: boolean = false;
+  private favoriteSuccessRevision: number = 0;
+  private favoriteSuccessTimer: number = -1;
   @StorageProp('pref_favoritesView') private favoritesViewMode: string = 'list';
   @State private statsMonths: MonthSummary[] = [];
   @State private statsMonth: string = '';
@@ -364,6 +371,7 @@ export struct LogsReaderPage {
   }
 
   aboutToDisappear(): void {
+    this.closeFavoriteFeedback();
     this.onRegisterDesktopCommands(new DesktopLogCommands());
     this.moduleSwitchRevision++;
     this.modeRequestRevision++;
@@ -571,6 +579,7 @@ export struct LogsReaderPage {
 
   private openOutline(): void {
     if (this.outlineOpen || this.navigationOpen || this.outlineHeadings().length === 0) return;
+    this.favoritesData.load();
     const revision = ++this.outlineMotionRevision;
     this.outlineClosing = false;
     this.outlineOffset = 340;
@@ -932,27 +941,116 @@ export struct LogsReaderPage {
       item.date === this.selectedDate && (item.resolvedHeadingId || item.headingId) === heading.id);
   }
 
+  private favoriteFeedbackVisible(heading: LogOutlineHeading): boolean {
+    const favorite = this.outlineFavorite(heading);
+    return this.favoriteSuccessHeadingId === heading.id || (!!favorite && this.favoriteDeleteId === favorite.id);
+  }
+
+  private closeFavoriteFeedback(): void {
+    if (this.favoriteSuccessTimer >= 0) clearTimeout(this.favoriteSuccessTimer);
+    this.favoriteSuccessTimer = -1;
+    this.favoriteSuccessHeadingId = '';
+    this.favoriteDeleteId = '';
+    this.favoriteSuccessRevision++;
+  }
+
+  private toggleOutlineFavorite(heading: LogOutlineHeading): void {
+    if (heading.level !== 3 || this.favoriteBusy) return;
+    const favorite = this.outlineFavorite(heading);
+    if (favorite) {
+      this.favoriteSuccessHeadingId = '';
+      this.favoriteDeleteId = favorite.id;
+    } else this.addOutlineFavorite(heading);
+  }
+
   private async addOutlineFavorite(heading: LogOutlineHeading): Promise<void> {
     if (!this.selectedDate || this.favoriteBusy) return;
+    const date = this.selectedDate;
+    const lifecycle = this.lifecycle;
     this.favoriteBusy = true;
     try {
       const request: AddFavoriteRequest = {
         date: this.selectedDate, headingText: heading.text, headingId: heading.id, level: heading.level
       };
       const response = await apiClient.post<AddFavoriteResponse>('/favorites', request);
+      if (lifecycle !== this.lifecycle || date !== this.selectedDate) return;
       this.favoritesData.favorites = [...this.favoritesData.favorites, response.favorite];
-      appFeedback.show('收藏成功', 'success');
-    } catch (error) { appFeedback.show(error instanceof ApiError ? error.message : '收藏失败', 'error'); }
-    finally { this.favoriteBusy = false; }
+      this.favoriteDeleteId = '';
+      this.favoriteSuccessHeadingId = heading.id;
+      const revision = ++this.favoriteSuccessRevision;
+      if (this.favoriteSuccessTimer >= 0) clearTimeout(this.favoriteSuccessTimer);
+      this.favoriteSuccessTimer = setTimeout(() => {
+        if (lifecycle === this.lifecycle && revision === this.favoriteSuccessRevision &&
+          date === this.selectedDate && this.favoriteSuccessHeadingId === heading.id) {
+          this.favoriteSuccessTimer = -1;
+          this.favoriteSuccessHeadingId = '';
+        }
+      }, 5200);
+    } catch (error) {
+      if (lifecycle === this.lifecycle && date === this.selectedDate)
+        appFeedback.show(error instanceof ApiError ? error.message : '收藏失败', 'error');
+    } finally { if (lifecycle === this.lifecycle) this.favoriteBusy = false; }
   }
 
-  private removeOutlineFavorite(favorite: FavoriteHeading): void {
-    AlertDialog.show({ message: `取消收藏“${favorite.headingText}”吗？`,
-      primaryButton: { value: '保留', action: () => {} },
-      secondaryButton: { value: '取消收藏', action: async () => {
-        if (await this.favoritesData.remove(favorite.id)) appFeedback.show('已取消收藏', 'success');
-        else appFeedback.show(this.favoritesData.errorMessage, 'error');
-      } } });
+  private async removeOutlineFavorite(favorite: FavoriteHeading): Promise<void> {
+    if (this.favoriteBusy) return;
+    this.favoriteBusy = true;
+    const lifecycle = this.lifecycle;
+    const date = this.selectedDate;
+    const removed = await this.favoritesData.remove(favorite.id);
+    if (lifecycle === this.lifecycle) this.favoriteBusy = false;
+    if (lifecycle !== this.lifecycle || date !== this.selectedDate) return;
+    if (removed) {
+      this.closeFavoriteFeedback();
+      this.favoriteGroupDialogOpen = false;
+      appFeedback.show('已取消收藏', 'success');
+    } else appFeedback.show(this.favoritesData.errorMessage, 'error');
+  }
+
+  @Builder
+  private favoriteFeedbackPopup(heading: LogOutlineHeading) {
+    if (this.favoriteSuccessHeadingId === heading.id) {
+      Row({ space: 12 }) {
+        Text('收藏成功').fontSize(13).fontWeight(FontWeight.Medium).fontColor($r('app.color.ink'))
+          .layoutWeight(1)
+        Button({ type: ButtonType.Normal }) {
+          Row({ space: 5 }) {
+            Text('选择分组').fontSize(12).fontWeight(FontWeight.Medium).fontColor($r('app.color.primary_active'))
+            SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(12).fontColor([$r('app.color.primary_active')])
+          }
+        }.height(34).padding({ left: 10, right: 8 })
+          .backgroundColor($r('app.color.primary_tint'))
+          .border({ width: 1, color: $r('app.color.primary') }).borderRadius(7).clip(true)
+          .onClick(() => {
+            const favorite = this.outlineFavorite(heading);
+            if (!favorite) return;
+            this.closeFavoriteFeedback();
+            this.favoriteGroupDialogId = favorite.id;
+            this.favoriteGroupDialogOpen = true;
+          })
+      }.width('100%').height(52).padding({ left: 10, right: 6 })
+    } else if (this.outlineFavorite(heading)) {
+      Column({ space: 10 }) {
+        Text('取消收藏？').width('100%').fontSize(13).fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.ink'))
+        Row({ space: 7 }) {
+          Blank().layoutWeight(1)
+          Button('保留', { type: ButtonType.Normal }).height(32).padding({ left: 10, right: 10 })
+            .fontSize(12).fontWeight(FontWeight.Medium).fontColor($r('app.color.body'))
+            .backgroundColor($r('app.color.surface_soft'))
+            .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(7).clip(true)
+            .onClick(() => this.closeFavoriteFeedback())
+          Button('确认', { type: ButtonType.Normal }).height(32).padding({ left: 10, right: 10 })
+            .fontSize(12).fontWeight(FontWeight.Medium).fontColor($r('app.color.primary_active'))
+            .backgroundColor($r('app.color.primary_tint'))
+            .border({ width: 1, color: $r('app.color.primary') }).borderRadius(7).clip(true)
+            .onClick(() => {
+              const favorite = this.outlineFavorite(heading);
+              if (favorite) this.removeOutlineFavorite(favorite);
+            })
+        }.width('100%')
+      }.width('100%').padding(10).alignItems(HorizontalAlign.Start)
+    }
   }
 
   private message(error: Error): string {
@@ -1555,6 +1653,8 @@ export struct LogsReaderPage {
   }
 
   private async loadDay(date: string, heading: string = '', headingIndex: number = -1): Promise<void> {
+    this.closeFavoriteFeedback();
+    this.favoriteGroupDialogOpen = false;
     const lifecycle = this.lifecycle;
     const revision = ++this.dayRevision;
     await this.coverLogDocument();
@@ -2566,10 +2666,16 @@ export struct LogsReaderPage {
               }.width(28).height(28).padding(0).backgroundColor(Color.Transparent).borderRadius(6)
                 .enabled(!this.favoriteBusy)
                 .accessibilityText(this.outlineFavorite(heading) ? '取消收藏' : '收藏小节')
-                .onClick(() => {
-                  const favorite = this.outlineFavorite(heading);
-                  if (favorite) this.removeOutlineFavorite(favorite);
-                  else this.addOutlineFavorite(heading);
+                .onClick(() => this.toggleOutlineFavorite(heading))
+                .bindPopup(this.favoriteFeedbackVisible(heading), {
+                  builder: () => { this.favoriteFeedbackPopup(heading) },
+                  placement: Placement.Left, popupColor: $r('app.color.canvas'),
+                  enableArrow: false, autoCancel: true, targetSpace: 8,
+                  width: 236, radius: 10, backgroundBlurStyle: BlurStyle.NONE,
+                  shadow: { radius: 12, color: $r('app.color.popover_shadow'), offsetY: 4 },
+                  onStateChange: (event) => {
+                    if (!event.isVisible && this.favoriteFeedbackVisible(heading)) this.closeFavoriteFeedback();
+                  }
                 })
             }
             }.width('100%').padding({ right: 3 })
@@ -2676,10 +2782,16 @@ export struct LogsReaderPage {
                   .backgroundColor(Color.Transparent).borderRadius(6)
                   .enabled(!this.favoriteBusy).monopolizeEvents(true)
                   .accessibilityText(this.outlineFavorite(heading) ? '取消收藏' : '收藏小节')
-                  .onClick(() => {
-                    const favorite = this.outlineFavorite(heading);
-                    if (favorite) this.removeOutlineFavorite(favorite);
-                    else this.addOutlineFavorite(heading);
+                  .onClick(() => this.toggleOutlineFavorite(heading))
+                  .bindPopup(this.favoriteFeedbackVisible(heading), {
+                    builder: () => { this.favoriteFeedbackPopup(heading) },
+                    placement: Placement.Left, popupColor: $r('app.color.canvas'),
+                    enableArrow: false, autoCancel: true, targetSpace: 8,
+                    width: 236, radius: 10, backgroundBlurStyle: BlurStyle.NONE,
+                    shadow: { radius: 12, color: $r('app.color.popover_shadow'), offsetY: 4 },
+                    onStateChange: (event) => {
+                      if (!event.isVisible && this.favoriteFeedbackVisible(heading)) this.closeFavoriteFeedback();
+                    }
                   })
               }
             }.width('100%').constraintSize({ minHeight: 44 }).padding({ right: 4 })
@@ -3327,6 +3439,17 @@ export struct LogsReaderPage {
         }.width('100%').height('100%')
           .backgroundColor($r('app.color.scrim'))
           .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+      }
+      if (this.favoriteGroupDialogOpen) {
+        LogFavoriteGroupPanel({ data: this.favoritesData, favoriteId: this.favoriteGroupDialogId,
+          wide: this.isWide(), onClose: () => this.favoriteGroupDialogOpen = false,
+          onOpenFavorites: () => {
+            this.favoriteGroupDialogOpen = false;
+            this.closeOutline();
+            this.selectTab(2);
+          },
+          onRemove: (favorite: FavoriteHeading) => this.removeOutlineFavorite(favorite) })
+          .width('100%').height('100%').zIndex(12)
       }
       if (this.searchOpen && !this.isWide()) {
         LogSearchPanel({ query: this.searchQuery, headingsOnly: this.searchHeadingsOnly,

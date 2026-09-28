@@ -133,9 +133,10 @@ export struct LogsReaderPage {
   @State private statsRefreshRevision: number = 0;
   @State private outgoingTab: number = -1;
   @State private moduleReveal: number = 1;
-  @State private moduleTransition: WorkspaceTransitionCoordinator = new WorkspaceTransitionCoordinator({
+  @State private workspaceTransition: WorkspaceTransitionCoordinator = new WorkspaceTransitionCoordinator({
     tab: () => this.selectedTab(),
-    canCapture: (kind: string) => this.isWide() && kind === 'module',
+    canCapture: (kind: string) => this.isWide() &&
+      (kind === 'module' || (kind === 'document' && this.selectedTab() === 0 && !!this.day)),
     capture: () => this.getUIContext().getComponentSnapshot().get('module_frame',
       { waitUntilRenderFinished: true }),
     fade: (update: () => void, finished: () => void) => {
@@ -300,7 +301,7 @@ export struct LogsReaderPage {
 
   aboutToDisappear(): void {
     this.moduleSwitchRevision++;
-    this.moduleTransition.clear();
+    this.workspaceTransition.clear();
     this.sidebarMotionRevision++;
     this.ai.dispose();
     this.favoritesData.dispose();
@@ -399,11 +400,11 @@ export struct LogsReaderPage {
   private async switchModule(index: number, discardNotes: boolean, discardQa: boolean): Promise<void> {
     const revision = ++this.moduleSwitchRevision;
     if (this.isWide()) {
-      if (!this.moduleTransition.task) this.moduleTransition.clear();
-      await this.moduleTransition.cover('module');
+      this.workspaceTransition.clear();
+      await this.workspaceTransition.cover('module');
       if (revision !== this.moduleSwitchRevision) return;
     }
-    const covered = this.moduleTransition.snapshot && this.moduleTransition.kind === 'module';
+    const covered = this.workspaceTransition.snapshot && this.workspaceTransition.kind === 'module';
     this.outgoingTab = covered ? -1 : this.selectedTab();
     this.moduleReveal = covered ? 1 : 0;
     if (discardNotes) { this.notesDirty = false; this.noteDiscardRevision++; }
@@ -423,7 +424,7 @@ export struct LogsReaderPage {
     this.getUIContext().postFrameCallback(new FrameAction(() => {
       if (revision !== this.moduleSwitchRevision) return;
       if (covered) {
-        this.moduleTransition.finish('module');
+        this.workspaceTransition.finish('module');
       } else {
         this.getUIContext().animateTo({ duration: 160, curve: Curve.EaseOut, onFinish: () => {
           if (revision === this.moduleSwitchRevision) this.outgoingTab = -1;
@@ -1227,6 +1228,8 @@ export struct LogsReaderPage {
     const lifecycle = this.lifecycle;
     const revision = ++this.listRevision;
     this.dayRevision++;
+    await this.coverLogDocument();
+    if (lifecycle !== this.lifecycle || revision !== this.listRevision) return;
     this.month = month;
     this.days = [];
     this.day = undefined;
@@ -1240,10 +1243,12 @@ export struct LogsReaderPage {
       this.days = response.days;
       if (targetDate) await this.loadDay(targetDate);
       else if (response.days.length > 0) await this.loadDay(response.days[0].date);
+      else this.workspaceTransition.finish('document');
     } catch (error) {
       if (lifecycle === this.lifecycle && revision === this.listRevision) {
         this.navigationError = this.message(error as Error);
         this.errorMessage = this.navigationError;
+        this.workspaceTransition.finish('document');
       }
     } finally {
       if (lifecycle === this.lifecycle && revision === this.listRevision) this.daysLoading = false;
@@ -1253,6 +1258,8 @@ export struct LogsReaderPage {
   private async loadDay(date: string, heading: string = '', headingIndex: number = -1): Promise<void> {
     const lifecycle = this.lifecycle;
     const revision = ++this.dayRevision;
+    await this.coverLogDocument();
+    if (lifecycle !== this.lifecycle || revision !== this.dayRevision) return;
     this.dayLoading = true;
     this.errorMessage = '';
     this.day = undefined;
@@ -1287,10 +1294,30 @@ export struct LogsReaderPage {
       if (heading) this.targetRevision++;
       this.closeNavigation();
     } catch (error) {
-      if (lifecycle === this.lifecycle && revision === this.dayRevision) this.errorMessage = this.message(error as Error);
+      if (lifecycle === this.lifecycle && revision === this.dayRevision) {
+        this.errorMessage = this.message(error as Error);
+        this.workspaceTransition.finish('document');
+      }
     } finally {
-      if (lifecycle === this.lifecycle && revision === this.dayRevision) this.dayLoading = false;
+      if (lifecycle === this.lifecycle && revision === this.dayRevision) {
+        this.dayLoading = false;
+        if (this.sourceMode || this.splitMode && !this.isWide()) {
+          this.getUIContext().postFrameCallback(new FrameAction(() => {
+            if (lifecycle === this.lifecycle && revision === this.dayRevision) {
+              this.workspaceTransition.finish('document');
+            }
+          }));
+        }
+      }
     }
+  }
+
+  private async coverLogDocument(): Promise<void> {
+    if ((this.workspaceTransition.waitingKind && this.workspaceTransition.waitingKind !== 'document') ||
+      (this.workspaceTransition.kind && this.workspaceTransition.kind !== 'document')) {
+      this.workspaceTransition.clear();
+    }
+    await this.workspaceTransition.cover('document');
   }
 
   private async openInternalLink(date: string, heading: string, kind: string = 'internal', query: string = ''): Promise<void> {
@@ -2406,6 +2433,16 @@ export struct LogsReaderPage {
                 color: $r('app.color.hairline') })
             Row() {
               MarkdownReader({ content: this.previewText, contentMode: 'log', documentKey: this.day.date,
+                onContentRendered: (_content: string, date: string) => {
+                  if (date === this.selectedDate && !this.dayLoading && !this.daysLoading) {
+                    this.workspaceTransition.finish('document');
+                  }
+                },
+                onRenderFailed: (date: string) => {
+                  if (date !== this.selectedDate) return;
+                  this.errorMessage = '日志正文渲染失败，请刷新重试';
+                  this.workspaceTransition.finish('document');
+                },
                 targetHeading: this.targetHeading, targetHeadingIndex: this.targetHeadingIndex,
                 targetKind: this.targetKind, targetQuery: this.targetQuery, targetRevision: this.targetRevision,
                 trackActiveHeading: this.showDesktopOutline(),
@@ -2610,11 +2647,12 @@ export struct LogsReaderPage {
               this.moveAiTools(0);
             }
           })
-          if (this.moduleTransition.snapshot && this.moduleTransition.kind === 'module') {
-            Image(this.moduleTransition.snapshot).width('100%').height('100%')
-              .objectFit(ImageFit.Fill).syncLoad(true).opacity(this.moduleTransition.opacity).zIndex(10)
-              .onComplete(() => this.moduleTransition.rendered())
-              .onError(() => this.moduleTransition.clear())
+          if (this.workspaceTransition.snapshot &&
+            (this.workspaceTransition.kind === 'module' || this.workspaceTransition.kind === 'document')) {
+            Image(this.workspaceTransition.snapshot).width('100%').height('100%')
+              .objectFit(ImageFit.Fill).syncLoad(true).opacity(this.workspaceTransition.opacity).zIndex(10)
+              .onComplete(() => this.workspaceTransition.rendered())
+              .onError(() => this.workspaceTransition.clear())
               .hitTestBehavior(HitTestMode.None)
           }
         }.id('module_frame').layoutWeight(1).width('100%')

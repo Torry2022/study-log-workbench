@@ -570,7 +570,7 @@ export struct LogsReaderPage {
   }
 
   private openOutline(): void {
-    if (this.isWide() || this.outlineOpen || this.navigationOpen || this.outlineHeadings().length === 0) return;
+    if (this.outlineOpen || this.navigationOpen || this.outlineHeadings().length === 0) return;
     const revision = ++this.outlineMotionRevision;
     this.outlineClosing = false;
     this.outlineOffset = 340;
@@ -829,7 +829,7 @@ export struct LogsReaderPage {
     const fullHeading = 32 + this.headerDateWidth + toolbarActionsWidth(['上一篇', '下一篇']) + 24;
     const documentActions = toolbarActionsWidth(['刷新', '导出', '备份', '删除']);
     const editorActions = this.sourceMode || this.splitMode ?
-      toolbarActionsWidth(['内部链接', '插入图片']) + 8 : 0;
+      toolbarActionsWidth(['内部链接', '插入图片', '放弃修改', '查找替换']) + 8 : 0;
     const full = fullHeading + 3 * toolbarActionWidth('浏览') + 6 + documentActions +
       toolbarActionWidth('保存中') + 40 + editorActions + 9 * 8;
     this.toolbarDensity = resolveToolbarDensity(width, compact, full, this.toolbarDensity);
@@ -2152,20 +2152,25 @@ export struct LogsReaderPage {
   @Builder
   private moreActions() {
     Column() {
-      if (this.sourceMode || this.splitMode) {
-        if (!this.editorActionsInHeader()) {
-          this.desktopMoreItem($r('app.media.link_2'), '内部链接', this.editorReady && !this.linkOpening,
-            () => this.openLink())
-          this.desktopMoreItem($r('app.media.upload'), '插入图片', !!this.day && !this.imageBusy,
-            () => this.insertImages())
-        }
-      } else {
-        this.desktopMoreItem($r('app.media.upload'), '插入图片', !!this.day && !this.imageBusy,
-          () => this.insertImages())
+      if ((this.sourceMode || this.splitMode) && !this.editorActionsInHeader()) {
+        this.desktopMoreItem($r('app.media.link_2'), '内部链接', this.editorReady && !this.linkOpening,
+          () => this.openLink())
+        this.desktopMoreItem($r('app.media.search'), '查找替换', this.editorReady,
+          () => this.editor.command('find'))
       }
       if (!this.documentActionsInHeader('refresh')) {
-        this.desktopMoreItem($r('app.media.refresh_cw'), '刷新', !this.saving && !this.deleting,
+        this.desktopMoreItem($r('app.media.refresh_cw'), '刷新', !!this.selectedDate && !this.saving && !this.deleting,
           () => this.refreshLog())
+      }
+      this.desktopMoreItem($r('app.media.layout_list'), '大纲', this.outlineHeadings().length > 0,
+        () => this.pendingOutlineOpen = true)
+      this.desktopMoreItem($r('app.media.panel_right_open'), 'AI 工具', !!this.day,
+        () => this.openAiTools())
+      if (!this.editorActionsInHeader()) {
+        this.desktopMoreItem($r('app.media.upload'), '插入图片', !!this.day && !this.imageBusy,
+          () => this.insertImages())
+        this.desktopMoreItem($r('app.media.eye'), '放弃修改', this.editorReady && this.dirty,
+          () => this.discardDraft())
       }
       if (!this.documentActionsInHeader('backup')) {
         this.desktopMoreItem($r('app.media.database_backup'), '备份', !!this.day && !this.saving,
@@ -2181,10 +2186,15 @@ export struct LogsReaderPage {
           () => this.exportLogs('day'))
         this.desktopMoreItem($r('app.media.download'), '导出当前源文件', !!this.day && !this.exportBusy,
           () => this.exportLogs('file'))
+        this.desktopMoreItem($r('app.media.download'), '导出全部日志', !this.exportBusy,
+          () => this.exportLogs('all'))
       }
-      this.desktopMoreItem($r('app.media.download'), '导出全部日志', !this.exportBusy,
-        () => this.exportLogs('all'))
     }.width(220).padding(8)
+      .onKeyEvent((event: KeyEvent) => {
+        if (event.type !== KeyType.Down || event.keyCode !== KeyCode.KEYCODE_ESCAPE) return false;
+        this.moreOpen = false;
+        return true;
+      })
   }
 
   private async discardDraft(): Promise<void> {
@@ -2393,6 +2403,12 @@ export struct LogsReaderPage {
         ToolbarAction({ label: '插入图片', icon: $r('app.media.upload'), iconSize: 15,
           showLabel: true, busy: this.imageBusy, available: !!this.day && this.editorReady,
           onAction: () => this.insertImages() })
+        ToolbarAction({ label: '放弃修改', icon: $r('app.media.eye'), iconSize: 15,
+          showLabel: true, available: this.editorReady && this.dirty,
+          onAction: () => this.discardDraft() })
+        ToolbarAction({ label: '查找替换', icon: $r('app.media.search'), iconSize: 15,
+          showLabel: true, available: this.editorReady,
+          onAction: () => this.editor.command('find') })
       }
       LogDisplayModeControl({ sourceMode: this.sourceMode, splitMode: this.splitMode,
         expanded: this.expandedModeSelector(), showLabels: this.showToolbarLabels('mode'),
@@ -2451,8 +2467,13 @@ export struct LogsReaderPage {
         showLabel: false, active: this.moreOpen, onAction: () => this.moreOpen = !this.moreOpen })
         .id('log_more_actions')
         .bindPopup(this.moreOpen, { builder: this.moreActions(), placement: Placement.BottomRight,
-          enableArrow: false, popupColor: $r('app.color.canvas'), radius: 8,
-          onStateChange: (event) => { if (!event.isVisible) this.moreOpen = false; } })
+          enableArrow: false, popupColor: $r('app.color.canvas'), autoCancel: true,
+          targetSpace: 4, width: 220, radius: 12, backgroundBlurStyle: BlurStyle.NONE,
+          shadow: { radius: 12, color: $r('app.color.popover_shadow'), offsetY: 4 },
+          onStateChange: (event) => {
+            this.moreOpen = event.isVisible;
+            if (!event.isVisible) this.handleActionsDisappear();
+          } })
     }
   }
 
@@ -2673,7 +2694,7 @@ export struct LogsReaderPage {
         .padding({ left: 14, right: 14, top: 14, bottom: 28 })
         .scrollBar(BarState.Off)
         .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
-    }.width('82%').height('100%')
+    }.width(this.isWide() ? 320 : '82%').height('100%')
       .backgroundColor($r('app.color.surface_soft'))
       .border({ width: { left: 1 }, color: $r('app.color.hairline') })
       .shadow({ radius: 18, color: $r('app.color.popover_shadow'), offsetX: -4 })
@@ -3207,12 +3228,13 @@ export struct LogsReaderPage {
             Stack({ alignContent: Alignment.TopEnd }) { this.aiToolsPanel() }
               .width('100%').height('100%').zIndex(2)
           }
-          if (!this.isWide() && this.outlineOpen && this.selectedTab() === 0) {
+          if (this.outlineOpen && this.selectedTab() === 0) {
             Stack({ alignContent: Alignment.TopEnd }) {
               AppModalScrim({ onDismiss: () => this.closeOutline() })
                 .opacity(this.outlineScrimOpacity)
-              Column().width('82%').height('100%')
+              Column().width(this.isWide() ? 320 : '82%').height('100%')
                 .backgroundColor($r('app.color.surface_soft'))
+                .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
                 .translate({ x: this.outlineOffset })
               this.compactOutlinePanel()
             }.width('100%').height('100%').zIndex(4)

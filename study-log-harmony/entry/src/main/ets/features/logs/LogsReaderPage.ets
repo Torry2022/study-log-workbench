@@ -31,6 +31,7 @@ import { DesktopLogCommands, DesktopMenuEntry } from '../../app/DesktopMenu';
 import { iconTint } from '../../common/ui/IconTint';
 import { InteractiveSurface, animateHover } from '../../common/ui/InteractiveSurface';
 import { ToolbarDensity, resolveToolbarDensity, toolbarActionWidth, toolbarActionsWidth } from '../../common/ui/ToolbarLayout';
+import { TaxonomyManagerPage } from '../stats/TaxonomyManagerPage';
 import { StatsPage } from '../stats/StatsPage';
 import { StatsEntry } from '../stats/StatsModels';
 import { StatsNavigation } from '../stats/components/StatsNavigation';
@@ -85,6 +86,9 @@ export struct LogsReaderPage {
   @State private errorMessage: string = '';
   @State private navigationError: string = '';
   @State private navigationOpen: boolean = false;
+  @State private taxonomyOpen: boolean = false;
+  @State private taxonomyDirty: boolean = false;
+  @State private taxonomyBusy: boolean = false;
   @State @Watch('moduleNavigationChanged') private statsOpen: boolean = false;
   @State @Watch('moduleNavigationChanged') private favoritesOpen: boolean = false;
   @State @Watch('moduleNavigationChanged') private notesOpen: boolean = false;
@@ -304,6 +308,7 @@ export struct LogsReaderPage {
 
   private selectTab(index: number): void {
     if (index === this.selectedTab()) return;
+    if (this.taxonomyOpen) { this.confirmTaxonomyLeave(() => this.selectTab(index)); return; }
     if (index === 1) this.openNotes();
     else if (index === 2) this.openFavorites();
     else if (index === 3) this.openQa();
@@ -311,6 +316,21 @@ export struct LogsReaderPage {
     else if (this.notesOpen) this.confirmNotesLeave(() => {});
     else if (this.qaOpen) this.confirmQaLeave(() => {});
     else { this.favoritesOpen = false; this.statsOpen = false; }
+  }
+
+  private openTaxonomy(): void {
+    this.navigationOpen = false;
+    this.railPopover = '';
+    this.taxonomyOpen = true;
+  }
+
+  private confirmTaxonomyLeave(action: () => void): void {
+    if (this.taxonomyBusy) { appFeedback.show('分类正在保存，请稍候'); return; }
+    const leave = (): void => { this.taxonomyDirty = false; this.taxonomyOpen = false; action(); };
+    if (!this.taxonomyDirty) { leave(); return; }
+    AlertDialog.show({ message: '分类映射尚未保存，确定放弃修改吗？',
+      primaryButton: { value: '继续编辑', action: () => {} },
+      secondaryButton: { value: '放弃修改', fontColor: $r('app.color.error'), action: leave } });
   }
 
   private openStats(): void {
@@ -629,6 +649,7 @@ export struct LogsReaderPage {
   }
 
   private confirmDiscard(next: () => void): void {
+    if (this.taxonomyOpen) { this.confirmTaxonomyLeave(() => this.confirmDiscard(next)); return; }
     if (this.leaveCheckPending) return;
     this.leaveCheckPending = true;
     this.checkBeforeLeaving(next).finally(() => this.leaveCheckPending = false);
@@ -1620,7 +1641,7 @@ export struct LogsReaderPage {
       FavoritesNavigation({ data: this.favoritesData, wide: true,
                     onRetry: () => this.favoritesData.load() })
     } else if (this.statsOpen) {
-      StatsNavigation({ monthsOnly: true, statsMonths: this.statsMonths,
+      StatsNavigation({ monthsOnly: false, onTaxonomy: () => this.openTaxonomy(), statsMonths: this.statsMonths,
                     statsMonth: this.statsMonth, statsMonthsLoading: this.statsMonthsLoading,
                     statsMonthsError: this.statsMonthsError,
                     onMonth: (month: string) => {
@@ -1841,7 +1862,7 @@ export struct LogsReaderPage {
         onDelete: (session: RagSessionSummary) => this.confirmQaDelete(session),
         onRetry: () => this.qaNavigation.loadQaNavigation() })
     } else if (this.statsOpen) {
-      StatsNavigation({ monthsOnly: true, statsMonths: this.statsMonths, statsMonth: this.statsMonth,
+      StatsNavigation({ monthsOnly: false, onTaxonomy: () => this.openTaxonomy(), statsMonths: this.statsMonths, statsMonth: this.statsMonth,
         statsMonthsLoading: this.statsMonthsLoading, statsMonthsError: this.statsMonthsError,
         onMonth: (month: string) => {
           this.statsMonth = month; this.statsMonthRevision++; this.navigationOpen = false;
@@ -2369,7 +2390,7 @@ export struct LogsReaderPage {
               onAction: () => this.qaOpen ? this.confirmQaLeave(() => {}) : this.openQa() })
             ToolbarAction({ label: '统计', icon: $r('app.media.tab_chart_column'),
               showLabel: this.isWide(), active: this.statsOpen,
-              onAction: () => this.statsOpen ? this.statsOpen = false : this.openStats() })
+              onAction: () => this.statsOpen ? this.confirmTaxonomyLeave(() => this.statsOpen = false) : this.openStats() })
           ToolbarAction({ label: '更多设置', icon: $r('app.media.more_horizontal'), showLabel: false,
             active: this.topMoreOpen, onAction: () => this.topMoreOpen = !this.topMoreOpen })
             .bindPopup(this.topMoreOpen, { builder: this.topMoreActions(), placement: Placement.BottomRight,
@@ -2432,7 +2453,17 @@ export struct LogsReaderPage {
           } else if (this.statsOpen) {
             Row() {
               if (this.isWide()) { this.desktopNavigation() }
-              StatsPage({ requestedMonth: this.statsMonth, requestedMonthRevision: this.statsMonthRevision,
+              if (this.taxonomyOpen) {
+                TaxonomyManagerPage({
+                  onBack: () => this.confirmTaxonomyLeave(() => {}),
+                  onStateChange: (dirty: boolean, busy: boolean) => {
+                    this.taxonomyDirty = dirty; this.taxonomyBusy = busy;
+                  },
+                  onSaved: () => this.statsRefreshRevision++
+                }).layoutWeight(1)
+              } else {
+              StatsPage({ showTaxonomyManager: true, onOpenTaxonomyManager: () => this.openTaxonomy(),
+                requestedMonth: this.statsMonth, requestedMonthRevision: this.statsMonthRevision,
                 refreshRevision: this.statsRefreshRevision,
                 onMonthsChange: (months: MonthSummary[]) => this.statsMonths = months,
                 onMonthsLoadingChange: (loading: boolean) => this.statsMonthsLoading = loading,
@@ -2440,6 +2471,7 @@ export struct LogsReaderPage {
                 onSelectedMonthChange: (month: string) => this.statsMonth = month,
                 onOpenLog: () => this.statsOpen = false,
                 onOpenEntry: (entry: StatsEntry) => this.openStatsEntry(entry) }).layoutWeight(1)
+              }
             }.width('100%').height('100%')
           } else {
           Row() {

@@ -62,6 +62,7 @@ export struct InlineStatus {
   @Prop error: boolean = false;
   @Prop loading: boolean = false;
   @Prop retry: boolean = false;
+  @Prop retryLabel: string = '重试';
   onRetry: () => void = () => {};
 
   build() {
@@ -80,7 +81,7 @@ export struct InlineStatus {
           .maxLines(2)
           .layoutWeight(1)
         if (this.retry) {
-          Button('重试', { type: ButtonType.Normal }).height(36).padding({ left: 12, right: 12 })
+          Button(this.retryLabel, { type: ButtonType.Normal }).height(36).padding({ left: 12, right: 12 })
             .fontSize(13).backgroundColor($r('app.color.surface_soft')).fontColor($r('app.color.body'))
             .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8)
             .onClick(this.onRetry)

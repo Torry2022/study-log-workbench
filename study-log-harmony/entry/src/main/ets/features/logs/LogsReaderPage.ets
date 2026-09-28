@@ -30,6 +30,8 @@ import { KeyCode, pointer } from '@kit.InputKit';
 import { FrameAction } from '../../common/ui/FrameAction';
 import { AppModalScrim } from '../../common/ui/AppModalScrim';
 import { NavigationRefresh } from '../../common/ui/NavigationRefresh';
+import { DelayedLoadingHint } from '../../common/ui/DelayedLoadingHint';
+import { LoadingHintPlacement } from '../../common/ui/LoadingHintAnchor';
 import { floatingSurfaceTransition, revealPanel, secondaryPageTransition } from '../../common/ui/WorkspaceMotion';
 import { NavigationRefreshController, NavigationSnapshot } from '../../app/NavigationRefreshController';
 import { DesktopLogCommands, DesktopMenuEntry } from '../../app/DesktopMenu';
@@ -167,6 +169,10 @@ export struct LogsReaderPage {
   private readingImageHeight: number = 0;
   private workspaceOriginX: number = 0;
   private workspaceOriginY: number = 0;
+  @State private qaLoadingHint: LoadingHintPlacement = new LoadingHintPlacement();
+  @State private notesLoadingHint: LoadingHintPlacement = new LoadingHintPlacement();
+  @State private favoritesLoadingHint: LoadingHintPlacement = new LoadingHintPlacement();
+  @State private statsLoadingHint: LoadingHintPlacement = new LoadingHintPlacement();
   private readingViewportX: number = 0;
   private readingViewportY: number = 0;
   private readingViewportWidth: number = 0;
@@ -3298,6 +3304,7 @@ export struct LogsReaderPage {
                 onBusyChange: (busy: boolean) => this.qaBusy = busy,
                 onDraftChange: (dirty: boolean) => this.qaDirty = dirty,
                 onPendingChange: (pending: boolean) => this.qaPending = pending,
+                onLoadingHintChange: (placement: LoadingHintPlacement) => this.qaLoadingHint = placement,
                 onOpenLog: () => this.selectTab(0),
                 onCitation: (date: string, heading: string, headingIndex: number) =>
                   this.openQaCitation(date, heading, headingIndex) }).layoutWeight(1)
@@ -3316,6 +3323,7 @@ export struct LogsReaderPage {
                 },
                 onEditorBusyChange: (busy: boolean) => this.notesBusy = busy,
                 onDirtyChange: (dirty: boolean) => this.notesDirty = dirty,
+                onLoadingHintChange: (placement: LoadingHintPlacement) => this.notesLoadingHint = placement,
                 onOpenLog: () => this.selectTab(0),
                 onInternalLink: (date: string, heading: string) => this.openNoteLink(date, heading) }).layoutWeight(1)
           }.width('100%').height('100%')
@@ -3327,6 +3335,7 @@ export struct LogsReaderPage {
               if (this.isWide()) { this.desktopNavigation() }
               FavoritesPage({ data: this.favoritesData, viewMode: this.favoritesViewMode,
                 topRevision: this.topRequests[2],
+                onLoadingHintChange: (placement: LoadingHintPlacement) => this.favoritesLoadingHint = placement,
                 onViewModeChange: (mode: string) => {
                   workspacePreferences.set('favoritesView', mode)
                     .catch(() => appFeedback.show('收藏显示方式保存失败', 'error'));
@@ -3345,6 +3354,7 @@ export struct LogsReaderPage {
                   topRevision: this.topRequests[4],
                   requestedMonth: this.statsMonth, requestedMonthRevision: this.statsMonthRevision,
                   refreshRevision: this.statsRefreshRevision,
+                  onLoadingHintChange: (placement: LoadingHintPlacement) => this.statsLoadingHint = placement,
                   onMonthsChange: (months: MonthSummary[]) => this.statsMonths = months,
                   onMonthsLoadingChange: (loading: boolean) => this.statsMonthsLoading = loading,
                   onMonthsErrorChange: (error: string) => this.statsMonthsError = error,
@@ -3448,6 +3458,30 @@ export struct LogsReaderPage {
           this.workspaceOriginX = Number(area.globalPosition.x);
           this.workspaceOriginY = Number(area.globalPosition.y);
         })
+      DelayedLoadingHint({ loading: this.selectedTab() === 3 && this.qaLoadingHint.loading,
+        text: '正在读取会话…' })
+        .width(this.qaLoadingHint.width).height(this.qaLoadingHint.height)
+        .position({ x: this.qaLoadingHint.x - this.workspaceOriginX,
+          y: this.qaLoadingHint.y - this.workspaceOriginY })
+        .zIndex(20).hitTestBehavior(HitTestMode.None)
+      DelayedLoadingHint({ loading: this.selectedTab() === 1 && this.notesLoadingHint.loading,
+        text: '正在加载随记…' })
+        .width(this.notesLoadingHint.width).height(this.notesLoadingHint.height)
+        .position({ x: this.notesLoadingHint.x - this.workspaceOriginX,
+          y: this.notesLoadingHint.y - this.workspaceOriginY })
+        .zIndex(20).hitTestBehavior(HitTestMode.None)
+      DelayedLoadingHint({ loading: this.selectedTab() === 2 && this.favoritesLoadingHint.loading,
+        text: '正在加载收藏…' })
+        .width(this.favoritesLoadingHint.width).height(this.favoritesLoadingHint.height)
+        .position({ x: this.favoritesLoadingHint.x - this.workspaceOriginX,
+          y: this.favoritesLoadingHint.y - this.workspaceOriginY })
+        .zIndex(20).hitTestBehavior(HitTestMode.None)
+      DelayedLoadingHint({ loading: this.selectedTab() === 4 && !this.taxonomyOpen && this.statsLoadingHint.loading,
+        text: '正在加载统计…' })
+        .width(this.statsLoadingHint.width).height(this.statsLoadingHint.height)
+        .position({ x: this.statsLoadingHint.x - this.workspaceOriginX,
+          y: this.statsLoadingHint.y - this.workspaceOriginY })
+        .zIndex(20).hitTestBehavior(HitTestMode.None)
       if (this.readingTransition.snapshot) {
         Stack({ alignContent: Alignment.TopStart }) {
           Image(this.readingTransition.snapshot).width(this.readingImageWidth).height(this.readingImageHeight)

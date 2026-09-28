@@ -24,6 +24,7 @@ export class DesktopMenuEntry {
 export class DesktopLogCommands {
   entries: (menu: string) => DesktopMenuEntry[] = () => [];
   execute: (id: string) => void = () => {};
+  handleKey: (event: KeyEvent) => boolean = () => false;
   editing: () => boolean = () => false;
   editorFocused: () => boolean = () => false;
   blocked: () => boolean = () => false;

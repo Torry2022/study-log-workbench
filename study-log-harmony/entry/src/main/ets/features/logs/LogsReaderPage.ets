@@ -109,6 +109,7 @@ export struct LogsReaderPage {
   @State private qaSessionId: string = '';
   @State private qaRequestRevision: number = 0;
   @State private qaDiscardRevision: number = 0;
+  @State private qaQuestionFocusRevision: number = 0;
   @State private qaQuery: string = '';
   @State private qaNavigation: QaNavigationController = new QaNavigationController(apiClient, {
     active: () => this.qaOpen, busy: () => this.qaBusy,
@@ -125,6 +126,7 @@ export struct LogsReaderPage {
   @State private noteTagFilter: string = 'all';
   @State private noteNewRevision: number = 0;
   @State private noteDiscardRevision: number = 0;
+  @State private noteSaveRevision: number = 0;
   @State private favoritesData: FavoritesController = new FavoritesController(apiClient);
   @State private favoriteBusy: boolean = false;
   @StorageProp('pref_favoritesView') private favoritesViewMode: string = 'list';
@@ -222,6 +224,7 @@ export struct LogsReaderPage {
   @State private exportBusy: boolean = false;
   @State private exportMenuOpen: boolean = false;
   @State private searchOpen: boolean = false;
+  @State private searchFocusRevision: number = 0;
   @State private searchQuery: string = '';
   @State private searchHeadingsOnly: boolean = false;
   @State private searchIgnoreCase: boolean = true;
@@ -269,6 +272,8 @@ export struct LogsReaderPage {
   private calendarRevision: number = 0;
   private linkTarget: EditorSnapshot | undefined = undefined;
   private searchRevision: number = 0;
+  @State private topRequests: number[] = [0, 0, 0, 0, 0];
+  private focusRegion: number = -1;
   private logNavigationScroller: Scroller = new Scroller();
 
   aboutToAppear(): void {
@@ -301,6 +306,13 @@ export struct LogsReaderPage {
       else if (id === 'preview') this.switchMode(false);
       else if (id === 'source') this.switchMode(true);
       else if (id === 'split') this.switchMode(false, true);
+    };
+    commands.handleKey = (event: KeyEvent): boolean => this.handleWorkspaceKey(event);
+    commands.editing = (): boolean => this.sourceMode || this.splitMode;
+    commands.editorFocused = (): boolean => (this.sourceMode || this.splitMode) && this.editor.focused;
+    commands.blocked = (): boolean => this.shortcutBlocked();
+    commands.navigate = (offset: number): void => {
+      if (!this.sourceMode && !this.splitMode && !this.dayLoading && !this.daysLoading) this.navigateDay(offset);
     };
     this.onRegisterDesktopCommands(commands);
     this.onCaptureDraft(() => this.captureDraft());
@@ -345,6 +357,7 @@ export struct LogsReaderPage {
   }
 
   aboutToDisappear(): void {
+    this.onRegisterDesktopCommands(new DesktopLogCommands());
     this.moduleSwitchRevision++;
     this.modeRequestRevision++;
     this.readingTransition.clear();
@@ -376,6 +389,95 @@ export struct LogsReaderPage {
 
   private selectedTab(): number {
     return this.notesOpen ? 1 : this.favoritesOpen ? 2 : this.qaOpen ? 3 : this.statsOpen ? 4 : 0;
+  }
+
+  private shortcutBlocked(): boolean {
+    return this.backupOpen || this.linkOpen || this.ai.reviewOpen || this.imageBusy || this.exportBusy ||
+      this.saving || this.deleting || this.taxonomyOpen || this.topMoreOpen || this.moreOpen ||
+      this.exportMenuOpen || this.calendarOpen || !!this.railPopover || this.searchOpen ||
+      this.navigationOpen || !!this.qaNavigation.qaRenameId || !!this.qaNavigation.qaMenuId;
+  }
+
+  private focusWorkspaceRegion(reverse: boolean): void {
+    const regions = this.logsReadingMode ? ['module_frame'] : ['global_log_search',
+      this.isDesktopNavigationCollapsed() ? 'sidebar_rail_expand' : 'sidebar_collapse', 'module_frame'];
+    for (let index = 0; index < regions.length; index++) {
+      this.focusRegion = (this.focusRegion + (reverse ? -1 : 1) + regions.length) % regions.length;
+      if (focusControl.requestFocus(regions[this.focusRegion])) break;
+    }
+  }
+
+  private handleWorkspaceKey(event: KeyEvent): boolean {
+    if (workspaceKey(event, KeyCode.KEYCODE_ESCAPE)) {
+      if (this.topMoreOpen) this.topMoreOpen = false;
+      else if (this.moreOpen) this.moreOpen = false;
+      else if (this.exportMenuOpen) this.exportMenuOpen = false;
+      else if (this.calendarOpen) this.calendarOpen = false;
+      else if (this.railPopover) this.railPopover = '';
+      else if (this.qaNavigation.qaRenameId) this.qaNavigation.qaRenameId = '';
+      else if (this.qaNavigation.qaMenuId) this.qaNavigation.qaMenuId = '';
+      else if (this.readingOutlineOpen) this.readingOutlineOpen = false;
+      else if (this.searchOpen) this.closeSearch();
+      else if (this.navigationOpen) this.closeNavigation();
+      else if (this.logsReadingMode && !this.shortcutBlocked()) this.setLogsReadingMode(false);
+      else return false;
+      return true;
+    }
+    if (this.shortcutBlocked()) return false;
+    if (workspaceKey(event, KeyCode.KEYCODE_F6) || workspaceKey(event, KeyCode.KEYCODE_F6, false, true)) {
+      if (!this.isWide()) return false;
+      this.focusWorkspaceRegion(!!event.getModifierKeyState?.(['Shift']));
+      return true;
+    }
+    if (workspaceKey(event, KeyCode.KEYCODE_F, true, true)) {
+      if (this.isWide()) this.searchFocusRevision++;
+      else this.searchOpen = true;
+      return true;
+    }
+    if (workspaceKey(event, KeyCode.KEYCODE_DPAD_UP, false, false, true)) {
+      if (this.selectedTab() === 0) this.previewTopRequest++;
+      else {
+        const requests = this.topRequests.slice();
+        requests[this.selectedTab()]++;
+        this.topRequests = requests;
+      }
+      return true;
+    }
+    if (workspaceKey(event, KeyCode.KEYCODE_G, true)) {
+      if (this.selectedTab() === 0 && this.editor.focused) return false;
+      this.requestModule(0, false, false, () => this.openCalendar('jump'));
+      return true;
+    }
+    if (workspaceKey(event, KeyCode.KEYCODE_N, true, false, true)) {
+      this.requestModule(0, false, false, () => this.openCalendar('create'));
+      return true;
+    }
+    if (workspaceKey(event, KeyCode.KEYCODE_Q, true, false, true)) {
+      if (this.qaBusy) return false;
+      this.requestModule(3, false, false, () => this.switchQaSession('', true));
+      return true;
+    }
+    if (workspaceKey(event, KeyCode.KEYCODE_S, true)) {
+      if (this.notesOpen) this.noteSaveRevision++;
+      else if (this.selectedTab() === 0) this.save();
+      return true;
+    }
+    if (workspaceKey(event, KeyCode.KEYCODE_F, true) && this.selectedTab() === 0 &&
+      (this.sourceMode || this.splitMode)) {
+      this.editor.command('find');
+      return true;
+    }
+    if (this.selectedTab() === 0 && !this.sourceMode && !this.splitMode) {
+      if (workspaceKey(event, KeyCode.KEYCODE_DPAD_LEFT, false, false, true)) {
+        if (!this.dayLoading && !this.daysLoading) this.navigateDay(1);
+        return true;
+      }
+      if (workspaceKey(event, KeyCode.KEYCODE_DPAD_RIGHT, false, false, true)) {
+        if (!this.dayLoading && !this.daysLoading) this.navigateDay(-1);
+        return true;
+      }
+    }
+    return false;
   }
 
   private async setLogsReadingMode(active: boolean): Promise<void> {
@@ -464,16 +566,19 @@ export struct LogsReaderPage {
     this.requestModule(index);
   }
 
-  private requestModule(index: number, discardNotes: boolean = false, discardQa: boolean = false): void {
-    if (index === this.selectedTab()) return;
-    if (this.taxonomyOpen) { this.confirmTaxonomyLeave(() => this.requestModule(index)); return; }
+  private requestModule(index: number, discardNotes: boolean = false, discardQa: boolean = false,
+    afterSwitch: () => void = () => {}): void {
+    if (index === this.selectedTab()) { afterSwitch(); return; }
+    if (this.taxonomyOpen) {
+      this.confirmTaxonomyLeave(() => this.requestModule(index, discardNotes, discardQa, afterSwitch)); return;
+    }
     if (this.notesOpen) {
       if (this.notesBusy) return;
       if (this.notesDirty && !discardNotes) {
         AlertDialog.show({ message: '随记尚未保存，确定放弃修改吗？',
           primaryButton: { value: '继续编辑', action: () => {} },
           secondaryButton: { value: '放弃修改', fontColor: $r('app.color.error'), action: () => {
-            this.requestModule(index, true, discardQa);
+            this.requestModule(index, true, discardQa, afterSwitch);
           } } });
         return;
       }
@@ -485,17 +590,18 @@ export struct LogsReaderPage {
           '问答输入尚未提交，确定放弃吗？',
           primaryButton: { value: '继续编辑', action: () => {} },
           secondaryButton: { value: '放弃', fontColor: $r('app.color.error'), action: () => {
-            this.requestModule(index, discardNotes, true);
+            this.requestModule(index, discardNotes, true, afterSwitch);
           } } });
         return;
       }
     }
-    const change = (): void => { this.switchModule(index, discardNotes, discardQa); };
+    const change = (): void => { this.switchModule(index, discardNotes, discardQa, afterSwitch); };
     if (index === 0) change();
     else this.confirmDiscard(change);
   }
 
-  private async switchModule(index: number, discardNotes: boolean, discardQa: boolean): Promise<void> {
+  private async switchModule(index: number, discardNotes: boolean, discardQa: boolean,
+    afterSwitch: () => void = () => {}): Promise<void> {
     const revision = ++this.moduleSwitchRevision;
     if (this.isWide() && !this.logsReadingMode) {
       this.workspaceTransition.clear();
@@ -523,6 +629,7 @@ export struct LogsReaderPage {
     this.closeNavigation();
     this.closeSearch();
     if (index === 3) this.qaNavigation.loadQaNavigation();
+    afterSwitch();
     this.getUIContext().postFrameCallback(new FrameAction(() => {
       if (revision !== this.moduleSwitchRevision) return;
       if (covered) {
@@ -587,13 +694,16 @@ export struct LogsReaderPage {
       } } });
   }
 
-  private switchQaSession(id: string): void {
+  private switchQaSession(id: string, focusQuestion: boolean = false): void {
     if (this.qaBusy) return;
     const change = (): void => {
       this.qaDirty = false; this.qaPending = false;
       this.closeNavigation();
       this.railPopover = '';
       this.qaSessionId = id; this.qaRequestRevision++;
+      if (focusQuestion) setTimeout(() => {
+        if (this.qaOpen && !this.qaBusy) this.qaQuestionFocusRevision++;
+      }, 40);
     };
     if (!this.qaDirty && !this.qaPending) { change(); return; }
     AlertDialog.show({ message: this.qaPending ? '当前问答尚未保存，确定切换会话吗？' : '问答输入尚未提交，确定切换会话吗？',
@@ -2676,7 +2786,8 @@ export struct LogsReaderPage {
           }.layoutWeight(1).constraintSize({ minWidth: 208 })
           if (this.isWide()) {
             Stack({ alignContent: Alignment.TopStart }) {
-              SearchField({ value: this.searchQuery,
+              SearchField({ value: this.searchQuery, focusKey: 'global_log_search',
+                focusRevision: this.searchFocusRevision,
                 placeholder: this.searchHeadingsOnly ? '搜索小节标题' : '搜索日志、术语、代码标识',
                 loading: this.searchLoading, showHeadingToggle: true, headingOnly: this.searchHeadingsOnly,
                 showCaseToggle: true, caseSensitive: !this.searchIgnoreCase,
@@ -2687,7 +2798,8 @@ export struct LogsReaderPage {
                 onCaseToggle: () => this.searchIgnoreCase = !this.searchIgnoreCase,
                 onFocusChange: (focused: boolean) => { if (focused) this.searchOpen = true; },
                 onSearchKey: (event: KeyEvent) => {
-                  if (!workspaceKey(event, KeyCode.KEYCODE_ESCAPE)) return false;
+                  if (!this.searchOpen || this.calendarOpen ||
+                    !workspaceKey(event, KeyCode.KEYCODE_ESCAPE)) return false;
                   this.closeSearch(); return true;
                 } })
               this.desktopSearchResults()
@@ -2736,6 +2848,7 @@ export struct LogsReaderPage {
               if (this.isWide()) { this.desktopNavigation() }
               QaPage({ workspaceActive: this.qaOpen, navigationSessionId: this.qaSessionId,
                 navigationRequestRevision: this.qaRequestRevision, discardRevision: this.qaDiscardRevision,
+                questionFocusRevision: this.qaQuestionFocusRevision, topRevision: this.topRequests[3],
                 configured: !!activeInstance.capabilities?.features.rag.configured,
                 onSessionsChange: (sessions: RagSessionSummary[]) => this.qaNavigation.acceptQaNavigation(sessions),
                 onSessionsError: (message: string) => this.qaNavigation.qaNavigationError = message,
@@ -2755,6 +2868,7 @@ export struct LogsReaderPage {
               if (this.isWide()) { this.desktopNavigation() }
               NotesPage({ navigationYear: this.noteYearFilter, navigationTag: this.noteTagFilter,
                 navigationNewRevision: this.noteNewRevision, discardRevision: this.noteDiscardRevision,
+                saveRevision: this.noteSaveRevision, topRevision: this.topRequests[1],
                 onNavigationDataChange: (years: StudyNoteFacet[], tags: StudyNoteFacet[], total: number) => {
                   this.noteYears = years; this.noteTags = tags; this.noteCount = total;
                 },
@@ -2770,6 +2884,7 @@ export struct LogsReaderPage {
           Row() {
               if (this.isWide()) { this.desktopNavigation() }
               FavoritesPage({ data: this.favoritesData, viewMode: this.favoritesViewMode,
+                topRevision: this.topRequests[2],
                 onViewModeChange: (mode: string) => {
                   workspacePreferences.set('favoritesView', mode)
                     .catch(() => appFeedback.show('收藏显示方式保存失败', 'error'));
@@ -2793,6 +2908,7 @@ export struct LogsReaderPage {
                 }).layoutWeight(1)
               } else {
               StatsPage({ showTaxonomyManager: true, onOpenTaxonomyManager: () => this.openTaxonomy(),
+                topRevision: this.topRequests[4],
                 requestedMonth: this.statsMonth, requestedMonthRevision: this.statsMonthRevision,
                 refreshRevision: this.statsRefreshRevision,
                 onMonthsChange: (months: MonthSummary[]) => this.statsMonths = months,

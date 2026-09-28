@@ -15,6 +15,8 @@ import { workspacePreferences } from '../common/storage/WorkspacePreferences';
 import { SettingsPanel } from '../app/components/SettingsPanel';
 import { AboutPanel } from '../app/components/AboutPanel';
 import { HelpPanel } from '../app/components/HelpPanel';
+import { KeyCode } from '@kit.InputKit';
+import { workspaceKey } from '../common/ui/WorkspaceKeys';
 
 @Entry
 @Component
@@ -28,6 +30,9 @@ struct Index {
   @State private settingsOpen: boolean = false;
   @State private aboutOpen: boolean = false;
   @State private helpOpen: boolean = false;
+  @State private menuFocusRevision: number = 0;
+  @State private desktopMenuOpen: boolean = false;
+  private altPressedAlone: boolean = false;
   private imagePreviewClosing: boolean = false;
   private desktopCommands: DesktopLogCommands = new DesktopLogCommands();
   private removeUnauthorizedHandler: () => void = () => {};
@@ -153,7 +158,7 @@ struct Index {
       .some((entry: DesktopMenuEntry) => entry.id === id && entry.enabled);
     if (enabled && id === 'settings') this.settingsOpen = true;
     else if (enabled && id === 'about') this.aboutOpen = true;
-    else if (enabled && id === 'help') this.helpOpen = true;
+    else if (enabled && id === 'help') this.openHelp();
     else if (enabled) this.desktopCommands.execute(id);
   }
 
@@ -171,17 +176,59 @@ struct Index {
     } }, () => this.imagePreviewOpacity = 0);
   }
 
+  private openHelp(): void {
+    this.helpOpen = true;
+    setTimeout(() => {
+      if (this.helpOpen && !this.aboutOpen && !this.settingsOpen) focusControl.requestFocus('help_close_button');
+    }, 20);
+  }
+
+  private handleWorkspaceKey(event: KeyEvent): boolean {
+    if (this.settingsOpen || this.aboutOpen || this.helpOpen || this.previewImageSource) {
+      if (workspaceKey(event, KeyCode.KEYCODE_ESCAPE)) {
+        if (this.settingsOpen) this.settingsOpen = false;
+        else if (this.aboutOpen) this.aboutOpen = false;
+        else if (this.helpOpen) this.helpOpen = false;
+        else this.closeImagePreview();
+      }
+      return true;
+    }
+    if (event.keyCode === KeyCode.KEYCODE_ALT_LEFT || event.keyCode === KeyCode.KEYCODE_ALT_RIGHT) {
+      if (event.type === KeyType.Down) this.altPressedAlone = true;
+      else if (this.altPressedAlone && this.desktopWindowChrome && this.connected && !this.desktopMenuOpen &&
+        !this.desktopCommands.blocked()) {
+        this.altPressedAlone = false;
+        this.menuFocusRevision++;
+        return true;
+      }
+      return false;
+    }
+    if (event.type !== KeyType.Down) return false;
+    this.altPressedAlone = false;
+    if (!this.connected || this.desktopMenuOpen) return false;
+    if (this.desktopCommands.handleKey(event)) return true;
+    if (this.desktopCommands.blocked()) return false;
+    if (workspaceKey(event, KeyCode.KEYCODE_F1)) { this.openHelp(); return true; }
+    if (workspaceKey(event, KeyCode.KEYCODE_F10) && this.desktopWindowChrome) {
+      this.menuFocusRevision++;
+      return true;
+    }
+    return false;
+  }
+
   build() {
     Column() {
       if (this.desktopWindowChrome) {
         DesktopTitleBar({ getEntries: (menu: string) => this.windowMenuEntries(menu),
+          focusRevision: this.menuFocusRevision,
+          onOpenChange: (open: boolean) => this.desktopMenuOpen = open,
           onAction: (id: string) => this.executeWindowMenu(id) })
       }
       Stack() {
       if (this.connected) {
         LogsReaderPage({ onChangeServer: () => this.changeServer(), onOpenSettings: () => this.settingsOpen = true,
           onOpenAbout: () => this.aboutOpen = true,
-          onOpenHelp: () => this.helpOpen = true,
+          onOpenHelp: () => this.openHelp(),
           onRegisterDesktopCommands: (commands: DesktopLogCommands) => this.desktopCommands = commands,
           initialDraft: this.drafts.get(activeInstance.namespace),
           onDraftChange: (namespace: string, draft: PreservedLogDraft | undefined) =>
@@ -213,5 +260,6 @@ struct Index {
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
     }.width('100%').height('100%').backgroundColor($r('app.color.canvas'))
       .onAreaChange((_oldArea, area) => this.updateBreakpoint(Number(area.width)))
+      .onKeyEvent((event: KeyEvent) => this.handleWorkspaceKey(event))
   }
 }

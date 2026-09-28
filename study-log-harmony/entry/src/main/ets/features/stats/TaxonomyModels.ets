@@ -21,3 +21,22 @@ export interface TaxonomySaveRequest {
   mappings: Record<string, string>;
   baseVersion: string | null;
 }
+
+export interface TaxonomySuggestionResultItem {
+  tag: string;
+  domain: string;
+  confidence?: string;
+}
+
+export interface TaxonomySuggestion extends TaxonomySuggestionResultItem {
+  selected: boolean;
+}
+
+export interface TaxonomySuggestionResponse {
+  suggestions: TaxonomySuggestionResultItem[];
+  warnings: string[];
+  snapshotVersion: string | null;
+}
+
+export interface TaxonomySuggestionRequestItem { tag: string; sources: string[]; }
+export interface TaxonomySuggestionRequest { items: TaxonomySuggestionRequestItem[]; }

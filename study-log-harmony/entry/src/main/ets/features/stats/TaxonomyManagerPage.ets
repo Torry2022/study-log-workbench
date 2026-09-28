@@ -2,9 +2,10 @@ import { appFeedback, FeedbackTone } from '../../common/ui/AppFeedback';
 import { AppDropdown, SearchField } from '../../common/ui/FormControls';
 import { EmptyState, InlineStatus, LoadFailure } from '../../common/ui/FeedbackStates';
 import { apiClient } from '../../common/network/ApiClient';
+import { activeInstance } from '../../common/network/InstanceConfig';
 import { WorkspaceBreakpoint } from '../../common/AppConfig';
 import { workspaceSerifFamily } from '../../common/ui/Typography';
-import { TaxonomyCatalogItem } from './TaxonomyModels';
+import { TaxonomyCatalogItem, TaxonomySuggestion } from './TaxonomyModels';
 import { TaxonomyController } from './TaxonomyController';
 
 @Component
@@ -24,7 +25,8 @@ export struct TaxonomyManagerPage {
   aboutToDisappear(): void { this.alive = false; this.data.dispose(); }
 
   private reportState(): void {
-    if (this.alive) this.onStateChange(this.data.hasChanges() || this.domainDraft.trim().length > 0, this.data.busy);
+    if (this.alive) this.onStateChange(this.data.hasChanges() || this.data.hasPendingSuggestions() ||
+      this.domainDraft.trim().length > 0, this.data.busy || this.data.suggestionBusy);
   }
 
   private requestBack(): void { this.onBack(); }
@@ -45,12 +47,18 @@ export struct TaxonomyManagerPage {
     return this.data.taxonomy.mappings[item.tag] || '其他';
   }
 
+  private suggestionFor(tag: string): TaxonomySuggestion | undefined {
+    return this.data.suggestions.find((item: TaxonomySuggestion) => item.tag === tag);
+  }
+
   private rowStatus(item: TaxonomyCatalogItem): string {
+    if (this.suggestionFor(item.tag)) return 'suggested';
     if (this.data.taxonomy.mappings[item.tag] !== this.data.savedTaxonomy.mappings[item.tag]) return 'dirty';
     return this.data.taxonomy.mappings[item.tag] ? 'mapped' : 'unclassified';
   }
 
   private statusLabel(status: string): string {
+    if (status === 'suggested') return 'AI 建议';
     if (status === 'dirty') return '待保存';
     if (status === 'mapped') return '显式映射';
     return '未分类';
@@ -71,7 +79,8 @@ export struct TaxonomyManagerPage {
     return this.data.catalog.filter((item: TaxonomyCatalogItem) => {
       if (keyword && `${item.tag} ${item.sources.join(' ')}`.toLocaleLowerCase().indexOf(keyword) < 0) return false;
       if (this.monthFilter !== 'all' && !item.months.includes(this.monthFilter)) return false;
-      if (this.domainFilter !== 'all' && this.currentDomain(item) !== this.domainFilter) return false;
+      if (this.domainFilter !== 'all' && this.currentDomain(item) !== this.domainFilter &&
+        this.suggestionFor(item.tag)?.domain !== this.domainFilter) return false;
       if (this.statusFilter !== 'all' && this.rowStatus(item) !== this.statusFilter) return false;
       return true;
     });
@@ -102,6 +111,11 @@ export struct TaxonomyManagerPage {
     const saved = await this.data.save();
     if (!this.alive) return;
     if (saved) { this.onSaved(); this.showToast('领域映射已保存', 'success'); }
+  }
+
+  private requestSuggestions(): void {
+    if (!activeInstance.capabilities?.features.aiTaxonomy.configured) return;
+    this.data.requestSuggestions(this.filteredItems());
   }
 
   private showToast(message: string, tone: FeedbackTone = 'info'): void {
@@ -157,6 +171,24 @@ export struct TaxonomyManagerPage {
         accessibilityLabel: `设置 ${item.tag} 的领域`,
         onSelect: (_index: number, value: string) => this.updateMapping(item.tag, value)
       }).width('100%').height(38)
+      if (this.suggestionFor(item.tag)) {
+        Row({ space: 8 }) {
+          Checkbox({ name: item.tag, group: 'taxonomy_suggestions' })
+            .select(!!this.suggestionFor(item.tag)?.selected)
+            .onChange((selected: boolean) => this.data.updateSuggestion(item.tag,
+              this.suggestionFor(item.tag)?.domain || '其他', selected))
+          Text('建议领域').fontSize(11).fontColor($r('app.color.muted'))
+          AppDropdown({
+            options: this.data.taxonomy.domains,
+            selectedIndex: Math.max(0, this.data.taxonomy.domains.indexOf(this.suggestionFor(item.tag)?.domain || '其他')),
+            value: this.suggestionFor(item.tag)?.domain || '其他',
+            icon: $r('app.media.settings_2'),
+            accessibilityLabel: `审核 ${item.tag} 的建议领域`,
+            onSelect: (_index: number, value: string) => this.data.updateSuggestion(item.tag, value,
+              !!this.suggestionFor(item.tag)?.selected)
+          }).layoutWeight(1).height(38)
+        }.width('100%')
+      }
     }
     .width('100%').padding(14).alignItems(HorizontalAlign.Start)
     .backgroundColor($r('app.color.canvas'))
@@ -180,7 +212,9 @@ export struct TaxonomyManagerPage {
         Button(this.data.busy ? '保存中' : '保存映射', { type: ButtonType.Normal })
           .height(38).padding({ left: 12, right: 12 }).fontSize(12).fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.on_primary')).backgroundColor($r('app.color.primary'))
-          .borderRadius(8).id('taxonomy_save').enabled(!this.data.busy && !this.data.loading && !this.data.loadFailed && !this.data.conflict && this.data.hasChanges()).onClick(() => this.save())
+          .borderRadius(8).id('taxonomy_save').enabled(!this.data.busy && !this.data.suggestionBusy &&
+            !this.data.hasPendingSuggestions() && !this.data.loading && !this.data.loadFailed &&
+            !this.data.conflict && this.data.hasChanges()).onClick(() => this.save())
       }
       .width('100%').height(62).padding({ left: 10, right: 12 })
       .border({ width: { bottom: 1 }, color: $r('app.color.hairline_soft') })
@@ -228,6 +262,46 @@ export struct TaxonomyManagerPage {
             .backgroundColor($r('app.color.surface_card'))
             .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(10)
 
+            Button({ type: ButtonType.Normal }) {
+              Row({ space: 7 }) {
+                if (this.data.suggestionBusy) LoadingProgress().width(16).height(16).color($r('app.color.ink'))
+                else Image($r('app.media.wand_sparkles')).width(16).height(16).objectFit(ImageFit.Contain)
+                Text(this.data.suggestionBusy ? '正在生成建议' : `AI 分类建议（${this.filteredItems().length}）`)
+                  .fontSize(13).fontWeight(FontWeight.Medium)
+              }
+            }
+            .width('100%').height(40).fontColor($r('app.color.ink')).backgroundColor($r('app.color.canvas'))
+            .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8)
+            .enabled(!!activeInstance.capabilities?.features.aiTaxonomy.configured && !this.data.suggestionBusy &&
+              !this.data.busy && this.filteredItems().length > 0 && this.filteredItems().length <= 200 &&
+              !this.data.hasChanges() && this.data.savedTaxonomy.domains.some((domain: string) => domain !== '其他'))
+            .onClick(() => this.requestSuggestions()).id('taxonomy_suggest')
+            if (this.data.suggestionMessage) {
+              Text(this.data.suggestionMessage).fontSize(11).fontColor(this.data.suggestionError ?
+                $r('app.color.error') : $r('app.color.muted'))
+            }
+            if (!activeInstance.capabilities?.features.aiTaxonomy.configured) {
+              Text('当前实例尚未配置分类建议模型').fontSize(11).fontColor($r('app.color.muted'))
+            } else if (!this.data.savedTaxonomy.domains.some((domain: string) => domain !== '其他')) {
+              Text('请先添加并保存自定义领域').fontSize(11).fontColor($r('app.color.muted'))
+            } else if (this.data.hasChanges()) {
+              Text('请先保存当前分类修改').fontSize(11).fontColor($r('app.color.muted'))
+            } else if (this.filteredItems().length > 200) {
+              Text('请通过筛选将本次标签范围控制在 200 个以内').fontSize(11).fontColor($r('app.color.muted'))
+            }
+            if (this.data.hasPendingSuggestions()) {
+              Row({ space: 8 }) {
+                Text(`已选 ${this.data.suggestions.filter((item: TaxonomySuggestion) => item.selected).length} / ${this.data.suggestions.length} 条`)
+                  .fontSize(11).fontColor($r('app.color.muted')).layoutWeight(1)
+                Button('放弃建议').height(38).fontSize(12).backgroundColor($r('app.color.canvas'))
+                  .fontColor($r('app.color.body')).onClick(() => this.data.discardSuggestions())
+                Button('应用已选到草稿').height(38).fontSize(12).backgroundColor($r('app.color.primary'))
+                  .fontColor($r('app.color.on_primary'))
+                  .enabled(!this.data.suggestionBusy && this.data.suggestions.some((item: TaxonomySuggestion) => item.selected))
+                  .onClick(() => this.data.applySuggestions()).id('taxonomy_apply_suggestions')
+              }.width('100%')
+            }
+
             Column({ space: 8 }) {
               SearchField({
                 value: this.query,
@@ -256,13 +330,13 @@ export struct TaxonomyManagerPage {
               }.width('100%')
               Row({ space: 8 }) {
                 AppDropdown({
-                  options: ['全部状态', '显式映射', '未分类', '待保存'],
-                  selectedIndex: ['all', 'mapped', 'unclassified', 'dirty'].indexOf(this.statusFilter),
+                  options: ['全部状态', '显式映射', '未分类', 'AI 建议', '待保存'],
+                  selectedIndex: ['all', 'mapped', 'unclassified', 'suggested', 'dirty'].indexOf(this.statusFilter),
                   value: this.statusFilter === 'all' ? '全部状态' : this.statusLabel(this.statusFilter),
                   icon: $r('app.media.sliders_horizontal'),
                   accessibilityLabel: '按状态筛选分类',
                   onSelect: (index: number) => {
-                    this.statusFilter = ['all', 'mapped', 'unclassified', 'dirty'][index];
+                    this.statusFilter = ['all', 'mapped', 'unclassified', 'suggested', 'dirty'][index];
                   }
                 }).layoutWeight(1).height(38)
                 Text(`${this.filteredItems().length} / ${this.data.catalog.length}`)

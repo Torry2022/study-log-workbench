@@ -325,10 +325,10 @@ export struct LogsReaderPage {
   }
 
   private confirmTaxonomyLeave(action: () => void): void {
-    if (this.taxonomyBusy) { appFeedback.show('分类正在保存，请稍候'); return; }
+    if (this.taxonomyBusy) { appFeedback.show('分类操作正在进行，请稍候'); return; }
     const leave = (): void => { this.taxonomyDirty = false; this.taxonomyOpen = false; action(); };
     if (!this.taxonomyDirty) { leave(); return; }
-    AlertDialog.show({ message: '分类映射尚未保存，确定放弃修改吗？',
+    AlertDialog.show({ message: '当前分类修改或建议尚未处理，确定放弃吗？',
       primaryButton: { value: '继续编辑', action: () => {} },
       secondaryButton: { value: '放弃修改', fontColor: $r('app.color.error'), action: leave } });
   }

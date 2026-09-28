@@ -1,5 +1,7 @@
 import { ApiClient, ApiError } from '../../common/network/ApiClient';
-import { Taxonomy, TaxonomyCatalogItem, TaxonomyResponse, TaxonomySaveRequest, TaxonomySaveResponse } from './TaxonomyModels';
+import { Taxonomy, TaxonomyCatalogItem, TaxonomyResponse, TaxonomySaveRequest, TaxonomySaveResponse,
+  TaxonomySuggestion, TaxonomySuggestionResponse, TaxonomySuggestionResultItem, TaxonomySuggestionRequest,
+  TaxonomySuggestionRequestItem } from './TaxonomyModels';
 
 @Observed
 export class TaxonomyController {
@@ -11,7 +13,13 @@ export class TaxonomyController {
   loadFailed: boolean = false;
   conflict: boolean = false;
   errorMessage: string = '';
+  suggestions: TaxonomySuggestion[] = [];
+  suggestionBusy: boolean = false;
+  suggestionMessage: string = '';
+  suggestionError: boolean = false;
   private revision: number = 0;
+  private suggestionRevision: number = 0;
+  private suggestionSnapshot?: Taxonomy;
   private transport: ApiClient;
   private changed: () => void;
 
@@ -20,7 +28,7 @@ export class TaxonomyController {
     this.changed = changed;
   }
 
-  dispose(): void { this.revision++; }
+  dispose(): void { this.revision++; this.suggestionRevision++; }
 
   private copy(source: Taxonomy): Taxonomy {
     const mappings: Record<string, string> = {};
@@ -33,8 +41,116 @@ export class TaxonomyController {
       JSON.stringify(this.taxonomy.mappings) !== JSON.stringify(this.savedTaxonomy.mappings);
   }
 
+  hasPendingSuggestions(): boolean { return this.suggestions.length > 0; }
+
+  private same(left: Taxonomy, right: Taxonomy): boolean {
+    return left.version === right.version && JSON.stringify(left.domains) === JSON.stringify(right.domains) &&
+      JSON.stringify(left.mappings) === JSON.stringify(right.mappings);
+  }
+
+  private invalidateSuggestions(): void {
+    this.suggestionRevision++;
+    this.suggestionBusy = false;
+    this.suggestions = [];
+    this.suggestionSnapshot = undefined;
+    this.suggestionMessage = '';
+    this.suggestionError = false;
+  }
+
+  discardSuggestions(): void { this.invalidateSuggestions(); this.changed(); }
+
+  async requestSuggestions(items: TaxonomyCatalogItem[]): Promise<void> {
+    if (this.loading || this.busy || this.loadFailed || this.conflict || this.suggestionBusy ||
+      this.hasChanges() || !this.savedTaxonomy.domains.some((domain: string) => domain !== '其他')) {
+      this.suggestionMessage = '请先保存自定义领域及当前分类修改'; this.suggestionError = true; this.changed(); return;
+    }
+    if (items.length < 1 || items.length > 200) {
+      this.suggestionMessage = '请通过筛选将本次标签范围控制在 1 至 200 个'; this.suggestionError = true; this.changed(); return;
+    }
+    const revision = ++this.suggestionRevision;
+    const snapshot = this.copy(this.savedTaxonomy);
+    this.suggestionBusy = true;
+    this.suggestions = [];
+    this.suggestionSnapshot = undefined;
+    this.suggestionMessage = '';
+    this.suggestionError = false;
+    this.changed();
+    try {
+      const requested = items.map((item: TaxonomyCatalogItem) => item.tag);
+      const requestItems: TaxonomySuggestionRequestItem[] = items.map((item: TaxonomyCatalogItem): TaxonomySuggestionRequestItem =>
+        ({ tag: item.tag, sources: item.sources.slice(0, 4) }));
+      const request: TaxonomySuggestionRequest = { items: requestItems };
+      const response = await this.transport.post<TaxonomySuggestionResponse>('/taxonomy/suggest',
+        request);
+      if (revision !== this.suggestionRevision) return;
+      if (!this.same(this.taxonomy, snapshot) || !this.same(this.savedTaxonomy, snapshot) ||
+        response.snapshotVersion !== snapshot.version) {
+        this.suggestionMessage = '分类版本已变化，本次建议未载入；请重新读取后再请求';
+        this.suggestionError = true; return;
+      }
+      this.suggestions = response.suggestions.filter((item: TaxonomySuggestionResultItem) =>
+        requested.includes(item.tag) && snapshot.domains.includes(item.domain))
+        .map((item: TaxonomySuggestionResultItem): TaxonomySuggestion => ({ tag: item.tag, domain: item.domain,
+          confidence: item.confidence, selected: true }));
+      this.suggestionSnapshot = this.suggestions.length > 0 ? snapshot : undefined;
+      this.suggestionMessage = this.suggestions.length > 0 ? `已生成 ${this.suggestions.length} 条建议，请审核后应用到草稿` :
+        response.warnings.join('；') || '本次没有可用的分类建议';
+    } catch (error) {
+      if (revision === this.suggestionRevision) {
+        this.suggestionMessage = error instanceof ApiError ? error.message : '分类建议失败，请重试';
+        this.suggestionError = true;
+      }
+    } finally {
+      if (revision === this.suggestionRevision) { this.suggestionBusy = false; this.changed(); }
+    }
+  }
+
+  updateSuggestion(tag: string, domain: string, selected: boolean): void {
+    if (this.suggestionBusy || !this.suggestionSnapshot || !this.suggestionSnapshot.domains.includes(domain)) return;
+    this.suggestions = this.suggestions.map((item: TaxonomySuggestion) => item.tag === tag ?
+      { tag: item.tag, domain: domain, confidence: item.confidence, selected: selected } : item);
+    this.changed();
+  }
+
+  async applySuggestions(): Promise<boolean> {
+    const snapshot = this.suggestionSnapshot;
+    if (!snapshot || this.suggestionBusy || this.busy || !this.same(this.taxonomy, snapshot) ||
+      !this.same(this.savedTaxonomy, snapshot) || !this.suggestions.some((item: TaxonomySuggestion) => item.selected)) return false;
+    const revision = ++this.suggestionRevision;
+    this.suggestionBusy = true;
+    this.suggestionMessage = '';
+    this.suggestionError = false;
+    this.changed();
+    try {
+      const response = await this.transport.get<TaxonomyResponse>('/taxonomy');
+      if (revision !== this.suggestionRevision) return false;
+      if (!this.same(response.taxonomy, snapshot) || !this.same(this.taxonomy, snapshot) ||
+        !this.same(this.savedTaxonomy, snapshot)) {
+        this.suggestionMessage = '分类保存版本已变化，建议未应用；请重新读取后再请求';
+        this.suggestionError = true; return false;
+      }
+      const next = this.copy(this.taxonomy);
+      const choices = this.suggestions.filter((item: TaxonomySuggestion) => item.selected);
+      choices.forEach((item: TaxonomySuggestion) => next.mappings[item.tag] = item.domain);
+      this.taxonomy = next;
+      this.suggestions = [];
+      this.suggestionSnapshot = undefined;
+      this.suggestionMessage = `已应用 ${choices.length} 条建议到草稿，请点击“保存映射”`;
+      return true;
+    } catch (error) {
+      if (revision === this.suggestionRevision) {
+        this.suggestionMessage = error instanceof ApiError ? error.message : '核对分类版本失败，草稿未修改';
+        this.suggestionError = true;
+      }
+      return false;
+    } finally {
+      if (revision === this.suggestionRevision) { this.suggestionBusy = false; this.changed(); }
+    }
+  }
+
   updateMapping(tag: string, domain: string): void {
     if (this.busy || this.loading) return;
+    this.invalidateSuggestions();
     const next = this.copy(this.taxonomy);
     next.mappings[tag] = domain;
     this.taxonomy = next;
@@ -44,6 +160,7 @@ export class TaxonomyController {
   addDomain(domain: string): void {
     const value = domain.trim();
     if (this.busy || this.loading || !value || this.taxonomy.domains.includes(value)) return;
+    this.invalidateSuggestions();
     const next = this.copy(this.taxonomy);
     next.domains = next.domains.filter((item: string) => item !== '其他').concat([value, '其他']);
     this.taxonomy = next;
@@ -52,6 +169,7 @@ export class TaxonomyController {
 
   removeDomain(domain: string): void {
     if (this.busy || this.loading || domain === '其他') return;
+    this.invalidateSuggestions();
     const next = this.copy(this.taxonomy);
     next.domains = next.domains.filter((item: string) => item !== domain);
     Object.keys(next.mappings).forEach((tag: string) => {
@@ -63,6 +181,7 @@ export class TaxonomyController {
 
   async load(): Promise<boolean> {
     if (this.busy) return false;
+    this.invalidateSuggestions();
     const revision = ++this.revision;
     this.loading = true;
     this.loadFailed = false;
@@ -87,7 +206,8 @@ export class TaxonomyController {
   }
 
   async save(): Promise<boolean> {
-    if (this.busy || this.loading || this.loadFailed || this.conflict || !this.hasChanges()) return false;
+    if (this.busy || this.suggestionBusy || this.hasPendingSuggestions() || this.loading || this.loadFailed ||
+      this.conflict || !this.hasChanges()) return false;
     const revision = ++this.revision;
     this.busy = true;
     this.errorMessage = '';

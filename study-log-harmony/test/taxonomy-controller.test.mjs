@@ -73,3 +73,62 @@ test('taxonomy late load cannot update a disposed page', async () => {
   pending.resolve({ taxonomy: initial(), catalog: [] });
   assert.equal(await loading, false); assert.equal(changes, atClose);
 });
+
+test('taxonomy suggestions are reviewed before they enter the versioned draft', async () => {
+  const saved = { domains: ['技术', '其他'], mappings: {}, updatedAt: null, version: 'v1' };
+  const calls = [];
+  const c = await controller({
+    get: async () => ({ taxonomy: saved, catalog: [{ tag: 'FIFO', sources: ['队列'], months: ['2026-02'], count: 1 }] }),
+    post: async (path, body) => { calls.push({ path, body }); return {
+      snapshotVersion: 'v1', warnings: [], suggestions: [{ tag: 'FIFO', domain: '技术' }, { tag: 'other', domain: '技术' }]
+    }; },
+    put: async (_path, body) => ({ taxonomy: { ...saved, mappings: body.mappings, version: 'v2' } })
+  });
+  await c.load();
+  await c.requestSuggestions(c.catalog);
+  assert.equal(calls[0].path, '/taxonomy/suggest');
+  assert.equal(calls[0].body.items[0].tag, 'FIFO');
+  assert.equal(c.suggestions.length, 1);
+  assert.equal(c.hasChanges(), false);
+  assert.equal(await c.save(), false);
+  c.updateSuggestion('FIFO', '技术', false);
+  assert.equal(await c.applySuggestions(), false);
+  c.updateSuggestion('FIFO', '技术', true);
+  assert.equal(await c.applySuggestions(), true);
+  assert.equal(c.taxonomy.mappings.FIFO, '技术');
+  assert.equal(c.savedTaxonomy.mappings.FIFO, undefined);
+  assert.equal(await c.save(), true);
+  assert.equal(c.savedTaxonomy.version, 'v2');
+});
+
+test('taxonomy suggestion rejects changed server version and late response after a manual edit', async () => {
+  const saved = { domains: ['技术', '其他'], mappings: {}, updatedAt: null, version: 'v1' };
+  const item = { tag: 'FIFO', sources: ['队列'], months: ['2026-02'], count: 1 };
+  const c = await controller({ get: async () => ({ taxonomy: saved, catalog: [item] }),
+    post: async () => ({ snapshotVersion: 'v2', warnings: [], suggestions: [{ tag: 'FIFO', domain: '技术' }] }) });
+  await c.load(); await c.requestSuggestions([item]);
+  assert.equal(c.suggestions.length, 0);
+  assert.match(c.suggestionMessage, /版本已变化/);
+
+  const pending = deferred();
+  const late = await controller({ get: async () => ({ taxonomy: saved, catalog: [item] }), post: () => pending.promise });
+  await late.load(); const request = late.requestSuggestions([item]);
+  late.updateMapping('FIFO', '技术');
+  pending.resolve({ snapshotVersion: 'v1', warnings: [], suggestions: [{ tag: 'FIFO', domain: '技术' }] });
+  await request;
+  assert.equal(late.suggestions.length, 0);
+  assert.equal(late.taxonomy.mappings.FIFO, '技术');
+});
+
+test('taxonomy suggestion application rechecks the server and preserves the local draft on conflict', async () => {
+  const saved = { domains: ['技术', '其他'], mappings: {}, updatedAt: null, version: 'v1' };
+  const item = { tag: 'FIFO', sources: ['队列'], months: ['2026-02'], count: 1 };
+  let reads = 0;
+  const c = await controller({ get: async () => ({ taxonomy: ++reads === 1 ? saved : { ...saved, version: 'v2' }, catalog: [item] }),
+    post: async () => ({ snapshotVersion: 'v1', warnings: [], suggestions: [{ tag: 'FIFO', domain: '技术' }] }) });
+  await c.load(); await c.requestSuggestions([item]);
+  assert.equal(await c.applySuggestions(), false);
+  assert.equal(c.taxonomy.mappings.FIFO, undefined);
+  assert.equal(c.suggestions.length, 1);
+  assert.match(c.suggestionMessage, /版本已变化/);
+});

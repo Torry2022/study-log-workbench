@@ -59,9 +59,14 @@ export struct HelpPanel {
     Column() {
       Text('全局').width('100%').fontSize(12).fontWeight(FontWeight.Bold).fontColor($r('app.color.muted'))
         .margin({ bottom: 4 })
-      this.helpShortcut('Ctrl + S', '保存当前日志', '源码编辑器内')
-      this.helpShortcut('↑ / ↓ · Enter', '选择并打开日志搜索结果')
-      this.helpShortcut('Esc', '关闭当前浮层')
+      this.helpShortcut('Ctrl + Shift + F', '聚焦顶部搜索')
+      this.helpShortcut('Ctrl + G', '跳转日志日期', '编辑器内用于下一个匹配项')
+      this.helpShortcut('Ctrl + Alt + N', '选择新建日期')
+      this.helpShortcut('Ctrl + Alt + Q', '新建知识问答')
+      this.helpShortcut('F1', '打开使用帮助')
+      this.helpShortcut('F6 / Shift + F6', '切换工作区焦点')
+      this.helpShortcut('F10', '聚焦 PC 菜单栏', '方向键选择，Enter 执行')
+      this.helpShortcut('Esc', '关闭最上层浮层', '没有浮层时退出阅读模式')
     }.width('100%').alignItems(HorizontalAlign.Start)
   }
 
@@ -71,10 +76,15 @@ export struct HelpPanel {
       Text('搜索与阅读').width('100%').fontSize(12).fontWeight(FontWeight.Bold).fontColor($r('app.color.muted'))
         .margin({ bottom: 4 })
       this.helpShortcut('↑ / ↓ · Enter', '选择并打开搜索结果')
+      this.helpShortcut('Alt + ← / →', '上一篇 / 下一篇日志', '浏览模式，输入框外')
+      this.helpShortcut('Alt + ↑', '返回当前阅读区顶部', '输入框外')
+      this.helpShortcut('Ctrl + S', '保存当前日志或随记')
       this.helpShortcut('Ctrl + F', '打开查找与替换', '源码或分屏模式')
       this.helpShortcut('Ctrl + Z / Ctrl + Shift + Z', '撤销 / 重做', '编辑器内')
       this.helpShortcut('Ctrl + B / I / `', '加粗 / 斜体 / 行内代码', '日志编辑器内')
-      this.helpShortcut('Ctrl + K', '插入链接', '日志编辑器内')
+      this.helpShortcut('Ctrl + K / Ctrl + Shift + K', '插入链接 / 内部链接', '日志编辑器内')
+      this.helpShortcut('Ctrl + Alt + 3', '切换三级标题', '日志编辑器内')
+      this.helpShortcut('Tab / Shift + Tab', '缩进 / 取消缩进', '日志编辑器内')
     }.width('100%').alignItems(HorizontalAlign.Start)
   }
 

@@ -135,7 +135,9 @@ export class FavoritesController {
       const request: FavoriteGroupRequest = { action: 'createGroup', name };
       const response = await this.transport.post<FavoriteGroupResponse>('/favorites', request);
       if (lifetime !== this.lifetime) return '';
-      this.groups = [...this.groups, response.group];
+      this.groups = this.groups.some((item: FavoriteGroup) => item.id === response.group.id) ?
+        this.groups.map((item: FavoriteGroup) => item.id === response.group.id ? response.group : item) :
+        [...this.groups, response.group];
       this.selectGroup(response.group.id);
       return response.group.id;
     } catch (error) {

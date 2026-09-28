@@ -56,6 +56,7 @@ export class SourceEditorSession {
   controller: webview.WebviewController = new webview.WebviewController();
   private runtimeReady: boolean = false;
   onReadyChange: (ready: boolean) => void = () => {};
+  onDocumentLoaded: (documentKey: string) => void = () => {};
 
   get ready(): boolean { return this.runtimeReady; }
   set ready(value: boolean) {
@@ -167,7 +168,10 @@ export class SourceEditorSession {
     this.documentKey = key;
     this.loadedDocumentKey = '';
     const snapshot = await this.request({ action: 'load', documentKey: key, requestId: 0, date: date, text: text });
-    if (this.documentKey === key) this.loadedDocumentKey = key;
+    if (this.documentKey === key) {
+      this.loadedDocumentKey = key;
+      this.onDocumentLoaded(key);
+    }
     return snapshot;
   }
 

@@ -136,7 +136,7 @@ export struct LogsReaderPage {
   @State private workspaceTransition: WorkspaceTransitionCoordinator = new WorkspaceTransitionCoordinator({
     tab: () => this.selectedTab(),
     canCapture: (kind: string) => this.isWide() &&
-      (kind === 'module' || (kind === 'document' && this.selectedTab() === 0 && !!this.day)),
+      (kind === 'module' || ((kind === 'document' || kind === 'mode') && this.selectedTab() === 0 && !!this.day)),
     capture: () => this.getUIContext().getComponentSnapshot().get('module_frame',
       { waitUntilRenderFinished: true }),
     fade: (update: () => void, finished: () => void) => {
@@ -175,6 +175,8 @@ export struct LogsReaderPage {
   @State private toolbarActionWidths: number[] = [];
   @State private sourceMode: boolean = false;
   @State private splitMode: boolean = false;
+  @State private modeLayoutRevision: number = 0;
+  private modeRequestRevision: number = 0;
   @State private editorReady: boolean = false;
   @State private draftText: string = '';
   @State private editorInitialText: string = '';
@@ -275,6 +277,15 @@ export struct LogsReaderPage {
     this.onRegisterDesktopCommands(commands);
     this.onCaptureDraft(() => this.captureDraft());
     this.editor.onReadyChange = (ready: boolean) => this.editorReady = ready;
+    this.editor.onDocumentLoaded = (documentKey: string) => {
+      if (documentKey !== this.selectedDate || !(this.sourceMode || this.splitMode && !this.isWide())) return;
+      this.getUIContext().postFrameCallback(new FrameAction(() => {
+        if (documentKey === this.selectedDate && (this.sourceMode || this.splitMode && !this.isWide())) {
+          this.workspaceTransition.finish('mode');
+          this.workspaceTransition.finish('document');
+        }
+      }));
+    };
     this.editor.onChange = (snapshot: EditorSnapshot) => {
       if (snapshot.documentKey !== this.selectedDate) return;
       this.draftText = snapshot.text;
@@ -285,7 +296,13 @@ export struct LogsReaderPage {
     this.editor.onDirty = (key: string) => {
       if (key === this.selectedDate) { this.dirty = true; this.reportDraft(); }
     };
-    this.editor.onFailure = (message: string) => this.saveError = message;
+    this.editor.onFailure = (message: string) => {
+      this.saveError = message;
+      if (this.sourceMode || this.splitMode && !this.isWide()) {
+        this.workspaceTransition.finish('mode');
+        this.workspaceTransition.finish('document');
+      }
+    };
     this.editor.onCommand = (command: string) => {
       if (command === 'save') this.save();
       else if (command === 'globalSearch') this.searchOpen = true;
@@ -301,6 +318,7 @@ export struct LogsReaderPage {
 
   aboutToDisappear(): void {
     this.moduleSwitchRevision++;
+    this.modeRequestRevision++;
     this.workspaceTransition.clear();
     this.sidebarMotionRevision++;
     this.ai.dispose();
@@ -315,6 +333,7 @@ export struct LogsReaderPage {
     this.editor.onDirty = () => {};
     this.editor.onFailure = () => {};
     this.editor.onReadyChange = () => {};
+    this.editor.onDocumentLoaded = () => {};
     this.editor.onCommand = () => {};
     this.editor.onImages = () => {};
     this.closeLink(false);
@@ -740,6 +759,7 @@ export struct LogsReaderPage {
   }
 
   private async switchMode(source: boolean, split: boolean = false): Promise<void> {
+    const revision = ++this.modeRequestRevision;
     if (source === this.sourceMode && split === this.splitMode) return;
     if (this.editorReady && this.day) {
       try {
@@ -754,9 +774,26 @@ export struct LogsReaderPage {
         return;
       }
     }
+    if (revision !== this.modeRequestRevision) return;
+    if (!source && !split && this.editorReady) {
+      try { await this.editor.command('blur'); } catch (_) { return; }
+    }
+    if (revision !== this.modeRequestRevision) return;
+    if (this.isWide() && this.day && this.selectedTab() === 0) {
+      this.workspaceTransition.clear();
+      await this.workspaceTransition.cover('mode');
+      if (revision !== this.modeRequestRevision) return;
+    }
     this.sourceMode = source;
     this.splitMode = split;
     this.updateToolbarWidth(this.headerWidth);
+    this.modeLayoutRevision++;
+    if (!this.day || this.dayLoading || this.daysLoading ||
+      (source && this.editor.loadedDocumentKey === this.selectedDate)) {
+      this.getUIContext().postFrameCallback(new FrameAction(() => {
+        if (revision === this.modeRequestRevision) this.workspaceTransition.finish('mode');
+      }));
+    }
   }
 
   private async save(): Promise<void> {
@@ -1301,7 +1338,8 @@ export struct LogsReaderPage {
     } finally {
       if (lifecycle === this.lifecycle && revision === this.dayRevision) {
         this.dayLoading = false;
-        if (this.sourceMode || this.splitMode && !this.isWide()) {
+        if ((this.sourceMode || this.splitMode && !this.isWide()) &&
+          this.editor.loadedDocumentKey === date) {
           this.getUIContext().postFrameCallback(new FrameAction(() => {
             if (lifecycle === this.lifecycle && revision === this.dayRevision) {
               this.workspaceTransition.finish('document');
@@ -2433,6 +2471,9 @@ export struct LogsReaderPage {
                 color: $r('app.color.hairline') })
             Row() {
               MarkdownReader({ content: this.previewText, contentMode: 'log', documentKey: this.day.date,
+                stableViewport: this.isWide(), fillAvailableWidth: this.splitMode,
+                viewportRequestRevision: this.modeLayoutRevision,
+                onViewportReady: () => this.workspaceTransition.finish('mode'),
                 onContentRendered: (_content: string, date: string) => {
                   if (date === this.selectedDate && !this.dayLoading && !this.daysLoading) {
                     this.workspaceTransition.finish('document');
@@ -2648,7 +2689,8 @@ export struct LogsReaderPage {
             }
           })
           if (this.workspaceTransition.snapshot &&
-            (this.workspaceTransition.kind === 'module' || this.workspaceTransition.kind === 'document')) {
+            (this.workspaceTransition.kind === 'module' || this.workspaceTransition.kind === 'document' ||
+              this.workspaceTransition.kind === 'mode')) {
             Image(this.workspaceTransition.snapshot).width('100%').height('100%')
               .objectFit(ImageFit.Fill).syncLoad(true).opacity(this.workspaceTransition.opacity).zIndex(10)
               .onComplete(() => this.workspaceTransition.rendered())

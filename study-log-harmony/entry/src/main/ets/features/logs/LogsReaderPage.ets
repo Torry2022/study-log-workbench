@@ -2050,16 +2050,36 @@ export struct LogsReaderPage {
   }
 
   private async highlightAiDraft(): Promise<void> {
-    if (!this.day || !this.editorReady) return;
+    if (!this.day || this.ai.busy) return;
     try {
       const date = this.day.date;
-      const snapshot = await this.editor.command('snapshot');
-      if (snapshot.documentKey !== date || this.day?.date !== date) return;
-      this.draftText = snapshot.text;
-      this.dirty = snapshot.text !== this.savedText;
+      let body = this.draftText;
+      if (this.editorReady) {
+        const snapshot = await this.editor.command('snapshot');
+        if (snapshot.documentKey !== date || this.day?.date !== date) return;
+        body = snapshot.text;
+      } else if (this.sourceMode || this.splitMode) {
+        this.ai.message = '编辑器尚未就绪，请稍后重试';
+        return;
+      }
+      this.draftText = body;
+      this.dirty = body !== this.savedText;
       this.reportDraft();
-      await this.ai.highlight(date, snapshot.text);
+      await this.ai.highlight(date, body);
     } catch (error) { this.ai.message = error instanceof Error ? error.message : '编辑器尚未就绪'; }
+  }
+
+  private async prepareEditorForAi(date: string, lifecycle: number): Promise<boolean> {
+    if (!this.sourceMode && !this.splitMode) await this.switchMode(true);
+    if (lifecycle !== this.lifecycle || this.day?.date !== date) return false;
+    for (let attempt = 0; attempt < 50 && this.editor.loadedDocumentKey !== date; attempt += 1) {
+      if (lifecycle !== this.lifecycle || this.day?.date !== date) return false;
+      await new Promise<void>((resolve) => setTimeout(resolve, 100));
+    }
+    if (!this.editorReady || this.editor.loadedDocumentKey !== date) {
+      throw new Error('编辑器尚未就绪，请稍后重试');
+    }
+    return true;
   }
 
   private async applyAiOutput(): Promise<void> {
@@ -2068,15 +2088,7 @@ export struct LogsReaderPage {
     const date = this.day.date;
     if (this.ai.outputDate !== date) { this.ai.message = '请切回生成草稿时的日块'; return; }
     try {
-      if (!this.sourceMode && !this.splitMode) await this.switchMode(true);
-      if (lifecycle !== this.lifecycle || this.day?.date !== date) return;
-      for (let attempt = 0; attempt < 50 && this.editor.loadedDocumentKey !== date; attempt += 1) {
-        if (lifecycle !== this.lifecycle || this.day?.date !== date) return;
-        await new Promise<void>((resolve) => setTimeout(resolve, 100));
-      }
-      if (!this.editorReady || this.editor.loadedDocumentKey !== date) {
-        throw new Error('编辑器尚未就绪，请稍后重试');
-      }
+      if (!await this.prepareEditorForAi(date, lifecycle)) return;
       const snapshot = await this.editor.command('snapshot');
       if (snapshot.documentKey !== date || lifecycle !== this.lifecycle || this.day?.date !== date) return;
       const body = snapshot.text.trimEnd();
@@ -2088,11 +2100,13 @@ export struct LogsReaderPage {
   }
 
   private async applyAiHighlight(): Promise<void> {
-    if (!this.day || !this.editorReady || this.ai.busy) return;
+    if (!this.day || this.ai.busy) return;
+    const lifecycle = this.lifecycle;
     const date = this.day.date;
     try {
+      if (!await this.prepareEditorForAi(date, lifecycle)) return;
       const snapshot = await this.editor.command('snapshot');
-      if (snapshot.documentKey !== date || this.ai.highlightDate !== date ||
+      if (lifecycle !== this.lifecycle || snapshot.documentKey !== date || this.ai.highlightDate !== date ||
         snapshot.text !== this.ai.originalDraft) {
         this.ai.message = '当前日块或编辑草稿已变化，请重新标注重点'; return;
       }

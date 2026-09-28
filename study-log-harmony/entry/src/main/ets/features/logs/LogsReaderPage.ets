@@ -2969,6 +2969,10 @@ export struct LogsReaderPage {
               this.moveAiTools(0);
             }
           })
+          if (this.aiOpen && !this.isWide() && this.selectedTab() === 0) {
+            Stack({ alignContent: Alignment.TopEnd }) { this.aiToolsPanel() }
+              .width('100%').height('100%').zIndex(2)
+          }
           if (this.workspaceTransition.snapshot &&
             (this.workspaceTransition.kind === 'module' || this.workspaceTransition.kind === 'document' ||
               this.workspaceTransition.kind === 'mode')) {
@@ -3074,7 +3078,6 @@ export struct LogsReaderPage {
           onSelect: (result: LogSearchResult) => this.selectSearchResult(result) })
           .width('100%').height('100%')
       }
-      if (this.aiOpen && !this.isWide() && this.selectedTab() === 0) this.aiToolsPanel()
       if (this.ai.reviewOpen) {
         LogHighlightReview({ original: this.ai.originalDraft, highlighted: this.ai.highlighted,
           date: this.ai.highlightDate,

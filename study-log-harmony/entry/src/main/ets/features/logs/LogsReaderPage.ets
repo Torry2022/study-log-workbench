@@ -153,6 +153,7 @@ export struct LogsReaderPage {
   private readingViewportWidth: number = 0;
   private readingViewportHeight: number = 0;
   @State private readingOutlineOpen: boolean = false;
+  @State private readerReady: boolean = false;
   @State private renderedPreviewDate: string = '';
   @State private previewOffset: number = 0;
   @State private previewProgress: number = 0;
@@ -1352,6 +1353,7 @@ export struct LogsReaderPage {
     this.month = month;
     this.days = [];
     this.day = undefined;
+    this.readerReady = false;
     this.renderedPreviewDate = '';
     this.selectedDate = '';
     this.daysLoading = true;
@@ -1383,6 +1385,7 @@ export struct LogsReaderPage {
     this.dayLoading = true;
     this.errorMessage = '';
     this.day = undefined;
+    this.readerReady = false;
     this.renderedPreviewDate = '';
     this.editorReady = false;
     this.dirty = false;
@@ -2578,6 +2581,7 @@ export struct LogsReaderPage {
               .border({ width: { right: this.isWide() && this.splitMode ? 1 : 0 },
                 color: $r('app.color.hairline') })
             Row() {
+              Stack({ alignContent: Alignment.TopEnd }) {
               MarkdownReader({ content: this.previewText, contentMode: 'log', documentKey: this.day.date,
                 stableViewport: this.isWide(), fillAvailableWidth: this.splitMode,
                 viewportRequestRevision: this.modeLayoutRevision + this.workspaceLayoutRevision,
@@ -2598,6 +2602,7 @@ export struct LogsReaderPage {
                 },
                 onContentRendered: (_content: string, date: string) => {
                   if (date === this.selectedDate && !this.dayLoading && !this.daysLoading) {
+                    this.readerReady = true;
                     this.renderedPreviewDate = date;
                     this.workspaceTransition.finish('document');
                   }
@@ -2612,8 +2617,21 @@ export struct LogsReaderPage {
                 trackActiveHeading: true,
                 onActiveHeading: (headingId: string) => this.updateActiveOutline(headingId),
                 onInternalLink: (date: string, heading: string) => this.confirmDiscard(() => this.openInternalLink(date, heading)) })
-                .layoutWeight(1).height('100%').id('log_reading_surface')
+                .width('100%').height('100%').id('log_reading_surface')
                 .onAreaChange((_oldArea: Area, area: Area) => this.readingViewportChanged(area))
+              if (!this.readerReady && !this.renderedPreviewDate && !this.sourceMode) {
+                Column() {
+                  LoadingProgress().width(26).height(26).color($r('app.color.primary'))
+                }.width('100%').height('100%').justifyContent(FlexAlign.Center)
+                  .backgroundColor($r('app.color.canvas')).zIndex(2)
+                  .hitTestBehavior(HitTestMode.None)
+              }
+              if (this.isWide() && !this.logsReadingMode && !this.sourceMode && !this.splitMode &&
+                this.readerReady && this.renderedPreviewDate === this.selectedDate) {
+                Column() { this.readingModeEntryButton() }
+                  .width(36).height(36).margin({ top: 16, right: 16 }).zIndex(3)
+              }
+              }.layoutWeight(1).height('100%')
               if (this.showDesktopOutline()) this.desktopOutline()
             }.width(this.isWide() && this.splitMode ? '50%' :
               (this.sourceMode || this.splitMode && !this.isWide() ? 0 : '100%'))
@@ -2624,11 +2642,6 @@ export struct LogsReaderPage {
             Text(this.saveError).fontSize(13).fontColor($r('app.color.error'))
               .width('100%').padding(12).backgroundColor($r('app.color.surface_soft'))
               .align(Alignment.Bottom)
-          }
-          if (this.isWide() && !this.logsReadingMode && !this.sourceMode && !this.splitMode &&
-            this.renderedPreviewDate === this.selectedDate) {
-            Column() { this.readingModeEntryButton() }
-              .width(36).height(36).margin({ top: 16, right: 16 }).zIndex(3)
           }
         }.layoutWeight(1).width('100%')
       } else {

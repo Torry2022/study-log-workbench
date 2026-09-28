@@ -1700,23 +1700,27 @@ export struct LogsReaderPage {
       if (!response.day || response.day.date !== date || typeof response.day.content !== 'string') {
         throw new Error('日块响应格式异常');
       }
-      this.day = response.day;
-      this.selectedDate = date;
-      this.readerReady = false;
-      this.renderedPreviewDate = '';
-      this.editorReady = false;
-      this.previewRestoreOffset = this.previewScrollOffsets[date] || 0;
-      this.previewOffset = this.previewRestoreOffset;
-      this.activeOutlineIndex = Math.max(0, headingIndex);
       const body = this.bodyFromDay(response.day);
       const restore = !this.restoredDraftApplied ? restoredLogDraft(this.initialDraft,
         activeInstance.namespace, date, body, response.day.version) : undefined;
+      const nextText = restore ? restore.text : body;
+      const changed = this.day?.date !== date || this.previewText !== nextText;
+      this.day = response.day;
+      this.selectedDate = date;
+      if (changed) {
+        this.readerReady = false;
+        this.renderedPreviewDate = '';
+        this.editorReady = false;
+      }
+      this.previewRestoreOffset = this.previewScrollOffsets[date] || 0;
+      this.previewOffset = this.previewRestoreOffset;
+      this.activeOutlineIndex = Math.max(0, headingIndex);
       if (this.initialDraft?.namespace === activeInstance.namespace && this.initialDraft.date === date) {
         this.restoredDraftApplied = true;
       }
       this.savedText = body;
       this.draftBaseVersion = restore ? this.initialDraft!.baseVersion : response.day.version;
-      this.draftText = restore ? restore.text : body;
+      this.draftText = nextText;
       this.editorInitialText = this.draftText;
       this.previewText = this.draftText;
       this.dirty = this.draftText !== body;
@@ -1727,6 +1731,7 @@ export struct LogsReaderPage {
       this.targetHeadingIndex = headingIndex;
       if (heading) this.targetRevision++;
       this.closeNavigation();
+      if (!changed) this.workspaceTransition.finish('document');
     } catch (error) {
       if (lifecycle === this.lifecycle && revision === this.dayRevision) {
         this.readFailed = true;
@@ -2013,7 +2018,9 @@ export struct LogsReaderPage {
         dateActions: (): void => this.dateActions(),
         jumpDatePicker: (): void => this.jumpDatePicker(),
         onMonth: (month: string) => { if (month !== this.month) this.confirmDiscard(() => this.loadDays(month)); },
-        onDay: (date: string) => { if (date !== this.selectedDate) this.confirmDiscard(() => this.loadDay(date)); },
+        onDay: (date: string) => {
+          if (date !== this.selectedDate || this.dayLoading) this.confirmDiscard(() => this.loadDay(date));
+        },
         onHeading: (day: DaySummary, heading: string, index: number) => this.openHeading(day, heading, index),
         onQuery: (query: string) => this.navigationDayQuery = query,
         onToggleMonths: () => expandSection(this.getUIContext(), () => {

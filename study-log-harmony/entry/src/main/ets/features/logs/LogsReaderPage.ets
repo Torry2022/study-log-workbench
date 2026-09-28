@@ -102,6 +102,7 @@ export struct LogsReaderPage {
   @State private outlineScrimOpacity: number = 0;
   private outlineMotionRevision: number = 0;
   private pendingOutlineOpen: boolean = false;
+  private outlineGestureActive: boolean = false;
   @State private taxonomyOpen: boolean = false;
   @State private taxonomyDirty: boolean = false;
   @State private taxonomyBusy: boolean = false;
@@ -600,6 +601,29 @@ export struct LogsReaderPage {
     if (!this.pendingOutlineOpen) return;
     this.pendingOutlineOpen = false;
     this.openOutline();
+  }
+
+  private handleOutlinePanStart(event: GestureEvent): void {
+    if (this.isWide() || this.selectedTab() !== 0 || this.navigationOpen || this.sourceMode ||
+      !this.day || !this.readerReady || this.outlineOpen || this.moreOpen || this.aiOpen ||
+      this.backupOpen || this.linkOpen || this.searchOpen || this.outlineHeadings().length === 0) {
+      this.outlineGestureActive = false;
+      return;
+    }
+    const pan = event as PanGestureEvent;
+    const finger = pan.fingerList.length > 0 ? pan.fingerList[0] : undefined;
+    const width = Number(pan.target.area.width);
+    const startX = finger ? finger.localX - pan.offsetX : -1;
+    this.outlineGestureActive = width > 0 && startX >= width - 144 && startX <= width - 16;
+  }
+
+  private handleOutlinePanEnd(event: GestureEvent): void {
+    if (!this.outlineGestureActive) return;
+    const pan = event as PanGestureEvent;
+    const horizontalIntent = Math.abs(pan.offsetX) >= Math.abs(pan.offsetY) * 0.8;
+    const shouldOpen = horizontalIntent && (pan.offsetX < -48 || pan.velocityX < -450);
+    this.outlineGestureActive = false;
+    if (shouldOpen) this.openOutline();
   }
 
 
@@ -3307,5 +3331,9 @@ export struct LogsReaderPage {
       }
     }.width('100%').height('100%')
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+      .parallelGesture(PanGesture({ direction: PanDirection.All, distance: 6 })
+        .onActionStart((event: GestureEvent) => this.handleOutlinePanStart(event))
+        .onActionEnd((event: GestureEvent) => this.handleOutlinePanEnd(event))
+        .onActionCancel(() => this.outlineGestureActive = false))
   }
 }

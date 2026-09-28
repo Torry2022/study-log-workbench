@@ -30,7 +30,7 @@ export struct NotesPage {
   @Prop @Watch('topRequested') topRevision: number = 0;
 
   private topRequested(): void {
-    if (this.topRevision > 0 && !this.noteEditor.editing) this.scrollToTop();
+    if (this.topRevision > 0 && !this.noteEditor.editing && !this.extracting) this.scrollToTop();
   }
   onLoadingHintChange: (placement: LoadingHintPlacement) => void = () => {};
   @State private toolbarLabels: boolean = false;
@@ -427,8 +427,8 @@ export struct NotesPage {
   private desktopHeader() {
     Row({ space: 8 }) {
       ModulePageTitle({ title: '随记' }).layoutWeight(1)
-      Row() { this.searchField() }.width(Math.max(220, Math.min(360, this.headerWidth - 520)))
-      ToolbarAction({ label: 'AI提取', icon: $r('app.media.wand_sparkles'), showLabel: this.headerWidth >= 720,
+      Row() { this.searchField() }.width(Math.max(220, Math.min(360, this.headerWidth - 440)))
+      ToolbarAction({ label: 'AI提取', icon: $r('app.media.sparkles'), showLabel: this.headerWidth >= 720,
         available: !this.noteEditor.editing, onAction: () => this.beginExtraction() })
       ToolbarAction({ label: '导出', icon: $r('app.media.download'), showLabel: this.headerWidth >= 720,
         busy: this.data.exporting, onAction: () => this.exportNotes() })
@@ -462,7 +462,7 @@ export struct NotesPage {
       }
       .width('100%').padding({ left: 16, right: 16, top: 8, bottom: 12 })
       .onAreaChange((_oldArea, area) => {
-        const required = 32 + 280 + 16 + toolbarActionsWidth(['AI 提取', '新建随记']);
+        const required = 32 + 280 + 8 + toolbarActionsWidth(['AI 提取', '新建随记']);
         this.toolbarLabels = this.workspaceBreakpoint !== WorkspaceBreakpoint.COMPACT &&
           Number(area.width) >= required + (this.toolbarLabels ? 0 : 12);
       })

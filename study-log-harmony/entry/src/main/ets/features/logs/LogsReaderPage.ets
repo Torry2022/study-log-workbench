@@ -85,10 +85,10 @@ export struct LogsReaderPage {
   @State private errorMessage: string = '';
   @State private navigationError: string = '';
   @State private navigationOpen: boolean = false;
-  @State private statsOpen: boolean = false;
-  @State private favoritesOpen: boolean = false;
-  @State private notesOpen: boolean = false;
-  @State private qaOpen: boolean = false;
+  @State @Watch('moduleNavigationChanged') private statsOpen: boolean = false;
+  @State @Watch('moduleNavigationChanged') private favoritesOpen: boolean = false;
+  @State @Watch('moduleNavigationChanged') private notesOpen: boolean = false;
+  @State @Watch('moduleNavigationChanged') private qaOpen: boolean = false;
   @State private qaBusy: boolean = false;
   @State private qaDirty: boolean = false;
   @State private qaPending: boolean = false;
@@ -118,7 +118,18 @@ export struct LogsReaderPage {
   @State private statsMonthsError: string = '';
   @State private statsMonthRevision: number = 0;
   @State private statsRefreshRevision: number = 0;
-  @State private desktopNavigationCollapsed: boolean = false;
+  @State private collapsedModules: boolean[] = [false, false, false, false, false];
+  @State private railPopover: string = '';
+  @State private moduleFrameHeight: number = 0;
+
+  private isDesktopNavigationCollapsed(): boolean { return this.collapsedModules[this.selectedTab()]; }
+
+  private moduleNavigationChanged(): void {
+    this.railPopover = '';
+    this.sidebarMotionRevision++;
+    this.sidebarAnimating = false;
+    this.finishToolbarMotion();
+  }
   @State private sidebarExpansion: number = 1;
   @State private sidebarAnimating: boolean = false;
   private sidebarMotionRevision: number = 0;
@@ -205,6 +216,8 @@ export struct LogsReaderPage {
   private logNavigationScroller: Scroller = new Scroller();
 
   aboutToAppear(): void {
+    this.collapsedModules = [0, 1, 2, 3, 4].map((index: number) =>
+      AppStorage.get<boolean>(`pref_sidebarCollapsed${index}`) || false);
     this.lifecycle++;
     this.favoritesData.load();
     const commands = new DesktopLogCommands();
@@ -388,6 +401,7 @@ export struct LogsReaderPage {
     const change = (): void => {
       this.qaDirty = false; this.qaPending = false;
       this.navigationOpen = false;
+      this.railPopover = '';
       this.qaSessionId = id; this.qaRequestRevision++;
     };
     if (!this.qaDirty && !this.qaPending) { change(); return; }
@@ -1467,24 +1481,28 @@ export struct LogsReaderPage {
   }
 
   private setDesktopNavigationCollapsed(collapsed: boolean, section: number = -1): void {
-    if (collapsed === this.desktopNavigationCollapsed || this.sidebarAnimating || this.aiAnimating) return;
+    if (collapsed === this.isDesktopNavigationCollapsed() || this.sidebarAnimating || this.aiAnimating) return;
     const revision = ++this.sidebarMotionRevision;
-    const origin = this.desktopNavigationCollapsed ? 0 : 1;
+    const origin = this.isDesktopNavigationCollapsed() ? 0 : 1;
     const target = collapsed ? 0 : 1;
     this.sidebarExpansion = origin;
     this.sidebarAnimating = true;
-    this.desktopNavigationCollapsed = collapsed;
+    this.railPopover = '';
+    const module = this.selectedTab();
+    this.collapsedModules = this.collapsedModules.map((value: boolean, index: number) => index === module ? collapsed : value);
+    workspacePreferences.set(`sidebarCollapsed${module}`, collapsed)
+      .catch(() => appFeedback.show('侧栏状态保存失败', 'error'));
     const targetNavigationWidth = collapsed ? 52 :
       (this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE ? 260 : 220);
-    const toolbarWidths = this.beginToolbarMotion(this.aiAvailableWidth - targetNavigationWidth -
-      (52 + (this.aiPanelWidth - 52) * (1 - this.aiOffset / 420)));
+    const toolbarWidths: number[][] = module === 0 ? this.beginToolbarMotion(this.aiAvailableWidth - targetNavigationWidth -
+      (52 + (this.aiPanelWidth - 52) * (1 - this.aiOffset / 420))) : [];
     const started = Date.now();
     const step = (): void => {
       if (revision !== this.sidebarMotionRevision) return;
       const progress = Math.min(1, (Date.now() - started) / 240);
       const eased = progress * progress * (3 - 2 * progress);
       this.sidebarExpansion = origin + (target - origin) * eased;
-      this.advanceToolbarMotion(toolbarWidths, eased);
+      if (toolbarWidths.length) this.advanceToolbarMotion(toolbarWidths, eased);
       if (progress < 1) this.getUIContext().postFrameCallback(new FrameAction(step));
       else {
         this.sidebarAnimating = false;
@@ -1504,37 +1522,207 @@ export struct LogsReaderPage {
   private desktopNavigationWidth(): number {
     const full = this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE ? 260 : 220;
     return 52 + (full - 52) * (this.sidebarAnimating ? this.sidebarExpansion :
-      (this.desktopNavigationCollapsed ? 0 : 1));
+      (this.isDesktopNavigationCollapsed() ? 0 : 1));
   }
 
   @Builder
-  private navigationRailButton(id: string, icon: Resource, label: string, action: () => void) {
+  private navigationRailButton(id: string, icon: Resource, label: string, action: () => void,
+    active: boolean = false, enabled: boolean = true) {
     Button({ type: ButtonType.Normal }) {
       Image(icon).width(id === 'expand' ? 18 : 17).height(id === 'expand' ? 18 : 17)
         .objectFit(ImageFit.Contain)
-        .colorFilter(iconTint(this.navigationRailHover === id || id === 'expand' ?
+        .colorFilter(iconTint(active || this.navigationRailHover === id || id === 'expand' ?
           $r('app.color.ink') : $r('app.color.muted')))
     }.id(`sidebar_rail_${id}`).width(38).height(38).padding(0).borderRadius(8)
-      .backgroundColor(this.navigationRailHover === id ? $r('app.color.interaction_hover') :
-        $r('app.color.interaction_hover_clear'))
+      .backgroundColor(active ? $r('app.color.surface_card') : this.navigationRailHover === id ?
+        $r('app.color.interaction_hover') : $r('app.color.interaction_hover_clear'))
       .hoverEffect(HoverEffect.None)
       .onHover((hovered: boolean) => this.navigationRailHover = hovered ? id : '')
-      .accessibilityText(label).onClick(action)
+      .enabled(enabled).accessibilityText(label).bindTips(label, WORKSPACE_TIPS).onClick(action)
+      .bindPopup(this.railPopover === id, {
+        builder: this.railPopoverPanel(), placement: Placement.RightTop, enableArrow: false,
+        popupColor: $r('app.color.canvas'), radius: 10, autoCancel: true,
+        backgroundBlurStyle: BlurStyle.NONE, targetSpace: 6,
+        shadow: { radius: 12, color: $r('app.color.popover_shadow'), offsetY: 4 },
+        onStateChange: (event) => { if (!event.isVisible && this.railPopover === id) this.railPopover = ''; }
+      })
   }
 
   @Builder
   private desktopNavigationRail() {
     Column({ space: 8 }) {
       this.navigationRailButton('expand', $r('app.media.rail_chevron_right'), '展开侧栏',
-        () => this.expandNavigation())
+        () => { this.railPopover = ''; this.expandNavigation(); })
+      if (this.qaOpen) {
+        this.navigationRailButton('new_question', $r('app.media.rail_square_pen'), '新建问答',
+          () => { this.railPopover = ''; this.switchQaSession(''); }, false, !this.qaBusy)
+        this.navigationRailButton('search', $r('app.media.rail_search'), '搜索历史',
+          () => this.railPopover = this.railPopover === 'search' ? '' : 'search', this.railPopover === 'search')
+        this.navigationRailButton('recent', $r('app.media.rail_message_square_text'), '最近问答',
+          () => { this.qaQuery = ''; this.railPopover = this.railPopover === 'recent' ? '' : 'recent'; },
+          this.railPopover === 'recent')
+      } else if (this.notesOpen) {
+        this.navigationRailButton('new_note', $r('app.media.rail_plus'), '新建随记',
+          () => { this.railPopover = ''; this.noteNewRevision++; }, false, !this.notesBusy)
+        this.navigationRailButton('tags', $r('app.media.rail_tag'), '年份和标签',
+          () => this.railPopover = this.railPopover === 'tags' ? '' : 'tags', this.railPopover === 'tags')
+      } else if (this.favoritesOpen) {
+        this.navigationRailButton('favorite_filters', $r('app.media.tab_star'), '筛选收藏',
+          () => this.railPopover = this.railPopover === 'favorite_filters' ? '' : 'favorite_filters',
+          this.railPopover === 'favorite_filters')
+      } else if (this.statsOpen) {
+        this.navigationRailButton('stats_months', $r('app.media.rail_calendar_days'), '选择统计月份',
+          () => this.railPopover = this.railPopover === 'stats_months' ? '' : 'stats_months',
+          this.railPopover === 'stats_months')
+      } else {
       this.navigationRailButton('months', $r('app.media.rail_calendar_days'), '展开月份列表',
         () => this.expandNavigation(0))
       this.navigationRailButton('dates', $r('app.media.rail_file_text'), '展开日期列表',
         () => this.expandNavigation(2))
       this.navigationRailButton('today', $r('app.media.rail_plus'), '新建今日日志',
         () => this.openNewLog(this.calendarDate(new Date())))
+      }
     }.id('sidebar_rail').width('100%').height('100%')
       .alignItems(HorizontalAlign.Center).padding({ top: 14, bottom: 14 })
+  }
+
+  @Builder
+  private moduleNavigationContent(popover: boolean = false) {
+    if (this.qaOpen) {
+      QaNavigation({ qaRailPopover: popover ? this.railPopover : '', moduleFrameHeight: this.moduleFrameHeight,
+                    qaSessions: this.qaNavigation.qaSessions, qaSessionQuery: this.qaQuery,
+                    qaActiveSessionId: this.qaSessionId, qaBusy: this.qaBusy,
+                    qaNavigationLoading: this.qaNavigation.qaNavigationLoading,
+                    qaNavigationError: this.qaNavigation.qaNavigationError,
+                    qaRenameId: this.qaNavigation.qaRenameId,
+                    qaRenameTitle: this.qaNavigation.qaRenameTitle,
+                    qaMenuId: this.qaNavigation.qaMenuId,
+                    onQuery: (query: string) => this.qaQuery = query,
+                    onSession: (id: string) => this.switchQaSession(id),
+                    onMenu: (id: string) => this.qaNavigation.qaMenuId = id,
+                    onStartRename: (session: RagSessionSummary) => {
+                      this.qaNavigation.qaRenameId = session.id;
+                      this.qaNavigation.qaRenameTitle = session.title;
+                    },
+                    onRenameTitle: (title: string) => this.qaNavigation.qaRenameTitle = title,
+                    onCommitRename: () => this.qaNavigation.commitQaRename(),
+                    onCancelRename: () => this.qaNavigation.qaRenameId = '',
+                    onDelete: (session: RagSessionSummary) => this.confirmQaDelete(session),
+                    onRetry: () => this.qaNavigation.loadQaNavigation() })
+    } else if (this.notesOpen) {
+      NotesNavigation({ filtersOnly: popover, noteYearFilter: this.noteYearFilter, noteTagFilter: this.noteTagFilter,
+                    noteCount: this.noteCount, noteYears: this.noteYears, noteTags: this.noteTags,
+                    noteEditorBusy: this.notesBusy,
+                    onNew: () => { this.noteNewRevision++; this.railPopover = ''; },
+                    onYear: (year: string) => { this.noteYearFilter = year; this.railPopover = ''; },
+                    onTag: (tag: string) => { this.noteTagFilter = tag; this.railPopover = ''; } })
+    } else if (this.favoritesOpen) {
+      FavoritesNavigation({ data: this.favoritesData, wide: true,
+                    onRetry: () => this.favoritesData.load() })
+    } else if (this.statsOpen) {
+      StatsNavigation({ monthsOnly: true, statsMonths: this.statsMonths,
+                    statsMonth: this.statsMonth, statsMonthsLoading: this.statsMonthsLoading,
+                    statsMonthsError: this.statsMonthsError,
+                    onMonth: (month: string) => {
+                      this.statsMonth = month;
+                      this.statsMonthRevision++; this.railPopover = '';
+                    },
+                    onRetry: () => this.statsRefreshRevision++ })
+    } else { this.navigation() }
+  }
+
+  private hasNavigationFilters(): boolean {
+    if (this.notesOpen) return this.noteYearFilter !== 'all' || this.noteTagFilter !== 'all';
+    if (this.favoritesOpen) return this.favoritesData.selectedGroup !== 'all' || this.favoritesData.selectedMonth !== 'all';
+    if (this.statsOpen) return this.statsMonths.length > 0 && this.statsMonth !== this.statsMonths[0].id;
+    return false;
+  }
+
+  private resetNavigationFilters(): void {
+    if (this.notesOpen) { this.noteYearFilter = 'all'; this.noteTagFilter = 'all'; }
+    else if (this.favoritesOpen) { this.favoritesData.selectGroup('all'); this.favoritesData.selectMonth('all'); }
+    else if (this.statsOpen && this.statsMonths.length > 0) {
+      this.statsMonth = this.statsMonths[0].id; this.statsMonthRevision++;
+    }
+  }
+
+  @Builder
+  private navigationFilterReset(id: string = 'navigation_reset_filters') {
+    if (this.notesOpen || this.favoritesOpen || this.statsOpen) {
+      Button('重置筛选', { type: ButtonType.Normal }).id(id).width(64).height(34).padding(0)
+        .fontSize(12).fontColor($r('app.color.muted')).backgroundColor(Color.Transparent).borderRadius(8)
+        .visibility(this.hasNavigationFilters() ? Visibility.Visible : Visibility.Hidden)
+        .onClick(() => this.resetNavigationFilters())
+    }
+  }
+
+  @Builder
+  private moduleNavigationHeader() {
+    Row({ space: 6 }) {
+      Image(this.notesOpen ? $r('app.media.tab_lightbulb_active') : this.favoritesOpen ?
+        $r('app.media.tab_star_active') : this.qaOpen ? $r('app.media.rail_message_square_text') :
+        $r('app.media.tab_chart_column')).width(19).height(19).objectFit(ImageFit.Contain)
+      Text(this.notesOpen ? '随记' : this.favoritesOpen ? '收藏中心' : this.qaOpen ? '知识问答' : '学习统计')
+        .fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.body_strong')).layoutWeight(1)
+        .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+      this.navigationFilterReset()
+      Button({ type: ButtonType.Normal }) {
+        SymbolGlyph($r('sys.symbol.chevron_left')).fontSize(16).fontColor([$r('app.color.body')])
+      }.width(34).height(34).padding(0).backgroundColor(Color.Transparent).borderRadius(8)
+        .id('sidebar_collapse').accessibilityText('折叠侧栏').bindTips('折叠侧栏', WORKSPACE_TIPS)
+        .onClick(() => this.setDesktopNavigationCollapsed(true))
+    }.width('100%').height(52).padding({ left: 16, right: 10 })
+      .border({ width: { bottom: 1 }, color: $r('app.color.hairline_soft') })
+  }
+
+  @Builder
+  private desktopNavigation() {
+    Stack({ alignContent: Alignment.TopStart }) {
+      Column() {
+        if (this.selectedTab() !== 0) this.moduleNavigationHeader()
+        this.moduleNavigationContent()
+      }
+        .width(this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE ? 260 : 220)
+        .height('100%')
+        .opacity(this.sidebarAnimating ? this.sidebarExpansion :
+          (this.isDesktopNavigationCollapsed() ? 0 : 1))
+        .visibility(!this.isDesktopNavigationCollapsed() || this.sidebarAnimating ?
+          Visibility.Visible : Visibility.Hidden)
+        .hitTestBehavior(this.isDesktopNavigationCollapsed() || this.sidebarAnimating ?
+          HitTestMode.None : HitTestMode.Default)
+        .accessibilityLevel(this.isDesktopNavigationCollapsed() ? 'no-hide-descendants' : 'auto')
+      Column() { this.desktopNavigationRail() }.width(52).height('100%')
+        .opacity(this.sidebarAnimating ? 1 - this.sidebarExpansion :
+          (this.isDesktopNavigationCollapsed() ? 1 : 0))
+        .visibility(this.isDesktopNavigationCollapsed() || this.sidebarAnimating ?
+          Visibility.Visible : Visibility.Hidden)
+        .hitTestBehavior(!this.isDesktopNavigationCollapsed() || this.sidebarAnimating ?
+          HitTestMode.None : HitTestMode.Default)
+        .accessibilityLevel(this.isDesktopNavigationCollapsed() ? 'auto' : 'no-hide-descendants')
+    }.width(this.desktopNavigationWidth())
+      .height('100%').backgroundColor($r('app.color.surface_soft'))
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
+      .clip(this.sidebarAnimating)
+      .border({ width: { right: 1 }, color: $r('app.color.hairline') })
+      .id('desktop_navigation_frame').zIndex(this.railPopover ? 40 : 1)
+      .onAreaChange((_: Area, area: Area) => this.moduleFrameHeight = Number(area.height))
+  }
+
+  @Builder
+  private railPopoverPanel() {
+    if (this.qaOpen) {
+      this.moduleNavigationContent(true)
+    } else {
+      Column() {
+        Row() {
+        Text(this.notesOpen ? '年份和标签' : this.favoritesOpen ? '筛选收藏' : '统计月份')
+          .fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.ink'))
+          .layoutWeight(1)
+        this.navigationFilterReset('navigation_popover_reset_filters')
+        }.width('100%').height(48).padding({ left: 14, right: 14 })
+        this.moduleNavigationContent(true)
+      }.width(280).height(Math.min(420, Math.max(180, this.moduleFrameHeight - 32)))
+    }
   }
 
   @Builder
@@ -2204,38 +2392,7 @@ export struct LogsReaderPage {
         Stack() {
           if (this.qaOpen) {
             Row() {
-              if (this.isWide()) {
-                Column() {
-                  Row() {
-                    Text('知识问答').fontSize(14).fontWeight(FontWeight.Medium)
-                      .fontColor($r('app.color.body_strong'))
-                  }.width('100%').height(52).padding({ left: 16 })
-                    .border({ width: { bottom: 1 }, color: $r('app.color.hairline_soft') })
-                  QaNavigation({ qaSessions: this.qaNavigation.qaSessions, qaSessionQuery: this.qaQuery,
-                    qaActiveSessionId: this.qaSessionId, qaBusy: this.qaBusy,
-                    qaNavigationLoading: this.qaNavigation.qaNavigationLoading,
-                    qaNavigationError: this.qaNavigation.qaNavigationError,
-                    qaRenameId: this.qaNavigation.qaRenameId,
-                    qaRenameTitle: this.qaNavigation.qaRenameTitle,
-                    qaMenuId: this.qaNavigation.qaMenuId,
-                    onQuery: (query: string) => this.qaQuery = query,
-                    onSession: (id: string) => this.switchQaSession(id),
-                    onMenu: (id: string) => this.qaNavigation.qaMenuId = id,
-                    onStartRename: (session: RagSessionSummary) => {
-                      this.qaNavigation.qaRenameId = session.id;
-                      this.qaNavigation.qaRenameTitle = session.title;
-                    },
-                    onRenameTitle: (title: string) => this.qaNavigation.qaRenameTitle = title,
-                    onCommitRename: () => this.qaNavigation.commitQaRename(),
-                    onCancelRename: () => this.qaNavigation.qaRenameId = '',
-                    onDelete: (session: RagSessionSummary) => this.confirmQaDelete(session),
-                    onRetry: () => this.qaNavigation.loadQaNavigation() })
-                    .layoutWeight(1)
-                }.width(this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE ? 260 : 220)
-                  .height('100%').backgroundColor($r('app.color.surface_soft'))
-                  .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
-                  .border({ width: { right: 1 }, color: $r('app.color.hairline') })
-              }
+              if (this.isWide()) { this.desktopNavigation() }
               QaPage({ navigationSessionId: this.qaSessionId, navigationRequestRevision: this.qaRequestRevision,
                 configured: !!activeInstance.capabilities?.features.rag.configured,
                 onSessionsChange: (sessions: RagSessionSummary[]) => this.qaNavigation.acceptQaNavigation(sessions),
@@ -2250,25 +2407,7 @@ export struct LogsReaderPage {
             }.width('100%').height('100%')
           } else if (this.notesOpen) {
             Row() {
-              if (this.isWide()) {
-                Column() {
-                  Row({ space: 7 }) {
-                    Image($r('app.media.tab_lightbulb_active')).width(19).height(19)
-                    Text('随记').fontSize(14).fontWeight(FontWeight.Medium)
-                      .fontColor($r('app.color.body_strong'))
-                  }.width('100%').height(52).padding({ left: 16, right: 10 })
-                    .border({ width: { bottom: 1 }, color: $r('app.color.hairline_soft') })
-                  NotesNavigation({ noteYearFilter: this.noteYearFilter, noteTagFilter: this.noteTagFilter,
-                    noteCount: this.noteCount, noteYears: this.noteYears, noteTags: this.noteTags,
-                    noteEditorBusy: this.notesBusy,
-                    onNew: () => this.noteNewRevision++,
-                    onYear: (year: string) => this.noteYearFilter = year,
-                    onTag: (tag: string) => this.noteTagFilter = tag })
-                }.width(this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE ? 260 : 220)
-                  .height('100%').backgroundColor($r('app.color.surface_soft'))
-                  .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
-                  .border({ width: { right: 1 }, color: $r('app.color.hairline') })
-              }
+              if (this.isWide()) { this.desktopNavigation() }
               NotesPage({ navigationYear: this.noteYearFilter, navigationTag: this.noteTagFilter,
                 navigationNewRevision: this.noteNewRevision,
                 onNavigationDataChange: (years: StudyNoteFacet[], tags: StudyNoteFacet[], total: number) => {
@@ -2281,21 +2420,7 @@ export struct LogsReaderPage {
             }.width('100%').height('100%')
           } else if (this.favoritesOpen) {
             Row() {
-              if (this.isWide()) {
-                Column() {
-                  Row({ space: 7 }) {
-                    Image($r('app.media.tab_star_active')).width(19).height(19)
-                    Text('收藏中心').fontSize(14).fontWeight(FontWeight.Medium)
-                      .fontColor($r('app.color.body_strong'))
-                  }.width('100%').height(52).padding({ left: 16, right: 10 })
-                    .border({ width: { bottom: 1 }, color: $r('app.color.hairline_soft') })
-                  FavoritesNavigation({ data: this.favoritesData, wide: true,
-                    onRetry: () => this.favoritesData.load() })
-                }.width(this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE ? 260 : 220)
-                  .height('100%').backgroundColor($r('app.color.surface_soft'))
-                  .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
-                  .border({ width: { right: 1 }, color: $r('app.color.hairline') })
-              }
+              if (this.isWide()) { this.desktopNavigation() }
               FavoritesPage({ data: this.favoritesData, viewMode: this.favoritesViewMode,
                 onViewModeChange: (mode: string) => {
                   workspacePreferences.set('favoritesView', mode)
@@ -2306,27 +2431,7 @@ export struct LogsReaderPage {
             }.width('100%').height('100%')
           } else if (this.statsOpen) {
             Row() {
-              if (this.isWide()) {
-                Column() {
-                  Row() {
-                    Image($r('app.media.tab_chart_column')).width(19).height(19)
-                    Text('学习统计').fontSize(14).fontWeight(FontWeight.Medium)
-                      .fontColor($r('app.color.body_strong'))
-                  }.width('100%').height(52).padding({ left: 16, right: 10 })
-                    .border({ width: { bottom: 1 }, color: $r('app.color.hairline_soft') })
-                  StatsNavigation({ monthsOnly: true, statsMonths: this.statsMonths,
-                    statsMonth: this.statsMonth, statsMonthsLoading: this.statsMonthsLoading,
-                    statsMonthsError: this.statsMonthsError,
-                    onMonth: (month: string) => {
-                      this.statsMonth = month;
-                      this.statsMonthRevision++;
-                    },
-                    onRetry: () => this.statsRefreshRevision++ })
-                }.width(this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE ? 260 : 220)
-                  .height('100%').backgroundColor($r('app.color.surface_soft'))
-                  .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
-                  .border({ width: { right: 1 }, color: $r('app.color.hairline') })
-              }
+              if (this.isWide()) { this.desktopNavigation() }
               StatsPage({ requestedMonth: this.statsMonth, requestedMonthRevision: this.statsMonthRevision,
                 refreshRevision: this.statsRefreshRevision,
                 onMonthsChange: (months: MonthSummary[]) => this.statsMonths = months,
@@ -2339,30 +2444,7 @@ export struct LogsReaderPage {
           } else {
           Row() {
             if (this.isWide()) {
-              Stack({ alignContent: Alignment.TopStart }) {
-                Column() { this.navigation() }
-                  .width(this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE ? 260 : 220)
-                  .height('100%')
-                  .opacity(this.sidebarAnimating ? this.sidebarExpansion :
-                    (this.desktopNavigationCollapsed ? 0 : 1))
-                  .visibility(!this.desktopNavigationCollapsed || this.sidebarAnimating ?
-                    Visibility.Visible : Visibility.Hidden)
-                  .hitTestBehavior(this.desktopNavigationCollapsed || this.sidebarAnimating ?
-                    HitTestMode.None : HitTestMode.Default)
-                  .accessibilityLevel(this.desktopNavigationCollapsed ? 'no-hide-descendants' : 'auto')
-                Column() { this.desktopNavigationRail() }.width(52).height('100%')
-                  .opacity(this.sidebarAnimating ? 1 - this.sidebarExpansion :
-                    (this.desktopNavigationCollapsed ? 1 : 0))
-                  .visibility(this.desktopNavigationCollapsed || this.sidebarAnimating ?
-                    Visibility.Visible : Visibility.Hidden)
-                  .hitTestBehavior(!this.desktopNavigationCollapsed || this.sidebarAnimating ?
-                    HitTestMode.None : HitTestMode.Default)
-                  .accessibilityLevel(this.desktopNavigationCollapsed ? 'auto' : 'no-hide-descendants')
-              }.width(this.desktopNavigationWidth())
-                .height('100%').backgroundColor($r('app.color.surface_soft'))
-                .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
-                .clip(this.sidebarAnimating)
-                .border({ width: { right: 1 }, color: $r('app.color.hairline') })
+              this.desktopNavigation()
             }
             this.reader()
             if (this.isWide()) {

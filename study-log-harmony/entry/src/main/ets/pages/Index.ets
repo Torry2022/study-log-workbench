@@ -35,11 +35,12 @@ struct Index {
   private captureDraft: () => Promise<PreservedLogDraft | undefined> = async () => undefined;
   private expiring: boolean = false;
   private draftStoreErrorShown: boolean = false;
+  private preferencesReady: Promise<void> = Promise.resolve();
 
   aboutToAppear(): void {
     this.registerFonts();
     appFeedback.attach(this.getUIContext(), () => false);
-    workspacePreferences.initialize(this.getUIContext().getHostContext() as common.UIAbilityContext);
+    this.preferencesReady = workspacePreferences.initialize(this.getUIContext().getHostContext() as common.UIAbilityContext);
     this.removeUnauthorizedHandler = apiClient.setUnauthorizedHandler(() => { this.expireSession(); });
   }
 
@@ -106,6 +107,8 @@ struct Index {
   private async connectedTo(_origin: string, _capabilities: InstanceCapabilities): Promise<void> {
     const revision = activeInstance.revision;
     const namespace = activeInstance.namespace;
+    await this.preferencesReady;
+    if (revision !== activeInstance.revision) return;
     try {
       await logDraftStore.initialize(this.getUIContext().getHostContext() as common.Context);
       if (revision !== activeInstance.revision) return;

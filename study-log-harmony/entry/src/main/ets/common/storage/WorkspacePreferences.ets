@@ -9,10 +9,16 @@ const DEFAULTS: PreferenceDefault[] = [
   { key: 'readingScale', value: 1 }, { key: 'editorSize', value: 14 },
   { key: 'editorWrap', value: true }, { key: 'rememberSearch', value: true },
   { key: 'favoritesView', value: 'list' }, { key: 'favoritesSort', value: 'log_date' },
-  { key: 'shareGuideSeen', value: false }
+  { key: 'shareGuideSeen', value: false },
+  { key: 'sidebarCollapsed0', value: false },
+  { key: 'sidebarCollapsed1', value: false },
+  { key: 'sidebarCollapsed2', value: false },
+  { key: 'sidebarCollapsed3', value: false },
+  { key: 'sidebarCollapsed4', value: false }
 ];
 
 export function validPreference(key: string, value: preferences.ValueType): boolean {
+  if (/^sidebarCollapsed[0-4]$/.test(key)) return typeof value === 'boolean';
   if (key === 'readingScale') return typeof value === 'number' && READING_SCALES.includes(value);
   if (key === 'editorSize') return typeof value === 'number' && EDITOR_SIZES.includes(value);
   if (key === 'editorWrap' || key === 'rememberSearch' || key === 'shareGuideSeen') return typeof value === 'boolean';

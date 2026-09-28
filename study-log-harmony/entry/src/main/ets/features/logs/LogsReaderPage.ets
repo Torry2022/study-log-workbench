@@ -1,4 +1,4 @@
-import { WorkspaceBreakpoint, WORKSPACE_TABS } from '../../common/AppConfig';
+import { WorkspaceBreakpoint, WORKSPACE_TABS, READING_MAX_WIDTH } from '../../common/AppConfig';
 import { apiClient, ApiError, ApiUploadFile } from '../../common/network/ApiClient';
 import { activeInstance } from '../../common/network/InstanceConfig';
 import { EmptyState, LoadFailure } from '../../common/ui/FeedbackStates';
@@ -14,6 +14,7 @@ import { LogReadRepository } from './LogReadRepository';
 import { LogWriteRepository } from './LogWriteRepository';
 import { LogNavigation } from './components/LogNavigation';
 import { DesktopLogHeader } from './components/DesktopLogHeader';
+import { ReadingLogHeader } from './components/ReadingLogHeader';
 import { CompactLogHeader } from './components/CompactLogHeader';
 import { BackupPanel } from './components/BackupPanel';
 import { LogImageUpload } from './LogImageUpload';
@@ -59,6 +60,8 @@ import { RagSessionSummary } from '../qa/QaModels';
 import { AppTopBar, BottomNavigation } from '../../app/components/WorkspaceNavigation';
 import { PreservedLogDraft, restoredLogDraft } from './LogDraftPolicy';
 import { WorkspaceTransitionCoordinator } from '../../app/WorkspaceTransitionCoordinator';
+import { ReadingTransitionCoordinator } from '../../app/ReadingTransitionCoordinator';
+import { BackToTopControl } from '../../common/ui/BackToTopControl';
 
 export { PreservedLogDraft } from './LogDraftPolicy';
 
@@ -133,6 +136,30 @@ export struct LogsReaderPage {
   @State private statsRefreshRevision: number = 0;
   @State private outgoingTab: number = -1;
   @State private moduleReveal: number = 1;
+  @State private readingTransition: ReadingTransitionCoordinator = new ReadingTransitionCoordinator();
+  @State private logsReadingMode: boolean = false;
+  @State private readingProgress: number = 0;
+  @State private readingCoverX: number = 0;
+  @State private readingCoverY: number = 0;
+  @State private readingCoverWidth: number = 0;
+  @State private readingCoverHeight: number = 0;
+  @State private readingImageInset: number = 0;
+  private readingImageWidth: number = 0;
+  private readingImageHeight: number = 0;
+  private workspaceOriginX: number = 0;
+  private workspaceOriginY: number = 0;
+  private readingViewportX: number = 0;
+  private readingViewportY: number = 0;
+  private readingViewportWidth: number = 0;
+  private readingViewportHeight: number = 0;
+  @State private readingOutlineOpen: boolean = false;
+  @State private renderedPreviewDate: string = '';
+  @State private previewOffset: number = 0;
+  @State private previewProgress: number = 0;
+  @State private previewTopRequest: number = 0;
+  @State private previewRestoreOffset: number = 0;
+  private previewScrollOffsets: Record<string, number> = {};
+  @State private workspaceLayoutRevision: number = 0;
   @State private workspaceTransition: WorkspaceTransitionCoordinator = new WorkspaceTransitionCoordinator({
     tab: () => this.selectedTab(),
     canCapture: (kind: string) => this.isWide() &&
@@ -319,6 +346,7 @@ export struct LogsReaderPage {
   aboutToDisappear(): void {
     this.moduleSwitchRevision++;
     this.modeRequestRevision++;
+    this.readingTransition.clear();
     this.workspaceTransition.clear();
     this.sidebarMotionRevision++;
     this.ai.dispose();
@@ -347,6 +375,56 @@ export struct LogsReaderPage {
 
   private selectedTab(): number {
     return this.notesOpen ? 1 : this.favoritesOpen ? 2 : this.qaOpen ? 3 : this.statsOpen ? 4 : 0;
+  }
+
+  private async setLogsReadingMode(active: boolean): Promise<void> {
+    if (!this.isWide() || this.selectedTab() !== 0 || !this.day || this.sourceMode || this.splitMode ||
+      active === this.logsReadingMode || this.readingTransition.animating || this.sidebarAnimating ||
+      this.workspaceTransition.task || this.workspaceTransition.snapshot ||
+      (active && this.renderedPreviewDate !== this.selectedDate)) return;
+    this.readingOutlineOpen = false;
+    const revision = this.readingTransition.begin();
+    if (this.readingViewportWidth > 0) {
+      try {
+        const snapshot = await this.getUIContext().getComponentSnapshot().get('log_reading_surface',
+          { waitUntilRenderFinished: true });
+        if (revision !== this.readingTransition.revision) { snapshot.release(); return; }
+        this.readingCoverX = this.readingViewportX;
+        this.readingCoverY = this.readingViewportY;
+        this.readingCoverWidth = this.readingImageWidth = this.readingViewportWidth;
+        this.readingCoverHeight = this.readingImageHeight = this.readingViewportHeight;
+        this.readingImageInset = 0;
+        await this.readingTransition.install(snapshot, revision);
+      } catch (_) {
+        // A failed capture must not block the mode change.
+      }
+    }
+    if (revision !== this.readingTransition.revision) return;
+    this.readingTransition.viewportReady = false;
+    this.readingTransition.motionFinished = false;
+    this.logsReadingMode = active;
+    this.getUIContext().animateTo({ duration: 240, curve: Curve.EaseInOut, onFinish: () => {
+      if (revision !== this.readingTransition.revision) return;
+      this.readingTransition.motionFinished = true;
+      this.workspaceLayoutRevision++;
+      this.readingTransition.finish();
+    } }, () => this.readingProgress = active ? 1 : 0);
+  }
+
+  private readingViewportChanged(area: Area): void {
+    this.readingViewportX = Number(area.globalPosition.x) - this.workspaceOriginX;
+    this.readingViewportY = Number(area.globalPosition.y) - this.workspaceOriginY;
+    this.readingViewportWidth = Number(area.width);
+    this.readingViewportHeight = Number(area.height);
+    if (!this.readingTransition.snapshot || !this.readingTransition.animating) return;
+    this.getUIContext().animateTo({ duration: 240, curve: Curve.EaseInOut }, () => {
+      this.readingCoverX = this.readingViewportX;
+      this.readingCoverY = this.readingViewportY;
+      this.readingCoverWidth = this.readingViewportWidth;
+      this.readingCoverHeight = this.readingViewportHeight;
+      this.readingImageInset = Math.max(0, (this.readingViewportWidth - READING_MAX_WIDTH) / 2) -
+        Math.max(0, (this.readingImageWidth - READING_MAX_WIDTH) / 2);
+    });
   }
 
   private openNavigation(): void {
@@ -418,7 +496,7 @@ export struct LogsReaderPage {
 
   private async switchModule(index: number, discardNotes: boolean, discardQa: boolean): Promise<void> {
     const revision = ++this.moduleSwitchRevision;
-    if (this.isWide()) {
+    if (this.isWide() && !this.logsReadingMode) {
       this.workspaceTransition.clear();
       await this.workspaceTransition.cover('module');
       if (revision !== this.moduleSwitchRevision) return;
@@ -429,6 +507,10 @@ export struct LogsReaderPage {
     if (discardNotes) { this.notesDirty = false; this.noteDiscardRevision++; }
     if (discardQa) { this.qaDirty = false; this.qaPending = false; this.qaDiscardRevision++; }
     if (index !== 0) {
+      this.readingTransition.clear();
+      this.logsReadingMode = false;
+      this.readingProgress = 0;
+      this.readingOutlineOpen = false;
       this.draftText = this.savedText;
       this.editorInitialText = this.savedText;
       this.previewText = this.savedText;
@@ -624,7 +706,7 @@ export struct LogsReaderPage {
   }
 
   private showDesktopOutline(): boolean {
-    return this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE && !this.sourceMode &&
+    return this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE && !this.logsReadingMode && !this.sourceMode &&
       !this.splitMode && this.outlineHeadings().length > 0;
   }
 
@@ -1270,6 +1352,7 @@ export struct LogsReaderPage {
     this.month = month;
     this.days = [];
     this.day = undefined;
+    this.renderedPreviewDate = '';
     this.selectedDate = '';
     this.daysLoading = true;
     this.navigationError = '';
@@ -1300,6 +1383,7 @@ export struct LogsReaderPage {
     this.dayLoading = true;
     this.errorMessage = '';
     this.day = undefined;
+    this.renderedPreviewDate = '';
     this.editorReady = false;
     this.dirty = false;
     this.selectedDate = date;
@@ -1310,6 +1394,8 @@ export struct LogsReaderPage {
         throw new Error('日块响应格式异常');
       }
       this.day = response.day;
+      this.previewRestoreOffset = this.previewScrollOffsets[date] || 0;
+      this.previewOffset = this.previewRestoreOffset;
       this.activeOutlineIndex = Math.max(0, headingIndex);
       const body = this.bodyFromDay(response.day);
       const restore = !this.restoredDraftApplied ? restoredLogDraft(this.initialDraft,
@@ -2105,21 +2191,46 @@ export struct LogsReaderPage {
   }
 
   @Builder
+  private readingModeEntryButton() {
+    ToolbarAction({ label: '进入阅读模式', showLabel: false,
+      icon: $r('app.media.maximize_2'), iconSize: 17,
+      onAction: () => this.setLogsReadingMode(true) }).id('log_reading_enter')
+  }
+
+  @Builder
   private heading() {
     if (this.isWide()) {
-      DesktopLogHeader({ fileName: this.day?.fileName || '', selectedDate: this.selectedDate,
-        workspaceBreakpoint: this.workspaceBreakpoint,
-        toolbarWidth: this.headerWidth, dateWidth: this.headerDateWidth,
-        previousButton: (): void => this.desktopAdjacentButton('上一篇', 1),
-        nextButton: (): void => this.desktopAdjacentButton('下一篇', -1),
-        actions: (): void => this.editorActions(),
-        onWidth: (width: number) => this.updateToolbarWidth(width),
-        onDateWidth: (width: number) => {
-          if (width !== this.headerDateWidth) {
-            this.headerDateWidth = Math.max(120, width);
-            this.updateToolbarWidth(this.headerWidth);
-          }
-        } })
+      Stack({ alignContent: Alignment.Top }) {
+        Column() {
+          DesktopLogHeader({ fileName: this.day?.fileName || '', selectedDate: this.selectedDate,
+            workspaceBreakpoint: this.workspaceBreakpoint,
+            toolbarWidth: this.headerWidth, dateWidth: this.headerDateWidth,
+            previousButton: (): void => this.desktopAdjacentButton('上一篇', 1),
+            nextButton: (): void => this.desktopAdjacentButton('下一篇', -1),
+            actions: (): void => this.editorActions(),
+            onWidth: (width: number) => this.updateToolbarWidth(width),
+            onDateWidth: (width: number) => {
+              if (width !== this.headerDateWidth) {
+                this.headerDateWidth = Math.max(120, width);
+                this.updateToolbarWidth(this.headerWidth);
+              }
+            } })
+        }.width('100%').height(64)
+          .opacity(Math.max(0, 1 - 2 * this.readingProgress))
+          .visibility(this.readingProgress < 1 ? Visibility.Visible : Visibility.Hidden)
+          .hitTestBehavior(this.logsReadingMode ? HitTestMode.None : HitTestMode.Default)
+        Column() {
+          ReadingLogHeader({ selectedDate: this.selectedDate, workspaceBreakpoint: this.workspaceBreakpoint,
+            hasOutline: this.outlineHeadings().length > 0,
+            previousButton: (): void => this.desktopAdjacentButton('上一篇', 1),
+            nextButton: (): void => this.desktopAdjacentButton('下一篇', -1),
+            onOutline: () => this.readingOutlineOpen = true,
+            onExit: () => this.setLogsReadingMode(false) })
+        }.width('100%').height(64)
+          .opacity(Math.max(0, 2 * this.readingProgress - 1))
+          .visibility(this.readingProgress > 0 ? Visibility.Visible : Visibility.Hidden)
+          .hitTestBehavior(this.logsReadingMode ? HitTestMode.Default : HitTestMode.None)
+      }.width('100%').height(64).clip(true).id('log_reader_header')
     } else {
       CompactLogHeader({ selectedDate: this.selectedDate, workspaceBreakpoint: this.workspaceBreakpoint,
         sourceMode: this.sourceMode, saving: this.saving, dirty: this.editorReady && this.dirty,
@@ -2150,6 +2261,7 @@ export struct LogsReaderPage {
                 this.targetHeading = heading.text;
                 this.targetHeadingIndex = index;
                 this.targetRevision++;
+                if (this.readingOutlineOpen) this.readingOutlineOpen = false;
               })
               .backgroundColor(Color.Transparent).borderRadius(6)
             if (heading.level === 3) {
@@ -2175,8 +2287,9 @@ export struct LogsReaderPage {
           }
         }, (heading: LogOutlineHeading) => heading.id)
       }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
-    }.width(224).height('100%').padding({ left: 8, right: 8, top: 28, bottom: 18 })
-      .border({ width: { left: 1 }, color: $r('app.color.hairline_soft') })
+    }.width(this.readingOutlineOpen ? 320 : 224).height('100%')
+      .padding({ left: 8, right: 8, top: this.readingOutlineOpen ? 16 : 28, bottom: 18 })
+      .border({ width: { left: this.readingOutlineOpen ? 0 : 1 }, color: $r('app.color.hairline_soft') })
   }
 
   private async importAiMaterial(): Promise<void> {
@@ -2450,7 +2563,7 @@ export struct LogsReaderPage {
           onRetry: () => this.month ? this.selectedDate ? this.loadDay(this.selectedDate) : this.loadDays(this.month) :
             this.loadMonths() })
       } else if (this.day) {
-        Stack({ alignContent: Alignment.Bottom }) {
+        Stack({ alignContent: Alignment.TopEnd }) {
           Row() {
             SourceEditor({ session: this.editor, documentKey: this.day.date,
               initialText: this.editorInitialText })
@@ -2462,10 +2575,25 @@ export struct LogsReaderPage {
             Row() {
               MarkdownReader({ content: this.previewText, contentMode: 'log', documentKey: this.day.date,
                 stableViewport: this.isWide(), fillAvailableWidth: this.splitMode,
-                viewportRequestRevision: this.modeLayoutRevision,
-                onViewportReady: () => this.workspaceTransition.finish('mode'),
+                viewportRequestRevision: this.modeLayoutRevision + this.workspaceLayoutRevision,
+                restoreScrollOffset: this.previewRestoreOffset,
+                showBackToTop: !this.isWide(), trackScrollProgress: true,
+                scrollToTopRequestRevision: this.previewTopRequest,
+                onScrollProgress: (progress: number) => this.previewProgress = progress,
+                onScrollPosition: (offset: number) => {
+                  this.previewOffset = offset;
+                  if (this.renderedPreviewDate) this.previewScrollOffsets[this.renderedPreviewDate] = Math.max(0, offset);
+                },
+                onViewportReady: () => {
+                  this.workspaceTransition.finish('mode');
+                  if (this.readingTransition.animating) {
+                    this.readingTransition.viewportReady = true;
+                    this.readingTransition.finish();
+                  }
+                },
                 onContentRendered: (_content: string, date: string) => {
                   if (date === this.selectedDate && !this.dayLoading && !this.daysLoading) {
+                    this.renderedPreviewDate = date;
                     this.workspaceTransition.finish('document');
                   }
                 },
@@ -2479,7 +2607,8 @@ export struct LogsReaderPage {
                 trackActiveHeading: this.showDesktopOutline(),
                 onActiveHeading: (headingId: string) => this.updateActiveOutline(headingId),
                 onInternalLink: (date: string, heading: string) => this.confirmDiscard(() => this.openInternalLink(date, heading)) })
-                .layoutWeight(1).height('100%')
+                .layoutWeight(1).height('100%').id('log_reading_surface')
+                .onAreaChange((_oldArea: Area, area: Area) => this.readingViewportChanged(area))
               if (this.showDesktopOutline()) this.desktopOutline()
             }.width(this.isWide() && this.splitMode ? '50%' :
               (this.sourceMode || this.splitMode && !this.isWide() ? 0 : '100%'))
@@ -2489,6 +2618,12 @@ export struct LogsReaderPage {
           if (this.saveError) {
             Text(this.saveError).fontSize(13).fontColor($r('app.color.error'))
               .width('100%').padding(12).backgroundColor($r('app.color.surface_soft'))
+              .align(Alignment.Bottom)
+          }
+          if (this.isWide() && !this.logsReadingMode && !this.sourceMode && !this.splitMode &&
+            this.renderedPreviewDate === this.selectedDate) {
+            Column() { this.readingModeEntryButton() }
+              .width(36).height(36).margin({ top: 16, right: 16 }).zIndex(3)
           }
         }.layoutWeight(1).width('100%')
       } else {
@@ -2501,6 +2636,7 @@ export struct LogsReaderPage {
     Stack() {
       Column() {
         if (this.isWide()) {
+        Stack({ alignContent: Alignment.Top }) {
         Row({ space: 12 }) {
           if (!this.isWide() && !this.statsOpen && !this.favoritesOpen && !this.notesOpen && !this.qaOpen) {
             Button({ type: ButtonType.Normal }) {
@@ -2563,6 +2699,10 @@ export struct LogsReaderPage {
           .backgroundColor($r('app.color.canvas'))
           .zIndex(30)
           .border({ width: { bottom: 1 }, color: $r('app.color.hairline') })
+          .translate({ y: -64 * this.readingProgress })
+        }.width('100%').height(64 * (1 - this.readingProgress))
+          .clip(this.readingTransition.animating || this.logsReadingMode)
+          .hitTestBehavior(this.logsReadingMode ? HitTestMode.None : HitTestMode.Default)
         } else {
           AppTopBar({ title: this.notesOpen ? '随记' : this.favoritesOpen ? '收藏中心' :
             this.qaOpen ? '知识问答' : this.statsOpen ? '学习统计' : '学习日志',
@@ -2651,19 +2791,36 @@ export struct LogsReaderPage {
             .zIndex(this.statsOpen ? 1 : 0)
           Row() {
             if (this.isWide()) {
-              this.desktopNavigation()
+              Stack({ alignContent: Alignment.TopStart }) {
+                Column() { this.desktopNavigation() }.width(this.desktopNavigationWidth()).height('100%')
+                  .translate({ x: -this.desktopNavigationWidth() * this.readingProgress })
+              }.width(this.desktopNavigationWidth() * (1 - this.readingProgress)).height('100%')
+                .clip(this.readingTransition.animating || this.logsReadingMode)
+                .hitTestBehavior(this.logsReadingMode ? HitTestMode.None : HitTestMode.Default)
             }
-            this.reader()
+            if (this.isWide()) {
+              Stack({ alignContent: Alignment.BottomEnd }) {
+                Column() { this.reader() }.width('100%').height('100%')
+                BackToTopControl({ visible: !this.sourceMode && this.previewOffset > 8,
+                  progress: this.previewProgress, scrollOffset: this.previewOffset,
+                  onBackToTop: () => this.previewTopRequest++ })
+                  .margin({ right: 14, bottom: 14 }).zIndex(3)
+              }.layoutWeight(1).height('100%')
+            } else {
+              this.reader()
+            }
             if (this.isWide()) {
               Stack({ alignContent: Alignment.TopEnd }) {
                 this.aiToolsRail()
                 if (this.aiOpen) this.aiToolsPanel()
-                if (this.aiOpen && this.aiOffset === 0) this.aiResizer()
-              }.width(52 + (this.aiPanelWidth - 52) * (1 - this.aiOffset / 420))
+                if (this.aiOpen && this.aiOffset === 0 && !this.logsReadingMode) this.aiResizer()
+              }.width((52 + (this.aiPanelWidth - 52) * (1 - this.aiOffset / 420)) *
+                  (1 - this.readingProgress))
                 .height('100%')
                 .backgroundColor(this.aiOpen ? $r('app.color.canvas') : $r('app.color.surface_soft'))
                 .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
                 .border({ width: { left: 1 }, color: $r('app.color.hairline') })
+                .hitTestBehavior(this.logsReadingMode ? HitTestMode.None : HitTestMode.Default)
                 .clip(true).id('log_ai_dock')
             }
           }.width('100%').height('100%')
@@ -2692,6 +2849,36 @@ export struct LogsReaderPage {
           BottomNavigation({ selectedIndex: this.selectedTab(), onSelect: (index: number) => this.selectTab(index) })
         }
       }.width('100%').height('100%').backgroundColor($r('app.color.canvas'))
+        .id('workspace_frame')
+        .hitTestBehavior(this.readingTransition.animating ? HitTestMode.None : HitTestMode.Default)
+        .onAreaChange((_oldArea: Area, area: Area) => {
+          this.workspaceOriginX = Number(area.globalPosition.x);
+          this.workspaceOriginY = Number(area.globalPosition.y);
+        })
+      if (this.readingTransition.snapshot) {
+        Stack({ alignContent: Alignment.TopStart }) {
+          Image(this.readingTransition.snapshot).width(this.readingImageWidth).height(this.readingImageHeight)
+            .constraintSize({ minWidth: this.readingImageWidth, minHeight: this.readingImageHeight })
+            .objectFit(ImageFit.Fill).syncLoad(true).translate({ x: this.readingImageInset })
+            .onComplete(() => this.readingTransition.rendered())
+            .onError(() => this.readingTransition.clear())
+        }.width(this.readingCoverWidth).height(this.readingCoverHeight)
+          .position({ x: this.readingCoverX, y: this.readingCoverY })
+          .backgroundColor($r('app.color.canvas')).clip(true).zIndex(5)
+          .hitTestBehavior(HitTestMode.None)
+      }
+      if (this.readingOutlineOpen && this.logsReadingMode && this.isWide()) {
+        Stack({ alignContent: Alignment.TopEnd }) {
+          Column().width('100%').height('100%').onClick(() => this.readingOutlineOpen = false)
+          Column() { this.desktopOutline() }
+            .width(320).height(Math.min(560, 76 + this.outlineHeadings().length * 34))
+            .margin({ top: 80, right: 16 })
+            .backgroundColor($r('app.color.canvas'))
+            .border({ width: 1, color: $r('app.color.hairline') })
+            .borderRadius(8).clip(true)
+            .shadow({ radius: 18, color: $r('app.color.popover_shadow'), offsetY: 6 })
+        }.width('100%').height('100%').zIndex(6)
+      }
       if (!this.isWide() && this.navigationOpen) {
         Stack({ alignContent: Alignment.Start }) {
           AppModalScrim({ onDismiss: () => this.closeNavigation() })

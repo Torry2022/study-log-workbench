@@ -1,10 +1,27 @@
 import { Configuration, ConfigurationConstant, UIAbility } from '@kit.AbilityKit';
 import { window } from '@kit.ArkUI';
 import { deviceInfo } from '@kit.BasicServicesKit';
+import { preferences } from '@kit.ArkData';
 import { DesktopWindow } from '../app/DesktopMenu';
+import { THEME_PREFERENCES } from '../common/AppConfig';
 
 export default class EntryAbility extends UIAbility {
   private mainWindow?: window.Window;
+  private initialThemeReady: Promise<void> = Promise.resolve();
+  private async initializeTheme(): Promise<void> {
+    let value = 'system';
+    try {
+      const store = await preferences.getPreferences(this.context, { name: THEME_PREFERENCES });
+      const saved = await store.get('theme', 'system') as string;
+      if (saved === 'light' || saved === 'dark') value = saved;
+    } catch (_) { /* Keep the system theme when local settings are unavailable. */ }
+    AppStorage.setOrCreate('themePreference', value);
+    const mode = value === 'light' ? ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT :
+      value === 'dark' ? ConfigurationConstant.ColorMode.COLOR_MODE_DARK :
+        ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET;
+    try { this.context.getApplicationContext().setColorMode(mode); }
+    catch (_) { /* Keep the current system mode if the window is closing. */ }
+  }
   private keyboardHeightChanged = (height: number): void => {
     AppStorage.setOrCreate('softwareKeyboardVisible', height > 0);
   };
@@ -17,7 +34,7 @@ export default class EntryAbility extends UIAbility {
 
   onCreate(): void {
     this.publishSystemTheme(this.context.config.colorMode);
-    this.context.getApplicationContext().setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
+    this.initialThemeReady = this.initializeTheme();
   }
 
   onConfigurationUpdate(configuration: Configuration): void {
@@ -48,7 +65,7 @@ export default class EntryAbility extends UIAbility {
     this.mainWindow.on('keyboardHeightChange', this.keyboardHeightChanged);
     this.mainWindow.on('avoidAreaChange', this.bottomAvoidAreaChanged);
     this.updateSystemBars(this.context.config.colorMode);
-    stage.loadContent('pages/Index', (error) => {
+    this.initialThemeReady.then(() => stage.loadContent('pages/Index', (error) => {
       if (!error.code) this.bottomAvoidAreaChanged();
       if (error.code || deviceInfo.deviceType !== '2in1' || !this.mainWindow) return;
       try {
@@ -61,7 +78,7 @@ export default class EntryAbility extends UIAbility {
         this.mainWindow.setWindowDecorVisible(true);
         this.mainWindow.setWindowTitleMoveEnabled(true);
       }
-    });
+    }));
   }
 
   onWindowStageDestroy(): void {

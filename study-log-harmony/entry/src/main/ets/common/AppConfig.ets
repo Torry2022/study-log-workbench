@@ -7,6 +7,7 @@ export enum WorkspaceBreakpoint {
 
 export const READING_MAX_WIDTH: number = 1040;
 export const COLLECTION_MAX_WIDTH: number = 1240;
+export const THEME_PREFERENCES: string = 'study_log_public_theme';
 
 export interface TabDefinition {
   label: string;

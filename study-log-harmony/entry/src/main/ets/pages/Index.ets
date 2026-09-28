@@ -1,6 +1,7 @@
 import { fileIo } from '@kit.CoreFileKit';
-import { common } from '@kit.AbilityKit';
-import { WorkspaceBreakpoint } from '../common/AppConfig';
+import { common, ConfigurationConstant } from '@kit.AbilityKit';
+import { preferences } from '@kit.ArkData';
+import { WorkspaceBreakpoint, THEME_PREFERENCES } from '../common/AppConfig';
 import { InstanceCapabilities, activeInstance } from '../common/network/InstanceConfig';
 import { apiClient } from '../common/network/ApiClient';
 import { LoginPage } from '../app/LoginPage';
@@ -26,6 +27,7 @@ struct Index {
   @State private connected: boolean = false;
   @State private restoreOnAppear: boolean = true;
   @StorageLink('desktopWindowChrome') private desktopWindowChrome: boolean = false;
+  @StorageLink('themePreference') private themePreference: string = 'system';
   @StorageLink('previewImageSource') private previewImageSource: string = '';
   @State private imagePreviewOpacity: number = 0;
   @State private settingsOpen: boolean = false;
@@ -141,6 +143,21 @@ struct Index {
         width < 1440 ? WorkspaceBreakpoint.LARGE : WorkspaceBreakpoint.EXTRA_LARGE;
   }
 
+  private async setTheme(value: string): Promise<void> {
+    if (value !== 'system' && value !== 'light' && value !== 'dark') return;
+    this.themePreference = value;
+    const mode = value === 'light' ? ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT :
+      value === 'dark' ? ConfigurationConstant.ColorMode.COLOR_MODE_DARK :
+        ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET;
+    (this.getUIContext().getHostContext() as common.UIAbilityContext).getApplicationContext().setColorMode(mode);
+    try {
+      const store = await preferences.getPreferences(this.getUIContext().getHostContext() as common.UIAbilityContext,
+        { name: THEME_PREFERENCES });
+      await store.put('theme', value);
+      await store.flush();
+    } catch (_) { /* The selected theme remains active until the app closes. */ }
+  }
+
   private windowMenuEntries(menu: string): DesktopMenuEntry[] {
     if (menu === '帮助') return [
       new DesktopMenuEntry('help', '使用帮助', this.connected && !this.helpOpen && !this.aboutOpen && !this.settingsOpen),
@@ -151,13 +168,18 @@ struct Index {
     const available = entries.map((entry: DesktopMenuEntry) => new DesktopMenuEntry(entry.id, entry.label,
       this.connected && entry.enabled, entry.checked, entry.shortcut));
     if (menu === '编辑') available.push(new DesktopMenuEntry('settings', '设置', this.connected && !this.settingsOpen));
+    if (menu === '视图') available.push(
+      new DesktopMenuEntry('theme_light', '浅色模式', this.connected, this.themePreference === 'light'),
+      new DesktopMenuEntry('theme_dark', '深色模式', this.connected, this.themePreference === 'dark'),
+      new DesktopMenuEntry('theme_system', '跟随系统', this.connected, this.themePreference === 'system'));
     return available;
   }
 
   private executeWindowMenu(id: string): void {
     const enabled = ['文件', '编辑', '视图', '帮助'].flatMap((menu: string) => this.windowMenuEntries(menu))
       .some((entry: DesktopMenuEntry) => entry.id === id && entry.enabled);
-    if (enabled && id === 'settings') this.settingsOpen = true;
+    if (enabled && id.startsWith('theme_')) this.setTheme(id.slice(6));
+    else if (enabled && id === 'settings') this.settingsOpen = true;
     else if (enabled && id === 'about') this.aboutOpen = true;
     else if (enabled && id === 'help') this.openHelp();
     else if (enabled) this.desktopCommands.execute(id);
@@ -228,6 +250,7 @@ struct Index {
       Stack() {
       if (this.connected) {
         LogsReaderPage({ onChangeServer: () => this.changeServer(), onOpenSettings: () => this.settingsOpen = true,
+          onSetTheme: (value: string) => this.setTheme(value),
           onOpenAbout: () => this.aboutOpen = true,
           onOpenHelp: () => this.openHelp(),
           onRegisterDesktopCommands: (commands: DesktopLogCommands) => this.desktopCommands = commands,

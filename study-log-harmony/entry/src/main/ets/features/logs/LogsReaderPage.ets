@@ -7,6 +7,7 @@ import { workspaceSansFamily } from '../../common/ui/Typography';
 import { AppLogo } from '../../common/ui/AppLogo';
 import { SourceEditor, SourceEditorSession, EditorSnapshot, EditorImageData } from '../../common/editor/SourceEditor';
 import { common } from '@kit.AbilityKit';
+import { LengthMetrics } from '@kit.ArkUI';
 import { saveExport } from '../../common/files/DocumentExport';
 import { EditorLinkPicker } from '../../common/editor/EditorLinkPicker';
 import { DayEntry, DaySummary, MonthSummary } from './LogModels';
@@ -78,10 +79,12 @@ interface AddFavoriteRequest { date: string; headingText: string; headingId: str
 export struct LogsReaderPage {
   @Consume('workspaceBreakpoint') private workspaceBreakpoint: WorkspaceBreakpoint;
   @StorageProp('softwareKeyboardVisible') private softwareKeyboardVisible: boolean = false;
+  @StorageLink('themePreference') private themePreference: string = 'system';
   onChangeServer: () => void = () => {};
   onOpenSettings: () => void = () => {};
   onOpenAbout: () => void = () => {};
   onOpenHelp: () => void = () => {};
+  onSetTheme: (value: string) => void = () => {};
   onDraftChange: (namespace: string, draft: PreservedLogDraft | undefined) => void = () => {};
   onCaptureDraft: (capture: () => Promise<PreservedLogDraft | undefined>) => void = () => {};
   onRegisterDesktopCommands: (commands: DesktopLogCommands) => void = () => {};
@@ -278,6 +281,7 @@ export struct LogsReaderPage {
   @State private linkAlias: string = '';
   @State private moreOpen: boolean = false;
   @State private topMoreOpen: boolean = false;
+  @State private compactSettingsOpen: boolean = false;
   @State private hoveredMoreAction: string = '';
   @State private saveError: string = '';
   @State private newLogDate: string = '';
@@ -426,7 +430,7 @@ export struct LogsReaderPage {
 
   private shortcutBlocked(): boolean {
     return this.backupOpen || this.linkOpen || this.ai.reviewOpen || this.imageBusy || this.exportBusy ||
-      this.saving || this.deleting || this.taxonomyOpen || this.topMoreOpen || this.moreOpen ||
+      this.saving || this.deleting || this.taxonomyOpen || this.topMoreOpen || this.compactSettingsOpen || this.moreOpen ||
       this.exportMenuOpen || this.calendarOpen || !!this.railPopover || this.searchOpen ||
       this.navigationOpen || this.outlineOpen || !!this.qaNavigation.qaRenameId || !!this.qaNavigation.qaMenuId;
   }
@@ -443,6 +447,7 @@ export struct LogsReaderPage {
   private handleWorkspaceKey(event: KeyEvent): boolean {
     if (workspaceKey(event, KeyCode.KEYCODE_ESCAPE)) {
       if (this.topMoreOpen) this.topMoreOpen = false;
+      else if (this.compactSettingsOpen) this.compactSettingsOpen = false;
       else if (this.moreOpen) this.moreOpen = false;
       else if (this.exportMenuOpen) this.exportMenuOpen = false;
       else if (this.calendarOpen) this.calendarOpen = false;
@@ -2506,6 +2511,28 @@ export struct LogsReaderPage {
   }
 
   @Builder
+  private themeChoice(value: string, label: string, symbol: Resource = $r('sys.symbol.sun_max')) {
+    Button({ type: ButtonType.Normal }) {
+      Row({ space: 7 }) {
+        if (value === 'system') {
+          Image(this.themePreference === value ? $r('app.media.theme_monitor_active') : $r('app.media.theme_monitor'))
+            .width(18).height(18).objectFit(ImageFit.Contain)
+        } else {
+          SymbolGlyph(symbol).fontSize(18)
+            .fontColor([this.themePreference === value ? $r('app.color.primary_active') : $r('app.color.body')])
+        }
+        Text(label).fontFamily(workspaceSansFamily(this.workspaceBreakpoint)).fontSize(12)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(this.themePreference === value ? $r('app.color.primary_active') : $r('app.color.body'))
+      }.justifyContent(FlexAlign.Center)
+    }.layoutWeight(1).height(44).padding(0)
+      .backgroundColor(this.themePreference === value ? $r('app.color.primary_tint') : $r('app.color.canvas'))
+      .border({ width: 1, color: this.themePreference === value ? $r('app.color.primary') : $r('app.color.hairline') })
+      .borderRadius(8).clip(true)
+      .onClick(() => this.onSetTheme(value))
+  }
+
+  @Builder
   private topMoreActions() {
     Column() {
       this.desktopMoreItem($r('app.media.settings_2'), '设置', true,
@@ -2518,6 +2545,39 @@ export struct LogsReaderPage {
         () => { this.topMoreOpen = false;
           this.confirmQaLeave(() => this.confirmNotesLeave(() => this.confirmDiscard(() => this.onChangeServer()))); })
     }.width(176).padding(6)
+  }
+
+  @Builder
+  private compactAppSettingsAction(icon: Resource, label: string, onAction: () => void) {
+    Button({ type: ButtonType.Normal }) {
+      Row({ space: 7 }) {
+        Image(icon).width(18).height(18).colorFilter(iconTint($r('app.color.body')))
+        Text(label).fontSize(12).fontWeight(FontWeight.Medium).fontColor($r('app.color.body'))
+      }.justifyContent(FlexAlign.Center)
+    }.width('100%').height(44).padding(0).margin({ top: 14 })
+      .backgroundColor($r('app.color.canvas'))
+      .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8).clip(true)
+      .onClick(() => { this.compactSettingsOpen = false; onAction(); })
+  }
+
+  @Builder
+  private compactAppSettingsPanel() {
+    Column() {
+      ActionPanelHeader({ title: '应用设置', showDragBar: true,
+        closeLabel: '关闭应用设置', onClose: () => this.compactSettingsOpen = false })
+        .margin({ bottom: 12 })
+      Row({ space: 8 }) {
+        this.themeChoice('system', '跟随系统')
+        this.themeChoice('light', '日间', $r('sys.symbol.sun_max'))
+        this.themeChoice('dark', '夜间', $r('sys.symbol.moon'))
+      }.width('100%')
+      this.compactAppSettingsAction($r('app.media.settings_2'), '设置', () => this.onOpenSettings())
+      this.compactAppSettingsAction($r('app.media.info'), '关于', () => this.onOpenAbout())
+      this.compactAppSettingsAction($r('app.media.circle_help'), '使用帮助', () => this.onOpenHelp())
+      this.compactAppSettingsAction($r('app.media.log_out'), '更换服务器', () =>
+        this.confirmQaLeave(() => this.confirmNotesLeave(() => this.confirmDiscard(() => this.onChangeServer()))))
+    }.width('100%').padding({ left: 16, right: 16, top: 8, bottom: 18 })
+      .alignItems(HorizontalAlign.Center).backgroundColor($r('app.color.canvas'))
   }
 
   @Builder
@@ -3180,6 +3240,7 @@ export struct LogsReaderPage {
             Row() {
               Stack({ alignContent: Alignment.TopEnd }) {
               MarkdownReader({ content: this.previewText, contentMode: 'log', documentKey: this.day.date,
+                themePreference: this.themePreference,
                 stableViewport: this.isWide(), fillAvailableWidth: this.splitMode,
                 viewportRequestRevision: this.modeLayoutRevision + this.workspaceLayoutRevision,
                 restoreScrollOffset: this.previewRestoreOffset,
@@ -3334,15 +3395,18 @@ export struct LogsReaderPage {
             this.qaOpen ? '知识问答' : this.statsOpen ? '学习统计' : '学习日志',
             onOpenNavigation: () => this.openNavigation(),
             onOpenSearch: () => this.searchOpen = true,
-            onOpenMore: () => this.topMoreOpen = true })
-            .bindPopup(this.topMoreOpen, { builder: this.topMoreActions(), placement: Placement.BottomRight,
-              enableArrow: false, popupColor: $r('app.color.canvas'), radius: 8,
-              onStateChange: (event) => { if (!event.isVisible) this.topMoreOpen = false; } })
+            onOpenMore: () => this.compactSettingsOpen = true })
+            .bindSheet($$this.compactSettingsOpen, this.compactAppSettingsPanel(), {
+              preferType: SheetType.BOTTOM, height: SheetSize.FIT_CONTENT,
+              dragBar: false, showClose: false, maskColor: $r('app.color.scrim'),
+              radius: LengthMetrics.vp(12)
+            })
         }
         Stack() {
           Row() {
               if (this.isWide()) { this.desktopNavigation() }
               QaPage({ workspaceActive: this.qaOpen, navigationSessionId: this.qaSessionId,
+                themePreference: this.themePreference,
                 navigationRequestRevision: this.qaRequestRevision, discardRevision: this.qaDiscardRevision,
                 questionFocusRevision: this.qaQuestionFocusRevision, topRevision: this.topRequests[3],
                 configured: !!activeInstance.capabilities?.features.rag.configured,
@@ -3646,6 +3710,7 @@ export struct LogsReaderPage {
       }
       if (this.ai.reviewOpen) {
         LogHighlightReview({ original: this.ai.originalDraft, highlighted: this.ai.highlighted,
+          themePreference: this.themePreference,
           date: this.ai.highlightDate,
           available: this.ai.highlightDate === this.selectedDate && this.ai.originalDraft === this.draftText,
           onClose: () => this.ai.reviewOpen = false, onApply: () => this.applyAiHighlight() })

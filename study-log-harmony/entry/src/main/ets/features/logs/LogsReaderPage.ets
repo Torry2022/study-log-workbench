@@ -96,6 +96,12 @@ export struct LogsReaderPage {
   @State private navigationOffset: number = -340;
   @State private navigationScrimOpacity: number = 0;
   private navigationMotionRevision: number = 0;
+  @State private outlineOpen: boolean = false;
+  @State private outlineClosing: boolean = false;
+  @State private outlineOffset: number = 340;
+  @State private outlineScrimOpacity: number = 0;
+  private outlineMotionRevision: number = 0;
+  private pendingOutlineOpen: boolean = false;
   @State private taxonomyOpen: boolean = false;
   @State private taxonomyDirty: boolean = false;
   @State private taxonomyBusy: boolean = false;
@@ -395,7 +401,7 @@ export struct LogsReaderPage {
     return this.backupOpen || this.linkOpen || this.ai.reviewOpen || this.imageBusy || this.exportBusy ||
       this.saving || this.deleting || this.taxonomyOpen || this.topMoreOpen || this.moreOpen ||
       this.exportMenuOpen || this.calendarOpen || !!this.railPopover || this.searchOpen ||
-      this.navigationOpen || !!this.qaNavigation.qaRenameId || !!this.qaNavigation.qaMenuId;
+      this.navigationOpen || this.outlineOpen || !!this.qaNavigation.qaRenameId || !!this.qaNavigation.qaMenuId;
   }
 
   private focusWorkspaceRegion(reverse: boolean): void {
@@ -417,6 +423,7 @@ export struct LogsReaderPage {
       else if (this.qaNavigation.qaRenameId) this.qaNavigation.qaRenameId = '';
       else if (this.qaNavigation.qaMenuId) this.qaNavigation.qaMenuId = '';
       else if (this.readingOutlineOpen) this.readingOutlineOpen = false;
+      else if (this.outlineOpen) this.closeOutline();
       else if (this.searchOpen) this.closeSearch();
       else if (this.navigationOpen) this.closeNavigation();
       else if (this.logsReadingMode && !this.shortcutBlocked()) this.setLogsReadingMode(false);
@@ -561,6 +568,41 @@ export struct LogsReaderPage {
     });
   }
 
+  private openOutline(): void {
+    if (this.isWide() || this.outlineOpen || this.navigationOpen || this.outlineHeadings().length === 0) return;
+    const revision = ++this.outlineMotionRevision;
+    this.outlineClosing = false;
+    this.outlineOffset = 340;
+    this.outlineScrimOpacity = 0;
+    this.outlineOpen = true;
+    revealPanel(this.getUIContext(), () => revision === this.outlineMotionRevision &&
+      this.outlineOpen && !this.outlineClosing, () => {
+      this.outlineOffset = 0;
+      this.outlineScrimOpacity = 1;
+    });
+  }
+
+  private closeOutline(): void {
+    if (!this.outlineOpen || this.outlineClosing) return;
+    const revision = ++this.outlineMotionRevision;
+    this.outlineClosing = true;
+    animateTo({ duration: 180, curve: Curve.EaseIn, onFinish: () => {
+      if (revision !== this.outlineMotionRevision) return;
+      this.outlineOpen = false;
+      this.outlineClosing = false;
+    } }, () => {
+      this.outlineOffset = 340;
+      this.outlineScrimOpacity = 0;
+    });
+  }
+
+  private handleActionsDisappear(): void {
+    if (!this.pendingOutlineOpen) return;
+    this.pendingOutlineOpen = false;
+    this.openOutline();
+  }
+
+
   private selectTab(index: number): void {
     if (index === this.selectedTab()) return;
     this.requestModule(index);
@@ -627,6 +669,7 @@ export struct LogsReaderPage {
     this.qaOpen = index === 3;
     this.statsOpen = index === 4;
     this.closeNavigation();
+    if (index !== 0) this.closeOutline();
     this.closeSearch();
     if (index === 3) this.qaNavigation.loadQaNavigation();
     afterSwitch();
@@ -825,7 +868,7 @@ export struct LogsReaderPage {
     const headings: LogOutlineHeading[] = [];
     const used: Map<string, number> = new Map<string, number>();
     let inFence = false;
-    this.previewText.split('\n').forEach((line: string) => {
+    (this.sourceMode ? this.draftText : this.previewText).split('\n').forEach((line: string) => {
       if (/^\s*(```|~~~)/.test(line)) {
         inFence = !inFence;
         return;
@@ -2085,12 +2128,6 @@ export struct LogsReaderPage {
   @Builder
   private moreActions() {
     Column() {
-      if (!this.isWide()) {
-        this.desktopMoreItem($r('app.media.wand_sparkles'), 'AI生成', !!this.day,
-          () => this.openAiTools('generate'))
-        this.desktopMoreItem($r('app.media.edit_3'), '重点标注', !!this.day,
-          () => this.openAiTools('highlight'))
-      }
       if (this.sourceMode || this.splitMode) {
         if (!this.editorActionsInHeader()) {
           this.desktopMoreItem($r('app.media.link_2'), '内部链接', this.editorReady && !this.linkOpening,
@@ -2123,7 +2160,96 @@ export struct LogsReaderPage {
       }
       this.desktopMoreItem($r('app.media.download'), '导出全部日志', !this.exportBusy,
         () => this.exportLogs('all'))
-    }.width(this.isWide() ? 220 : '100%').padding(8)
+    }.width(220).padding(8)
+  }
+
+  private async discardDraft(): Promise<void> {
+    if (!this.day || !this.dirty || !this.editorReady) return;
+    try {
+      await this.editor.replace(this.savedText, true);
+      this.draftText = this.savedText;
+      this.previewText = this.savedText;
+      this.dirty = false;
+      this.reportDraft();
+    } catch (error) {
+      this.saveError = error instanceof Error ? error.message : '放弃修改失败';
+    }
+  }
+
+  @Builder
+  private moreAction(icon: Resource, label: string, enabled: boolean, action: () => void) {
+    Button({ type: ButtonType.Normal }) {
+      Column({ space: 4 }) {
+        Image(icon).width(18).height(18).objectFit(ImageFit.Contain)
+          .colorFilter(iconTint(enabled ? $r('app.color.body') : $r('app.color.muted_soft')))
+        Text(label).fontSize(12).fontWeight(FontWeight.Medium)
+          .fontColor(enabled ? $r('app.color.body') : $r('app.color.muted_soft'))
+      }.justifyContent(FlexAlign.Center)
+    }.layoutWeight(1).height(58).padding(0)
+      .backgroundColor($r('app.color.surface_soft'))
+      .border({ width: 1, color: $r('app.color.hairline') })
+      .borderRadius(8).clip(true).enabled(enabled)
+      .onClick(() => { this.moreOpen = false; action(); })
+  }
+
+  @Builder
+  private exportAction(label: string, scope: string) {
+    Button(label, { type: ButtonType.Normal })
+      .layoutWeight(1).height(42).padding(0)
+      .fontSize(13).fontWeight(FontWeight.Medium).fontColor($r('app.color.body'))
+      .backgroundColor($r('app.color.canvas'))
+      .border({ width: 1, color: $r('app.color.hairline') })
+      .borderRadius(8).clip(true)
+      .enabled(!this.exportBusy && (scope === 'all' || !!this.selectedDate))
+      .onClick(() => { this.moreOpen = false; this.exportLogs(scope); })
+  }
+
+  @Builder
+  private compactMoreActionContent() {
+    Column({ space: 10 }) {
+      if (this.sourceMode || this.splitMode) {
+        Row({ space: 8 }) {
+          this.moreAction($r('app.media.link_2'), '内部链接', this.editorReady && !this.linkOpening,
+            () => this.openLink())
+          this.moreAction($r('app.media.search'), '查找替换', this.editorReady,
+            () => this.editor.command('find'))
+        }.width('100%')
+      }
+      Row({ space: 8 }) {
+        this.moreAction($r('app.media.refresh_cw'), '刷新', !!this.selectedDate && !this.saving && !this.deleting,
+          () => this.refreshLog())
+        this.moreAction($r('app.media.layout_list'), '大纲', this.outlineHeadings().length > 0,
+          () => this.pendingOutlineOpen = true)
+        this.moreAction($r('app.media.panel_right_open'), 'AI 工具', !!this.day,
+          () => this.openAiTools())
+      }.width('100%')
+      Row({ space: 8 }) {
+        this.moreAction($r('app.media.upload'), '插入图片', !!this.day && !this.imageBusy,
+          () => this.insertImages())
+        this.moreAction($r('app.media.eye'), '放弃修改', this.editorReady && this.dirty,
+          () => this.discardDraft())
+        this.moreAction($r('app.media.database_backup'), '备份', !!this.day && !this.saving,
+          () => this.backupOpen = true)
+      }.width('100%')
+      Button({ type: ButtonType.Normal }) {
+        Row({ space: 7 }) {
+          Image($r('app.media.trash_2')).width(16).height(16).colorFilter(iconTint($r('app.color.error')))
+          Text('删除日块').fontSize(12).fontWeight(FontWeight.Medium).fontColor($r('app.color.error'))
+        }.justifyContent(FlexAlign.Center)
+      }.width('100%').height(42).padding(0)
+        .backgroundColor($r('app.color.error_surface'))
+        .border({ width: 1, color: $r('app.color.hairline') })
+        .borderRadius(8).clip(true).enabled(!!this.day?.exists && !this.deleting)
+        .onClick(() => { this.moreOpen = false; this.confirmDelete(); })
+      Divider().strokeWidth(1).color($r('app.color.hairline')).margin({ top: 2 })
+      Text('导出').width('100%').fontSize(13).fontWeight(FontWeight.Medium)
+        .fontColor($r('app.color.muted'))
+      Row({ space: 8 }) {
+        this.exportAction('当前日块', 'day')
+        this.exportAction('当前源文件', 'file')
+        this.exportAction('全部日志', 'all')
+      }.width('100%')
+    }.width('100%')
   }
 
   @Builder
@@ -2131,8 +2257,10 @@ export struct LogsReaderPage {
     Column() {
       ActionPanelHeader({ title: '日志操作', showDragBar: true,
         closeLabel: '关闭日志操作', onClose: () => this.moreOpen = false })
-      this.moreActions()
+        .margin({ bottom: 12 })
+      this.compactMoreActionContent()
     }.width('100%').padding({ left: 16, right: 16, top: 8, bottom: 18 })
+      .alignItems(HorizontalAlign.Center)
       .backgroundColor($r('app.color.canvas'))
   }
 
@@ -2353,6 +2481,7 @@ export struct LogsReaderPage {
       CompactLogHeader({ selectedDate: this.selectedDate, workspaceBreakpoint: this.workspaceBreakpoint,
         sourceMode: this.sourceMode, saving: this.saving, dirty: this.editorReady && this.dirty,
         moreOpen: $moreOpen, moreActionsPanel: (): void => this.compactMoreActionsPanel(),
+        onActionsDisappear: () => this.handleActionsDisappear(),
         onMode: (mode: string) => this.switchMode(mode === 'source'),
         onSave: () => this.save() })
     }
@@ -2444,6 +2573,87 @@ export struct LogsReaderPage {
       this.reportDraft();
       await this.ai.highlight(date, body);
     } catch (error) { this.ai.message = error instanceof Error ? error.message : '编辑器尚未就绪'; }
+  }
+
+  @Builder
+  private compactOutlinePanel() {
+    Column() {
+      Row({ space: 10 }) {
+        SymbolGlyph($r('sys.symbol.list_bullet')).fontSize(20)
+          .fontColor([$r('app.color.primary_active')])
+        Column({ space: 1 }) {
+          Text('日志大纲').fontFamily(workspaceSansFamily(this.workspaceBreakpoint))
+            .fontSize(15).fontWeight(FontWeight.Medium).fontColor($r('app.color.body_strong'))
+          Text(`${this.selectedDate} · ${this.outlineHeadings().length} 个标题`)
+            .fontSize(11).fontColor($r('app.color.muted'))
+        }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+        Button({ type: ButtonType.Normal }) {
+          SymbolGlyph($r('sys.symbol.xmark')).fontSize(17).fontColor([$r('app.color.body')])
+        }.width(40).height(40).padding(0)
+          .backgroundColor($r('app.color.canvas'))
+          .border({ width: 1, color: $r('app.color.hairline') })
+          .borderRadius(8).clip(true)
+          .onClick(() => this.closeOutline())
+          .accessibilityText('关闭大纲').bindTips('关闭大纲', WORKSPACE_TIPS)
+      }.width('100%').height(64).padding({ left: 18, right: 12 })
+        .border({ width: { bottom: 1 }, color: $r('app.color.hairline_soft') })
+      List({ space: 8 }) {
+        ForEach(this.outlineHeadings(), (heading: LogOutlineHeading, index: number) => {
+          ListItem() {
+            Row() {
+              Button({ type: ButtonType.Normal }) {
+                Text(heading.text)
+                  .fontSize(heading.level <= 2 ? 15 : (heading.level === 3 ? 14 : 13))
+                  .fontWeight(heading.level <= 2 ? FontWeight.Medium : FontWeight.Regular)
+                  .fontColor(this.activeOutlineIndex === index ? $r('app.color.ink') :
+                    (heading.level <= 3 ? $r('app.color.body') : $r('app.color.muted')))
+                  .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
+                  .width('100%').textAlign(TextAlign.Start)
+              }.layoutWeight(1).constraintSize({ minHeight: 44 })
+                .padding({ left: 10 + Math.max(0, heading.level - 2) * 12, right: 4, top: 7, bottom: 7 })
+                .backgroundColor(Color.Transparent).borderRadius(8)
+                .onClick(() => {
+                  this.closeOutline();
+                  this.activeOutlineIndex = index;
+                  this.targetHeading = heading.text;
+                  this.targetHeadingIndex = index;
+                  this.targetRevision++;
+                  if (this.sourceMode || this.splitMode) this.switchMode(false);
+                })
+              if (heading.level === 3) {
+                Button({ type: ButtonType.Normal }) {
+                  if (this.outlineFavorite(heading)) {
+                    SymbolGlyph($r('sys.symbol.star_fill')).fontSize(15).fontColor([$r('app.color.ink')])
+                  } else {
+                    SymbolGlyph($r('sys.symbol.star')).fontSize(15).fontColor([$r('app.color.muted_soft')])
+                  }
+                }.width(32).height(32).padding(0)
+                  .backgroundColor(Color.Transparent).borderRadius(6)
+                  .enabled(!this.favoriteBusy).monopolizeEvents(true)
+                  .accessibilityText(this.outlineFavorite(heading) ? '取消收藏' : '收藏小节')
+                  .onClick(() => {
+                    const favorite = this.outlineFavorite(heading);
+                    if (favorite) this.removeOutlineFavorite(favorite);
+                    else this.addOutlineFavorite(heading);
+                  })
+              }
+            }.width('100%').constraintSize({ minHeight: 44 }).padding({ right: 4 })
+              .backgroundColor(this.activeOutlineIndex === index ? $r('app.color.primary_tint') :
+                $r('app.color.surface_card'))
+              .border({ width: 1, color: this.activeOutlineIndex === index ?
+                $r('app.color.primary') : $r('app.color.hairline') })
+              .borderRadius(8).clip(true)
+          }
+        }, (heading: LogOutlineHeading) => heading.id)
+      }.width('100%').layoutWeight(1)
+        .padding({ left: 14, right: 14, top: 14, bottom: 28 })
+        .scrollBar(BarState.Off)
+        .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
+    }.width('82%').height('100%')
+      .backgroundColor($r('app.color.surface_soft'))
+      .border({ width: { left: 1 }, color: $r('app.color.hairline') })
+      .shadow({ radius: 18, color: $r('app.color.popover_shadow'), offsetX: -4 })
+      .translate({ x: this.outlineOffset })
   }
 
   private async prepareEditorForAi(date: string, lifecycle: number): Promise<boolean> {
@@ -2972,6 +3182,16 @@ export struct LogsReaderPage {
           if (this.aiOpen && !this.isWide() && this.selectedTab() === 0) {
             Stack({ alignContent: Alignment.TopEnd }) { this.aiToolsPanel() }
               .width('100%').height('100%').zIndex(2)
+          }
+          if (!this.isWide() && this.outlineOpen && this.selectedTab() === 0) {
+            Stack({ alignContent: Alignment.TopEnd }) {
+              AppModalScrim({ onDismiss: () => this.closeOutline() })
+                .opacity(this.outlineScrimOpacity)
+              Column().width('82%').height('100%')
+                .backgroundColor($r('app.color.surface_soft'))
+                .translate({ x: this.outlineOffset })
+              this.compactOutlinePanel()
+            }.width('100%').height('100%').zIndex(4)
           }
           if (this.workspaceTransition.snapshot &&
             (this.workspaceTransition.kind === 'module' || this.workspaceTransition.kind === 'document' ||

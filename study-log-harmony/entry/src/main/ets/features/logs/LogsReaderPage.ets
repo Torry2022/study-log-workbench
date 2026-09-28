@@ -2267,7 +2267,6 @@ export struct LogsReaderPage {
   private openAiTools(mode: string = 'generate'): void {
     if (this.sidebarAnimating) return;
     this.aiMode = mode;
-    if (!this.isWide()) { this.aiOffset = 420; this.aiOpen = true; return; }
     if (this.aiOpen && !this.aiClosing) return;
     this.aiClosing = false;
     this.aiOpen = true;
@@ -2276,8 +2275,6 @@ export struct LogsReaderPage {
 
   private closeAiTools(): void {
     if (this.sidebarAnimating) return;
-    if (!this.isWide()) { this.aiMotionRevision++; this.aiAnimating = false; this.aiOffset = 420;
-      this.toolbarMotionWidth = -1; this.toolbarActionWidths = []; this.aiOpen = false; return; }
     if (!this.aiOpen || this.aiClosing) return;
     this.aiClosing = true;
     this.moveAiTools(420);
@@ -2313,24 +2310,15 @@ export struct LogsReaderPage {
     const revision = ++this.aiMotionRevision;
     this.aiAnimating = true;
     const origin = this.aiOffset;
-    const toolbarWidths = this.beginToolbarMotion(this.aiAvailableWidth - this.desktopNavigationWidth() -
-      (target === 0 ? this.aiPanelWidth : 52));
+    const toolbarWidths = this.isWide() ? this.beginToolbarMotion(this.aiAvailableWidth -
+      this.desktopNavigationWidth() - (target === 0 ? this.aiPanelWidth : 52)) : [];
     const started = Date.now();
     const step = (): void => {
       if (revision !== this.aiMotionRevision) return;
-      if (!this.isWide()) {
-        this.aiOffset = 420;
-        this.aiAnimating = false;
-        this.toolbarMotionWidth = -1;
-        this.toolbarActionWidths = [];
-        if (target === 420) this.aiOpen = false;
-        this.aiClosing = false;
-        return;
-      }
       const progress = Math.min(1, Math.max(0, (Date.now() - started) / 240));
       const eased = progress * progress * (3 - 2 * progress);
       this.aiOffset = origin + (target - origin) * eased;
-      this.advanceToolbarMotion(toolbarWidths, eased);
+      if (this.isWide()) this.advanceToolbarMotion(toolbarWidths, eased);
       if (progress < 1) this.getUIContext().postFrameCallback(new FrameAction(step));
       else {
         this.aiAnimating = false;
@@ -2338,10 +2326,12 @@ export struct LogsReaderPage {
           this.aiOpen = false;
           this.aiClosing = false;
         }
-        this.getUIContext().postFrameCallback(new FrameAction(() => {
-          if (revision !== this.aiMotionRevision || this.sidebarAnimating) return;
-          this.finishToolbarMotion();
-        }));
+        if (this.isWide()) {
+          this.getUIContext().postFrameCallback(new FrameAction(() => {
+            if (revision !== this.aiMotionRevision || this.sidebarAnimating) return;
+            this.finishToolbarMotion();
+          }));
+        }
       }
     };
     this.getUIContext().postFrameCallback(new FrameAction(step));
@@ -2417,7 +2407,7 @@ export struct LogsReaderPage {
       onGenerate: () => this.ai.generate(this.selectedDate),
       onHighlight: () => this.highlightAiDraft(), onApply: () => this.applyAiOutput() })
     .width(this.isWide() ? this.aiPanelWidth : '100%').height('100%')
-    .translate({ x: this.isWide() ? this.aiPanelWidth * this.aiOffset / 420 : 0 })
+    .translate({ x: (this.isWide() ? this.aiPanelWidth : this.aiAvailableWidth) * this.aiOffset / 420 })
     .flexShrink(0).id('log_ai_panel')
   }
 
@@ -2763,9 +2753,7 @@ export struct LogsReaderPage {
           onSelect: (result: LogSearchResult) => this.selectSearchResult(result) })
           .width('100%').height('100%')
       }
-      if (this.aiOpen && !this.isWide() && !this.notesOpen && !this.favoritesOpen && !this.statsOpen) {
-        Column() { this.aiToolsPanel() }.width('100%').height('100%')
-      }
+      if (this.aiOpen && !this.isWide() && this.selectedTab() === 0) this.aiToolsPanel()
       if (this.ai.reviewOpen) {
         LogHighlightReview({ original: this.ai.originalDraft, highlighted: this.ai.highlighted,
           date: this.ai.highlightDate,

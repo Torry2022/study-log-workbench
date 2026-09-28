@@ -3340,26 +3340,28 @@ export struct LogsReaderPage {
             .zIndex(this.favoritesOpen ? 1 : 0)
           Row() {
               if (this.isWide()) { this.desktopNavigation() }
-              if (this.taxonomyOpen) {
-                TaxonomyManagerPage({
-                  onBack: () => this.confirmTaxonomyLeave(() => {}),
-                  onStateChange: (dirty: boolean, busy: boolean) => {
-                    this.taxonomyDirty = dirty; this.taxonomyBusy = busy;
-                  },
-                  onSaved: () => this.statsRefreshRevision++
-                }).layoutWeight(1)
-              } else {
-              StatsPage({ showTaxonomyManager: true, onOpenTaxonomyManager: () => this.openTaxonomy(),
-                topRevision: this.topRequests[4],
-                requestedMonth: this.statsMonth, requestedMonthRevision: this.statsMonthRevision,
-                refreshRevision: this.statsRefreshRevision,
-                onMonthsChange: (months: MonthSummary[]) => this.statsMonths = months,
-                onMonthsLoadingChange: (loading: boolean) => this.statsMonthsLoading = loading,
-                onMonthsErrorChange: (error: string) => this.statsMonthsError = error,
-                onSelectedMonthChange: (month: string) => this.statsMonth = month,
-                onOpenLog: () => this.selectTab(0),
-                onOpenEntry: (entry: StatsEntry) => this.openStatsEntry(entry) }).layoutWeight(1)
-              }
+              Stack() {
+                StatsPage({ showTaxonomyManager: true, onOpenTaxonomyManager: () => this.openTaxonomy(),
+                  topRevision: this.topRequests[4],
+                  requestedMonth: this.statsMonth, requestedMonthRevision: this.statsMonthRevision,
+                  refreshRevision: this.statsRefreshRevision,
+                  onMonthsChange: (months: MonthSummary[]) => this.statsMonths = months,
+                  onMonthsLoadingChange: (loading: boolean) => this.statsMonthsLoading = loading,
+                  onMonthsErrorChange: (error: string) => this.statsMonthsError = error,
+                  onSelectedMonthChange: (month: string) => this.statsMonth = month,
+                  onOpenLog: () => this.selectTab(0),
+                  onOpenEntry: (entry: StatsEntry) => this.openStatsEntry(entry) })
+                  .width('100%').height('100%')
+                if (this.isWide() && this.taxonomyOpen) {
+                  TaxonomyManagerPage({
+                    onBack: () => this.confirmTaxonomyLeave(() => {}),
+                    onStateChange: (dirty: boolean, busy: boolean) => {
+                      this.taxonomyDirty = dirty; this.taxonomyBusy = busy;
+                    },
+                    onSaved: () => this.statsRefreshRevision++
+                  }).width('100%').height('100%').transition(secondaryPageTransition())
+                }
+              }.layoutWeight(1).height('100%')
           }.width('100%').height('100%')
             .visibility(this.statsOpen || this.outgoingTab === 4 ? Visibility.Visible : Visibility.None)
             .opacity(this.statsOpen ? this.moduleReveal : 1)
@@ -3470,6 +3472,15 @@ export struct LogsReaderPage {
             .shadow({ radius: 18, color: $r('app.color.popover_shadow'), offsetY: 6 })
         }.width('100%').height('100%').zIndex(6)
           .transition(floatingSurfaceTransition())
+      }
+      if (!this.isWide() && this.taxonomyOpen) {
+        TaxonomyManagerPage({
+          onBack: () => this.confirmTaxonomyLeave(() => {}),
+          onStateChange: (dirty: boolean, busy: boolean) => {
+            this.taxonomyDirty = dirty; this.taxonomyBusy = busy;
+          },
+          onSaved: () => this.statsRefreshRevision++
+        }).width('100%').height('100%').zIndex(7).transition(secondaryPageTransition())
       }
       if (!this.isWide() && this.navigationOpen) {
         Stack({ alignContent: Alignment.Start }) {

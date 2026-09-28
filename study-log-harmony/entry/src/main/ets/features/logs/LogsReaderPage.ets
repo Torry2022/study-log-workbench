@@ -1,7 +1,7 @@
 import { WorkspaceBreakpoint, WORKSPACE_TABS, READING_MAX_WIDTH } from '../../common/AppConfig';
 import { apiClient, ApiError, ApiUploadFile } from '../../common/network/ApiClient';
 import { activeInstance } from '../../common/network/InstanceConfig';
-import { EmptyState, LoadFailure } from '../../common/ui/FeedbackStates';
+import { EmptyState, InlineStatus, LoadFailure } from '../../common/ui/FeedbackStates';
 import { MarkdownReader } from '../../common/ui/MarkdownReader';
 import { workspaceSansFamily } from '../../common/ui/Typography';
 import { AppLogo } from '../../common/ui/AppLogo';
@@ -31,7 +31,7 @@ import { FrameAction } from '../../common/ui/FrameAction';
 import { AppModalScrim } from '../../common/ui/AppModalScrim';
 import { NavigationRefresh } from '../../common/ui/NavigationRefresh';
 import { DelayedLoadingHint } from '../../common/ui/DelayedLoadingHint';
-import { LoadingHintPlacement } from '../../common/ui/LoadingHintAnchor';
+import { LoadingHintAnchor, LoadingHintPlacement } from '../../common/ui/LoadingHintAnchor';
 import { expandSection, floatingSurfaceTransition, revealPanel, secondaryPageTransition } from '../../common/ui/WorkspaceMotion';
 import { NavigationRefreshController, NavigationSnapshot } from '../../app/NavigationRefreshController';
 import { DesktopLogCommands, DesktopMenuEntry } from '../../app/DesktopMenu';
@@ -94,8 +94,10 @@ export struct LogsReaderPage {
   @State private monthsLoading: boolean = true;
   @State private daysLoading: boolean = false;
   @State private dayLoading: boolean = false;
+  @State private readFailed: boolean = false;
   @State private errorMessage: string = '';
   @State private navigationError: string = '';
+  private retryRead: () => Promise<void> = async () => this.loadMonths();
   @State private navigationOpen: boolean = false;
   @State private navigationClosing: boolean = false;
   @State private navigationOffset: number = -340;
@@ -170,6 +172,7 @@ export struct LogsReaderPage {
   private workspaceOriginX: number = 0;
   private workspaceOriginY: number = 0;
   @State private qaLoadingHint: LoadingHintPlacement = new LoadingHintPlacement();
+  @State private logLoadingHint: LoadingHintPlacement = new LoadingHintPlacement();
   @State private notesLoadingHint: LoadingHintPlacement = new LoadingHintPlacement();
   @State private favoritesLoadingHint: LoadingHintPlacement = new LoadingHintPlacement();
   @State private statsLoadingHint: LoadingHintPlacement = new LoadingHintPlacement();
@@ -1613,6 +1616,7 @@ export struct LogsReaderPage {
   private async loadMonths(): Promise<void> {
     const lifecycle = this.lifecycle;
     this.monthsLoading = true;
+    this.readFailed = false;
     this.errorMessage = '';
     try {
       const response = await this.reads.months();
@@ -1625,7 +1629,11 @@ export struct LogsReaderPage {
       }
       else { this.month = ''; this.days = []; this.day = undefined; this.selectedDate = ''; }
     } catch (error) {
-      if (lifecycle === this.lifecycle) this.errorMessage = this.message(error as Error);
+      if (lifecycle === this.lifecycle) {
+        this.readFailed = true;
+        this.errorMessage = this.message(error as Error);
+        this.retryRead = async () => this.loadMonths();
+      }
     } finally {
       if (lifecycle === this.lifecycle) this.monthsLoading = false;
     }
@@ -1637,13 +1645,11 @@ export struct LogsReaderPage {
     this.dayRevision++;
     await this.coverLogDocument();
     if (lifecycle !== this.lifecycle || revision !== this.listRevision) return;
+    const previousMonth = this.month;
+    const previousDays = this.days;
     this.month = month;
-    this.days = [];
-    this.day = undefined;
-    this.readerReady = false;
-    this.renderedPreviewDate = '';
-    this.selectedDate = '';
     this.daysLoading = true;
+    this.readFailed = false;
     this.navigationError = '';
     try {
       const response = await this.reads.days(month);
@@ -1652,11 +1658,25 @@ export struct LogsReaderPage {
       this.days = response.days;
       if (targetDate) await this.loadDay(targetDate);
       else if (response.days.length > 0) await this.loadDay(response.days[0].date);
-      else this.workspaceTransition.finish('document');
+      else {
+        this.day = undefined;
+        this.selectedDate = '';
+        this.readerReady = false;
+        this.renderedPreviewDate = '';
+        this.workspaceTransition.finish('document');
+      }
+      if (lifecycle !== this.lifecycle || revision !== this.listRevision) return;
+      if (this.errorMessage && this.day) {
+        this.month = previousMonth;
+        this.days = previousDays;
+      }
     } catch (error) {
       if (lifecycle === this.lifecycle && revision === this.listRevision) {
+        this.month = previousMonth;
         this.navigationError = this.message(error as Error);
+        this.readFailed = true;
         this.errorMessage = this.navigationError;
+        this.retryRead = async () => this.loadDays(month, targetDate);
         this.workspaceTransition.finish('document');
       }
     } finally {
@@ -1672,13 +1692,8 @@ export struct LogsReaderPage {
     await this.coverLogDocument();
     if (lifecycle !== this.lifecycle || revision !== this.dayRevision) return;
     this.dayLoading = true;
+    this.readFailed = false;
     this.errorMessage = '';
-    this.day = undefined;
-    this.readerReady = false;
-    this.renderedPreviewDate = '';
-    this.editorReady = false;
-    this.dirty = false;
-    this.selectedDate = date;
     try {
       const response = await this.reads.day(date);
       if (lifecycle !== this.lifecycle || revision !== this.dayRevision) return;
@@ -1686,6 +1701,10 @@ export struct LogsReaderPage {
         throw new Error('日块响应格式异常');
       }
       this.day = response.day;
+      this.selectedDate = date;
+      this.readerReady = false;
+      this.renderedPreviewDate = '';
+      this.editorReady = false;
       this.previewRestoreOffset = this.previewScrollOffsets[date] || 0;
       this.previewOffset = this.previewRestoreOffset;
       this.activeOutlineIndex = Math.max(0, headingIndex);
@@ -1710,7 +1729,9 @@ export struct LogsReaderPage {
       this.closeNavigation();
     } catch (error) {
       if (lifecycle === this.lifecycle && revision === this.dayRevision) {
+        this.readFailed = true;
         this.errorMessage = this.message(error as Error);
+        this.retryRead = async () => this.loadDay(date, heading, headingIndex);
         this.workspaceTransition.finish('document');
       }
     } finally {
@@ -3122,16 +3143,19 @@ export struct LogsReaderPage {
   @Builder
   private reader() {
     Column() {
+      if (this.errorMessage && this.day && !this.dayLoading && !this.daysLoading) {
+        InlineStatus({ text: this.errorMessage, error: true, retry: this.readFailed,
+          onRetry: () => this.retryRead() })
+      }
       this.heading()
-      if (this.monthsLoading || this.daysLoading || this.dayLoading) {
+      if (this.monthsLoading || !this.day && (this.daysLoading || this.dayLoading)) {
         Row({ space: 8 }) {
           LoadingProgress().width(20).height(20).color($r('app.color.primary'))
           Text('正在加载日志').fontSize(13).fontColor($r('app.color.muted'))
         }.layoutWeight(1).justifyContent(FlexAlign.Center)
-      } else if (this.errorMessage) {
+      } else if (this.errorMessage && !this.day) {
         LoadFailure({ message: this.errorMessage,
-          onRetry: () => this.month ? this.selectedDate ? this.loadDay(this.selectedDate) : this.loadDays(this.month) :
-            this.loadMonths() })
+          onRetry: () => this.retryRead() })
       } else if (this.day) {
         Stack({ alignContent: Alignment.TopEnd }) {
           Row() {
@@ -3200,6 +3224,10 @@ export struct LogsReaderPage {
               .height('100%').visibility(this.sourceMode || this.splitMode && !this.isWide() ?
                 Visibility.None : Visibility.Visible)
           }.width('100%').height('100%')
+          LoadingHintAnchor({ loading: this.dayLoading || this.daysLoading ||
+            !this.sourceMode && this.renderedPreviewDate.length > 0 && !this.readerReady,
+            onChange: (placement: LoadingHintPlacement) => this.logLoadingHint = placement })
+            .hitTestBehavior(HitTestMode.None)
           if (this.saveError) {
             Text(this.saveError).fontSize(13).fontColor($r('app.color.error'))
               .width('100%').padding(12).backgroundColor($r('app.color.surface_soft'))
@@ -3462,6 +3490,12 @@ export struct LogsReaderPage {
           this.workspaceOriginX = Number(area.globalPosition.x);
           this.workspaceOriginY = Number(area.globalPosition.y);
         })
+      DelayedLoadingHint({ loading: this.selectedTab() === 0 && this.logLoadingHint.loading,
+        text: '正在读取日志…' })
+        .width(this.logLoadingHint.width).height(this.logLoadingHint.height)
+        .position({ x: this.logLoadingHint.x - this.workspaceOriginX,
+          y: this.logLoadingHint.y - this.workspaceOriginY })
+        .zIndex(20).hitTestBehavior(HitTestMode.None)
       DelayedLoadingHint({ loading: this.selectedTab() === 3 && this.qaLoadingHint.loading,
         text: '正在读取会话…' })
         .width(this.qaLoadingHint.width).height(this.qaLoadingHint.height)

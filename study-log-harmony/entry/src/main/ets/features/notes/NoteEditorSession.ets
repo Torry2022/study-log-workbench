@@ -1,9 +1,11 @@
 import { StudyNote, StudyNoteRequest } from './NoteModels';
+import { util } from '@kit.ArkTS';
 
 @Observed
 export class NoteEditorSession {
   editing: boolean = false;
   editingId: string = '';
+  clientId: string = '';
   title: string = '';
   body: string = '';
   insight: string = '';
@@ -22,6 +24,7 @@ export class NoteEditorSession {
     this.revision += 1;
     this.editing = true;
     this.editingId = '';
+    this.clientId = util.generateRandomUUID();
     this.title = ''; this.body = ''; this.insight = ''; this.sourcesText = ''; this.tagsText = '';
     this.recordedAt = recordedAt;
     this.baseVersion = '';
@@ -32,6 +35,7 @@ export class NoteEditorSession {
     this.revision += 1;
     this.editing = true;
     this.editingId = note.id;
+    this.clientId = '';
     this.title = note.title; this.body = note.body; this.insight = note.insight;
     this.sourcesText = note.sources.join('\n'); this.tagsText = note.tags.join('，');
     this.recordedAt = note.recordedAt;

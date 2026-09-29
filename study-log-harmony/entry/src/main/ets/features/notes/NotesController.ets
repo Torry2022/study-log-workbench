@@ -1,6 +1,7 @@
 import { ApiClient, ApiError } from '../../common/network/ApiClient';
 import { NoteEditorSession } from './NoteEditorSession';
-import { StudyNote, StudyNoteFacet, StudyNotesPayload, StudyNoteResponse, UpdateStudyNoteRequest, DeleteStudyNoteRequest } from './NoteModels';
+import { StudyNote, StudyNoteFacet, StudyNoteRequest, StudyNotesPayload, StudyNoteResponse, StudyNoteBatchRequest,
+  StudyNoteBatchResponse, UpdateStudyNoteRequest, DeleteStudyNoteRequest } from './NoteModels';
 
 interface DeleteResponse { ok: boolean; }
 
@@ -79,16 +80,22 @@ export class NotesController {
     const revision = this.editor.revision;
     const snapshot = this.editor.value();
     const id = this.editor.editingId;
+    const body = this.editor.request();
     this.saving = true; this.errorMessage = '';
     try {
-      const body = this.editor.request();
       let response: StudyNoteResponse;
       if (id) {
         const request: UpdateStudyNoteRequest = { id, baseVersion: this.editor.baseVersion,
           title: body.title, body: body.body, insight: body.insight, sources: body.sources,
           tags: body.tags, recordedAt: body.recordedAt };
         response = await this.transport.patch<StudyNoteResponse>('/notes', request);
-      } else response = await this.transport.post<StudyNoteResponse>('/notes', body);
+      } else {
+        const request: StudyNoteBatchRequest = { notes: [{ title: body.title, body: body.body,
+          insight: body.insight, sources: body.sources, tags: body.tags,
+          recordedAt: body.recordedAt, clientId: this.editor.clientId }] };
+        const result = await this.transport.post<StudyNoteBatchResponse>('/notes/batch', request);
+        response = { note: result.notes[0] };
+      }
       if (lifetime !== this.lifetime || revision !== this.editor.revision) return;
       // Keep any input delivered after submission; the saved baseline is the submitted snapshot.
       this.editor.editingId = response.note.id;
@@ -99,6 +106,20 @@ export class NotesController {
       if (lifetime === this.lifetime && revision === this.editor.revision) this.view.success(id ? '随记已更新' : '随记已保存');
     } catch (error) {
       if (lifetime !== this.lifetime || revision !== this.editor.revision) return;
+      if (id && this.maybeCompleted(error)) {
+        try {
+          const current = await this.transport.get<StudyNotesPayload>('/notes');
+          const saved = current.notes.find((note: StudyNote) => note.id === id);
+          if (saved && this.matchesSaved(saved, body) && lifetime === this.lifetime && revision === this.editor.revision) {
+            this.editor.baseVersion = saved.version;
+            this.editor.baseline = snapshot;
+            if (this.editor.value() === snapshot) this.editor.editing = false;
+            await this.load();
+            if (lifetime === this.lifetime && revision === this.editor.revision) this.view.success('随记已更新');
+            return;
+          }
+        } catch (_) { /* Retain the draft and report the original write error. */ }
+      }
       this.errorMessage = error instanceof ApiError && error.statusCode === 409 ?
         '服务器随记已变化，未覆盖。当前编辑仍保留，请先复制内容，再重新打开核对。' : this.message(error, '随记保存失败');
     } finally { if (lifetime === this.lifetime) this.saving = false; }
@@ -115,7 +136,18 @@ export class NotesController {
       await this.load();
       if (lifetime === this.lifetime) this.view.success('随记已删除');
     } catch (error) {
-      if (lifetime === this.lifetime) this.errorMessage = this.message(error, '删除随记失败');
+      if (lifetime !== this.lifetime) return;
+      if (this.maybeCompleted(error) || error instanceof ApiError && error.statusCode === 404) {
+        try {
+          const current = await this.transport.get<StudyNotesPayload>('/notes');
+          if (!current.notes.some((item: StudyNote) => item.id === note.id) && lifetime === this.lifetime) {
+            await this.load();
+            if (lifetime === this.lifetime) this.view.success('随记已删除');
+            return;
+          }
+        } catch (_) { /* Keep the original error when the server cannot be checked. */ }
+      }
+      this.errorMessage = this.message(error, '删除随记失败');
     } finally { if (lifetime === this.lifetime) this.deletingId = ''; }
   }
 
@@ -133,4 +165,17 @@ export class NotesController {
   }
 
   private message(error: Object, fallback: string): string { return error instanceof ApiError ? error.message : fallback; }
+
+  private maybeCompleted(error: Object): boolean {
+    return error instanceof ApiError && (error.statusCode === 0 || error.statusCode === 409 || error.statusCode >= 500);
+  }
+
+  private matchesSaved(note: StudyNote, request: StudyNoteRequest): boolean {
+    const normalized = (values: string[]): string[] => Array.from(new Set(values.map((value: string) =>
+      value.replace(/\s+/g, ' ').trim()).filter((value: string) => value.length > 0)));
+    return note.title === request.title.replace(/\s+/g, ' ').trim() && note.body === request.body.replace(/\r\n/g, '\n').trim() &&
+      note.insight === request.insight.replace(/\r\n/g, '\n').trim() && note.recordedAt === request.recordedAt &&
+      JSON.stringify(note.sources) === JSON.stringify(normalized(request.sources)) &&
+      JSON.stringify(note.tags) === JSON.stringify(normalized(request.tags));
+  }
 }

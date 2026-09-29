@@ -98,6 +98,7 @@ export struct LogsReaderPage {
   @State private monthsLoading: boolean = true;
   @State private daysLoading: boolean = false;
   @State private dayLoading: boolean = false;
+  @State private refreshing: boolean = false;
   @State private readFailed: boolean = false;
   @State private errorMessage: string = '';
   @State private navigationError: string = '';
@@ -611,11 +612,13 @@ export struct LogsReaderPage {
   }
 
   private workspaceBreakpointChanged(): void {
+    this.closeNavigation();
     if (this.isWide()) return;
     this.readingTransition.clear();
     this.logsReadingMode = false;
     this.readingProgress = 0;
     this.readingOutlineOpen = false;
+    this.topMoreOpen = false;
   }
 
   private readingViewportChanged(area: Area): void {
@@ -658,7 +661,7 @@ export struct LogsReaderPage {
       if (revision !== this.navigationMotionRevision) return;
       this.navigationOpen = false;
       this.navigationClosing = false;
-      this.getUIContext().getFocusController().requestFocus('workspace_navigation_open');
+      if (!this.isWide()) this.getUIContext().getFocusController().requestFocus('workspace_navigation_open');
     } }, () => {
       this.navigationOffset = -340;
       this.navigationScrimOpacity = 0;
@@ -1274,6 +1277,7 @@ export struct LogsReaderPage {
       this.previewText = this.draftText;
       this.reads.invalidate();
       this.refreshNavigation(date);
+      appFeedback.show('日志已保存', 'success');
     } catch (error) {
       if (lifecycle !== this.lifecycle || revision !== this.dayRevision) return;
       this.saveError = error instanceof ApiError && error.statusCode === 409 ?
@@ -1339,6 +1343,7 @@ export struct LogsReaderPage {
     this.reads.invalidate();
     this.refreshNavigation(day.date);
     this.backupOpen = false;
+    appFeedback.show('备份已恢复', 'success');
   }
 
   private async openLink(): Promise<void> {
@@ -1566,9 +1571,12 @@ export struct LogsReaderPage {
       const query = scope === 'all' ? '' : `&date=${encodeURIComponent(date)}`;
       const data = await apiClient.download(`/export?scope=${scope}${query}`);
       if (lifecycle !== this.lifecycle || date !== this.selectedDate) return;
-      await saveExport(this.getUIContext().getHostContext() as common.UIAbilityContext,
+      const exported = await saveExport(this.getUIContext().getHostContext() as common.UIAbilityContext,
         this.exportName(scope, date), data,
         () => lifecycle === this.lifecycle && date === this.selectedDate);
+      if (exported && lifecycle === this.lifecycle && date === this.selectedDate) {
+        appFeedback.show('日志已导出', 'success');
+      }
     } catch (error) {
       if (lifecycle === this.lifecycle) this.saveError = error instanceof Error ? error.message : '日志导出失败';
     } finally {
@@ -1578,9 +1586,24 @@ export struct LogsReaderPage {
 
   private refreshLog(): void {
     this.moreOpen = false;
-    if (this.day && this.selectedDate) this.confirmDiscard(() => this.loadDay(this.selectedDate));
-    else if (this.month) this.loadDays(this.month);
-    else this.loadMonths();
+    if (!this.selectedDate || this.refreshing) return;
+    const date = this.selectedDate;
+    this.confirmDiscard(() => this.refreshCurrentDay(date));
+  }
+
+  private async refreshCurrentDay(date: string): Promise<void> {
+    if (this.refreshing) return;
+    const lifecycle = this.lifecycle;
+    const revision = this.dayRevision + 1;
+    this.refreshing = true;
+    try {
+      await this.loadDay(date);
+      if (lifecycle !== this.lifecycle || revision !== this.dayRevision || this.selectedDate !== date) return;
+      appFeedback.show(this.readFailed ? this.errorMessage || '日志刷新失败' : '日志已刷新',
+        this.readFailed ? 'error' : 'success');
+    } finally {
+      if (lifecycle === this.lifecycle) this.refreshing = false;
+    }
   }
 
   private changeSearch(query: string): void {
@@ -1753,6 +1776,7 @@ export struct LogsReaderPage {
       this.splitMode = false;
       this.reads.invalidate();
       this.refreshNavigation(date);
+      appFeedback.show('日块已删除', 'success');
     } catch (error) {
       if (lifecycle !== this.lifecycle || revision !== this.dayRevision) return;
       this.saveError = error instanceof ApiError && error.statusCode === 409 ?
@@ -2551,7 +2575,8 @@ export struct LogsReaderPage {
           () => this.editor.command('find'))
       }
       if (!this.documentActionsInHeader('refresh')) {
-        this.desktopMoreItem($r('app.media.refresh_cw'), '刷新', !!this.selectedDate && !this.saving && !this.deleting,
+        this.desktopMoreItem($r('app.media.refresh_cw'), '刷新', !!this.selectedDate && !this.refreshing &&
+          !this.saving && !this.deleting,
           () => this.refreshLog())
       }
       this.desktopMoreItem($r('app.media.layout_list'), '大纲', this.outlineHeadings().length > 0,
@@ -2642,7 +2667,8 @@ export struct LogsReaderPage {
         }.width('100%')
       }
       Row({ space: 8 }) {
-        this.moreAction($r('app.media.refresh_cw'), '刷新', !!this.selectedDate && !this.saving && !this.deleting,
+        this.moreAction($r('app.media.refresh_cw'), '刷新', !!this.selectedDate && !this.refreshing &&
+          !this.saving && !this.deleting,
           () => this.refreshLog())
         this.moreAction($r('app.media.layout_list'), '大纲', this.outlineHeadings().length > 0,
           () => this.pendingOutlineOpen = true)
@@ -2870,14 +2896,15 @@ export struct LogsReaderPage {
         expanded: this.expandedModeSelector(), showLabels: this.showToolbarLabels('mode'),
         onMode: (mode: string) => this.switchMode(mode === 'source', mode === 'split') })
       Column() {
-        ToolbarAction({ label: '刷新', icon: $r('app.media.refresh_cw'), iconSize: 15,
+        ToolbarAction({ label: this.refreshing ? '刷新中' : '刷新', reservedLabel: '刷新中',
+          icon: $r('app.media.refresh_cw'), iconSize: 15, busy: this.refreshing,
           showLabel: this.showToolbarLabels('refresh'),
-          available: !this.saving && !this.deleting && !this.imageBusy,
+          available: !!this.selectedDate && !this.refreshing && !this.saving && !this.deleting && !this.imageBusy,
           onAction: () => this.refreshLog() })
-      }.width(this.desktopActionSlotWidth('refresh', '刷新')).clip(true)
+      }.width(this.desktopActionSlotWidth('refresh', '刷新中')).clip(true)
         .margin({ left: (this.headerWidth < 440 ? 4 : 8) *
-          (this.desktopActionSlotPresence('refresh', '刷新') - 1) })
-        .opacity(this.desktopActionSlotPresence('refresh', '刷新'))
+          (this.desktopActionSlotPresence('refresh', '刷新中') - 1) })
+        .opacity(this.desktopActionSlotPresence('refresh', '刷新中'))
         .hitTestBehavior(this.documentActionsInHeader('refresh') ? HitTestMode.Default : HitTestMode.None)
         .accessibilityLevel(this.documentActionsInHeader('refresh') ? 'auto' : 'no-hide-descendants')
       Column() {
@@ -2920,7 +2947,8 @@ export struct LogsReaderPage {
       ToolbarAction({ label: this.saving ? '保存中' : '保存', reservedLabel: '保存中',
         icon: $r('app.media.save'), iconSize: 15,
         showLabel: this.showToolbarLabels('save'), primary: true, busy: this.saving,
-        available: this.editorReady && this.dirty, onAction: () => this.save() })
+        available: this.editorReady && this.dirty, disabledReason: '没有未保存的修改',
+        onAction: () => this.save() })
       ToolbarAction({ label: '更多日志操作', icon: $r('app.media.more_horizontal'),
         showLabel: false, active: this.moreOpen, onAction: () => this.moreOpen = !this.moreOpen })
         .id('log_more_actions')

@@ -128,6 +128,8 @@ export struct LogsReaderPage {
   @State private qaDiscardRevision: number = 0;
   @State private qaQuestionFocusRevision: number = 0;
   @State private qaQuery: string = '';
+  @State private qaSearchRevision: number = 0;
+  @State private qaScrolled: boolean = false;
   @State private qaNavigation: QaNavigationController = new QaNavigationController(apiClient, {
     active: () => this.qaOpen, busy: () => this.qaBusy,
     setBusy: (value: boolean) => this.qaBusy = value,
@@ -136,6 +138,9 @@ export struct LogsReaderPage {
   });
   @State private notesDirty: boolean = false;
   @State private notesBusy: boolean = false;
+  @State private notesScrolled: boolean = false;
+  @State private favoritesScrolled: boolean = false;
+  @State private statsScrolled: boolean = false;
   @State private noteYears: StudyNoteFacet[] = [];
   @State private noteTags: StudyNoteFacet[] = [];
   @State private noteCount: number = 0;
@@ -449,6 +454,29 @@ export struct LogsReaderPage {
 
   private selectedTab(): number {
     return this.notesOpen ? 1 : this.favoritesOpen ? 2 : this.qaOpen ? 3 : this.statsOpen ? 4 : 0;
+  }
+
+  private showTopBarDivider(): boolean {
+    if (this.notesOpen) return this.notesScrolled;
+    if (this.favoritesOpen) return this.favoritesScrolled;
+    if (this.qaOpen) return this.qaScrolled;
+    if (this.statsOpen) return this.statsScrolled;
+    return false;
+  }
+
+  private openCurrentSearch(): void {
+    if (this.selectedTab() === 0) {
+      this.changeSearch('');
+      this.searchOpen = true;
+      setTimeout(() => {
+        if (this.selectedTab() === 0 && this.searchOpen) this.searchFocusRevision++;
+      }, 40);
+    } else if (this.qaOpen) {
+      this.openNavigation();
+      setTimeout(() => {
+        if (this.qaOpen && this.navigationOpen && !this.navigationClosing) this.qaSearchRevision++;
+      }, 240);
+    }
   }
 
   private shortcutBlocked(): boolean {
@@ -2175,6 +2203,7 @@ export struct LogsReaderPage {
     if (this.qaOpen) {
       QaNavigation({ qaRailPopover: popover ? this.railPopover : '', moduleFrameHeight: this.moduleFrameHeight,
                     qaSessions: this.qaNavigation.qaSessions, qaSessionQuery: this.qaQuery,
+                    qaSearchRevision: this.qaSearchRevision,
                     qaActiveSessionId: this.qaSessionId, qaBusy: this.qaBusy,
                     qaNavigationLoading: this.qaNavigation.qaNavigationLoading,
                     qaNavigationError: this.qaNavigation.qaNavigationError,
@@ -2617,6 +2646,7 @@ export struct LogsReaderPage {
         onRetry: () => this.favoritesData.load() })
     } else if (this.qaOpen) {
       QaNavigation({ qaSessions: this.qaNavigation.qaSessions, qaSessionQuery: this.qaQuery,
+        qaSearchRevision: this.qaSearchRevision,
         qaActiveSessionId: this.qaSessionId, qaBusy: this.qaBusy,
         qaNavigationLoading: this.qaNavigation.qaNavigationLoading,
         qaNavigationError: this.qaNavigation.qaNavigationError,
@@ -3463,8 +3493,10 @@ export struct LogsReaderPage {
         } else {
           AppTopBar({ title: this.notesOpen ? '随记' : this.favoritesOpen ? '收藏中心' :
             this.qaOpen ? '知识问答' : this.statsOpen ? '学习统计' : '学习日志',
+            showSearch: this.selectedTab() === 0 || this.qaOpen,
+            showDivider: this.showTopBarDivider(),
             onOpenNavigation: () => this.openNavigation(),
-            onOpenSearch: () => this.searchOpen = true,
+            onOpenSearch: () => this.openCurrentSearch(),
             onOpenMore: () => this.compactSettingsOpen = true })
             .bindSheet($$this.compactSettingsOpen, this.compactAppSettingsPanel(), {
               preferType: SheetType.BOTTOM, height: SheetSize.FIT_CONTENT,
@@ -3495,6 +3527,7 @@ export struct LogsReaderPage {
                 onBusyChange: (busy: boolean) => this.qaBusy = busy,
                 onDraftChange: (dirty: boolean) => this.qaDirty = dirty,
                 onPendingChange: (pending: boolean) => this.qaPending = pending,
+                onScrollStateChange: (scrolled: boolean) => this.qaScrolled = scrolled,
                 onLoadingHintChange: (placement: LoadingHintPlacement) => this.qaLoadingHint = placement,
                 onOpenLog: () => this.selectTab(0),
                 onCitation: (date: string, heading: string, headingIndex: number) =>
@@ -3514,6 +3547,7 @@ export struct LogsReaderPage {
                 },
                 onEditorBusyChange: (busy: boolean) => this.notesBusy = busy,
                 onDirtyChange: (dirty: boolean) => this.notesDirty = dirty,
+                onScrollStateChange: (scrolled: boolean) => this.notesScrolled = scrolled,
                 onLoadingHintChange: (placement: LoadingHintPlacement) => this.notesLoadingHint = placement,
                 onOpenLog: () => this.selectTab(0),
                 onInternalLink: (date: string, heading: string) => this.openNoteLink(date, heading) }).layoutWeight(1)
@@ -3524,6 +3558,7 @@ export struct LogsReaderPage {
             .zIndex(this.notesOpen ? 1 : 0)
           Row() {
               FavoritesPage({ data: this.favoritesData, viewMode: this.favoritesViewMode,
+                onScrollStateChange: (scrolled: boolean) => this.favoritesScrolled = scrolled,
                 topRevision: this.topRequests[2],
                 onLoadingHintChange: (placement: LoadingHintPlacement) => this.favoritesLoadingHint = placement,
                 onViewModeChange: (mode: string) => {
@@ -3540,6 +3575,7 @@ export struct LogsReaderPage {
           Row() {
               Stack() {
                 StatsPage({ showTaxonomyManager: true, onOpenTaxonomyManager: () => this.openTaxonomy(),
+                  onScrollStateChange: (scrolled: boolean) => this.statsScrolled = scrolled,
                   topRevision: this.topRequests[4],
                   requestedMonth: this.statsMonth, requestedMonthRevision: this.statsMonthRevision,
                   refreshRevision: this.statsRefreshRevision,

@@ -98,6 +98,7 @@ export class FavoritesController {
     try {
       await this.transport.delete<DeleteResponse>(`/favorites?id=${encodeURIComponent(id)}`);
       if (lifetime !== this.lifetime) return false;
+      this.errorMessage = '';
       this.favorites = this.favorites.filter((item: FavoriteHeading) => item.id !== id);
       return true;
     } catch (error) {

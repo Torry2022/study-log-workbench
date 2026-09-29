@@ -1080,6 +1080,7 @@ export struct LogsReaderPage {
       };
       const response = await apiClient.post<AddFavoriteResponse>('/favorites', request);
       if (lifecycle !== this.lifecycle || date !== this.selectedDate) return;
+      appFeedback.dismissScope('favorite-add');
       this.favoritesData.favorites = [...this.favoritesData.favorites, response.favorite];
       this.favoriteDeleteId = '';
       this.favoriteSuccessHeadingId = heading.id;
@@ -1094,7 +1095,7 @@ export struct LogsReaderPage {
       }, 5200);
     } catch (error) {
       if (lifecycle === this.lifecycle && date === this.selectedDate)
-        appFeedback.show(error instanceof ApiError ? error.message : '收藏失败', 'error');
+        appFeedback.show(error instanceof ApiError ? error.message : '收藏失败', 'error', 3600, 'favorite-add');
     } finally { if (lifecycle === this.lifecycle) this.favoriteBusy = false; }
   }
 

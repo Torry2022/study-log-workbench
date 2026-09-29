@@ -209,6 +209,31 @@ test('a successful note update remains visible when its follow-up list refresh f
   assert.equal(controller.loadFailed, true);
 });
 
+test('a new note and its navigation facet remain visible when follow-up refresh fails', async () => {
+  const { NoteEditorSession } = await loadClass('../entry/src/main/ets/features/notes/NoteEditorSession.ets',
+    () => ({ util: { generateRandomUUID: () => '00000000-0000-0000-0000-000000000001' } }));
+  const editor = new NoteEditorSession(); editor.startNew('2026-09-28T17:00:00+08:00');
+  editor.title = '新随记'; editor.body = '合成正文'; editor.tagsText = '合成标签';
+  const saved = { id: editor.clientId, title: editor.title, displayTitle: editor.title, body: editor.body,
+    insight: '', sources: [], tags: ['合成标签'], recordedAt: editor.recordedAt,
+    createdAt: editor.recordedAt, updatedAt: editor.recordedAt, year: '2026', version: 'v1' };
+  let visible = [], years = [], tags = [];
+  const view = { blocked: () => false, uploading: () => false,
+    navigationChanged: (nextYears, nextTags) => { years = nextYears; tags = nextTags; },
+    loaded: () => { visible = controller.notes.map(note => note.id); }, success: () => {}, failure: () => {} };
+  const transport = { post: async () => ({ notes: [saved] }), get: async () => { throw new ApiError('读取失败', 503); } };
+  const { NotesController } = await loadClass('../entry/src/main/ets/features/notes/NotesController.ets',
+    () => ({ ApiError }));
+  const controller = new NotesController(transport, editor, view);
+  await controller.save();
+  assert.equal(editor.editing, false);
+  assert.equal(visible.join(','), saved.id);
+  assert.equal(years[0].value, '2026');
+  assert.equal(years[0].count, 1);
+  assert.equal(tags[0].value, '合成标签');
+  assert.equal(controller.loadFailed, true);
+});
+
 test('a successful note delete removes the old card when its follow-up list refresh fails', async () => {
   const note = { id: 'note-1', version: 'v0', tags: [], year: '2026' };
   let visible = [], loaded = 0;

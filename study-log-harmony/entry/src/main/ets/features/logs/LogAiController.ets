@@ -25,6 +25,8 @@ export class LogAiController {
 
   constructor(transport: ApiClient) { this.transport = transport; }
 
+  get requestRevision(): number { return this.revision; }
+
   dispose(): void { this.revision++; this.busy = false; this.importing = false; this.reviewOpen = false; }
 
   async generate(date: string): Promise<void> {

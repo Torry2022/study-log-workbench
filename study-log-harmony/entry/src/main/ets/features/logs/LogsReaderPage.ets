@@ -3010,36 +3010,52 @@ export struct LogsReaderPage {
     if (!this.day || !this.ai.output.trim() || this.ai.busy) return;
     const lifecycle = this.lifecycle;
     const date = this.day.date;
+    const revision = this.ai.requestRevision;
+    const output = this.ai.output;
+    const current = (): boolean => lifecycle === this.lifecycle && this.day?.date === date &&
+      revision === this.ai.requestRevision && this.ai.outputDate === date && this.ai.output === output && !this.ai.busy;
     if (this.ai.outputDate !== date) { this.ai.message = '请切回生成草稿时的日块'; return; }
     try {
       if (!await this.prepareEditorForAi(date, lifecycle)) return;
+      if (!current()) return;
       const snapshot = await this.editor.command('snapshot');
-      if (snapshot.documentKey !== date || lifecycle !== this.lifecycle || this.day?.date !== date) return;
+      if (snapshot.documentKey !== date || !current()) return;
       const body = snapshot.text.trimEnd();
-      await this.editor.replace(`${body}${body ? '\n\n' : ''}${this.ai.output.trim()}\n`);
-      if (lifecycle !== this.lifecycle || this.day?.date !== date) return;
+      await this.editor.replace(`${body}${body ? '\n\n' : ''}${output.trim()}\n`);
+      if (!current()) return;
       this.sourceMode = true; this.splitMode = false;
       appFeedback.show('AI 草稿已写入当前编辑草稿，尚未保存');
-    } catch (error) { this.ai.message = error instanceof Error ? error.message : '写入编辑草稿失败'; }
+    } catch (error) {
+      if (current()) this.ai.message = error instanceof Error ? error.message : '写入编辑草稿失败';
+    }
   }
 
   private async applyAiHighlight(): Promise<void> {
     if (!this.day || this.ai.busy) return;
     const lifecycle = this.lifecycle;
     const date = this.day.date;
+    const revision = this.ai.requestRevision;
+    const highlighted = this.ai.highlighted;
+    const originalDraft = this.ai.originalDraft;
+    const current = (): boolean => lifecycle === this.lifecycle && this.day?.date === date &&
+      revision === this.ai.requestRevision && this.ai.highlightDate === date &&
+      this.ai.highlighted === highlighted && this.ai.originalDraft === originalDraft && !this.ai.busy;
     try {
       if (!await this.prepareEditorForAi(date, lifecycle)) return;
+      if (!current()) return;
       const snapshot = await this.editor.command('snapshot');
-      if (lifecycle !== this.lifecycle || snapshot.documentKey !== date || this.ai.highlightDate !== date ||
-        snapshot.text !== this.ai.originalDraft) {
+      if (!current()) return;
+      if (snapshot.documentKey !== date || snapshot.text !== originalDraft) {
         this.ai.message = '当前日块或编辑草稿已变化，请重新标注重点'; return;
       }
-      await this.editor.replace(this.ai.highlighted);
-      if (this.day?.date !== date) return;
+      await this.editor.replace(highlighted);
+      if (!current()) return;
       this.ai.reviewOpen = false;
       this.sourceMode = true; this.splitMode = false;
       appFeedback.show('已应用重点标注，尚未保存');
-    } catch (error) { this.ai.message = error instanceof Error ? error.message : '应用重点标注失败'; }
+    } catch (error) {
+      if (current()) this.ai.message = error instanceof Error ? error.message : '应用重点标注失败';
+    }
   }
 
   private openAiTools(mode: string = 'generate'): void {

@@ -26,3 +26,11 @@ test('a lost day-write response is accepted only for the exact saved body', asyn
   assert.equal(matchesSubmittedDay({ ...day, version: null }, body), false);
   assert.equal(matchesSubmittedDay(day, `${body}\n`), false);
 });
+
+test('a lost delete response is accepted only when the selected day is absent', async () => {
+  const { matchesDeletedDay } = await loadBody();
+  const day = { date: '2026-02-05', exists: false, version: null, content: '' };
+  assert.equal(matchesDeletedDay(day, '2026-02-05'), true);
+  assert.equal(matchesDeletedDay({ ...day, exists: true }, '2026-02-05'), false);
+  assert.equal(matchesDeletedDay({ ...day, date: '2026-02-06' }, '2026-02-05'), false);
+});

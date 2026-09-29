@@ -11,7 +11,7 @@ import { LengthMetrics } from '@kit.ArkUI';
 import { saveExport } from '../../common/files/DocumentExport';
 import { EditorLinkPicker } from '../../common/editor/EditorLinkPicker';
 import { DayEntry, DaySummary, MonthSummary } from './LogModels';
-import { editableDayBody, matchesSubmittedDay } from './LogDayBody';
+import { editableDayBody, matchesDeletedDay, matchesSubmittedDay } from './LogDayBody';
 import { LogReadRepository } from './LogReadRepository';
 import { LogWriteRepository } from './LogWriteRepository';
 import { LogNavigation } from './components/LogNavigation';
@@ -1787,6 +1787,23 @@ export struct LogsReaderPage {
     });
   }
 
+  private acceptDeletedDay(day: DayEntry, date: string): void {
+    this.day = day;
+    const body = this.bodyFromDay(day);
+    this.savedText = body;
+    this.draftBaseVersion = day.version;
+    this.draftText = body;
+    this.editorInitialText = body;
+    this.previewText = body;
+    this.dirty = false;
+    this.reportDraft();
+    this.sourceMode = false;
+    this.splitMode = false;
+    this.reads.invalidate();
+    this.refreshNavigation(date);
+    appFeedback.show('日块已删除', 'success');
+  }
+
   private async deleteDay(date: string, version: string): Promise<void> {
     if (this.deleting || this.saving || this.backupOpen || this.linkOpen) return;
     const lifecycle = this.lifecycle;
@@ -1796,23 +1813,22 @@ export struct LogsReaderPage {
     try {
       const response = await this.writes.delete({ date, baseVersion: version });
       if (lifecycle !== this.lifecycle || revision !== this.dayRevision || this.day?.date !== date) return;
-      if (!response.day || response.day.date !== date || response.day.exists) throw new Error('删除响应格式异常');
-      this.day = response.day;
-      const body = this.bodyFromDay(response.day);
-      this.savedText = body;
-      this.draftBaseVersion = response.day.version;
-      this.draftText = body;
-      this.editorInitialText = body;
-      this.previewText = body;
-      this.dirty = false;
-      this.reportDraft();
-      this.sourceMode = false;
-      this.splitMode = false;
-      this.reads.invalidate();
-      this.refreshNavigation(date);
-      appFeedback.show('日块已删除', 'success');
+      if (!response.day || !matchesDeletedDay(response.day, date)) throw new Error('删除响应格式异常');
+      this.acceptDeletedDay(response.day, date);
     } catch (error) {
       if (lifecycle !== this.lifecycle || revision !== this.dayRevision) return;
+      const uncertain = !(error instanceof ApiError) || error.statusCode === 0 || error.statusCode === 404 ||
+        error.statusCode === 409 || error.statusCode >= 500 || error.code === 'INVALID_RESPONSE';
+      if (uncertain) {
+        try {
+          const current = await this.reads.day(date);
+          if (lifecycle !== this.lifecycle || revision !== this.dayRevision || this.day?.date !== date) return;
+          if (current.day && matchesDeletedDay(current.day, date)) {
+            this.acceptDeletedDay(current.day, date);
+            return;
+          }
+        } catch (_) { if (lifecycle !== this.lifecycle || revision !== this.dayRevision) return; }
+      }
       this.saveError = error instanceof ApiError && error.statusCode === 409 ?
         '源文件已变化，未删除。请刷新后核对。' : error instanceof Error ? error.message : '删除失败，请重试';
     } finally {

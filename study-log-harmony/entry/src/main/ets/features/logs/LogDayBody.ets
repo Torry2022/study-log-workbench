@@ -8,3 +8,7 @@ export function editableDayBody(day: DayEntry): string {
 export function matchesSubmittedDay(day: DayEntry, submittedText: string): boolean {
   return day.exists && !!day.version && editableDayBody(day) === submittedText;
 }
+
+export function matchesDeletedDay(day: DayEntry, date: string): boolean {
+  return day.date === date && !day.exists;
+}

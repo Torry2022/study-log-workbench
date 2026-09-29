@@ -85,8 +85,8 @@ export function useFavorites(active: boolean) {
   async function remove(id: string) {
     return Boolean(await mutate<{ ok: boolean }>(id, { method: "DELETE" }, current => ({ ...current, favorites: current.favorites.filter(item => item.id !== id) }), `?id=${encodeURIComponent(id)}`));
   }
-  async function setGroups(id: string, groupIds: string[]) {
-    const result = await mutate<{ favorite: FavoriteHeading }>(id, { method: "PATCH", body: JSON.stringify({ id, groupIds }) }, (current, payload) => replaceFavorite(current, payload.favorite));
+  async function setGroup(id: string, groupId: string, selected: boolean) {
+    const result = await mutate<{ favorite: FavoriteHeading }>(id, { method: "PATCH", body: JSON.stringify({ action: "setGroup", id, groupId, selected }) }, (current, payload) => replaceFavorite(current, payload.favorite));
     return result?.favorite || null;
   }
   async function createGroup(name: string) {
@@ -104,5 +104,5 @@ export function useFavorites(active: boolean) {
   const visible = useMemo(() => filterFavorites(snapshot.favorites, filters), [snapshot.favorites, filters]);
   function filter(patch: Partial<FavoriteFilters>) { setFilters(current => ({ ...current, ...patch })); }
   return { ...snapshot, active, loaded, loading, error, busy: Boolean(busyId), busyId, reload,
-    add, remove, setGroups, createGroup, renameGroup, deleteGroup, filters, filter, visible, view, setView: chooseView };
+    add, remove, setGroup, createGroup, renameGroup, deleteGroup, filters, filter, visible, view, setView: chooseView };
 }

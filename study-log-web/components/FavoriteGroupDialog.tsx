@@ -22,11 +22,11 @@ export function FavoriteGroupDialog({ favoriteId, favorites, onClose, onOpenCent
       {favorites.error && <div className="favorites-error" role="alert">{favorites.error}</div>}
       <div className="favorite-group-dialog-list">{favorites.groups.length ? favorites.groups.map(group => <label className="favorite-group-option" key={group.id}>
         <span><strong>{group.name}</strong><small>{favorites.favorites.filter(item => item.groupIds.includes(group.id)).length} 条收藏</small></span>
-        <input type="checkbox" checked={favorite.groupIds.includes(group.id)} disabled={favorites.busy} onChange={event => void favorites.setGroups(favorite.id, event.target.checked ? [...favorite.groupIds, group.id] : favorite.groupIds.filter(id => id !== group.id))} />
+        <input type="checkbox" checked={favorite.groupIds.includes(group.id)} disabled={favorites.busy} onChange={event => void favorites.setGroup(favorite.id, group.id, event.target.checked)} />
       </label>) : <div className="favorite-group-empty">还没有自定义分组，可先创建一个。</div>}</div>
       <form className="favorite-group-dialog-create" onSubmit={async event => {
         event.preventDefault(); const group = await favorites.createGroup(name.trim());
-        if (group && await favorites.setGroups(favorite.id, [...favorite.groupIds, group.id])) setName("");
+        if (group && await favorites.setGroup(favorite.id, group.id, true)) setName("");
       }}><input value={name} onChange={event => setName(event.target.value)} placeholder="新建分组名称" aria-label="新建收藏分组名称" disabled={favorites.busy} /><button type="submit" disabled={!name.trim() || favorites.busy}>创建并加入</button></form>
       <div className="favorite-group-dialog-actions"><button type="button" disabled={favorites.busy} onClick={() => requestExit(() => { onClose(); onOpenCenter?.(); })}><Star size={14} />收藏中心</button>
         <div><button className="danger" type="button" disabled={favorites.busy} onClick={async () => { if (await favorites.remove(favorite.id)) onClose(); }}>取消收藏</button><button className="primary" type="button" onClick={close} disabled={favorites.busy}>完成</button></div>

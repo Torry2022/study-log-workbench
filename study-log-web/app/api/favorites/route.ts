@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { addFavorite, createFavoriteGroup, FavoriteInputError, listFavoritesSnapshot, removeFavorite,
-  removeFavoriteGroup, renameFavoriteGroup, updateFavoriteGroups } from "@/lib/favorites-store";
+  removeFavoriteGroup, renameFavoriteGroup, setFavoriteGroupMembership, updateFavoriteGroups } from "@/lib/favorites-store";
 
 export const runtime = "nodejs";
 const headers = { "Cache-Control": "no-store" };
@@ -35,6 +35,7 @@ export async function PATCH(request: NextRequest) {
   try {
     const input = await body(request);
     if (input.action === "renameGroup") return Response.json({ group: await renameFavoriteGroup(string(input.groupId), string(input.name)) }, { headers });
+    if (input.action === "setGroup") return Response.json({ favorite: await setFavoriteGroupMembership(string(input.id), string(input.groupId), input.selected) }, { headers });
     if (input.action !== undefined) throw new FavoriteInputError("不支持的收藏操作");
     return Response.json({ favorite: await updateFavoriteGroups(string(input.id), input.groupIds) }, { headers });
   } catch (error) { return failure(error); }

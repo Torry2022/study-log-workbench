@@ -193,3 +193,16 @@ export async function updateFavoriteGroups(id: string, groupIds: unknown): Promi
     return resolveFavorite(favorite);
   });
 }
+
+export async function setFavoriteGroupMembership(id: string, groupId: string, selected: unknown): Promise<FavoriteHeading> {
+  const target = requiredText(id, "收藏标识"), group = requiredText(groupId, "分组标识");
+  if (typeof selected !== "boolean") throw new FavoriteInputError("selected必须是布尔值");
+  return mutate(async file => {
+    const favorite = file.favorites.find(item => item.id === target);
+    if (!favorite) throw new FavoriteInputError("收藏不存在");
+    if (selected && !file.groups.some(item => item.id === group)) throw new FavoriteInputError("收藏分组不存在");
+    favorite.groupIds = selected ? [...new Set([...favorite.groupIds, group])] : favorite.groupIds.filter(id => id !== group);
+    favorite.updatedAt = new Date().toISOString();
+    return resolveFavorite(favorite);
+  });
+}

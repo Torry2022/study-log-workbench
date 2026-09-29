@@ -62,6 +62,26 @@ test("groups deduplicate, rename, allow multi-membership and remove without dele
   assert.equal((await store.listFavoriteGroups()).length, 1);
 });
 
+test("single-group changes preserve independent concurrent memberships and retry safely", async t => {
+  await fixture(t);
+  const favorite = await store.addFavorite(input());
+  const first = await store.createFavoriteGroup("First");
+  const second = await store.createFavoriteGroup("Second");
+  await Promise.all([
+    store.setFavoriteGroupMembership(favorite.id, first.id, true),
+    store.setFavoriteGroupMembership(favorite.id, second.id, true)
+  ]);
+  assert.deepEqual((await store.listFavorites())[0].groupIds, [first.id, second.id]);
+  await store.setFavoriteGroupMembership(favorite.id, first.id, true);
+  assert.deepEqual((await store.listFavorites())[0].groupIds, [first.id, second.id]);
+  await store.setFavoriteGroupMembership(favorite.id, first.id, false);
+  await store.setFavoriteGroupMembership(favorite.id, first.id, false);
+  assert.deepEqual((await store.listFavorites())[0].groupIds, [second.id]);
+  await store.removeFavoriteGroup(second.id);
+  await assert.rejects(store.setFavoriteGroupMembership(favorite.id, second.id, true), store.FavoriteInputError);
+  assert.deepEqual((await store.listFavorites())[0].groupIds, []);
+});
+
 test("deleted or renamed source sections remain visible as unresolved favorites", async t => {
   const { log } = await fixture(t);
   await store.addFavorite(input(1));
@@ -127,6 +147,7 @@ test("malformed JSON/schema are not silently overwritten and invalid input write
     await assert.rejects(store.addFavorite(bad), store.FavoriteInputError);
   }
   await assert.rejects(store.updateFavoriteGroups("id", "wrong"), store.FavoriteInputError);
+  await assert.rejects(store.setFavoriteGroupMembership("id", "group", "true"), store.FavoriteInputError);
   await assert.rejects(fs.stat(file), { code: "ENOENT" });
 });
 
@@ -188,6 +209,11 @@ test("API authenticates all methods before body access, preserves contracts and 
   const favorite = (await (await module.exports.POST(request(input()))).json()).favorite;
   const assigned = await module.exports.PATCH(request({ id: favorite.id, groupIds: [group.id] }));
   assert.deepEqual((await assigned.json()).favorite.groupIds, [group.id]);
+  const removed = await module.exports.PATCH(request({ action: "setGroup", id: favorite.id, groupId: group.id, selected: false }));
+  assert.deepEqual((await removed.json()).favorite.groupIds, []);
+  const restored = await module.exports.PATCH(request({ action: "setGroup", id: favorite.id, groupId: group.id, selected: true }));
+  assert.deepEqual((await restored.json()).favorite.groupIds, [group.id]);
+  assert.equal((await module.exports.PATCH(request({ action: "setGroup", id: favorite.id, groupId: group.id, selected: "true" }))).status, 400);
   const listed = await module.exports.GET({});
   assert.equal(listed.headers.get("cache-control"), "no-store");
   assert.equal((await listed.json()).favorites.length, 1);

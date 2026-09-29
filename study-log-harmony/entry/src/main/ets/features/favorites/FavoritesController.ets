@@ -114,8 +114,7 @@ export class FavoritesController {
     this.groupUpdating = true;
     this.errorMessage = '';
     try {
-      const request: FavoriteGroupsUpdateRequest = { id, groupIds: selected ? [...favorite.groupIds, groupId] :
-        favorite.groupIds.filter((value: string) => value !== groupId) };
+      const request: FavoriteGroupsUpdateRequest = { action: 'setGroup', id, groupId, selected };
       const response = await this.transport.patch<FavoriteUpdateResponse>('/favorites', request);
       if (lifetime !== this.lifetime) return false;
       this.favorites = this.favorites.map((item: FavoriteHeading) => item.id === response.favorite.id ? response.favorite : item);

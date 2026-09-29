@@ -84,3 +84,29 @@ test('retrying a group creation after an uncertain response does not duplicate a
   assert.equal(c.groups.length, 1);
   assert.equal(c.selectedGroup, group.id);
 });
+
+test('stale Harmony group editors send one membership change without replacing another client\'s groups', async () => {
+  const favorite = { id: 'favorite-1', groupIds: [] };
+  const remote = { favorites: [favorite], groups: [{ id: 'a' }, { id: 'b' }] };
+  const requests = [];
+  const transport = {
+    get: async () => structuredClone(remote),
+    patch: async (_path, request) => {
+      requests.push(request);
+      assert.equal(request.action, 'setGroup');
+      assert.equal('groupIds' in request, false);
+      favorite.groupIds = request.selected ? [...new Set([...favorite.groupIds, request.groupId])] :
+        favorite.groupIds.filter(id => id !== request.groupId);
+      return { favorite: structuredClone(favorite) };
+    }
+  };
+  const first = await controller(transport);
+  const second = await controller(transport);
+  await Promise.all([first.load(), second.load()]);
+  assert.equal(await first.updateGroup(favorite.id, 'a', true), true);
+  assert.equal(await second.updateGroup(favorite.id, 'b', true), true);
+  assert.deepEqual(favorite.groupIds, ['a', 'b']);
+  assert.equal(await first.updateGroup(favorite.id, 'a', false), true);
+  assert.deepEqual(favorite.groupIds, ['b']);
+  assert.equal(requests.length, 3);
+});

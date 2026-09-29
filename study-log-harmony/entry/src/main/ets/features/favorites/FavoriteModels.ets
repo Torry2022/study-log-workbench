@@ -43,8 +43,10 @@ export interface FavoriteGroupResponse {
 }
 
 export interface FavoriteGroupsUpdateRequest {
+  action: string;
   id: string;
-  groupIds: string[];
+  groupId: string;
+  selected: boolean;
 }
 
 export interface FavoriteUpdateResponse {

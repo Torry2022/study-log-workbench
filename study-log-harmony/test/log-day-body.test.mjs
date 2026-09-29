@@ -34,3 +34,14 @@ test('a lost delete response is accepted only when the selected day is absent', 
   assert.equal(matchesDeletedDay({ ...day, exists: true }, '2026-02-05'), false);
   assert.equal(matchesDeletedDay({ ...day, date: '2026-02-06' }, '2026-02-05'), false);
 });
+
+test('a restored backup is confirmed only for the selected day and historical body', async () => {
+  const { matchesRestoredContent } = await loadBody();
+  const day = { date: '2026-02-05', exists: true, version: 'v3',
+    content: '## 2026-02-05\n\n### 1. 并发控制\n\n原有资料。' };
+  const historical = '## 2026-02-05\n\n### 1. 并发控制\n\n原有资料。\n\n---\n';
+  assert.equal(matchesRestoredContent(day, '2026-02-05', historical), true);
+  assert.equal(matchesRestoredContent(day, '2026-02-06', historical), false);
+  assert.equal(matchesRestoredContent({ ...day, exists: false }, '2026-02-05', historical), false);
+  assert.equal(matchesRestoredContent({ ...day, content: `${day.content}\n他人修改` }, '2026-02-05', historical), false);
+});

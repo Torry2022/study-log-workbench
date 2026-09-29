@@ -1359,11 +1359,15 @@ export struct LogsReaderPage {
     });
   }
 
-  private applyRestoredDay(day: DayEntry): void {
+  private async applyRestoredDay(day: DayEntry): Promise<void> {
     if (day.date !== this.selectedDate) return;
     this.cancelPendingImages();
-    this.day = day;
     const body = this.bodyFromDay(day);
+    if (this.editor.ready && this.editor.documentKey === day.date) {
+      await this.editor.replace(body, true);
+    }
+    if (day.date !== this.selectedDate) return;
+    this.day = day;
     this.savedText = body;
     this.draftBaseVersion = day.version;
     this.draftText = body;
@@ -1787,9 +1791,13 @@ export struct LogsReaderPage {
     });
   }
 
-  private acceptDeletedDay(day: DayEntry, date: string): void {
-    this.day = day;
+  private async acceptDeletedDay(day: DayEntry, date: string): Promise<void> {
     const body = this.bodyFromDay(day);
+    if (this.editor.ready && this.editor.documentKey === date) {
+      await this.editor.replace(body, true);
+    }
+    if (date !== this.selectedDate) return;
+    this.day = day;
     this.savedText = body;
     this.draftBaseVersion = day.version;
     this.draftText = body;
@@ -1814,7 +1822,7 @@ export struct LogsReaderPage {
       const response = await this.writes.delete({ date, baseVersion: version });
       if (lifecycle !== this.lifecycle || revision !== this.dayRevision || this.day?.date !== date) return;
       if (!response.day || !matchesDeletedDay(response.day, date)) throw new Error('删除响应格式异常');
-      this.acceptDeletedDay(response.day, date);
+      await this.acceptDeletedDay(response.day, date);
     } catch (error) {
       if (lifecycle !== this.lifecycle || revision !== this.dayRevision) return;
       const uncertain = !(error instanceof ApiError) || error.statusCode === 0 || error.statusCode === 404 ||
@@ -1824,7 +1832,7 @@ export struct LogsReaderPage {
           const current = await this.reads.day(date);
           if (lifecycle !== this.lifecycle || revision !== this.dayRevision || this.day?.date !== date) return;
           if (current.day && matchesDeletedDay(current.day, date)) {
-            this.acceptDeletedDay(current.day, date);
+            await this.acceptDeletedDay(current.day, date);
             return;
           }
         } catch (_) { if (lifecycle !== this.lifecycle || revision !== this.dayRevision) return; }

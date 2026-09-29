@@ -1,4 +1,5 @@
 import { ApiClient } from '../../common/network/ApiClient';
+import { DayResponse } from './LogModels';
 import { BackupOverviewResponse, BackupPreviewResponse, BackupRestoreRequest, BackupRestoreResponse } from './BackupModels';
 
 export class BackupRepository {
@@ -18,5 +19,9 @@ export class BackupRepository {
 
   restore(request: BackupRestoreRequest): Promise<BackupRestoreResponse> {
     return this.transport.post<BackupRestoreResponse>('/backups/restore', request);
+  }
+
+  day(date: string): Promise<DayResponse> {
+    return this.transport.get<DayResponse>(`/logs/day?date=${encodeURIComponent(date)}`);
   }
 }

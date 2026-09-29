@@ -9,6 +9,7 @@ import { workspaceSerifFamily } from '../../../common/ui/Typography';
 import { ToolbarAction } from '../../../common/ui/ToolbarAction';
 import { BackupPreview, BackupVersion } from '../BackupModels';
 import { BackupRepository } from '../BackupRepository';
+import { matchesRestoredContent } from '../LogDayBody';
 import { DayEntry } from '../LogModels';
 
 @Component
@@ -19,7 +20,7 @@ export struct BackupPanel {
   @Prop date: string = '';
   onClose: () => void = () => {};
   onBeforeRestore: () => Promise<boolean> = async () => false;
-  onRestored: (day: DayEntry) => void = () => {};
+  onRestored: (day: DayEntry) => Promise<void> = async () => {};
   onBusyChange: (busy: boolean) => void = () => {};
   @State private versions: BackupVersion[] = [];
   @State private nextCursor: string | null = null;
@@ -149,19 +150,50 @@ export struct BackupPanel {
     }
     this.restoring = true;
     this.restoreError = '';
+    let restoredDay: DayEntry | undefined = undefined;
     try {
-      const response = await this.repository.restore({ date: preview.date, kind: 'write', id: preview.id,
-        baseVersion: preview.currentVersion, backupVersion: preview.backupVersion });
-      if (lifecycle !== this.lifecycle || revision !== this.previewRevision) return;
-      if (!response.day || response.day.date !== preview.date || !response.day.exists || !response.day.version) {
-        throw new Error('恢复响应格式异常');
+      try {
+        const response = await this.repository.restore({ date: preview.date, kind: 'write', id: preview.id,
+          baseVersion: preview.currentVersion, backupVersion: preview.backupVersion });
+        if (lifecycle !== this.lifecycle || revision !== this.previewRevision) return;
+        if (!response.day || response.day.date !== preview.date || !response.day.exists || !response.day.version) {
+          throw new Error('恢复响应格式异常');
+        }
+        restoredDay = response.day;
+      } catch (error) {
+        if (lifecycle !== this.lifecycle || revision !== this.previewRevision) return;
+        const uncertain = !(error instanceof ApiError) || error.statusCode === 0 || error.statusCode === 409 ||
+          error.statusCode >= 500 || error.code === 'INVALID_RESPONSE';
+        let verificationFailed = false;
+        if (uncertain) {
+          try {
+            const current = await this.repository.day(preview.date);
+            if (lifecycle !== this.lifecycle || revision !== this.previewRevision) return;
+            if (current.day && matchesRestoredContent(current.day, preview.date, preview.historicalContent)) {
+              restoredDay = current.day;
+            } else if (current.day && current.day.version !== preview.currentVersion) {
+              this.conflict = true;
+              this.restoreError = '内容已变化，请重新预览并确认后再恢复。';
+              return;
+            }
+          } catch (_) { verificationFailed = true; }
+        }
+        if (!restoredDay) {
+          this.conflict = !verificationFailed && error instanceof ApiError && error.statusCode === 409;
+          this.restoreError = verificationFailed ? '恢复结果未确认，请检查连接后重试。' :
+            this.conflict ? '内容已变化，请重新预览并确认后再恢复。' :
+            error instanceof Error ? error.message : '恢复失败';
+          return;
+        }
       }
-      this.onRestored(response.day);
-    } catch (error) {
-      if (lifecycle !== this.lifecycle || revision !== this.previewRevision) return;
-      this.conflict = error instanceof ApiError && error.statusCode === 409;
-      this.restoreError = this.conflict ? '内容已变化，请重新预览并确认后再恢复。' :
-        error instanceof Error ? error.message : '恢复失败';
+      if (restoredDay) {
+        try { await this.onRestored(restoredDay); }
+        catch (_) {
+          if (lifecycle === this.lifecycle && revision === this.previewRevision) {
+            this.restoreError = '服务器已恢复，但编辑器同步失败。请刷新日志。';
+          }
+        }
+      }
     } finally {
       if (lifecycle === this.lifecycle) {
         this.restoring = false;

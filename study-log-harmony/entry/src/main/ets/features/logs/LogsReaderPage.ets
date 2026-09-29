@@ -3388,11 +3388,13 @@ export struct LogsReaderPage {
                   }
                 },
                 onContentRendered: (_content: string, date: string) => {
-                  if (date === this.selectedDate && !this.dayLoading && !this.daysLoading) {
-                    this.readerReady = true;
-                    this.renderedPreviewDate = date;
-                    this.workspaceTransition.finish('document');
-                  }
+                  if (date !== this.selectedDate) return;
+                  this.renderedPreviewDate = date;
+                  this.workspaceTransition.finish('document');
+                },
+                onRenderReady: () => {
+                  this.readerReady = true;
+                  this.workspaceTransition.finish('document');
                 },
                 onRenderFailed: (date: string) => {
                   if (date !== this.selectedDate) return;

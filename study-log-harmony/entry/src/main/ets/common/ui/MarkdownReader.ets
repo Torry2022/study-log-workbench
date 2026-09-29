@@ -298,12 +298,7 @@ export struct MarkdownReader {
 
   private handleTargetResult(url: string): boolean {
     if (!url.startsWith('study-log://target-result?')) return false;
-    const values: Record<string, string> = {};
-    url.slice(url.indexOf('?') + 1).split('&').forEach((part: string) => {
-      const separator = part.indexOf('=');
-      if (separator < 0) return;
-      values[decodeURIComponent(part.slice(0, separator))] = decodeURIComponent(part.slice(separator + 1));
-    });
+    const values = this.queryValues(url);
     if (`${this.handledTargetRevision}` === values['revision'] && values['kind']) {
       this.onTargetResult(values['kind'], values['found'] === '1');
     }
@@ -312,29 +307,14 @@ export struct MarkdownReader {
 
   private handleInternalLink(url: string): boolean {
     if (!url.startsWith('study-log://wikilink?')) return false;
-    const query = url.slice(url.indexOf('?') + 1);
-    let date = '';
-    let heading = '';
-    query.split('&').forEach((part: string) => {
-      const separator = part.indexOf('=');
-      if (separator < 0) return;
-      const key = decodeURIComponent(part.slice(0, separator));
-      const value = decodeURIComponent(part.slice(separator + 1));
-      if (key === 'date') date = value.trim();
-      if (key === 'heading') heading = value.trim();
-    });
-    this.onInternalLink(date, heading);
+    const values = this.queryValues(url);
+    this.onInternalLink((values['date'] || '').trim(), (values['heading'] || '').trim());
     return true;
   }
 
   private handleCitationLink(url: string): boolean {
     if (!url.startsWith('study-log://citation?')) return false;
-    const values: Record<string, string> = {};
-    url.slice(url.indexOf('?') + 1).split('&').forEach((part: string) => {
-      const separator = part.indexOf('=');
-      if (separator < 0) return;
-      values[decodeURIComponent(part.slice(0, separator))] = decodeURIComponent(part.slice(separator + 1));
-    });
+    const values = this.queryValues(url);
     const headingIndex = Number.parseInt(values['headingIndex'] || '-1');
     this.onCitationLink(values['date'] || '', values['heading'] || '', Number.isNaN(headingIndex) ? -1 : headingIndex);
     return true;
@@ -360,7 +340,8 @@ export struct MarkdownReader {
     url.slice(queryIndex + 1).split('&').forEach((part: string) => {
       const separator = part.indexOf('=');
       if (separator < 0) return;
-      values[decodeURIComponent(part.slice(0, separator))] = decodeURIComponent(part.slice(separator + 1));
+      values[decodeURIComponent(part.slice(0, separator).replace(/\+/g, ' '))] =
+        decodeURIComponent(part.slice(separator + 1).replace(/\+/g, ' '));
     });
     return values;
   }

@@ -317,30 +317,45 @@ export struct LogsReaderPage {
     this.favoritesData.load();
     const commands = new DesktopLogCommands();
     commands.entries = (menu: string): DesktopMenuEntry[] => {
+      const logActive = this.selectedTab() === 0;
+      const ready = logActive && !!this.day && !this.dayLoading && !this.daysLoading &&
+        !this.saving && !this.deleting && !this.exportBusy && !this.imageBusy && !this.backupOpen && !this.linkOpen;
+      const editing = ready && this.editorReady && (this.sourceMode || this.splitMode);
       if (menu === '文件') return [
         new DesktopMenuEntry('newLog', '新建日志…', true, false, 'Ctrl+Alt+N'),
-        new DesktopMenuEntry('refresh', '刷新', !!this.day && !this.dirty),
-        new DesktopMenuEntry('export', '导出', !!this.day?.exists),
-        new DesktopMenuEntry('backup', '备份', !!this.day?.exists)
+        new DesktopMenuEntry('save', '保存当前日志', ready && this.dirty, false, 'Ctrl+S'),
+        new DesktopMenuEntry('export-day', '导出当前日块', ready && !!this.day?.exists),
+        new DesktopMenuEntry('export-file', '导出当前源文件', ready && !!this.day?.exists),
+        new DesktopMenuEntry('export-all', '导出全部日志', logActive && !this.exportBusy),
+        new DesktopMenuEntry('backup', '备份与恢复', ready && !!this.day?.exists)
       ];
-      if (menu === '编辑') return [new DesktopMenuEntry('save', '保存', this.dirty && !this.saving, false, 'Ctrl+S')];
+      if (menu === '编辑') return [
+        new DesktopMenuEntry('undo', '撤销', editing, false, 'Ctrl+Z'),
+        new DesktopMenuEntry('redo', '重做', editing, false, 'Ctrl+Shift+Z'),
+        new DesktopMenuEntry('find', '查找与替换', ready, false, 'Ctrl+F')
+      ];
       if (menu === '视图') return [
         new DesktopMenuEntry('sidebar', '左侧导航', this.isWide() && !this.logsReadingMode,
           !this.isDesktopNavigationCollapsed()),
         new DesktopMenuEntry('reading', '阅读模式', this.selectedTab() === 0 && !!this.day &&
           !this.sourceMode && !this.splitMode, this.logsReadingMode),
-        new DesktopMenuEntry('preview', '浏览', !!this.day, !this.sourceMode && !this.splitMode),
-        new DesktopMenuEntry('source', '源码', !!this.day, this.sourceMode),
-        new DesktopMenuEntry('split', '分屏', !!this.day, this.splitMode)
+        new DesktopMenuEntry('preview', '浏览', ready, !this.sourceMode && !this.splitMode),
+        new DesktopMenuEntry('source', '源码', ready, this.sourceMode),
+        new DesktopMenuEntry('split', '分屏', ready, this.splitMode)
       ];
       return [];
     };
     commands.execute = (id: string): void => {
-      if (id === 'newLog') this.openCalendar('create');
-      else if (id === 'refresh') this.refreshLog();
-      else if (id === 'export') this.exportMenuOpen = true;
+      if (!['文件', '编辑', '视图'].flatMap((menu: string) => commands.entries(menu))
+        .some((entry: DesktopMenuEntry) => entry.id === id && entry.enabled)) return;
+      if (id === 'newLog') this.requestModule(0, false, false, () => this.openCalendar('create'));
+      else if (id.startsWith('export-')) this.exportLogs(id.slice('export-'.length));
       else if (id === 'backup') this.backupOpen = true;
       else if (id === 'save') this.save();
+      else if (id === 'undo' || id === 'redo') {
+        this.editor.command(id).catch((error: Error) => this.saveError = error.message);
+      }
+      else if (id === 'find') this.findInEditor();
       else if (id === 'sidebar') this.setDesktopNavigationCollapsed(!this.isDesktopNavigationCollapsed());
       else if (id === 'reading') this.setLogsReadingMode(!this.logsReadingMode);
       else if (id === 'preview') this.switchMode(false);
@@ -2999,7 +3014,7 @@ export struct LogsReaderPage {
       .translate({ x: this.outlineOffset })
   }
 
-  private async prepareEditorForAi(date: string, lifecycle: number): Promise<boolean> {
+  private async prepareEditor(date: string, lifecycle: number): Promise<boolean> {
     if (!this.sourceMode && !this.splitMode) await this.switchMode(true);
     if (lifecycle !== this.lifecycle || this.day?.date !== date) return false;
     for (let attempt = 0; attempt < 50 && this.editor.loadedDocumentKey !== date; attempt += 1) {
@@ -3012,6 +3027,17 @@ export struct LogsReaderPage {
     return true;
   }
 
+  private async findInEditor(): Promise<void> {
+    if (!this.day) return;
+    const date = this.day.date;
+    const lifecycle = this.lifecycle;
+    try {
+      if (!await this.prepareEditor(date, lifecycle)) return;
+      await this.editor.command('find');
+    }
+    catch (error) { this.saveError = error instanceof Error ? error.message : '无法打开查找'; }
+  }
+
   private async applyAiOutput(): Promise<void> {
     if (!this.day || !this.ai.output.trim() || this.ai.busy) return;
     const lifecycle = this.lifecycle;
@@ -3022,7 +3048,7 @@ export struct LogsReaderPage {
       revision === this.ai.requestRevision && this.ai.outputDate === date && this.ai.output === output && !this.ai.busy;
     if (this.ai.outputDate !== date) { this.ai.message = '请切回生成草稿时的日块'; return; }
     try {
-      if (!await this.prepareEditorForAi(date, lifecycle)) return;
+      if (!await this.prepareEditor(date, lifecycle)) return;
       if (!current()) return;
       const snapshot = await this.editor.command('snapshot');
       if (snapshot.documentKey !== date || !current()) return;
@@ -3047,7 +3073,7 @@ export struct LogsReaderPage {
       revision === this.ai.requestRevision && this.ai.highlightDate === date &&
       this.ai.highlighted === highlighted && this.ai.originalDraft === originalDraft && !this.ai.busy;
     try {
-      if (!await this.prepareEditorForAi(date, lifecycle)) return;
+      if (!await this.prepareEditor(date, lifecycle)) return;
       if (!current()) return;
       const snapshot = await this.editor.command('snapshot');
       if (!current()) return;
@@ -3448,7 +3474,16 @@ export struct LogsReaderPage {
         }
         Stack() {
           Row() {
-              if (this.isWide()) { this.desktopNavigation() }
+            if (this.isWide()) {
+              Stack({ alignContent: Alignment.TopStart }) {
+                Column() { this.desktopNavigation() }.width(this.desktopNavigationWidth()).height('100%')
+                  .translate({ x: -this.desktopNavigationWidth() * this.readingProgress })
+              }.width(this.desktopNavigationWidth() * (1 - this.readingProgress)).height('100%')
+                .clip(this.readingTransition.animating || this.logsReadingMode)
+                .hitTestBehavior(this.logsReadingMode ? HitTestMode.None : HitTestMode.Default)
+            }
+            Stack() {
+          Row() {
               QaPage({ workspaceActive: this.qaOpen, navigationSessionId: this.qaSessionId,
                 themePreference: this.themePreference,
                 navigationRequestRevision: this.qaRequestRevision, discardRevision: this.qaDiscardRevision,
@@ -3470,7 +3505,6 @@ export struct LogsReaderPage {
             .hitTestBehavior(this.qaOpen ? HitTestMode.Default : HitTestMode.None)
             .zIndex(this.qaOpen ? 1 : 0)
           Row() {
-              if (this.isWide()) { this.desktopNavigation() }
               NotesPage({ workspaceActive: this.notesOpen,
                 navigationYear: this.noteYearFilter, navigationTag: this.noteTagFilter,
                 navigationNewRevision: this.noteNewRevision, discardRevision: this.noteDiscardRevision,
@@ -3489,7 +3523,6 @@ export struct LogsReaderPage {
             .hitTestBehavior(this.notesOpen ? HitTestMode.Default : HitTestMode.None)
             .zIndex(this.notesOpen ? 1 : 0)
           Row() {
-              if (this.isWide()) { this.desktopNavigation() }
               FavoritesPage({ data: this.favoritesData, viewMode: this.favoritesViewMode,
                 topRevision: this.topRequests[2],
                 onLoadingHintChange: (placement: LoadingHintPlacement) => this.favoritesLoadingHint = placement,
@@ -3505,7 +3538,6 @@ export struct LogsReaderPage {
             .hitTestBehavior(this.favoritesOpen ? HitTestMode.Default : HitTestMode.None)
             .zIndex(this.favoritesOpen ? 1 : 0)
           Row() {
-              if (this.isWide()) { this.desktopNavigation() }
               Stack() {
                 StatsPage({ showTaxonomyManager: true, onOpenTaxonomyManager: () => this.openTaxonomy(),
                   topRevision: this.topRequests[4],
@@ -3536,14 +3568,6 @@ export struct LogsReaderPage {
             .zIndex(this.statsOpen ? 1 : 0)
           Row() {
             if (this.isWide()) {
-              Stack({ alignContent: Alignment.TopStart }) {
-                Column() { this.desktopNavigation() }.width(this.desktopNavigationWidth()).height('100%')
-                  .translate({ x: -this.desktopNavigationWidth() * this.readingProgress })
-              }.width(this.desktopNavigationWidth() * (1 - this.readingProgress)).height('100%')
-                .clip(this.readingTransition.animating || this.logsReadingMode)
-                .hitTestBehavior(this.logsReadingMode ? HitTestMode.None : HitTestMode.Default)
-            }
-            if (this.isWide()) {
               Stack({ alignContent: Alignment.BottomEnd }) {
                 Column() { this.reader() }.width('100%').height('100%')
                 BackToTopControl({ visible: !this.sourceMode && this.previewOffset > 8,
@@ -3573,13 +3597,6 @@ export struct LogsReaderPage {
             .opacity(this.selectedTab() === 0 ? this.moduleReveal : 1)
             .hitTestBehavior(this.selectedTab() === 0 ? HitTestMode.Default : HitTestMode.None)
             .zIndex(this.selectedTab() === 0 ? 1 : 0)
-            .onAreaChange((_: Area, area: Area) => {
-            this.aiAvailableWidth = Number(area.width);
-            this.resizeAiPanel(this.aiWidthAdjusted ? this.aiPanelWidth : 340);
-            if (this.isWide() && this.aiOpen && !this.aiClosing && !this.aiAnimating && this.aiOffset === 420) {
-              this.moveAiTools(0);
-            }
-          })
           if (this.aiOpen && !this.isWide() && this.selectedTab() === 0) {
             Stack({ alignContent: Alignment.TopEnd }) { this.aiToolsPanel() }
               .width('100%').height('100%').zIndex(2)
@@ -3595,6 +3612,15 @@ export struct LogsReaderPage {
               this.compactOutlinePanel()
             }.width('100%').height('100%').zIndex(4)
           }
+            }.layoutWeight(1).height('100%')
+          }.width('100%').height('100%')
+            .onAreaChange((_: Area, area: Area) => {
+              this.aiAvailableWidth = Number(area.width);
+              this.resizeAiPanel(this.aiWidthAdjusted ? this.aiPanelWidth : 340);
+              if (this.isWide() && this.aiOpen && !this.aiClosing && !this.aiAnimating && this.aiOffset === 420) {
+                this.moveAiTools(0);
+              }
+            })
           if (this.workspaceTransition.snapshot &&
             (this.workspaceTransition.kind === 'module' || this.workspaceTransition.kind === 'document' ||
               this.workspaceTransition.kind === 'mode')) {

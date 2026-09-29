@@ -159,20 +159,21 @@ struct Index {
   }
 
   private windowMenuEntries(menu: string): DesktopMenuEntry[] {
+    const available = this.connected && !this.previewImageSource && !this.settingsOpen &&
+      !this.aboutOpen && !this.helpOpen;
     if (menu === '帮助') return [
-      new DesktopMenuEntry('help', '使用帮助', this.connected && !this.helpOpen && !this.aboutOpen && !this.settingsOpen),
-      new DesktopMenuEntry('about', '关于学习日志工作台',
-        this.connected && !this.helpOpen && !this.aboutOpen && !this.settingsOpen)
+      new DesktopMenuEntry('help', '使用说明与快捷键', available, false, 'F1'),
+      new DesktopMenuEntry('about', '关于学习日志工作台', available)
     ];
     const entries = this.desktopCommands.entries(menu);
-    const available = entries.map((entry: DesktopMenuEntry) => new DesktopMenuEntry(entry.id, entry.label,
-      this.connected && entry.enabled, entry.checked, entry.shortcut));
-    if (menu === '编辑') available.push(new DesktopMenuEntry('settings', '设置', this.connected && !this.settingsOpen));
-    if (menu === '视图') available.push(
-      new DesktopMenuEntry('theme_light', '浅色模式', this.connected, this.themePreference === 'light'),
-      new DesktopMenuEntry('theme_dark', '深色模式', this.connected, this.themePreference === 'dark'),
-      new DesktopMenuEntry('theme_system', '跟随系统', this.connected, this.themePreference === 'system'));
-    return available;
+    const items = entries.map((entry: DesktopMenuEntry) => new DesktopMenuEntry(entry.id, entry.label,
+      available && entry.enabled, available && entry.checked, entry.shortcut));
+    if (menu === '编辑') items.push(new DesktopMenuEntry('settings', '设置', available));
+    if (menu === '视图') items.push(
+      new DesktopMenuEntry('theme_light', '浅色模式', available, this.themePreference === 'light'),
+      new DesktopMenuEntry('theme_dark', '深色模式', available, this.themePreference === 'dark'),
+      new DesktopMenuEntry('theme_system', '跟随系统', available, this.themePreference === 'system'));
+    return items;
   }
 
   private executeWindowMenu(id: string): void {

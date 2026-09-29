@@ -228,6 +228,7 @@ export struct LogsReaderPage {
   @State private navigationDayQuery: string = '';
   @State private targetHeading: string = '';
   @State private targetHeadingIndex: number = -1;
+  @State private targetHeadingId: string = '';
   @State private targetKind: string = '';
   @State private targetQuery: string = '';
   @State private targetRevision: number = 0;
@@ -814,11 +815,14 @@ export struct LogsReaderPage {
       if (this.day?.date === entry.date) {
         this.targetHeading = entry.rawHeading;
         this.targetHeadingIndex = entry.headingIndex;
+        this.targetHeadingId = '';
+        this.targetKind = 'stats';
+        this.targetQuery = '';
         this.targetRevision++;
       }
       return;
     }
-    await this.loadDay(entry.date, entry.rawHeading, entry.headingIndex);
+    await this.loadDay(entry.date, entry.rawHeading, entry.headingIndex, 'stats');
   }
 
   private confirmNotesLeave(action: () => void): void {
@@ -865,9 +869,12 @@ export struct LogsReaderPage {
     this.confirmQaLeave(async () => {
       if (date.slice(0, 7) !== this.month) await this.loadDays(date.slice(0, 7), date);
       else await this.loadDay(date);
+      if (this.day?.date !== date) return;
       this.targetHeading = heading;
       this.targetHeadingIndex = headingIndex;
+      this.targetHeadingId = '';
       this.targetKind = 'citation';
+      this.targetQuery = '';
       this.targetRevision++;
     });
   }
@@ -887,9 +894,12 @@ export struct LogsReaderPage {
     this.confirmNotesLeave(async () => {
       if (date.slice(0, 7) !== this.month) await this.loadDays(date.slice(0, 7), date);
       else await this.loadDay(date);
+      if (this.day?.date !== date) return;
       this.targetHeading = heading;
       this.targetHeadingIndex = -1;
+      this.targetHeadingId = '';
       this.targetKind = 'internal';
+      this.targetQuery = '';
       this.targetRevision++;
     });
   }
@@ -898,9 +908,12 @@ export struct LogsReaderPage {
     this.favoritesOpen = false;
     if (favorite.date.slice(0, 7) !== this.month) await this.loadDays(favorite.month, favorite.date);
     else await this.loadDay(favorite.date);
+    if (this.day?.date !== favorite.date) return;
     this.targetHeading = favorite.exists ? favorite.headingText : '';
     this.targetHeadingIndex = -1;
+    this.targetHeadingId = favorite.exists ? (favorite.resolvedHeadingId || favorite.headingId) : `missing-${favorite.id}`;
     this.targetKind = 'favorite';
+    this.targetQuery = '';
     this.targetRevision++;
   }
 
@@ -1744,7 +1757,8 @@ export struct LogsReaderPage {
     }
   }
 
-  private async loadDay(date: string, heading: string = '', headingIndex: number = -1): Promise<void> {
+  private async loadDay(date: string, heading: string = '', headingIndex: number = -1,
+    kind: string = ''): Promise<void> {
     this.closeFavoriteFeedback();
     this.favoriteGroupDialogOpen = false;
     const lifecycle = this.lifecycle;
@@ -1789,7 +1803,10 @@ export struct LogsReaderPage {
         '已恢复本机草稿，但服务器版本已变化。请核对后复制草稿并刷新，保存不会覆盖新版本。' : '';
       this.targetHeading = heading;
       this.targetHeadingIndex = headingIndex;
-      if (heading) this.targetRevision++;
+      this.targetHeadingId = '';
+      this.targetKind = kind;
+      this.targetQuery = '';
+      if (heading || kind) this.targetRevision++;
       this.closeNavigation();
       if (!changed) this.workspaceTransition.finish('document');
     } catch (error) {
@@ -1823,8 +1840,6 @@ export struct LogsReaderPage {
   }
 
   private async openInternalLink(date: string, heading: string, kind: string = 'internal', query: string = ''): Promise<void> {
-    this.targetKind = kind;
-    this.targetQuery = query;
     if (date.slice(0, 7) !== this.month) {
       await this.loadDays(date.slice(0, 7), date);
       if (this.day?.date !== date) return;
@@ -1834,7 +1849,32 @@ export struct LogsReaderPage {
     }
     this.targetHeading = heading;
     this.targetHeadingIndex = -1;
+    this.targetHeadingId = '';
+    this.targetKind = kind;
+    this.targetQuery = query;
     this.targetRevision++;
+  }
+
+  private showTargetResult(kind: string, found: boolean): void {
+    if (kind === 'outline') {
+      appFeedback.show(found ? '已定位到小节' : '未找到大纲小节',
+        found ? 'success' : 'warning', 3600, 'navigation');
+    } else if (kind === 'internal') {
+      appFeedback.show(found ? '已定位到内部链接' : '已打开目标日块，但未找到标题',
+        found ? 'success' : 'warning', 3600, 'navigation');
+    } else if (kind === 'search') {
+      appFeedback.show(found ? '已定位到搜索关键词' : '已打开日块，但未在预览中定位到关键词',
+        found ? 'success' : 'warning', 3600, 'navigation');
+    } else if (kind === 'favorite') {
+      appFeedback.show(found ? '已定位到收藏小节' : '已打开收藏日块，但未找到标题',
+        found ? 'success' : 'warning');
+    } else if (kind === 'citation') {
+      appFeedback.show(found ? '已定位到引用小节' : '已打开来源日块，但未找到引用小节',
+        found ? 'success' : 'warning');
+    } else if (kind === 'stats') {
+      appFeedback.show(found ? '已定位到统计小节' : '已打开日块，但未找到统计小节',
+        found ? 'success' : 'warning');
+    }
   }
 
   private calendarDate(value: Date): string {
@@ -2007,6 +2047,9 @@ export struct LogsReaderPage {
     if (this.day?.date === day.date) {
       this.targetHeading = heading;
       this.targetHeadingIndex = index;
+      this.targetHeadingId = '';
+      this.targetKind = '';
+      this.targetQuery = '';
       this.targetRevision++;
       this.closeNavigation();
     } else this.confirmDiscard(() => this.loadDay(day.date, heading, index));
@@ -2882,6 +2925,9 @@ export struct LogsReaderPage {
                 this.activeOutlineIndex = index;
                 this.targetHeading = heading.text;
                 this.targetHeadingIndex = index;
+                this.targetHeadingId = '';
+                this.targetKind = 'outline';
+                this.targetQuery = '';
                 this.targetRevision++;
                 if (this.readingOutlineOpen) this.readingOutlineOpen = false;
               })
@@ -2999,6 +3045,9 @@ export struct LogsReaderPage {
                   this.activeOutlineIndex = index;
                   this.targetHeading = heading.text;
                   this.targetHeadingIndex = index;
+                  this.targetHeadingId = '';
+                  this.targetKind = 'outline';
+                  this.targetQuery = '';
                   this.targetRevision++;
                   if (this.sourceMode || this.splitMode) this.switchMode(false);
                 })
@@ -3347,11 +3396,15 @@ export struct LogsReaderPage {
                 },
                 onRenderFailed: (date: string) => {
                   if (date !== this.selectedDate) return;
+                  this.readFailed = true;
+                  this.retryRead = async () => this.loadDay(date);
                   this.errorMessage = '日志正文渲染失败，请刷新重试';
                   this.workspaceTransition.finish('document');
                 },
                 targetHeading: this.targetHeading, targetHeadingIndex: this.targetHeadingIndex,
+                targetHeadingId: this.targetHeadingId,
                 targetKind: this.targetKind, targetQuery: this.targetQuery, targetRevision: this.targetRevision,
+                onTargetResult: (kind: string, found: boolean) => this.showTargetResult(kind, found),
                 trackActiveHeading: true,
                 onActiveHeading: (headingId: string) => this.updateActiveOutline(headingId),
                 onInternalLink: (date: string, heading: string) => {
@@ -3388,8 +3441,8 @@ export struct LogsReaderPage {
               .height('100%').visibility(this.sourceMode || this.splitMode && !this.isWide() ?
                 Visibility.None : Visibility.Visible)
           }.width('100%').height('100%')
-          LoadingHintAnchor({ loading: this.dayLoading || this.daysLoading ||
-            !this.sourceMode && this.renderedPreviewDate.length > 0 && !this.readerReady,
+          LoadingHintAnchor({ loading: !this.readFailed && (this.dayLoading || this.daysLoading ||
+            !this.sourceMode && this.renderedPreviewDate.length > 0 && !this.readerReady),
             onChange: (placement: LoadingHintPlacement) => this.logLoadingHint = placement })
             .hitTestBehavior(HitTestMode.None)
           if (this.saveError) {

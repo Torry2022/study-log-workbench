@@ -325,6 +325,10 @@ export struct LogsReaderPage {
       ];
       if (menu === '编辑') return [new DesktopMenuEntry('save', '保存', this.dirty && !this.saving, false, 'Ctrl+S')];
       if (menu === '视图') return [
+        new DesktopMenuEntry('sidebar', '左侧导航', this.isWide() && !this.logsReadingMode,
+          !this.isDesktopNavigationCollapsed()),
+        new DesktopMenuEntry('reading', '阅读模式', this.selectedTab() === 0 && !!this.day &&
+          !this.sourceMode && !this.splitMode, this.logsReadingMode),
         new DesktopMenuEntry('preview', '浏览', !!this.day, !this.sourceMode && !this.splitMode),
         new DesktopMenuEntry('source', '源码', !!this.day, this.sourceMode),
         new DesktopMenuEntry('split', '分屏', !!this.day, this.splitMode)
@@ -337,6 +341,8 @@ export struct LogsReaderPage {
       else if (id === 'export') this.exportMenuOpen = true;
       else if (id === 'backup') this.backupOpen = true;
       else if (id === 'save') this.save();
+      else if (id === 'sidebar') this.setDesktopNavigationCollapsed(!this.isDesktopNavigationCollapsed());
+      else if (id === 'reading') this.setLogsReadingMode(!this.logsReadingMode);
       else if (id === 'preview') this.switchMode(false);
       else if (id === 'source') this.switchMode(true);
       else if (id === 'split') this.switchMode(false, true);

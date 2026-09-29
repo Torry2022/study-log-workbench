@@ -132,3 +132,58 @@ test('reconciling a saved note keeps text typed after submission', async () => {
   assert.equal(editor.editing, true);
   assert.notEqual(editor.value(), editor.baseline);
 });
+
+test('an unavailable reconciliation read keeps the update draft until an explicit retry', async () => {
+  const { NoteEditorSession } = await loadClass('../entry/src/main/ets/features/notes/NoteEditorSession.ets',
+    () => ({ util: { generateRandomUUID: () => 'unused' } }));
+  const original = { id: 'note-1', title: '合成', body: '原文', insight: '', sources: [], tags: [],
+    recordedAt: '2026-09-28T17:00:00+08:00', version: 'v0' };
+  const editor = new NoteEditorSession(); editor.startEdit(original); editor.body = '已提交';
+  const saved = { ...original, body: '已提交', version: 'v1' };
+  let writes = 0, reads = 0;
+  const transport = {
+    patch: async () => { if (++writes === 1) throw new ApiError('响应丢失', 502); throw new ApiError('版本冲突', 409); },
+    get: async () => { if (++reads === 1) throw new ApiError('核对不可用', 503); return { notes: [saved], years: [], tags: [] }; }
+  };
+  const successes = [];
+  const view = { blocked: () => false, uploading: () => false, navigationChanged: () => {},
+    loaded: () => {}, success: value => successes.push(value), failure: () => {} };
+  const { NotesController } = await loadClass('../entry/src/main/ets/features/notes/NotesController.ets',
+    () => ({ ApiError }));
+  const controller = new NotesController(transport, editor, view);
+  await controller.save();
+  assert.equal(editor.editing, true);
+  assert.equal(editor.body, '已提交');
+  assert.equal(editor.baseVersion, 'v0');
+  assert.match(controller.errorMessage, /响应丢失/);
+  assert.deepEqual(successes, []);
+  await controller.save();
+  assert.equal(editor.editing, false);
+  assert.equal(editor.baseVersion, 'v1');
+  assert.deepEqual(successes, ['随记已更新']);
+  assert.equal(writes, 2);
+});
+
+test('an unavailable reconciliation read leaves a deleted note visible until retry', async () => {
+  const note = { id: 'note-1', version: 'v0' };
+  let writes = 0, reads = 0;
+  const transport = {
+    delete: async () => { if (++writes === 1) throw new ApiError('响应丢失', 502); throw new ApiError('已不存在', 404); },
+    get: async () => { if (++reads === 1) throw new ApiError('核对不可用', 503); return { notes: [], years: [], tags: [] }; }
+  };
+  const successes = [];
+  const view = { blocked: () => false, uploading: () => false, navigationChanged: () => {},
+    loaded: () => {}, success: value => successes.push(value), failure: () => {} };
+  const { NotesController } = await loadClass('../entry/src/main/ets/features/notes/NotesController.ets',
+    () => ({ ApiError }));
+  const controller = new NotesController(transport, {}, view);
+  controller.notes = [note];
+  await controller.deleteNote(note);
+  assert.equal(controller.notes.length, 1);
+  assert.match(controller.errorMessage, /响应丢失/);
+  assert.deepEqual(successes, []);
+  await controller.deleteNote(note);
+  assert.equal(controller.notes.length, 0);
+  assert.deepEqual(successes, ['随记已删除']);
+  assert.equal(writes, 2);
+});

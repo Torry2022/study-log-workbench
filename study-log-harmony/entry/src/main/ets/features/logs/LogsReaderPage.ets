@@ -11,6 +11,7 @@ import { LengthMetrics } from '@kit.ArkUI';
 import { saveExport } from '../../common/files/DocumentExport';
 import { EditorLinkPicker } from '../../common/editor/EditorLinkPicker';
 import { DayEntry, DaySummary, MonthSummary } from './LogModels';
+import { editableDayBody, matchesSubmittedDay } from './LogDayBody';
 import { LogReadRepository } from './LogReadRepository';
 import { LogWriteRepository } from './LogWriteRepository';
 import { LogNavigation } from './components/LogNavigation';
@@ -1185,8 +1186,7 @@ export struct LogsReaderPage {
   }
 
   private bodyFromDay(day: DayEntry): string {
-    return day.content.trimEnd().replace(/(?:\r?\n)+[ \t]*---[ \t]*$/, '')
-      .replace(/^##\s+\d{4}-\d{2}-\d{2}\s*\n?/, '').replace(/^\r?\n+/, '').trimEnd();
+    return editableDayBody(day);
   }
 
   private confirmDiscard(next: () => void): void {
@@ -1260,6 +1260,18 @@ export struct LogsReaderPage {
     }
   }
 
+  private acceptSavedDay(day: DayEntry, submittedText: string, date: string): void {
+    this.day = day;
+    this.savedText = submittedText;
+    this.draftBaseVersion = day.version;
+    this.dirty = this.draftText !== submittedText;
+    this.reportDraft();
+    this.previewText = this.draftText;
+    this.reads.invalidate();
+    this.refreshNavigation(date);
+    appFeedback.show('日志已保存', 'success');
+  }
+
   private async save(): Promise<void> {
     if (!this.day || !this.editorReady || this.saving || this.deleting || this.backupOpen || this.linkOpen || this.imageBusy) return;
     const lifecycle = this.lifecycle;
@@ -1267,6 +1279,7 @@ export struct LogsReaderPage {
     const date = this.day.date;
     this.saving = true;
     this.saveError = '';
+    let submittedText: string | undefined = undefined;
     try {
       const snapshot = await this.editor.command('snapshot');
       if (snapshot.documentKey !== date || lifecycle !== this.lifecycle || revision !== this.dayRevision) return;
@@ -1278,20 +1291,29 @@ export struct LogsReaderPage {
         this.saveError = '恢复的草稿基于旧版本，服务器内容已变化。请复制草稿并刷新核对，未覆盖服务器。';
         return;
       }
+      submittedText = snapshot.text;
       const response = await this.writes.save({ date, content: snapshot.text, baseVersion: this.day.version });
       if (lifecycle !== this.lifecycle || revision !== this.dayRevision || this.day?.date !== date) return;
       if (!response.day || response.day.date !== date || !response.day.version) throw new Error('保存响应格式异常');
-      this.day = response.day;
-      this.savedText = snapshot.text;
-      this.draftBaseVersion = response.day.version;
-      this.dirty = this.draftText !== snapshot.text;
-      this.reportDraft();
-      this.previewText = this.draftText;
-      this.reads.invalidate();
-      this.refreshNavigation(date);
-      appFeedback.show('日志已保存', 'success');
+      this.acceptSavedDay(response.day, snapshot.text, date);
     } catch (error) {
       if (lifecycle !== this.lifecycle || revision !== this.dayRevision) return;
+      const uncertain = !(error instanceof ApiError) || error.statusCode === 0 || error.statusCode === 409 ||
+        error.statusCode >= 500 || error.code === 'INVALID_RESPONSE';
+      if (submittedText !== undefined && uncertain) {
+        try {
+          const current = await this.reads.day(date);
+          if (lifecycle !== this.lifecycle || revision !== this.dayRevision || this.day?.date !== date) return;
+          if (matchesSubmittedDay(current.day, submittedText)) {
+            this.acceptSavedDay(current.day, submittedText, date);
+            return;
+          }
+          if (current.day.version !== this.day?.version) {
+            this.saveError = '源文件已变化，未覆盖。当前草稿仍保留，请先复制内容再刷新核对。';
+            return;
+          }
+        } catch (_) { if (lifecycle !== this.lifecycle || revision !== this.dayRevision) return; }
+      }
       this.saveError = error instanceof ApiError && error.statusCode === 409 ?
         '源文件已变化，未覆盖。当前草稿仍保留，请先复制内容再刷新核对。' :
           error instanceof Error ? error.message : '保存失败，请重试';

@@ -230,6 +230,8 @@ export struct LogsReaderPage {
   @State private headerWidth: number = 600;
   @State private headerDateWidth: number = 190;
   @State private toolbarDensity: ToolbarDensity = ToolbarDensity.OVERFLOW;
+  @State private desktopTopBarWidth: number = 0;
+  @State private desktopTopBarDensity: ToolbarDensity = ToolbarDensity.OVERFLOW;
   private toolbarMotionWidth: number = -1;
   @State private toolbarActionWidths: number[] = [];
   @State private sourceMode: boolean = false;
@@ -3317,6 +3319,15 @@ export struct LogsReaderPage {
     }.layoutWeight(1).height('100%')
   }
 
+  private desktopTopActionsWidth(labels: boolean): number {
+    return labels ? toolbarActionsWidth(['随记', '收藏', '问答', '统计']) + 64 : 5 * 40 + 4 * 12;
+  }
+
+  private desktopTopSearchWidth(): number {
+    return Math.max(260, Math.min(384, this.desktopTopBarWidth * 0.27,
+      this.desktopTopBarWidth - 208 - this.desktopTopActionsWidth(this.desktopTopBarDensity === ToolbarDensity.FULL) - 48));
+  }
+
   build() {
     Stack() {
       Column() {
@@ -3341,7 +3352,7 @@ export struct LogsReaderPage {
                 .textOverflow({ overflow: TextOverflow.Ellipsis })
             }.alignItems(HorizontalAlign.Start).layoutWeight(1)
           }.layoutWeight(1).constraintSize({ minWidth: 208 })
-          if (this.isWide()) {
+          if (this.desktopTopBarDensity !== ToolbarDensity.OVERFLOW) {
             Stack({ alignContent: Alignment.TopStart }) {
               SearchField({ value: this.searchQuery, focusKey: 'global_log_search',
                 focusRevision: this.searchFocusRevision,
@@ -3360,22 +3371,25 @@ export struct LogsReaderPage {
                   this.closeSearch(); return true;
                 } })
               this.desktopSearchResults()
-            }.width(384).height(42).zIndex(40)
+            }.width(this.desktopTopSearchWidth()).height(42).zIndex(40)
           } else {
             ToolbarAction({ label: '搜索日志内容', icon: $r('app.media.search'),
-              showLabel: false, onAction: () => this.searchOpen = true })
+              showLabel: false, onAction: () => {
+                this.searchOpen = true;
+                this.searchFocusRevision++;
+              } })
           }
             ToolbarAction({ label: '随记', icon: $r('app.media.tab_lightbulb_active'),
-              showLabel: this.isWide(), active: this.notesOpen,
+              showLabel: this.desktopTopBarDensity === ToolbarDensity.FULL, active: this.notesOpen,
               onAction: () => this.selectTab(this.notesOpen ? 0 : 1) })
             ToolbarAction({ label: '收藏', icon: $r('app.media.tab_star_active'),
-              showLabel: this.isWide(), active: this.favoritesOpen,
+              showLabel: this.desktopTopBarDensity === ToolbarDensity.FULL, active: this.favoritesOpen,
               onAction: () => this.selectTab(this.favoritesOpen ? 0 : 2) })
             ToolbarAction({ label: '问答', icon: $r('app.media.tab_message_square_text_active'),
-              showLabel: this.isWide(), active: this.qaOpen,
+              showLabel: this.desktopTopBarDensity === ToolbarDensity.FULL, active: this.qaOpen,
               onAction: () => this.selectTab(this.qaOpen ? 0 : 3) })
             ToolbarAction({ label: '统计', icon: $r('app.media.tab_chart_column'),
-              showLabel: this.isWide(), active: this.statsOpen,
+              showLabel: this.desktopTopBarDensity === ToolbarDensity.FULL, active: this.statsOpen,
               onAction: () => this.selectTab(this.statsOpen ? 0 : 4) })
           ToolbarAction({ label: '更多设置', icon: $r('app.media.more_horizontal'), showLabel: false,
             active: this.topMoreOpen, onAction: () => this.topMoreOpen = !this.topMoreOpen })
@@ -3383,6 +3397,13 @@ export struct LogsReaderPage {
               enableArrow: false, popupColor: $r('app.color.canvas'), radius: 8,
               onStateChange: (event) => { if (!event.isVisible) this.topMoreOpen = false; } })
         }.width('100%').height(64).padding({ left: 12, right: 12 })
+          .onAreaChange((_oldArea: Area, area: Area) => {
+            this.desktopTopBarWidth = Number(area.width);
+            this.desktopTopBarDensity = resolveToolbarDensity(this.desktopTopBarWidth,
+              208 + 260 + this.desktopTopActionsWidth(false) + 48,
+              208 + 260 + this.desktopTopActionsWidth(true) + 48,
+              this.desktopTopBarDensity);
+          })
           .backgroundColor($r('app.color.canvas'))
           .zIndex(30)
           .border({ width: { bottom: 1 }, color: $r('app.color.hairline') })

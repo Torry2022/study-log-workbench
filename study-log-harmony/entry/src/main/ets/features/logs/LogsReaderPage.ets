@@ -3299,16 +3299,15 @@ export struct LogsReaderPage {
         InlineStatus({ text: this.errorMessage, error: true, retry: this.readFailed,
           onRetry: () => this.retryRead() })
       }
-      this.heading()
       if (this.monthsLoading || !this.day && (this.daysLoading || this.dayLoading)) {
-        Row({ space: 8 }) {
-          LoadingProgress().width(20).height(20).color($r('app.color.primary'))
-          Text('正在加载日志').fontSize(13).fontColor($r('app.color.muted'))
-        }.layoutWeight(1).justifyContent(FlexAlign.Center)
+        Column() {
+          LoadingProgress().width(26).height(26).color($r('app.color.primary'))
+        }.layoutWeight(1).width('100%').justifyContent(FlexAlign.Center)
       } else if (this.errorMessage && !this.day) {
         LoadFailure({ message: this.errorMessage,
           onRetry: () => this.retryRead() })
       } else if (this.day) {
+        this.heading()
         Stack({ alignContent: Alignment.TopEnd }) {
           Row() {
             SourceEditor({ session: this.editor, documentKey: this.day.date,
@@ -3363,6 +3362,13 @@ export struct LogsReaderPage {
                 } })
                 .width('100%').height('100%').id('log_reading_surface')
                 .onAreaChange((_oldArea: Area, area: Area) => this.readingViewportChanged(area))
+              if (!this.previewText.trim() && this.readerReady) {
+                Column({ space: 8 }) {
+                  SymbolGlyph($r('sys.symbol.doc_text')).fontSize(20).fontColor([$r('app.color.muted_soft')])
+                  Text('暂无正文').fontSize(13).fontColor($r('app.color.muted'))
+                }.width('100%').height('100%').justifyContent(FlexAlign.Center)
+                  .backgroundColor($r('app.color.canvas')).hitTestBehavior(HitTestMode.None)
+              }
               if (!this.readerReady && !this.renderedPreviewDate && !this.sourceMode) {
                 Column() {
                   LoadingProgress().width(26).height(26).color($r('app.color.primary'))

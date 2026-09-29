@@ -810,19 +810,14 @@ export struct LogsReaderPage {
 
   private async openStatsEntry(entry: StatsEntry): Promise<void> {
     this.statsOpen = false;
-    if (entry.date.slice(0, 7) !== this.month) {
-      await this.loadDays(entry.date.slice(0, 7), entry.date);
-      if (this.day?.date === entry.date) {
-        this.targetHeading = entry.rawHeading;
-        this.targetHeadingIndex = entry.headingIndex;
-        this.targetHeadingId = '';
-        this.targetKind = 'stats';
-        this.targetQuery = '';
-        this.targetRevision++;
-      }
-      return;
-    }
-    await this.loadDay(entry.date, entry.rawHeading, entry.headingIndex, 'stats');
+    await this.loadTargetDate(entry.date, () => {
+      this.targetHeading = entry.rawHeading;
+      this.targetHeadingIndex = entry.headingIndex;
+      this.targetHeadingId = '';
+      this.targetKind = 'stats';
+      this.targetQuery = '';
+      this.targetRevision++;
+    });
   }
 
   private confirmNotesLeave(action: () => void): void {
@@ -867,15 +862,14 @@ export struct LogsReaderPage {
 
   private openQaCitation(date: string, heading: string, headingIndex: number): void {
     this.confirmQaLeave(async () => {
-      if (date.slice(0, 7) !== this.month) await this.loadDays(date.slice(0, 7), date);
-      else await this.loadDay(date);
-      if (this.day?.date !== date) return;
-      this.targetHeading = heading;
-      this.targetHeadingIndex = headingIndex;
-      this.targetHeadingId = '';
-      this.targetKind = 'citation';
-      this.targetQuery = '';
-      this.targetRevision++;
+      await this.loadTargetDate(date, () => {
+        this.targetHeading = heading;
+        this.targetHeadingIndex = headingIndex;
+        this.targetHeadingId = '';
+        this.targetKind = 'citation';
+        this.targetQuery = '';
+        this.targetRevision++;
+      });
     });
   }
 
@@ -892,29 +886,27 @@ export struct LogsReaderPage {
 
   private openNoteLink(date: string, heading: string): void {
     this.confirmNotesLeave(async () => {
-      if (date.slice(0, 7) !== this.month) await this.loadDays(date.slice(0, 7), date);
-      else await this.loadDay(date);
-      if (this.day?.date !== date) return;
-      this.targetHeading = heading;
-      this.targetHeadingIndex = -1;
-      this.targetHeadingId = '';
-      this.targetKind = 'internal';
-      this.targetQuery = '';
-      this.targetRevision++;
+      await this.loadTargetDate(date, () => {
+        this.targetHeading = heading;
+        this.targetHeadingIndex = -1;
+        this.targetHeadingId = '';
+        this.targetKind = 'internal';
+        this.targetQuery = '';
+        this.targetRevision++;
+      });
     });
   }
 
   private async openFavorite(favorite: FavoriteHeading): Promise<void> {
     this.favoritesOpen = false;
-    if (favorite.date.slice(0, 7) !== this.month) await this.loadDays(favorite.month, favorite.date);
-    else await this.loadDay(favorite.date);
-    if (this.day?.date !== favorite.date) return;
-    this.targetHeading = favorite.exists ? favorite.headingText : '';
-    this.targetHeadingIndex = -1;
-    this.targetHeadingId = favorite.exists ? (favorite.resolvedHeadingId || favorite.headingId) : `missing-${favorite.id}`;
-    this.targetKind = 'favorite';
-    this.targetQuery = '';
-    this.targetRevision++;
+    await this.loadTargetDate(favorite.date, () => {
+      this.targetHeading = favorite.exists ? favorite.headingText : '';
+      this.targetHeadingIndex = -1;
+      this.targetHeadingId = favorite.exists ? (favorite.resolvedHeadingId || favorite.headingId) : `missing-${favorite.id}`;
+      this.targetKind = 'favorite';
+      this.targetQuery = '';
+      this.targetRevision++;
+    });
   }
 
   private updateToolbarWidth(width: number): void {
@@ -1757,8 +1749,7 @@ export struct LogsReaderPage {
     }
   }
 
-  private async loadDay(date: string, heading: string = '', headingIndex: number = -1,
-    kind: string = ''): Promise<void> {
+  private async loadDay(date: string, heading: string = '', headingIndex: number = -1): Promise<void> {
     this.closeFavoriteFeedback();
     this.favoriteGroupDialogOpen = false;
     const lifecycle = this.lifecycle;
@@ -1804,9 +1795,9 @@ export struct LogsReaderPage {
       this.targetHeading = heading;
       this.targetHeadingIndex = headingIndex;
       this.targetHeadingId = '';
-      this.targetKind = kind;
+      this.targetKind = '';
       this.targetQuery = '';
-      if (heading || kind) this.targetRevision++;
+      if (heading) this.targetRevision++;
       this.closeNavigation();
       if (!changed) this.workspaceTransition.finish('document');
     } catch (error) {
@@ -1839,20 +1830,29 @@ export struct LogsReaderPage {
     await this.workspaceTransition.cover('document');
   }
 
-  private async openInternalLink(date: string, heading: string, kind: string = 'internal', query: string = ''): Promise<void> {
-    if (date.slice(0, 7) !== this.month) {
-      await this.loadDays(date.slice(0, 7), date);
-      if (this.day?.date !== date) return;
-    } else if (date !== this.selectedDate) {
-      await this.loadDay(date);
-      if (this.day?.date !== date) return;
+  private async loadTargetDate(date: string, apply: () => void): Promise<void> {
+    const lifecycle = this.lifecycle;
+    if (this.day?.date !== date) {
+      if (date.slice(0, 7) !== this.month) await this.loadDays(date.slice(0, 7), date);
+      else await this.loadDay(date);
     }
-    this.targetHeading = heading;
-    this.targetHeadingIndex = -1;
-    this.targetHeadingId = '';
-    this.targetKind = kind;
-    this.targetQuery = query;
-    this.targetRevision++;
+    if (lifecycle !== this.lifecycle) return;
+    if (this.day?.date !== date) {
+      if (this.readFailed) this.retryRead = async () => this.loadTargetDate(date, apply);
+      return;
+    }
+    apply();
+  }
+
+  private async openInternalLink(date: string, heading: string, kind: string = 'internal', query: string = ''): Promise<void> {
+    await this.loadTargetDate(date, () => {
+      this.targetHeading = heading;
+      this.targetHeadingIndex = -1;
+      this.targetHeadingId = '';
+      this.targetKind = kind;
+      this.targetQuery = query;
+      this.targetRevision++;
+    });
   }
 
   private showTargetResult(kind: string, found: boolean): void {

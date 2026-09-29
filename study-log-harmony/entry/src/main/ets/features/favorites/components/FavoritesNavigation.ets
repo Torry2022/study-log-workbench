@@ -248,7 +248,8 @@ export struct FavoritesNavigation {
             this.hoveredGroup === 'ungrouped', this.data.selectedGroup === 'ungrouped'))
           .onHover((hover: boolean) => animateHover(this.getUIContext(), () => this.hoveredGroup = hover ? 'ungrouped' : ''))
           .onClick(() => this.selectGroup('ungrouped'))
-        ForEach(this.data.groups, (group: FavoriteGroup) => { this.customGroupRow(group) }, (group: FavoriteGroup) => group.id)
+        ForEach(this.data.groups, (group: FavoriteGroup) => { this.customGroupRow(group) },
+          (group: FavoriteGroup) => `${group.id}:${group.name}`)
         if (this.wide) {
           Row() {
             Text('日志月份').fontSize(12).fontWeight(FontWeight.Medium).fontColor($r('app.color.muted'))

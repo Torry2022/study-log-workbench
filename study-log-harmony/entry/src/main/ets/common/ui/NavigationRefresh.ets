@@ -18,8 +18,9 @@ export struct NavigationRefresh {
     this.refreshing = true;
     try {
       await this.onRefresh();
+      if (this.alive) appFeedback.dismissScope('navigation-refresh');
     } catch (_) {
-      if (this.alive) appFeedback.show('导航刷新失败，已保留原列表，请下拉重试', 'error');
+      if (this.alive) appFeedback.show('导航刷新失败，已保留原列表，请下拉重试', 'error', 3600, 'navigation-refresh');
     } finally {
       this.inFlight = false;
       if (this.alive) this.refreshing = false;

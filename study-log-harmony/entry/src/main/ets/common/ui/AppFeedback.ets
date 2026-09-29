@@ -10,7 +10,7 @@ export interface FeedbackAction {
 }
 
 export function feedbackIsPersistent(tone: FeedbackTone, scope: string = ''): boolean {
-  return scope !== 'navigation' && (tone === 'warning' || tone === 'error');
+  return scope !== 'navigation' && scope !== 'navigation-refresh' && (tone === 'warning' || tone === 'error');
 }
 
 class FeedbackOptions {

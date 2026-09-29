@@ -1174,7 +1174,7 @@ export struct LogsReaderPage {
 
   private bodyFromDay(day: DayEntry): string {
     return day.content.trimEnd().replace(/(?:\r?\n)+[ \t]*---[ \t]*$/, '')
-      .replace(/^##\s+\d{4}-\d{2}-\d{2}[^\S\r\n]*\r?\n/, '').replace(/^\r?\n+/, '').trimEnd();
+      .replace(/^##\s+\d{4}-\d{2}-\d{2}\s*\n?/, '').replace(/^\r?\n+/, '').trimEnd();
   }
 
   private confirmDiscard(next: () => void): void {

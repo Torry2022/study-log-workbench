@@ -54,6 +54,54 @@ test('taxonomy network failure retains edits and retry uses the same base versio
   assert.equal(await c.save(), true); assert.equal(c.hasChanges(), false);
 });
 
+test('taxonomy confirms a completed write after its response is lost', async () => {
+  let server = initial(); let writes = 0;
+  const c = await controller({ get: async () => ({ taxonomy: server, catalog: [] }),
+    put: async (_path, body) => { writes++;
+      server = { domains: body.domains, mappings: body.mappings, updatedAt: 'now', version: 'v1' };
+      throw new ApiError('response lost', 502);
+    } });
+  await c.load(); c.addDomain('合成领域');
+  assert.equal(await c.save(), true);
+  assert.equal(writes, 1);
+  assert.equal(c.taxonomy.version, 'v1');
+  assert.equal(c.hasChanges(), false);
+  assert.equal(c.conflict, false);
+});
+
+test('taxonomy retries an unknown write after the first reconciliation read also fails', async () => {
+  let server = initial(); let writes = 0; let reads = 0;
+  const c = await controller({ get: async () => { reads++;
+      if (reads === 2) throw new ApiError('offline', 503);
+      return { taxonomy: server, catalog: [] };
+    },
+    put: async (_path, body) => { writes++;
+      if (writes === 1) { server = { domains: body.domains, mappings: body.mappings,
+        updatedAt: 'now', version: 'v1' }; throw new ApiError('response lost', 502); }
+      throw new ApiError('conflict', 409);
+    } });
+  await c.load(); c.addDomain('合成领域');
+  assert.equal(await c.save(), false);
+  assert.equal(c.hasChanges(), true);
+  assert.equal(await c.save(), true);
+  assert.equal(writes, 2);
+  assert.equal(c.taxonomy.version, 'v1');
+  assert.equal(c.hasChanges(), false);
+});
+
+test('taxonomy keeps local edits when another client saved different content', async () => {
+  let server = initial();
+  const c = await controller({ get: async () => ({ taxonomy: server, catalog: [] }),
+    put: async () => { server = { domains: ['另一客户端', '其他'], mappings: {},
+      updatedAt: 'now', version: 'v2' }; throw new ApiError('response lost', 502); }
+  });
+  await c.load(); c.addDomain('本机草稿');
+  assert.equal(await c.save(), false);
+  assert.equal(c.conflict, true);
+  assert.equal(c.hasChanges(), true);
+  assert.ok(c.taxonomy.domains.includes('本机草稿'));
+});
+
 test('taxonomy disables mutations during save and ignores completion after page disposal', async () => {
   const pending = deferred(); let changes = 0;
   const c = await controller({ get: async () => ({ taxonomy: initial(), catalog: [] }), put: () => pending.promise }, () => changes++);

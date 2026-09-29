@@ -48,6 +48,13 @@ export class TaxonomyController {
       JSON.stringify(left.mappings) === JSON.stringify(right.mappings);
   }
 
+  private sameValues(left: Taxonomy, right: Taxonomy): boolean {
+    const tags = Object.keys(left.mappings);
+    return JSON.stringify(left.domains) === JSON.stringify(right.domains) &&
+      tags.length === Object.keys(right.mappings).length &&
+      tags.every((tag: string) => left.mappings[tag] === right.mappings[tag]);
+  }
+
   private invalidateSuggestions(): void {
     this.suggestionRevision++;
     this.suggestionBusy = false;
@@ -224,7 +231,23 @@ export class TaxonomyController {
       return true;
     } catch (error) {
       if (revision !== this.revision) return false;
-      this.conflict = error instanceof ApiError && error.statusCode === 409;
+      const uncertain = !(error instanceof ApiError) || error.statusCode === 0 || error.statusCode === 409 ||
+        error.statusCode >= 500 || error.code === 'INVALID_RESPONSE';
+      if (uncertain) {
+        try {
+          const current = await this.transport.get<TaxonomyResponse>('/taxonomy');
+          if (revision !== this.revision) return false;
+          if (this.sameValues(current.taxonomy, snapshot)) {
+            this.taxonomy = this.copy(current.taxonomy);
+            this.savedTaxonomy = this.copy(current.taxonomy);
+            this.catalog = current.catalog;
+            this.conflict = false;
+            return true;
+          }
+          this.conflict = current.taxonomy.version !== snapshot.version;
+        } catch (_) { if (revision !== this.revision) return false; }
+      }
+      if (error instanceof ApiError && error.statusCode === 409) this.conflict = true;
       this.errorMessage = this.conflict ? '分类已被其他客户端修改，当前修改已保留。重新读取后再编辑。' :
         (error instanceof ApiError ? error.message : '保存映射失败，当前修改已保留');
       return false;

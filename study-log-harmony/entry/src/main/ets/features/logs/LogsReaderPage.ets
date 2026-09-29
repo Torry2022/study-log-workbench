@@ -77,7 +77,8 @@ interface AddFavoriteRequest { date: string; headingText: string; headingId: str
 
 @Component
 export struct LogsReaderPage {
-  @Consume('workspaceBreakpoint') private workspaceBreakpoint: WorkspaceBreakpoint;
+  @Consume('workspaceBreakpoint') @Watch('workspaceBreakpointChanged')
+  private workspaceBreakpoint: WorkspaceBreakpoint;
   @StorageProp('softwareKeyboardVisible') private softwareKeyboardVisible: boolean = false;
   @StorageLink('themePreference') private themePreference: string = 'system';
   onChangeServer: () => void = () => {};
@@ -607,6 +608,14 @@ export struct LogsReaderPage {
       this.workspaceLayoutRevision++;
       this.readingTransition.finish();
     } }, () => this.readingProgress = active ? 1 : 0);
+  }
+
+  private workspaceBreakpointChanged(): void {
+    if (this.isWide()) return;
+    this.readingTransition.clear();
+    this.logsReadingMode = false;
+    this.readingProgress = 0;
+    this.readingOutlineOpen = false;
   }
 
   private readingViewportChanged(area: Area): void {

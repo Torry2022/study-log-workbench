@@ -70,6 +70,25 @@ export class NotesController {
     });
   }
 
+  private applyLocalNotes(notes: StudyNote[]): void {
+    this.notes = notes.sort((left: StudyNote, right: StudyNote) =>
+      Date.parse(right.updatedAt || right.recordedAt) - Date.parse(left.updatedAt || left.recordedAt) ||
+      Date.parse(right.recordedAt) - Date.parse(left.recordedAt));
+    const facets = (values: string[]): StudyNoteFacet[] => {
+      const counts = new Map<string, number>();
+      values.forEach((value: string) => counts.set(value, (counts.get(value) || 0) + 1));
+      const result: StudyNoteFacet[] = [];
+      counts.forEach((count: number, value: string) => result.push({ value, count }));
+      return result;
+    };
+    const years = facets(this.notes.map((note: StudyNote) => note.year)).sort((left: StudyNoteFacet, right: StudyNoteFacet) =>
+      right.value.localeCompare(left.value));
+    this.availableTags = facets(this.notes.flatMap((note: StudyNote) => Array.from(new Set(note.tags))))
+      .sort((left: StudyNoteFacet, right: StudyNoteFacet) => right.count - left.count || left.value.localeCompare(right.value));
+    this.view.navigationChanged(years, this.availableTags, this.notes.length);
+    this.view.loaded();
+  }
+
   async save(): Promise<void> {
     if (this.view.blocked()) return;
     if (!this.editor.body.trim() || this.saving || this.view.uploading()) {
@@ -102,6 +121,7 @@ export class NotesController {
       this.editor.baseVersion = response.note.version;
       this.editor.baseline = snapshot;
       if (this.editor.value() === snapshot) this.editor.editing = false;
+      this.applyLocalNotes([response.note, ...this.notes.filter((note: StudyNote) => note.id !== response.note.id)]);
       await this.load();
       if (lifetime === this.lifetime && revision === this.editor.revision) this.view.success(id ? '随记已更新' : '随记已保存');
     } catch (error) {
@@ -114,6 +134,7 @@ export class NotesController {
             this.editor.baseVersion = saved.version;
             this.editor.baseline = snapshot;
             if (this.editor.value() === snapshot) this.editor.editing = false;
+            this.applyLocalNotes([saved, ...this.notes.filter((note: StudyNote) => note.id !== saved.id)]);
             await this.load();
             if (lifetime === this.lifetime && revision === this.editor.revision) this.view.success('随记已更新');
             return;
@@ -133,6 +154,7 @@ export class NotesController {
       const request: DeleteStudyNoteRequest = { id: note.id, baseVersion: note.version };
       await this.transport.delete<DeleteResponse>('/notes', request);
       if (lifetime !== this.lifetime) return;
+      this.applyLocalNotes(this.notes.filter((item: StudyNote) => item.id !== note.id));
       await this.load();
       if (lifetime === this.lifetime) this.view.success('随记已删除');
     } catch (error) {
@@ -141,6 +163,7 @@ export class NotesController {
         try {
           const current = await this.transport.get<StudyNotesPayload>('/notes');
           if (!current.notes.some((item: StudyNote) => item.id === note.id) && lifetime === this.lifetime) {
+            this.applyLocalNotes(this.notes.filter((item: StudyNote) => item.id !== note.id));
             await this.load();
             if (lifetime === this.lifetime) this.view.success('随记已删除');
             return;

@@ -187,3 +187,41 @@ test('an unavailable reconciliation read leaves a deleted note visible until ret
   assert.deepEqual(successes, ['随记已删除']);
   assert.equal(writes, 2);
 });
+
+test('a successful note update remains visible when its follow-up list refresh fails', async () => {
+  const { NoteEditorSession } = await loadClass('../entry/src/main/ets/features/notes/NoteEditorSession.ets',
+    () => ({ util: { generateRandomUUID: () => 'unused' } }));
+  const original = { id: 'note-1', title: '合成', body: '原文', insight: '', sources: [], tags: [],
+    recordedAt: '2026-09-28T17:00:00+08:00', updatedAt: '2026-09-28T17:00:00+08:00', year: '2026', version: 'v0' };
+  const saved = { ...original, body: '已保存', updatedAt: '2026-09-28T18:00:00+08:00', version: 'v1' };
+  const editor = new NoteEditorSession(); editor.startEdit(original); editor.body = '已保存';
+  let visible = [];
+  const view = { blocked: () => false, uploading: () => false, navigationChanged: () => {},
+    loaded: () => { visible = controller.notes.map(note => note.body); }, success: () => {}, failure: () => {} };
+  const transport = { patch: async () => ({ note: saved }), get: async () => { throw new ApiError('读取失败', 503); } };
+  const { NotesController } = await loadClass('../entry/src/main/ets/features/notes/NotesController.ets',
+    () => ({ ApiError }));
+  const controller = new NotesController(transport, editor, view);
+  controller.notes = [original];
+  await controller.save();
+  assert.equal(editor.editing, false);
+  assert.equal(visible.join(','), '已保存');
+  assert.equal(controller.loadFailed, true);
+});
+
+test('a successful note delete removes the old card when its follow-up list refresh fails', async () => {
+  const note = { id: 'note-1', version: 'v0', tags: [], year: '2026' };
+  let visible = [], loaded = 0;
+  const view = { blocked: () => false, uploading: () => false, navigationChanged: () => {},
+    loaded: () => { loaded += 1; visible = controller.notes.map(item => item.id); }, success: () => {}, failure: () => {} };
+  const transport = { delete: async () => ({ ok: true }), get: async () => { throw new ApiError('读取失败', 503); } };
+  const { NotesController } = await loadClass('../entry/src/main/ets/features/notes/NotesController.ets',
+    () => ({ ApiError }));
+  const controller = new NotesController(transport, {}, view);
+  controller.notes = [note];
+  await controller.deleteNote(note);
+  assert.deepEqual(visible, []);
+  assert.equal(loaded, 1);
+  assert.equal(controller.notes.length, 0);
+  assert.equal(controller.loadFailed, true);
+});

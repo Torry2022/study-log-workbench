@@ -17,5 +17,5 @@ export function matchesDeletedDay(day: DayEntry, date: string): boolean {
 
 export function matchesRestoredContent(day: DayEntry, date: string, historicalContent: string): boolean {
   return day.date === date && day.exists && !!day.version &&
-    editableDayBody(day).trim() === editableDayBodyFromContent(historicalContent).trim();
+    editableDayBody(day) === editableDayBodyFromContent(historicalContent);
 }

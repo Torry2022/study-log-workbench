@@ -44,4 +44,6 @@ test('a restored backup is confirmed only for the selected day and historical bo
   assert.equal(matchesRestoredContent(day, '2026-02-06', historical), false);
   assert.equal(matchesRestoredContent({ ...day, exists: false }, '2026-02-05', historical), false);
   assert.equal(matchesRestoredContent({ ...day, content: `${day.content}\n他人修改` }, '2026-02-05', historical), false);
+  assert.equal(matchesRestoredContent({ ...day, content: day.content.replace('原有资料。', '  原有资料。') },
+    '2026-02-05', historical), false);
 });

@@ -183,12 +183,13 @@ export struct QaNavigation {
             InlineStatus({ text: this.qaNavigationError, error: true, retry: true,
               onRetry: () => this.onRetry() })
           }
-        } else if (this.filteredQaSessions().length === 0) {
+        }
+        if (this.filteredQaSessions().length === 0 && !this.qaNavigationLoading && !this.qaNavigationError) {
           ListItem() {
             Text(this.qaSessionQuery ? '未找到匹配会话' : '暂无历史问答')
               .fontSize(12).fontColor($r('app.color.muted')).width('100%').padding(10)
           }
-        } else {
+        } else if (this.filteredQaSessions().length > 0) {
           this.qaSessionGroupContent('今天')
           this.qaSessionGroupContent('昨天')
           this.qaSessionGroupContent('近7天')
@@ -230,12 +231,13 @@ export struct QaNavigation {
             InlineStatus({ text: this.qaNavigationError, error: true, retry: true,
               onRetry: () => this.onRetry() })
           }
-        } else if (this.filteredQaSessions().length === 0) {
+        }
+        if (this.filteredQaSessions().length === 0 && !this.qaNavigationLoading && !this.qaNavigationError) {
           ListItem() {
             Text(this.qaSessionQuery ? '未找到匹配会话' : '暂无历史问答')
               .fontSize(12).fontColor($r('app.color.muted')).width('100%').padding(10)
           }
-        } else {
+        } else if (this.filteredQaSessions().length > 0) {
           this.qaSessionGroupContent('今天')
           this.qaSessionGroupContent('昨天')
           this.qaSessionGroupContent('近7天')

@@ -2873,15 +2873,16 @@ export struct LogsReaderPage {
     if (this.ai.importing || this.ai.busy) return;
     const lifecycle = this.lifecycle;
     const instance = activeInstance.revision;
+    const current = (): boolean => lifecycle === this.lifecycle && instance === activeInstance.revision;
     this.ai.importing = true;
     try {
-      const document = await new LogAiMaterialImport(
-        this.getUIContext().getHostContext() as common.UIAbilityContext).pickAndExtract();
-      if (!document || lifecycle !== this.lifecycle || instance !== activeInstance.revision) return;
-      this.ai.material = `${this.ai.material}\n\n[文件：${document.fileName}]\n${document.text}`.trim();
-      this.ai.message = (document.warnings || []).join('\n');
+      const materials = await new LogAiMaterialImport(
+        this.getUIContext().getHostContext() as common.UIAbilityContext).pickAndExtract(current);
+      if (!materials || !current()) return;
+      if (materials.text) this.ai.material = `${this.ai.material}\n\n${materials.text}`.trim();
+      this.ai.message = materials.warnings.join('\n');
     } catch (error) {
-      if (lifecycle === this.lifecycle) this.ai.message = error instanceof Error ? error.message : '材料导入失败';
+      if (current()) this.ai.message = error instanceof Error ? error.message : '材料导入失败';
     } finally { if (lifecycle === this.lifecycle) this.ai.importing = false; }
   }
 

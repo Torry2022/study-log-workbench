@@ -214,7 +214,7 @@ export class QaSessionController {
     this.receivedAnswer = false;
     this.receivedDone = false;
     this.view.onBusyChange(true);
-    this.statusText = '正在理解问题';
+    this.statusText = attempt.saveOnly ? '正在保存回答' : '正在理解问题';
     this.errorMessage = '';
     this.noticeMessage = '';
     this.parser.reset();
@@ -235,6 +235,7 @@ export class QaSessionController {
         if (this.errorMessage) throw new Error(this.errorMessage);
         if (!this.receivedDone || !this.messages[this.messages.length - 1].content) throw new Error('问答未完整结束');
         attempt.saveOnly = true;
+        this.statusText = '正在保存回答';
       }
       if (revision !== this.sendRevision) return;
       await this.persistSession(attempt.request.mode || 'logs_only', revision);
@@ -257,6 +258,7 @@ export class QaSessionController {
 
   stop(): void {
     if (!this.sending) return;
+    if (this.receivedDone || this.pendingWrite) return;
     this.sendRevision += 1;
     this.transport.cancelStream();
     const revision = this.sendRevision;
@@ -265,8 +267,14 @@ export class QaSessionController {
       last.status = 'stopped';
       this.messages = [...this.messages];
       this.pendingWrite = undefined;
-      this.persistSession(this.answerMode, revision).catch(() => {
-        if (revision === this.sendRevision) this.noticeMessage = '已停止生成，当前内容尚未保存';
+      this.persistSession(this.answerMode, revision).catch((error: Error) => {
+        if (revision !== this.sendRevision) return;
+        const question = this.messages[this.messages.length - 2];
+        this.failedAttempt = { request: { question: question?.content || '', history: [], mode: this.answerMode },
+          userId: question?.id || '', answerId: last.id, saveOnly: true };
+        this.errorMessage = error instanceof ApiError ? error.message : '当前内容尚未保存，请重试';
+        this.noticeMessage = '';
+        this.reportPending();
       });
     }
     this.sending = false;

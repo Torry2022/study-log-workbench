@@ -408,9 +408,14 @@ export struct QaPage {
                   .id('qa_send')
                   .backgroundColor($r('app.color.primary'))
                   .fontColor(Color.White)
-                  .opacity(this.data.sending || this.data.question.trim().length > 0 ? 1 : 0.58)
-                  .enabled(this.data.sending || this.configured && this.data.question.trim().length > 0)
-                  .accessibilityText(this.data.sending ? '停止生成' : '发送问题').bindTips(this.data.sending ? '停止生成' : '发送问题', WORKSPACE_TIPS)
+                  .opacity(this.data.sending && (this.data.receivedDone || !!this.data.pendingWrite) ||
+                    !this.data.sending && this.data.question.trim().length === 0 ? 0.58 : 1)
+                  .enabled(this.data.sending ? !this.data.receivedDone && !this.data.pendingWrite :
+                    this.configured && this.data.question.trim().length > 0)
+                  .accessibilityText(this.data.sending ? (this.data.receivedDone || !!this.data.pendingWrite ?
+                    '正在保存回答' : '停止生成') : '发送问题')
+                  .bindTips(this.data.sending ? (this.data.receivedDone || !!this.data.pendingWrite ?
+                    '正在保存回答' : '停止生成') : '发送问题', WORKSPACE_TIPS)
                   .onClick(() => this.data.sending ? this.data.stop() : this.data.send())
                 }
                 .width('100%')

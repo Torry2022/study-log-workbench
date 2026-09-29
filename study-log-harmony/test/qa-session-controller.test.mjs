@@ -131,6 +131,77 @@ test('stopped-answer persistence owns the leave guard until the save settles', a
   }
 });
 
+test('failed stopped-answer save can retry the same write without rerunning the model', async () => {
+  const Controller = await loadController();
+  const writes = []; let streams = 0;
+  const controller = new Controller({ cancelStream() {},
+    postStream: async () => { streams++; },
+    post: async (_path, body) => {
+      writes.push(structuredClone(body));
+      if (writes.length === 1) throw new Error('offline');
+      return { session: { id: body.id, version: 'v1' } };
+    },
+    get: async () => ({ sessions: [] })
+  }, view());
+  controller.messages = [{ id: 'u', role: 'user', content: 'question' },
+    { id: 'a', role: 'assistant', content: 'partial' }];
+  controller.sending = true;
+  controller.stop();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(controller.failedAttempt?.saveOnly, true);
+  assert.equal(controller.messages.at(-1).status, 'stopped');
+  await controller.runAttempt(controller.failedAttempt);
+  assert.equal(streams, 0);
+  assert.deepEqual(writes[1], writes[0]);
+  assert.equal(controller.sessionVersion, 'v1');
+  assert.equal(controller.failedAttempt, undefined);
+});
+
+test('stop during completed-answer persistence does not start a competing write', async () => {
+  const Controller = await loadController();
+  let finishSave;
+  const writes = [];
+  const controller = new Controller({
+    postStream: async (_path, _request, chunk) =>
+      chunk('event: done\ndata: {"answer":"complete","citations":[]}\n\n'),
+    post: (path, body) => { writes.push({ path, body });
+      return new Promise(resolve => { finishSave = resolve; }); },
+    get: async () => ({ sessions: [] }), cancelStream() {}
+  }, view());
+  controller.question = 'question';
+  const sending = controller.send();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(writes.length, 1);
+  controller.stop();
+  assert.equal(writes.length, 1);
+  assert.equal(controller.messages.at(-1).status, undefined);
+  finishSave({ session: { id: writes[0].body.id, version: 'v1' } });
+  await sending;
+  assert.equal(controller.sessionVersion, 'v1');
+});
+
+test('stop during a save-only retry keeps the pending write intact', async () => {
+  const Controller = await loadController();
+  let finishSave; let writes = 0;
+  const controller = new Controller({ cancelStream() {},
+    post: (_path, body) => { writes++;
+      return new Promise(resolve => { finishSave = () => resolve({ session: { id: body.id, version: 'v1' } }); }); },
+    get: async () => ({ sessions: [] })
+  }, view());
+  controller.messages = [{ id: 'u', role: 'user', content: 'question' },
+    { id: 'a', role: 'assistant', content: 'partial', status: 'stopped' }];
+  controller.failedAttempt = { request: { question: 'question', history: [], mode: 'logs_only' },
+    userId: 'u', answerId: 'a', saveOnly: true };
+  const retry = controller.runAttempt(controller.failedAttempt);
+  await new Promise(resolve => setImmediate(resolve));
+  controller.stop();
+  assert.equal(writes, 1);
+  assert.equal(controller.messages.at(-1).status, 'stopped');
+  finishSave();
+  await retry;
+  assert.equal(controller.sessionVersion, 'v1');
+});
+
 test('late stopped-answer save cannot replace a newly opened session', async () => {
   const QaSessionController = await loadController();
   let finishSave;

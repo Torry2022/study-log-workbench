@@ -259,6 +259,9 @@ export struct LogsReaderPage {
   @State private linkOpen: boolean = false;
   @State private linkOpening: boolean = false;
   @State private imageBusy: boolean = false;
+  @State private pendingImageCount: number = 0;
+  private pendingImageFiles: ApiUploadFile[] = [];
+  private pendingImageDate: string = '';
   @State private exportBusy: boolean = false;
   @State private exportMenuOpen: boolean = false;
   @State private hoveredExport: string = '';
@@ -445,6 +448,7 @@ export struct LogsReaderPage {
     this.editor.onCommand = () => {};
     this.editor.onImages = () => {};
     this.closeLink(false);
+    this.cancelPendingImages();
     this.onCaptureDraft(async () => undefined);
   }
 
@@ -1310,6 +1314,7 @@ export struct LogsReaderPage {
 
   private applyRestoredDay(day: DayEntry): void {
     if (day.date !== this.selectedDate) return;
+    this.cancelPendingImages();
     this.day = day;
     const body = this.bodyFromDay(day);
     this.savedText = body;
@@ -1375,6 +1380,76 @@ export struct LogsReaderPage {
 
   private imageUpload(): LogImageUpload {
     return new LogImageUpload(this.getUIContext().getHostContext() as common.UIAbilityContext);
+  }
+
+  private cancelPendingImages(): void {
+    this.imageUpload().clear(this.pendingImageFiles);
+    this.pendingImageFiles = [];
+    this.pendingImageDate = '';
+    this.pendingImageCount = 0;
+  }
+
+  private async receivePreviewImages(event: DragEvent): Promise<void> {
+    if (!this.day || this.dayLoading || this.daysLoading || this.saving || this.deleting ||
+      this.imageBusy || this.pendingImageCount || this.backupOpen || this.linkOpen) {
+      appFeedback.show('请先完成当前图片或编辑操作', 'warning');
+      return;
+    }
+    const lifecycle = this.lifecycle;
+    const date = this.selectedDate;
+    this.imageBusy = true;
+    try {
+      const files = this.imageUpload().receiveDrop(event);
+      if (lifecycle !== this.lifecycle || date !== this.selectedDate) {
+        this.imageUpload().clear(files);
+        return;
+      }
+      this.pendingImageFiles = files;
+      this.pendingImageDate = date;
+      this.pendingImageCount = files.length;
+      await this.switchMode(true);
+      if (lifecycle !== this.lifecycle || date !== this.selectedDate || !this.sourceMode) {
+        this.cancelPendingImages();
+        throw new Error('未能进入原日志编辑，请重新拖入图片');
+      }
+    } catch (error) {
+      if (this.pendingImageDate === date && !this.sourceMode) this.cancelPendingImages();
+      if (lifecycle === this.lifecycle) appFeedback.show(
+        error instanceof Error ? error.message : '未能读取拖入的图片', 'error');
+    } finally {
+      if (lifecycle === this.lifecycle) this.imageBusy = false;
+    }
+  }
+
+  private async insertPendingImages(): Promise<void> {
+    if (!this.pendingImageCount || this.imageBusy) return;
+    if (!this.day || this.pendingImageDate !== this.selectedDate || !this.sourceMode ||
+      !this.editorReady || this.editor.loadedDocumentKey !== this.selectedDate) {
+      appFeedback.show('日块或编辑模式已变化，请重新插入图片', 'error');
+      return;
+    }
+    this.imageBusy = true;
+    const lifecycle = this.lifecycle;
+    const date = this.selectedDate;
+    let target: EditorSnapshot | undefined = undefined;
+    try {
+      target = await this.editor.command('capture');
+      if (target.documentKey !== date) throw new Error('编辑位置已变化，请重新插入图片');
+      const markdown = await this.imageUpload().upload(this.pendingImageFiles);
+      if (lifecycle !== this.lifecycle || date !== this.selectedDate) return;
+      const before = target.text.slice(0, target.from);
+      const after = target.text.slice(target.to);
+      const prefix = before ? (before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n') : '';
+      const suffix = after ? (after.startsWith('\n\n') ? '' : after.startsWith('\n') ? '\n' : '\n\n') : '';
+      await this.editor.insert(target, `${prefix}${markdown}${suffix}`);
+      this.cancelPendingImages();
+    } catch (error) {
+      if (lifecycle === this.lifecycle) appFeedback.show(
+        error instanceof Error ? error.message : '图片上传失败，可重试', 'error');
+    } finally {
+      if (target) this.editor.release(target).catch(() => {});
+      if (lifecycle === this.lifecycle) this.imageBusy = false;
+    }
   }
 
   private async insertImages(): Promise<void> {
@@ -1770,6 +1845,7 @@ export struct LogsReaderPage {
         activeInstance.namespace, date, body, response.day.version) : undefined;
       const nextText = restore ? restore.text : body;
       const changed = this.day?.date !== date || this.previewText !== nextText;
+      if (this.pendingImageDate && this.pendingImageDate !== date) this.cancelPendingImages();
       this.day = response.day;
       this.selectedDate = date;
       if (changed) {
@@ -3359,8 +3435,25 @@ export struct LogsReaderPage {
         this.heading()
         Stack({ alignContent: Alignment.TopEnd }) {
           Row() {
-            SourceEditor({ session: this.editor, documentKey: this.day.date,
-              initialText: this.editorInitialText })
+            Column() {
+              if (this.pendingImageCount > 0) {
+                Row({ space: 8 }) {
+                  Text(`已接收 ${this.pendingImageCount} 张图片，请在正文中选择插入位置`)
+                    .fontSize(13).fontColor($r('app.color.muted')).layoutWeight(1)
+                    .textAlign(TextAlign.Start).id('pending_images_hint')
+                  ToolbarAction({ label: '插入图片', icon: $r('app.media.upload'),
+                    available: !this.imageBusy && this.editorReady,
+                    onAction: () => this.insertPendingImages() }).id('pending_images_insert')
+                  ToolbarAction({ label: '取消', icon: $r('app.media.x'),
+                    available: !this.imageBusy,
+                    onAction: () => this.cancelPendingImages() }).id('pending_images_cancel')
+                }.width('100%').padding({ top: 8, bottom: 8, left: 16, right: 16 })
+                  .backgroundColor($r('app.color.canvas'))
+              }
+              SourceEditor({ session: this.editor, documentKey: this.day.date,
+                initialText: this.editorInitialText })
+                .width('100%').layoutWeight(1)
+            }
               .width(this.isWide() && this.splitMode ? '50%' : (this.sourceMode || this.splitMode ? '100%' : 0))
               .height('100%')
               .visibility(this.sourceMode || this.splitMode ? Visibility.Visible : Visibility.None)
@@ -3369,6 +3462,7 @@ export struct LogsReaderPage {
             Row() {
               Stack({ alignContent: Alignment.TopEnd }) {
               MarkdownReader({ content: this.previewText, contentMode: 'log', documentKey: this.day.date,
+                onImageDrop: (event: DragEvent) => this.receivePreviewImages(event),
                 themePreference: this.themePreference,
                 stableViewport: this.isWide(), fillAvailableWidth: this.splitMode,
                 viewportRequestRevision: this.modeLayoutRevision + this.workspaceLayoutRevision,

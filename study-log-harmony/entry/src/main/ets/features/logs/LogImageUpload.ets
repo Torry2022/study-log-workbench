@@ -1,6 +1,7 @@
 import { common } from '@kit.AbilityKit';
 import { fileIo, picker } from '@kit.CoreFileKit';
 import { util } from '@kit.ArkTS';
+import { unifiedDataChannel, uniformTypeDescriptor, uniformDataStruct } from '@kit.ArkData';
 import { apiClient, ApiUploadFile } from '../../common/network/ApiClient';
 import { EditorImageData } from '../../common/editor/SourceEditor';
 
@@ -11,6 +12,58 @@ export class LogImageUpload {
   private context: common.UIAbilityContext;
 
   constructor(context: common.UIAbilityContext) { this.context = context; }
+
+  private imageFormat(bytes: Uint8Array): string {
+    if (bytes.length >= 8 && [137, 80, 78, 71, 13, 10, 26, 10]
+      .every((value: number, index: number) => bytes[index] === value)) return 'png';
+    if (bytes.length >= 3 && bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255) return 'jpeg';
+    const head = Array.from(bytes.slice(0, 12)).map((value: number) => String.fromCharCode(value)).join('');
+    if (head.startsWith('GIF87a') || head.startsWith('GIF89a')) return 'gif';
+    if (head.startsWith('RIFF') && head.slice(8, 12) === 'WEBP') return 'webp';
+    throw new Error('仅支持 PNG、JPEG、GIF 或 WebP 图片');
+  }
+
+  receiveDrop(event: DragEvent): ApiUploadFile[] {
+    const uris = event.getData().getRecords().map((record: unifiedDataChannel.UnifiedRecord) => {
+      const type = record.getType();
+      if (record.getTypes().includes(uniformTypeDescriptor.UniformDataType.FILE_URI)) {
+        return (record.getEntry(uniformTypeDescriptor.UniformDataType.FILE_URI) as uniformDataStruct.FileUri).oriUri;
+      }
+      if (type === uniformTypeDescriptor.UniformDataType.IMAGE ||
+        uniformTypeDescriptor.getTypeDescriptor(type).belongsTo(uniformTypeDescriptor.UniformDataType.IMAGE)) {
+        return (record as unifiedDataChannel.Image).imageUri || (record as unifiedDataChannel.File).uri;
+      }
+      if (type === uniformTypeDescriptor.UniformDataType.FILE) return (record as unifiedDataChannel.File).uri;
+      throw new Error('请拖入图片文件');
+    });
+    if (!uris.length || uris.length > 5) throw new Error('一次最多插入 5 张图片');
+    const files: ApiUploadFile[] = [];
+    let total = 0;
+    try {
+      for (let index = 0; index < uris.length; index++) {
+        const source = fileIo.openSync(uris[index], fileIo.OpenMode.READ_ONLY);
+        try {
+          const size = fileIo.statSync(source.fd).size;
+          total += size;
+          if (size <= 0 || total > 20 * 1024 * 1024) throw new Error('图片不能为空，且总大小不能超过 20 MiB');
+          const header = new ArrayBuffer(12);
+          const length = fileIo.readSync(source.fd, header);
+          const format = this.imageFormat(new Uint8Array(header, 0, length));
+          const name = `incoming-image-${Date.now()}-${index + 1}.${format}`;
+          const path = `${this.context.cacheDir}/${name}`;
+          const destination = fileIo.openSync(path,
+            fileIo.OpenMode.CREATE | fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.TRUNC);
+          files.push({ path, name, contentType: `image/${format}` });
+          try { fileIo.copyFileSync(source.fd, destination.fd); }
+          finally { fileIo.closeSync(destination); }
+        } finally { fileIo.closeSync(source); }
+      }
+      return files;
+    } catch (error) {
+      this.clear(files);
+      throw error instanceof Error ? error : new Error('图片读取失败');
+    }
+  }
 
   private cachePicked(uri: string, index: number): ApiUploadFile {
     const extension = ['.png', '.jpg', '.jpeg', '.gif', '.webp']

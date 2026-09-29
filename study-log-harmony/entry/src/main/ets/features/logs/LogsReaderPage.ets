@@ -186,6 +186,17 @@ export struct LogsReaderPage {
   @State private notesLoadingHint: LoadingHintPlacement = new LoadingHintPlacement();
   @State private favoritesLoadingHint: LoadingHintPlacement = new LoadingHintPlacement();
   @State private statsLoadingHint: LoadingHintPlacement = new LoadingHintPlacement();
+
+  private preparationHint(): LoadingHintPlacement {
+    switch (this.selectedTab()) {
+      case 1: return this.notesLoadingHint;
+      case 2: return this.favoritesLoadingHint;
+      case 3: return this.qaLoadingHint;
+      case 4: return this.statsLoadingHint;
+      default: return this.logLoadingHint;
+    }
+  }
+
   private readingViewportX: number = 0;
   private readingViewportY: number = 0;
   private readingViewportWidth: number = 0;
@@ -3870,7 +3881,7 @@ export struct LogsReaderPage {
           this.workspaceOriginY = Number(area.globalPosition.y);
         })
       DelayedLoadingHint({ loading: this.selectedTab() === 0 && this.logLoadingHint.loading,
-        text: '正在读取日志…' })
+        text: '正在加载日志…' })
         .width(this.logLoadingHint.width).height(this.logLoadingHint.height)
         .position({ x: this.logLoadingHint.x - this.workspaceOriginX,
           y: this.logLoadingHint.y - this.workspaceOriginY })
@@ -3899,6 +3910,15 @@ export struct LogsReaderPage {
         .position({ x: this.statsLoadingHint.x - this.workspaceOriginX,
           y: this.statsLoadingHint.y - this.workspaceOriginY })
         .zIndex(20).hitTestBehavior(HitTestMode.None)
+      DelayedLoadingHint({ loading: (this.workspaceTransition.waitingKind === 'mode' ||
+        this.workspaceTransition.waitingKind === 'module') &&
+        !this.preparationHint().loading && this.preparationHint().width > 0,
+        text: '正在准备页面…' })
+        .width(this.preparationHint().width).height(this.preparationHint().height)
+        .position({ x: this.preparationHint().x - this.workspaceOriginX,
+          y: this.preparationHint().y - this.workspaceOriginY })
+        .zIndex(20).hitTestBehavior(HitTestMode.None)
+        .transition(floatingSurfaceTransition())
       if (this.readingTransition.snapshot) {
         Stack({ alignContent: Alignment.TopStart }) {
           Image(this.readingTransition.snapshot).width(this.readingImageWidth).height(this.readingImageHeight)

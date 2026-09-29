@@ -1,7 +1,7 @@
 import { WorkspaceBreakpoint, WORKSPACE_TABS, READING_MAX_WIDTH } from '../../common/AppConfig';
 import { apiClient, ApiError, ApiUploadFile } from '../../common/network/ApiClient';
 import { activeInstance } from '../../common/network/InstanceConfig';
-import { EmptyState, InlineStatus, LoadFailure } from '../../common/ui/FeedbackStates';
+import { EmptyState, LoadFailure } from '../../common/ui/FeedbackStates';
 import { MarkdownReader } from '../../common/ui/MarkdownReader';
 import { workspaceSansFamily } from '../../common/ui/Typography';
 import { AppLogo } from '../../common/ui/AppLogo';
@@ -215,8 +215,8 @@ export struct LogsReaderPage {
     tab: () => this.selectedTab(),
     canCapture: (kind: string) => this.isWide() &&
       (kind === 'module' || ((kind === 'document' || kind === 'mode') && this.selectedTab() === 0 && !!this.day)),
-    capture: () => this.getUIContext().getComponentSnapshot().get('module_frame',
-      { waitUntilRenderFinished: true }),
+    capture: (kind: string) => this.getUIContext().getComponentSnapshot().get(
+      kind === 'module' ? 'module_frame' : 'workspace_frame', { waitUntilRenderFinished: true }),
     fade: (update: () => void, finished: () => void) => {
       this.getUIContext().animateTo({ duration: 160, curve: Curve.EaseOut, onFinish: finished }, update);
     }
@@ -804,6 +804,8 @@ export struct LogsReaderPage {
     this.favoritesOpen = index === 2;
     this.qaOpen = index === 3;
     this.statsOpen = index === 4;
+    if (index === 0 && this.readFailed) this.showReadFailure();
+    else if (index !== 0) appFeedback.dismissScope('log-read');
     this.closeNavigation();
     if (index !== 0) this.closeOutline();
     this.closeSearch();
@@ -1163,6 +1165,11 @@ export struct LogsReaderPage {
 
   private message(error: Error): string {
     return error instanceof ApiError ? error.message : '服务器暂时无法读取日志';
+  }
+
+  private showReadFailure(): void {
+    if (this.day && this.selectedTab() === 0) appFeedback.show(this.errorMessage, 'error', 0, 'log-read',
+      { label: '重试', onAction: () => this.retryRead() });
   }
 
   private reportDraft(): void {
@@ -1846,6 +1853,7 @@ export struct LogsReaderPage {
 
   private async loadMonths(): Promise<void> {
     const lifecycle = this.lifecycle;
+    appFeedback.dismissScope('log-read');
     this.monthsLoading = true;
     this.readFailed = false;
     this.errorMessage = '';
@@ -1864,6 +1872,7 @@ export struct LogsReaderPage {
         this.readFailed = true;
         this.errorMessage = this.message(error as Error);
         this.retryRead = async () => this.loadMonths();
+        this.showReadFailure();
       }
     } finally {
       if (lifecycle === this.lifecycle) this.monthsLoading = false;
@@ -1872,6 +1881,7 @@ export struct LogsReaderPage {
 
   private async loadDays(month: string, targetDate: string = ''): Promise<void> {
     const lifecycle = this.lifecycle;
+    appFeedback.dismissScope('log-read');
     const revision = ++this.listRevision;
     this.dayRevision++;
     await this.coverLogDocument();
@@ -1900,6 +1910,7 @@ export struct LogsReaderPage {
       if (this.errorMessage && this.day) {
         this.month = previousMonth;
         this.days = previousDays;
+        this.retryRead = async () => this.loadDays(month, targetDate);
       }
     } catch (error) {
       if (lifecycle === this.lifecycle && revision === this.listRevision) {
@@ -1908,6 +1919,7 @@ export struct LogsReaderPage {
         this.readFailed = true;
         this.errorMessage = this.navigationError;
         this.retryRead = async () => this.loadDays(month, targetDate);
+        this.showReadFailure();
         this.workspaceTransition.finish('document');
       }
     } finally {
@@ -1916,6 +1928,7 @@ export struct LogsReaderPage {
   }
 
   private async loadDay(date: string, heading: string = '', headingIndex: number = -1): Promise<void> {
+    appFeedback.dismissScope('log-read');
     this.closeFavoriteFeedback();
     this.favoriteGroupDialogOpen = false;
     const lifecycle = this.lifecycle;
@@ -1972,6 +1985,7 @@ export struct LogsReaderPage {
         this.readFailed = true;
         this.errorMessage = this.message(error as Error);
         this.retryRead = async () => this.loadDay(date, heading, headingIndex);
+        this.showReadFailure();
         this.workspaceTransition.finish('document');
       }
     } finally {
@@ -3515,10 +3529,6 @@ export struct LogsReaderPage {
   @Builder
   private reader() {
     Column() {
-      if (this.errorMessage && this.day && !this.dayLoading && !this.daysLoading) {
-        InlineStatus({ text: this.errorMessage, error: true, retry: this.readFailed,
-          onRetry: () => this.retryRead() })
-      }
       if (this.monthsLoading || !this.day && (this.daysLoading || this.dayLoading)) {
         Column() {
           LoadingProgress().width(26).height(26).color($r('app.color.primary'))
@@ -3590,6 +3600,7 @@ export struct LogsReaderPage {
                   this.readFailed = true;
                   this.retryRead = async () => this.loadDay(date);
                   this.errorMessage = '日志正文渲染失败，请刷新重试';
+                  this.showReadFailure();
                   this.workspaceTransition.finish('document');
                 },
                 targetHeading: this.targetHeading, targetHeadingIndex: this.targetHeadingIndex,
@@ -3740,6 +3751,7 @@ export struct LogsReaderPage {
         }.width('100%').height(64 * (1 - this.readingProgress))
           .clip(this.readingTransition.animating || this.logsReadingMode)
           .hitTestBehavior(this.logsReadingMode ? HitTestMode.None : HitTestMode.Default)
+          .accessibilityLevel(this.logsReadingMode ? 'no-hide-descendants' : 'auto')
         } else {
           AppTopBar({ title: this.notesOpen ? '随记' : this.favoritesOpen ? '收藏中心' :
             this.qaOpen ? '知识问答' : this.statsOpen ? '学习统计' : '学习日志',
@@ -3762,7 +3774,9 @@ export struct LogsReaderPage {
                   .translate({ x: -this.desktopNavigationWidth() * this.readingProgress })
               }.width(this.desktopNavigationWidth() * (1 - this.readingProgress)).height('100%')
                 .clip(this.readingTransition.animating || this.logsReadingMode)
+                .zIndex(this.railPopover ? 40 : 1)
                 .hitTestBehavior(this.logsReadingMode ? HitTestMode.None : HitTestMode.Default)
+                .accessibilityLevel(this.logsReadingMode ? 'no-hide-descendants' : 'auto')
             }
             Stack() {
           Row() {
@@ -3907,9 +3921,7 @@ export struct LogsReaderPage {
                 this.moveAiTools(0);
               }
             })
-          if (this.workspaceTransition.snapshot &&
-            (this.workspaceTransition.kind === 'module' || this.workspaceTransition.kind === 'document' ||
-              this.workspaceTransition.kind === 'mode')) {
+          if (this.workspaceTransition.snapshot && this.workspaceTransition.kind === 'module') {
             Image(this.workspaceTransition.snapshot).width('100%').height('100%')
               .objectFit(ImageFit.Fill).syncLoad(true).opacity(this.workspaceTransition.opacity).zIndex(10)
               .onComplete(() => this.workspaceTransition.rendered())
@@ -3978,6 +3990,13 @@ export struct LogsReaderPage {
           .backgroundColor($r('app.color.canvas')).clip(true).zIndex(5)
           .hitTestBehavior(HitTestMode.None)
       }
+      if (this.workspaceTransition.snapshot && this.workspaceTransition.kind !== 'module') {
+        Image(this.workspaceTransition.snapshot).width('100%').height('100%')
+          .objectFit(ImageFit.Fill).syncLoad(true).opacity(this.workspaceTransition.opacity).zIndex(10)
+          .onComplete(() => this.workspaceTransition.rendered())
+          .onError(() => this.workspaceTransition.clear())
+          .hitTestBehavior(HitTestMode.None)
+      }
       if (this.readingOutlineOpen && this.logsReadingMode && this.isWide()) {
         Stack({ alignContent: Alignment.TopEnd }) {
           Column().width('100%').height('100%').onClick(() => this.readingOutlineOpen = false)
@@ -4020,7 +4039,7 @@ export struct LogsReaderPage {
       }
       if (this.backupOpen && this.day) {
         Stack() {
-          BackupPanel({ date: this.day.date, maximized: $backupMaximized,
+          BackupPanel({ date: this.day.date, maximized: $backupMaximized, themePreference: this.themePreference,
             onClose: () => { if (!this.backupBusy) { this.backupOpen = false; this.backupMaximized = false; } },
             onBeforeRestore: () => this.beforeRestore(),
             onRestored: (day: DayEntry) => this.applyRestoredDay(day),
@@ -4028,6 +4047,8 @@ export struct LogsReaderPage {
             .width(this.isWide() ? (this.backupMaximized ? '100%' : '92%') : '100%')
             .constraintSize({ maxWidth: this.isWide() && !this.backupMaximized ? 1120 : '100%' })
             .height(this.isWide() ? (this.backupMaximized ? '100%' : '85%') : '100%')
+            .border({ width: this.isWide() && !this.backupMaximized ? 1 : 0,
+              color: $r('app.color.hairline') })
             .borderRadius(this.isWide() && !this.backupMaximized ? 12 : 0)
             .clip(true)
         }.width('100%').height('100%')

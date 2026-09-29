@@ -67,6 +67,7 @@ export struct DesktopTitleBar {
   }
 
   private menuKey(event: KeyEvent, name: string, action: string = ''): boolean {
+    if (!this.opened && workspaceKey(event, KeyCode.KEYCODE_ESCAPE)) return false;
     if (workspaceKey(event, KeyCode.KEYCODE_ESCAPE) || workspaceKey(event, KeyCode.KEYCODE_F10)) {
       this.opened = '';
       focusControl.requestFocus(`window_menu_${name}`);

@@ -200,7 +200,7 @@ export struct EditorLinkPicker {
               })
               .onClick(() => this.insert(candidate))
           }
-        }, (candidate: EditorLinkCandidate) => `${candidate.date}:${candidate.heading || ''}`)
+        }, (candidate: EditorLinkCandidate, index: number) => `${JSON.stringify(candidate)}:${index}`)
       }.layoutWeight(1).width('100%').padding(8).scrollBar(BarState.Auto)
       }.width('100%').height('100%')
         .backgroundColor($r('app.color.canvas')).border({ width: 1, color: $r('app.color.hairline') })

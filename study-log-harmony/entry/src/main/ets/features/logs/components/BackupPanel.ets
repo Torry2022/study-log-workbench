@@ -15,9 +15,10 @@ import { DayEntry } from '../LogModels';
 @Component
 export struct BackupPanel {
   @Consume('workspaceBreakpoint') private breakpoint: WorkspaceBreakpoint;
-  @StorageProp('systemTheme') private systemTheme: string = 'light';
+  @StorageProp('systemTheme') @Watch('themeChanged') private systemTheme: string = 'light';
   @Link maximized: boolean;
   @Prop date: string = '';
+  @Prop @Watch('themeChanged') themePreference: string = 'system';
   onClose: () => void = () => {};
   onBeforeRestore: () => Promise<boolean> = async () => false;
   onRestored: (day: DayEntry) => Promise<void> = async () => {};
@@ -29,6 +30,7 @@ export struct BackupPanel {
   @State private loading: boolean = true;
   @State private loadingMore: boolean = false;
   @State private previewLoading: boolean = false;
+  @State private webContentReady: boolean = false;
   @State private confirming: boolean = false;
   @State private restoring: boolean = false;
   @State private conflict: boolean = false;
@@ -39,6 +41,7 @@ export struct BackupPanel {
   @State private panelHeight: number = 0;
   private repository: BackupRepository = new BackupRepository(apiClient);
   private controller: webview.WebviewController = new webview.WebviewController();
+  private webPageReady: boolean = false;
   private lifecycle: number = 0;
   private listRevision: number = 0;
   private previewRevision: number = 0;
@@ -98,10 +101,12 @@ export struct BackupPanel {
 
   private async selectVersion(version: BackupVersion): Promise<void> {
     if (this.busy()) return;
+    if (this.selected?.id === version.id && this.previewLoading) return;
+    if (this.selected?.id === version.id && this.preview?.id === version.id &&
+      !this.previewLoading && !this.previewError && !this.conflict) return;
     const lifecycle = this.lifecycle;
     const revision = ++this.previewRevision;
     this.selected = version;
-    this.preview = undefined;
     this.previewLoading = true;
     this.previewError = '';
     this.restoreError = '';
@@ -113,7 +118,7 @@ export struct BackupPanel {
       if (!preview || preview.date !== this.date || preview.kind !== 'write' || preview.id !== version.id ||
         !/^[a-f0-9]{64}$/.test(preview.backupVersion)) throw new Error('历史版本响应格式异常');
       this.preview = preview;
-      this.renderPreview();
+      await this.renderPreview();
     } catch (error) {
       if (lifecycle === this.lifecycle && revision === this.previewRevision) {
         this.previewError = error instanceof Error ? error.message : '读取历史版本失败';
@@ -123,18 +128,37 @@ export struct BackupPanel {
     }
   }
 
-  private renderPreview(): void {
-    if (!this.preview) return;
+  private async renderPreview(): Promise<void> {
+    if (!this.preview || !this.webPageReady) return;
     const preview = this.preview;
+    const revision = this.previewRevision;
     const label = this.selected ? this.time(this.selected.createdAt) : '';
-    this.controller.runJavaScript(`window.renderBackup(${JSON.stringify(preview.currentContent)},` +
-      `${JSON.stringify(preview.historicalContent)},${this.systemTheme === 'dark'},${JSON.stringify(label)})`)
+    try {
+      await this.controller.runJavaScript(`window.renderBackup(${JSON.stringify(preview.currentContent)},` +
+        `${JSON.stringify(preview.historicalContent)},${this.darkTheme()},${JSON.stringify(label)})`);
+      if (revision === this.previewRevision) this.webContentReady = true;
+    } catch (_) {
+      if (revision === this.previewRevision) this.previewError = '历史版本显示失败，请重新选择版本';
+    }
+  }
+
+  private darkTheme(): boolean {
+    return this.themePreference === 'dark' ||
+      (this.themePreference === 'system' && this.systemTheme === 'dark');
+  }
+
+  private previewPending(): boolean {
+    return this.previewLoading || (this.preview !== undefined && !this.webContentReady);
+  }
+
+  private themeChanged(): void {
+    this.controller.runJavaScript(`document.documentElement.classList.toggle('dark',${this.darkTheme()})`)
       .catch(() => {});
   }
 
   private async restore(): Promise<void> {
     const preview = this.preview;
-    if (!preview || this.busy() || this.conflict) return;
+    if (!preview || this.busy() || this.previewLoading || this.previewError || !this.webContentReady || this.conflict) return;
     const lifecycle = this.lifecycle;
     const revision = this.previewRevision;
     this.confirming = true;
@@ -255,15 +279,15 @@ export struct BackupPanel {
   @Builder
   private previewEmpty() {
     Column({ space: 8 }) {
-      if (this.previewLoading) {
+      if (this.previewPending()) {
         LoadingProgress().width(22).height(22).color($r('app.color.primary'))
       } else {
         Image($r('app.media.archive_restore')).width(22).height(22)
           .colorFilter(iconTint($r('app.color.muted_soft')))
       }
-      Text(this.previewLoading ? '正在读取历史日块' : '选择一个历史版本')
+      Text(this.previewPending() ? '正在读取历史日块' : '选择一个历史版本')
         .fontSize(13).fontWeight(FontWeight.Medium).fontColor($r('app.color.muted'))
-      if (!this.previewLoading) {
+      if (!this.previewLoading && !this.preview) {
         Text('确认内容后再恢复，不会整文件覆盖。').fontSize(12)
           .fontColor($r('app.color.muted_soft')).textAlign(TextAlign.Center)
       }
@@ -273,18 +297,32 @@ export struct BackupPanel {
   @Builder
   private comparison() {
     Column() {
-      if (this.previewLoading) {
+      if (this.previewLoading && !this.preview) {
         Column() { this.previewEmpty() }
           .width('100%').layoutWeight(1).justifyContent(FlexAlign.Center)
       } else if (this.previewError && !this.preview) {
         LoadFailure({ title: '历史版本读取失败', message: this.previewError,
           onRetry: () => { if (this.selected) this.selectVersion(this.selected); } })
       } else if (this.preview) {
-        Web({ src: $rawfile('editor/backup.html'), controller: this.controller, renderMode: RenderMode.SYNC_RENDER })
-          .id('backup_comparison_web').width('100%').layoutWeight(1)
-          .javaScriptAccess(true).domStorageAccess(false).onlineImageAccess(false)
-          .backgroundColor($r('app.color.canvas')).monopolizeEvents(true)
-          .onOverrideUrlLoading(() => true).onPageEnd(() => this.renderPreview())
+        Stack() {
+          Web({ src: $rawfile('editor/backup.html'), controller: this.controller, renderMode: RenderMode.SYNC_RENDER })
+            .id('backup_comparison_web').width('100%').height('100%')
+            .opacity(this.webContentReady ? 1 : 0)
+            .javaScriptAccess(true).domStorageAccess(false).onlineImageAccess(false)
+            .backgroundColor($r('app.color.canvas')).monopolizeEvents(true)
+            .onOverrideUrlLoading(() => true)
+            .onPageBegin(() => { this.webPageReady = false; this.webContentReady = false; })
+            .onPageEnd(() => { this.webPageReady = true; this.renderPreview(); })
+          if (this.previewError) {
+            Column() {
+              LoadFailure({ title: '历史版本读取失败', message: this.previewError,
+                onRetry: () => { if (this.selected) this.selectVersion(this.selected); } })
+            }.width('100%').height('100%').backgroundColor($r('app.color.canvas')).zIndex(1)
+          } else if (this.previewPending()) {
+            Column() { this.previewEmpty() }
+              .width('100%').height('100%').backgroundColor($r('app.color.canvas')).zIndex(1)
+          }
+        }.width('100%').layoutWeight(1).backgroundColor($r('app.color.canvas'))
         if (this.restoreError) {
           InlineStatus({ text: this.restoreError, error: true })
         }
@@ -304,7 +342,8 @@ export struct BackupPanel {
           } else {
             ToolbarAction({ label: this.restoring ? '恢复中' : '恢复此版本',
               icon: $r('app.media.archive_restore'), primary: true, busy: this.restoring,
-              available: !this.busy(), onAction: () => this.restore() })
+              available: this.webContentReady && !this.previewLoading && !this.previewError && !this.busy(),
+              onAction: () => this.restore() })
           }
         }.id('backup_restore_footer').width('100%').flexShrink(0)
           .padding({ left: 16, right: 16, top: 12, bottom: 12 })

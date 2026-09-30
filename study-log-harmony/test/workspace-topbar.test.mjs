@@ -14,7 +14,7 @@ const methods = ['shortcutBlocked', 'handleWorkspaceKey'].map(name => {
 }).join('\n');
 function workspace() {
   const module = { exports: {} };
-  const KeyCode = { KEYCODE_ESCAPE: 2070, KEYCODE_F6: 2067 };
+  const KeyCode = { KEYCODE_ESCAPE: 2070, KEYCODE_F6: 2095 };
   runInNewContext(ts.transpileModule(`export class Workspace { ${methods} }`, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }
   }).outputText, { module, exports: module.exports, KeyCode, KeyType: { Down: 0 },
@@ -29,7 +29,7 @@ test('theme overlay blocks workspace shortcuts and Escape closes it before under
   const page = workspace();
   page.searchOpen = true;
   assert.equal(page.shortcutBlocked(), true);
-  assert.equal(page.handleWorkspaceKey({ type: 0, keyCode: 2067 }), false);
+  assert.equal(page.handleWorkspaceKey({ type: 0, keyCode: 2095 }), false);
   assert.equal(page.handleWorkspaceKey({ type: 0, keyCode: 2070 }), true);
   assert.equal(page.desktopThemeOpen, false);
   assert.equal(page.searchOpen, true);
@@ -44,4 +44,13 @@ test('theme choice uses original close-after-selection behavior with the public 
   const execute = runInNewContext(`(function(value) { ${action} })`);
   execute.call(page, 'dark');
   assert.deepEqual(calls, ['dark', 'closed']);
+});
+
+test('desktop search candidates do not block the original F6 region cycle, while narrow search still blocks it', () => {
+  const page = workspace(); page.desktopThemeOpen = false; page.searchOpen = true;
+  let moves = 0; page.focusWorkspaceRegion = () => moves++;
+  assert.equal(page.shortcutBlocked(), false);
+  assert.equal(page.handleWorkspaceKey({ type: 0, keyCode: 2095 }), true); assert.equal(moves, 1);
+  page.isWide = () => false; assert.equal(page.shortcutBlocked(), true);
+  assert.equal(page.handleWorkspaceKey({ type: 0, keyCode: 2095 }), false); assert.equal(moves, 1);
 });

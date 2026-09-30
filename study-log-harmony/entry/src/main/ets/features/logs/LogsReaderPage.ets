@@ -22,7 +22,6 @@ import { CompactLogHeader } from './components/CompactLogHeader';
 import { BackupPanel } from './components/BackupPanel';
 import { LogImageUpload } from './LogImageUpload';
 import { LogSearchPanel, LogSearchResult } from './LogSearchPanel';
-import { LogSearchRepository } from './LogSearchRepository';
 import { ToolbarAction } from '../../common/ui/ToolbarAction';
 import { WORKSPACE_TIPS } from '../../common/ui/WorkspaceTips';
 import { LogDisplayModeControl } from './components/LogDisplayModeControl';
@@ -47,8 +46,8 @@ import { FavoriteHeading } from '../favorites/FavoriteModels';
 import { LogFavoriteGroupPanel } from './components/LogFavoriteGroupPanel';
 import { workspacePreferences } from '../../common/storage/WorkspacePreferences';
 import { appFeedback } from '../../common/ui/AppFeedback';
-import { SearchHistoryStore } from './SearchHistoryStore';
-import { SearchHistoryList } from '../../app/components/SearchHistoryList';
+import { WorkspaceSearchController } from '../../app/WorkspaceSearchController';
+import { GlobalSearchCandidates } from '../../app/components/GlobalSearchCandidates';
 import { LogAiController } from './LogAiController';
 import { LogAiMaterialImport } from './LogAiMaterialImport';
 import { LogAiPanel } from './components/LogAiPanel';
@@ -223,16 +222,10 @@ export struct LogsReaderPage {
   @State private exportBusy: boolean = false;
   @State private exportMenuOpen: boolean = false;
   @State private hoveredExport: string = '';
-  @State private searchOpen: boolean = false;
+  @Link searchOpen: boolean;
+  @ObjectLink search: WorkspaceSearchController;
   @State private searchFocusRevision: number = 0;
-  @State private searchQuery: string = '';
-  @State private searchHeadingsOnly: boolean = false;
-  @State private searchIgnoreCase: boolean = true;
-  @State private searchLoading: boolean = false;
-  @State private searchSubmitted: boolean = false;
-  @State private searchError: string = '';
-  @State private searchResults: LogSearchResult[] = [];
-  @State private searchHistory: string[] = [];
+  private searchResultScroller: Scroller = new Scroller();
   @State private aiOpen: boolean = false;
   @State private aiOffset: number = 420;
   @State private aiPanelWidth: number = 340;
@@ -246,7 +239,6 @@ export struct LogsReaderPage {
   private aiMotionRevision: number = 0;
   @State private aiMode: string = 'generate';
   @State private ai: LogAiController = new LogAiController(apiClient);
-  @StorageProp('pref_rememberSearch') private rememberSearch: boolean = true;
   @State private linkAlias: string = '';
   @State private moreOpen: boolean = false;
   @State private topMoreOpen: boolean = false;
@@ -265,8 +257,6 @@ export struct LogsReaderPage {
   private reads: LogReadRepository = new LogReadRepository(apiClient);
   private writes: LogWriteRepository = new LogWriteRepository(apiClient);
   @State private documents: LogDocumentController = new LogDocumentController(this.session, this.reads, this.writes);
-  private searches: LogSearchRepository = new LogSearchRepository(apiClient);
-  private searchHistoryStore: SearchHistoryStore = new SearchHistoryStore();
   private editor: SourceEditorSession = new SourceEditorSession();
   private lifecycle: number = 0;
   private listRevision: number = 0;
@@ -274,7 +264,6 @@ export struct LogsReaderPage {
   private leaveCheckPending: boolean = false;
   private calendarRevision: number = 0;
   private linkTarget: EditorSnapshot | undefined = undefined;
-  private searchRevision: number = 0;
   private focusRegion: number = -1;
   private logNavigationScroller: Scroller = new Scroller();
 
@@ -411,11 +400,7 @@ export struct LogsReaderPage {
       else if (command === 'globalSearch') this.searchOpen = true;
     };
     this.editor.onImages = (target: EditorSnapshot, images: EditorImageData[]) => this.receiveImages(target, images);
-    const lifecycle = this.lifecycle;
-    this.searchHistoryStore.load(this.getUIContext().getHostContext() as common.UIAbilityContext,
-      activeInstance.namespace).then((items: string[]) => {
-        if (lifecycle === this.lifecycle) this.searchHistory = items;
-      });
+    this.search.restoreSearchHistory();
     this.loadMonths();
   }
 
@@ -434,7 +419,7 @@ export struct LogsReaderPage {
     this.lifecycle++;
     this.listRevision++;
     this.calendarRevision++;
-    this.searchRevision++;
+    this.search.dispose();
     this.reads.invalidate();
     this.editor.onChange = () => {};
     this.editor.onDirty = () => {};
@@ -483,7 +468,7 @@ export struct LogsReaderPage {
   private shortcutBlocked(): boolean {
     return this.backupOpen || this.linkOpen || this.ai.reviewOpen || this.imageBusy || this.exportBusy ||
       this.documents.saving || this.deleting || this.modules.taxonomyOpen || this.desktopThemeOpen || this.topMoreOpen || this.compactSettingsOpen || this.moreOpen ||
-      this.exportMenuOpen || this.calendarOpen || !!this.railPopover || this.searchOpen ||
+      this.exportMenuOpen || this.calendarOpen || !!this.railPopover || (!this.isWide() && this.searchOpen) ||
       this.navigationOpen || this.outlineOpen || !!this.qaNavigation.qaRenameId || !!this.qaNavigation.qaMenuId;
   }
 
@@ -1580,64 +1565,29 @@ export struct LogsReaderPage {
     }
   }
 
-  private changeSearch(query: string): void {
-    this.searchQuery = query;
-    this.searchRevision++;
-    this.searchLoading = false;
-    this.searchSubmitted = false;
-    this.searchResults = [];
-    this.searchError = '';
+  private changeSearch(query: string, reset: boolean = false): void {
+    this.search.changeLogSearchQuery(query, reset);
   }
 
   private closeSearch(): void {
     this.searchOpen = false;
-    this.searchRevision++;
-    this.searchLoading = false;
+    this.search.dismissSearchResults();
   }
 
-  private showSearchHistory(): boolean {
-    return this.rememberSearch && !this.searchQuery.trim() && !this.searchSubmitted &&
-      !this.searchLoading && this.searchHistory.length > 0;
-  }
+  private showSearchHistory(): boolean { return this.search.showSearchHistory(); }
 
-  private updateSearchHistory(items: string[]): void {
-    this.searchHistory = items;
-    this.searchHistoryStore.save(items);
-  }
+  private updateSearchHistory(items: string[]): void { this.search.updateSearchHistory(items); }
 
   private selectSearchHistory(query: string): void {
     this.changeSearch(query);
     this.searchLogs();
   }
 
-  private async searchLogs(): Promise<void> {
-    const query = this.searchQuery.trim();
-    if (!query || this.searchLoading) return;
-    if (this.rememberSearch) this.updateSearchHistory(
-      [query, ...this.searchHistory.filter((item: string) => item !== query)].slice(0, 8));
-    const revision = ++this.searchRevision;
-    const lifecycle = this.lifecycle;
-    this.searchLoading = true;
-    this.searchSubmitted = true;
-    this.searchError = '';
-    this.searchResults = [];
-    try {
-      const response = await this.searches.search(query, this.searchHeadingsOnly, this.searchIgnoreCase);
-      if (revision !== this.searchRevision || lifecycle !== this.lifecycle || !this.searchOpen) return;
-      if (!Array.isArray(response.results)) throw new Error('搜索响应格式异常');
-      this.searchResults = response.results;
-    } catch (error) {
-      if (revision === this.searchRevision && lifecycle === this.lifecycle && this.searchOpen) {
-        this.searchError = error instanceof Error ? error.message : '搜索失败，请重试';
-      }
-    } finally {
-      if (revision === this.searchRevision && lifecycle === this.lifecycle) this.searchLoading = false;
-    }
-  }
+  private async searchLogs(): Promise<void> { await this.search.searchLogs(); }
 
   private selectSearchResult(result: LogSearchResult): void {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(result.date)) return;
-    const query = this.searchQuery.trim();
+    const query = this.search.searchQuery.trim();
     const heading = (result.matches[0] || '').replace(/^#{1,6}\s+/, '').replace(/^\d+\.\s+/, '').trim();
     const navigate = (): void => {
       this.closeSearch();
@@ -1649,56 +1599,63 @@ export struct LogsReaderPage {
 
   @Builder
   private desktopSearchResults() {
-    if (this.searchOpen && (this.showSearchHistory() || this.searchSubmitted || this.searchLoading || this.searchError)) {
-      Column({ space: 4 }) {
-        if (this.showSearchHistory()) {
-          SearchHistoryList({ searchHistory: this.searchHistory,
-            listHeight: Math.min(320, this.searchHistory.length * 40 + 32),
-            onSelect: (query: string) => this.selectSearchHistory(query),
-            onRemove: (query: string) => this.updateSearchHistory(
-              this.searchHistory.filter((entry: string) => entry !== query)),
-            onClear: () => this.updateSearchHistory([]) })
-        } else if (this.searchLoading) {
-          Row({ space: 8 }) {
-            LoadingProgress().width(18).height(18).color($r('app.color.primary'))
-            Text('正在搜索').fontSize(12).fontColor($r('app.color.muted'))
-          }.width('100%').height(44).padding({ left: 12 })
-        } else if (this.searchError) {
-          Row() {
-            Text(this.searchError).fontSize(12).fontColor($r('app.color.error')).layoutWeight(1)
-            Button('重试').fontSize(12).onClick(() => this.searchLogs())
-          }.width('100%').padding(10)
-        } else if (!this.searchResults.length) {
-          Text('未找到匹配内容').fontSize(12).fontColor($r('app.color.muted'))
-            .width('100%').padding(12)
-        } else {
-          List({ space: 4 }) {
-            ForEach(this.searchResults, (result: LogSearchResult) => {
-              ListItem() {
-                Button({ type: ButtonType.Normal }) {
-                  Column({ space: 3 }) {
-                    Text(result.date).fontSize(13).fontWeight(FontWeight.Medium)
-                      .fontColor($r('app.color.ink')).width('100%')
-                    Text(result.matches[0] || result.headings[0] || '')
-                      .fontSize(12).fontColor($r('app.color.muted')).maxLines(2)
-                      .textOverflow({ overflow: TextOverflow.Ellipsis }).width('100%')
-                  }.alignItems(HorizontalAlign.Start).width('100%')
-                }.width('100%').padding(10)
-                  .backgroundColor($r('app.color.surface_soft')).borderRadius(8)
-                  .onClick(() => this.selectSearchResult(result))
-              }
-            }, (result: LogSearchResult) => result.date)
-          }.width('100%').height(Math.min(420, this.searchResults.length * 68)).scrollBar(BarState.Off)
-        }
-      }.width(384).height(this.showSearchHistory() ? Math.min(320, this.searchHistory.length * 40 + 32) + 16 :
-        this.searchLoading || this.searchError || !this.searchResults.length ? 60 :
-        Math.min(420, this.searchResults.length * 68) + 16).padding(8)
-        .position({ x: 0, y: 50 })
-        .backgroundColor($r('app.color.canvas'))
-        .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(12)
-        .shadow({ radius: 18, color: $r('app.color.popover_shadow'), offsetY: 6 })
-        .zIndex(40)
+    if (this.searchOpen && (this.showSearchHistory() || this.search.searchSubmitted || this.search.searchLoading || this.search.searchError)) {
+      GlobalSearchCandidates({
+        searchHistory: this.search.searchHistory, searchResults: this.search.searchResults,
+        searchActiveIndex: this.search.searchActiveIndex, showHistory: this.showSearchHistory(),
+        searchLoading: this.search.searchLoading, searchError: this.search.searchError,
+        candidatesHeight: this.searchCandidatesHeight(), searchResultScroller: this.searchResultScroller,
+        onResultSelect: (result: LogSearchResult) => this.selectSearchResult(result),
+        onHistorySelect: (query: string) => this.selectSearchHistory(query),
+        onHistoryRemove: (query: string) => this.updateSearchHistory(this.search.searchHistory.filter((entry: string) => entry !== query)),
+        onRetry: () => this.searchLogs(),
+        onHistoryClear: () => { this.updateSearchHistory([]); this.searchOpen = false; }
+      })
+      .width('100%')
+      .height(this.searchCandidatesHeight())
+      .id('global_search_candidates')
+      .position({ x: 0, y: 50 })
+      .padding(8)
+      .backgroundColor($r('app.color.canvas'))
+      .border({ width: 1, color: $r('app.color.hairline') })
+      .borderRadius(12)
+      .shadow({ radius: 18, color: $r('app.color.popover_shadow'), offsetY: 6 })
+      .zIndex(40)
     }
+  }
+
+  private searchCandidatesHeight(): number {
+    if (this.showSearchHistory()) return Math.min(50 + this.search.searchHistory.length * 40, Math.max(90, this.moduleFrameHeight - 16));
+    if (this.search.searchError) return 92;
+    if (this.search.searchLoading || !this.search.searchResults.length) return 66;
+    return Math.min(this.search.searchResults.length * 70 + 12, Math.max(82, Math.min(420, this.moduleFrameHeight - 16)));
+  }
+
+  private handleSearchKey(event: KeyEvent): boolean {
+    if (this.calendarOpen) return false;
+    if (workspaceKey(event, KeyCode.KEYCODE_ESCAPE)) {
+      if (!this.searchOpen) return false;
+      this.closeSearch();
+      return true;
+    }
+    if (workspaceKey(event, KeyCode.KEYCODE_ENTER)) {
+      if (this.showSearchHistory() && this.search.searchActiveIndex >= 0) {
+        this.selectSearchHistory(this.search.searchHistory[this.search.searchActiveIndex]);
+      } else if (this.searchOpen && this.search.searchSubmitted && this.search.searchActiveIndex >= 0 && this.search.searchActiveIndex < this.search.searchResults.length) {
+        this.selectSearchResult(this.search.searchResults[this.search.searchActiveIndex]);
+      } else this.searchLogs();
+      return true;
+    }
+    const count = this.showSearchHistory() ? this.search.searchHistory.length : this.search.searchResults.length;
+    if (this.searchOpen && count &&
+      (workspaceKey(event, KeyCode.KEYCODE_DPAD_UP) || workspaceKey(event, KeyCode.KEYCODE_DPAD_DOWN))) {
+      const direction = event.keyCode === KeyCode.KEYCODE_DPAD_DOWN ? 1 : -1;
+      this.search.searchActiveIndex = this.search.searchActiveIndex < 0 ? (direction > 0 ? 0 : count - 1) :
+        (this.search.searchActiveIndex + direction + count) % count;
+      this.searchResultScroller.scrollToIndex(this.search.searchActiveIndex, false, ScrollAlign.AUTO);
+      return true;
+    }
+    return false;
   }
 
   private async confirmDelete(): Promise<void> {
@@ -3482,22 +3439,18 @@ export struct LogsReaderPage {
 
   @Builder
   private desktopSearchContent() {
-    SearchField({ value: this.searchQuery, focusKey: 'global_log_search',
+    SearchField({ value: this.search.searchQuery, focusKey: 'global_log_search',
       focusRevision: this.searchFocusRevision,
-      placeholder: this.searchHeadingsOnly ? '搜索小节标题' : '搜索日志、术语、代码标识',
-      loading: this.searchLoading, showHeadingToggle: true, headingOnly: this.searchHeadingsOnly,
-      showCaseToggle: true, caseSensitive: !this.searchIgnoreCase,
+      placeholder: this.search.searchHeadingsOnly ? '搜索小节标题' : '搜索日志、术语、代码标识',
+      loading: this.search.searchLoading, showHeadingToggle: true, headingOnly: this.search.searchHeadingsOnly,
+      showCaseToggle: true, caseSensitive: !this.search.searchIgnoreCase,
       onChange: (query: string) => this.changeSearch(query),
       onSubmit: () => { this.searchOpen = true; this.searchLogs(); },
       onClear: () => this.changeSearch(''),
-      onHeadingToggle: () => this.searchHeadingsOnly = !this.searchHeadingsOnly,
-      onCaseToggle: () => this.searchIgnoreCase = !this.searchIgnoreCase,
+      onHeadingToggle: () => { this.search.searchHeadingsOnly = !this.search.searchHeadingsOnly; this.changeSearch(this.search.searchQuery, true); },
+      onCaseToggle: () => { this.search.searchIgnoreCase = !this.search.searchIgnoreCase; this.changeSearch(this.search.searchQuery, true); },
       onFocusChange: (focused: boolean) => { if (focused) this.searchOpen = true; },
-      onSearchKey: (event: KeyEvent) => {
-        if (!this.searchOpen || this.calendarOpen ||
-          !workspaceKey(event, KeyCode.KEYCODE_ESCAPE)) return false;
-        this.closeSearch(); return true;
-      } })
+      onSearchKey: (event: KeyEvent) => this.handleSearchKey(event) })
     this.desktopSearchResults()
   }
 
@@ -3759,18 +3712,18 @@ export struct LogsReaderPage {
           .width('100%').height('100%').zIndex(12)
       }
       if (this.searchOpen && !this.isWide()) {
-        LogSearchPanel({ query: this.searchQuery, headingsOnly: this.searchHeadingsOnly,
-            ignoreCase: this.searchIgnoreCase, loading: this.searchLoading,
-            submitted: this.searchSubmitted, error: this.searchError, results: this.searchResults,
-            history: this.showSearchHistory() ? this.searchHistory : [],
+        LogSearchPanel({ query: this.search.searchQuery, headingsOnly: this.search.searchHeadingsOnly,
+            ignoreCase: this.search.searchIgnoreCase, loading: this.search.searchLoading,
+            submitted: this.search.searchSubmitted, error: this.search.searchError, results: this.search.searchResults,
+            history: this.showSearchHistory() ? this.search.searchHistory : [],
             onHistorySelect: (query: string) => this.selectSearchHistory(query),
             onHistoryRemove: (query: string) => this.updateSearchHistory(
-              this.searchHistory.filter((entry: string) => entry !== query)),
+              this.search.searchHistory.filter((entry: string) => entry !== query)),
             onHistoryClear: () => this.updateSearchHistory([]),
           onClose: () => this.closeSearch(), onQuery: (query: string) => this.changeSearch(query),
           onSearch: () => this.searchLogs(),
-          onHeadings: () => { this.searchHeadingsOnly = !this.searchHeadingsOnly; this.changeSearch(this.searchQuery); },
-          onCase: () => { this.searchIgnoreCase = !this.searchIgnoreCase; this.changeSearch(this.searchQuery); },
+          onHeadings: () => { this.search.searchHeadingsOnly = !this.search.searchHeadingsOnly; this.changeSearch(this.search.searchQuery, true); },
+          onCase: () => { this.search.searchIgnoreCase = !this.search.searchIgnoreCase; this.changeSearch(this.search.searchQuery, true); },
           onSelect: (result: LogSearchResult) => this.selectSearchResult(result) })
           .width('100%').height('100%').transition(secondaryPageTransition())
       }

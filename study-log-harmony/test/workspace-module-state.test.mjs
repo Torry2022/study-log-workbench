@@ -6,15 +6,16 @@ import ts from 'typescript';
 
 const base = '../entry/src/main/ets/';
 const sources = await Promise.all(['app/WorkspaceModuleState.ets', 'features/qa/QaNavigationController.ets',
-  'features/favorites/FavoritesController.ets', 'pages/Index.ets'].map(path => readFile(new URL(base + path, import.meta.url), 'utf8')));
-const rootMethods = ['createQaNavigation', 'invalidateModules', 'resetModules', 'connectedTo', 'changeServer'].map(name => {
+  'features/favorites/FavoritesController.ets', 'pages/Index.ets', 'app/WorkspaceSearchController.ets',
+  'features/logs/LogSearchRepository.ets', 'features/logs/SearchHistoryStore.ets'].map(path => readFile(new URL(base + path, import.meta.url), 'utf8')));
+const rootMethods = ['createQaNavigation', 'createWorkspaceSearch', 'invalidateModules', 'resetModules', 'connectedTo', 'changeServer'].map(name => {
   const start = sources[3].search(new RegExp(`^  private (?:async )?${name}\\(`, 'm'));
   assert.ok(start >= 0, name);
   const end = sources[3].slice(start + 1).search(/^  (?:private |aboutTo|build\()/m);
   assert.ok(end >= 0, name);
   return sources[3].slice(start, start + end + 1);
 }).join('\n');
-const code = ts.transpileModule(sources.slice(0, 3).map(source =>
+const code = ts.transpileModule([...sources.slice(0, 3), ...sources.slice(4)].map(source =>
   source.replace(/^import .*;\r?\n/gm, '').replace('@Observed', '')).join('\n') +
   `\nexport class Root { ${rootMethods} }`, {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS }
@@ -32,9 +33,10 @@ function subject(api = {}) {
   Object.assign(root, { connected: true, selectedModule: 3,
     modules: new module.exports.WorkspaceModuleState(),
     favoritesData: new module.exports.FavoritesController(transport),
-    preferencesReady: Promise.resolve(), drafts: new Map(),
+    preferencesReady: Promise.resolve(), drafts: new Map(), rememberSearch: false, searchOpen: false,
     getUIContext: () => ({ getHostContext: () => ({}) }) });
   root.qaNavigation = root.createQaNavigation();
+  root.search = root.createWorkspaceSearch();
   return { root, instance };
 }
 
@@ -110,4 +112,15 @@ test('late QA mutation cleanup cannot clear a new instance busy state or selecte
   assert.equal(root.modules.qaBusy, true);
   assert.equal(root.modules.qaSessionId, 'new-session');
   assert.equal(root.modules.qaRequestRevision, 0);
+});
+
+test('late search response after changing instance cannot populate either workspace', async () => {
+  let release;
+  const { root } = subject({ get: () => new Promise(resolve => { release = resolve; }) });
+  const old = root.search; old.changeLogSearchQuery('synthetic');
+  const request = old.searchLogs(); assert.equal(root.searchOpen, true);
+  root.changeServer(); root.resetModules(); root.connected = true;
+  release({ results: [{ date: 'old-instance' }] }); await request;
+  assert.equal(old.searchResults.length, 0); assert.equal(root.search.searchResults.length, 0);
+  assert.equal(root.searchOpen, false); assert.equal(root.search.searchQuery, '');
 });

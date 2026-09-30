@@ -4,6 +4,8 @@ import { preferences } from '@kit.ArkData';
 import { WorkspaceBreakpoint, THEME_PREFERENCES } from '../common/AppConfig';
 import { InstanceCapabilities, activeInstance } from '../common/network/InstanceConfig';
 import { apiClient } from '../common/network/ApiClient';
+import { WorkspaceSearchController } from '../app/WorkspaceSearchController';
+import { LogSearchRepository } from '../features/logs/LogSearchRepository';
 import { WorkspaceModuleState } from '../app/WorkspaceModuleState';
 import { FavoritesController } from '../features/favorites/FavoritesController';
 import { QaNavigationController } from '../features/qa/QaNavigationController';
@@ -32,6 +34,9 @@ struct Index {
   @State private modules: WorkspaceModuleState = new WorkspaceModuleState();
   @State private favoritesData: FavoritesController = new FavoritesController(apiClient);
   @State private qaNavigation: QaNavigationController = this.createQaNavigation();
+  @State private search: WorkspaceSearchController = this.createWorkspaceSearch();
+  @State private searchOpen: boolean = false;
+  @StorageProp('pref_rememberSearch') private rememberSearch: boolean = true;
   @State private restoreOnAppear: boolean = true;
   @StorageLink('desktopWindowChrome') private desktopWindowChrome: boolean = false;
   @StorageLink('themePreference') private themePreference: string = 'system';
@@ -63,7 +68,22 @@ struct Index {
     });
   }
 
+  private createWorkspaceSearch(): WorkspaceSearchController {
+    const modules = this.modules;
+    return new WorkspaceSearchController(new LogSearchRepository(apiClient), {
+      context: () => this.getUIContext().getHostContext() as common.UIAbilityContext,
+      lifecycle: () => activeInstance.revision,
+      namespace: () => activeInstance.namespace,
+      active: () => this.connected && this.modules === modules,
+      open: () => this.searchOpen,
+      remember: () => this.rememberSearch,
+      reveal: () => this.searchOpen = true
+    });
+  }
+
   private invalidateModules(): void {
+    this.search.dispose();
+    this.searchOpen = false;
     this.favoritesData.dispose();
     this.qaNavigation.qaNavigationRevision++;
     this.qaNavigation.qaMutationRevision++;
@@ -76,6 +96,7 @@ struct Index {
     this.modules = new WorkspaceModuleState();
     this.favoritesData = new FavoritesController(apiClient);
     this.qaNavigation = this.createQaNavigation();
+    this.search = this.createWorkspaceSearch();
     this.selectedModule = 0;
   }
 
@@ -288,6 +309,7 @@ struct Index {
       Stack() {
       if (this.connected) {
         LogsReaderPage({ selectedModule: $selectedModule, modules: this.modules,
+          search: this.search, searchOpen: $searchOpen,
           favoritesData: this.favoritesData, qaNavigation: this.qaNavigation, onChangeServer: () => this.changeServer(), onOpenSettings: () => this.settingsOpen = true,
           onSetTheme: (value: string) => this.setTheme(value),
           onOpenAbout: () => this.aboutOpen = true,

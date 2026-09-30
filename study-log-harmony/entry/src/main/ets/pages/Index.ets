@@ -25,6 +25,7 @@ import { floatingSurfaceTransition } from '../common/ui/WorkspaceMotion';
 struct Index {
   @Provide('workspaceBreakpoint') private workspaceBreakpoint: WorkspaceBreakpoint = WorkspaceBreakpoint.COMPACT;
   @State private connected: boolean = false;
+  @State private selectedModule: number = 0;
   @State private restoreOnAppear: boolean = true;
   @StorageLink('desktopWindowChrome') private desktopWindowChrome: boolean = false;
   @StorageLink('themePreference') private themePreference: string = 'system';
@@ -127,6 +128,7 @@ struct Index {
       appFeedback.show('本机草稿读取失败，请检查设备存储', 'error');
     }
     if (revision !== activeInstance.revision) return;
+    this.selectedModule = 0;
     this.connected = true;
   }
 
@@ -250,7 +252,7 @@ struct Index {
       }
       Stack() {
       if (this.connected) {
-        LogsReaderPage({ onChangeServer: () => this.changeServer(), onOpenSettings: () => this.settingsOpen = true,
+        LogsReaderPage({ selectedModule: $selectedModule, onChangeServer: () => this.changeServer(), onOpenSettings: () => this.settingsOpen = true,
           onSetTheme: (value: string) => this.setTheme(value),
           onOpenAbout: () => this.aboutOpen = true,
           onOpenHelp: () => this.openHelp(),

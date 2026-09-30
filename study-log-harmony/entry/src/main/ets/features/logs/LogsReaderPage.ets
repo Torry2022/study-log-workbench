@@ -78,6 +78,7 @@ interface AddFavoriteRequest { date: string; headingText: string; headingId: str
 
 @Component
 export struct LogsReaderPage {
+  @Link @Watch('moduleNavigationChanged') selectedModule: number;
   @Consume('workspaceBreakpoint') @Watch('workspaceBreakpointChanged')
   private workspaceBreakpoint: WorkspaceBreakpoint;
   @StorageProp('softwareKeyboardVisible') private softwareKeyboardVisible: boolean = false;
@@ -119,10 +120,6 @@ export struct LogsReaderPage {
   @State private taxonomyOpen: boolean = false;
   @State private taxonomyDirty: boolean = false;
   @State private taxonomyBusy: boolean = false;
-  @State @Watch('moduleNavigationChanged') private statsOpen: boolean = false;
-  @State @Watch('moduleNavigationChanged') private favoritesOpen: boolean = false;
-  @State @Watch('moduleNavigationChanged') private notesOpen: boolean = false;
-  @State @Watch('moduleNavigationChanged') private qaOpen: boolean = false;
   @State private qaBusy: boolean = false;
   @State private qaDirty: boolean = false;
   @State private qaPending: boolean = false;
@@ -134,7 +131,7 @@ export struct LogsReaderPage {
   @State private qaSearchRevision: number = 0;
   @State private qaScrolled: boolean = false;
   @State private qaNavigation: QaNavigationController = new QaNavigationController(apiClient, {
-    active: () => this.qaOpen, busy: () => this.qaBusy,
+    active: () => (this.selectedModule === 3), busy: () => this.qaBusy,
     setBusy: (value: boolean) => this.qaBusy = value,
     activeSession: () => this.qaSessionId,
     clearSession: () => { this.qaSessionId = ''; this.qaRequestRevision++; }
@@ -222,6 +219,7 @@ export struct LogsReaderPage {
     }
   });
   private moduleSwitchRevision: number = 0;
+  private moduleRequestedTab: number = -1;
   @State private collapsedModules: boolean[] = [false, false, false, false, false];
   @State private railPopover: string = '';
   @State private moduleFrameHeight: number = 0;
@@ -442,6 +440,7 @@ export struct LogsReaderPage {
     this.closeFavoriteFeedback();
     this.onRegisterDesktopCommands(new DesktopLogCommands());
     this.moduleSwitchRevision++;
+    this.moduleRequestedTab = -1;
     this.modeRequestRevision++;
     this.readingTransition.clear();
     this.workspaceTransition.clear();
@@ -472,14 +471,14 @@ export struct LogsReaderPage {
   }
 
   private selectedTab(): number {
-    return this.notesOpen ? 1 : this.favoritesOpen ? 2 : this.qaOpen ? 3 : this.statsOpen ? 4 : 0;
+    return this.selectedModule;
   }
 
   private showTopBarDivider(): boolean {
-    if (this.notesOpen) return this.notesScrolled;
-    if (this.favoritesOpen) return this.favoritesScrolled;
-    if (this.qaOpen) return this.qaScrolled;
-    if (this.statsOpen) return this.statsScrolled;
+    if ((this.selectedModule === 1)) return this.notesScrolled;
+    if ((this.selectedModule === 2)) return this.favoritesScrolled;
+    if ((this.selectedModule === 3)) return this.qaScrolled;
+    if ((this.selectedModule === 4)) return this.statsScrolled;
     return false;
   }
 
@@ -490,10 +489,10 @@ export struct LogsReaderPage {
       setTimeout(() => {
         if (this.selectedTab() === 0 && this.searchOpen) this.searchFocusRevision++;
       }, 40);
-    } else if (this.qaOpen) {
+    } else if ((this.selectedModule === 3)) {
       this.openNavigation();
       setTimeout(() => {
-        if (this.qaOpen && this.navigationOpen && !this.navigationClosing) this.qaSearchRevision++;
+        if ((this.selectedModule === 3) && this.navigationOpen && !this.navigationClosing) this.qaSearchRevision++;
       }, 240);
     }
   }
@@ -567,7 +566,7 @@ export struct LogsReaderPage {
       return true;
     }
     if (workspaceKey(event, KeyCode.KEYCODE_S, true)) {
-      if (this.notesOpen) this.noteSaveRevision++;
+      if ((this.selectedModule === 1)) this.noteSaveRevision++;
       else if (this.selectedTab() === 0) this.save();
       return true;
     }
@@ -740,17 +739,17 @@ export struct LogsReaderPage {
 
 
   private selectTab(index: number): void {
-    if (index === this.selectedTab()) return;
+    if (index === this.selectedTab() && this.moduleRequestedTab < 0) return;
     this.requestModule(index);
   }
 
   private requestModule(index: number, discardNotes: boolean = false, discardQa: boolean = false,
     afterSwitch: () => void = () => {}): void {
-    if (index === this.selectedTab()) { afterSwitch(); return; }
+    if (index === this.selectedTab() && this.moduleRequestedTab < 0) { afterSwitch(); return; }
     if (this.taxonomyOpen) {
       this.confirmTaxonomyLeave(() => this.requestModule(index, discardNotes, discardQa, afterSwitch)); return;
     }
-    if (this.notesOpen) {
+    if ((this.selectedModule === 1)) {
       if (this.notesBusy) return;
       if (this.notesDirty && !discardNotes) {
         AlertDialog.show({ message: '随记尚未保存，确定放弃修改吗？',
@@ -761,7 +760,7 @@ export struct LogsReaderPage {
         return;
       }
     }
-    if (this.qaOpen) {
+    if ((this.selectedModule === 3)) {
       if (this.qaBusy) { appFeedback.show('请先停止当前回答', 'error'); return; }
       if ((this.qaDirty || this.qaPending) && !discardQa) {
         AlertDialog.show({ message: this.qaPending ? '当前问答尚未保存，确定放弃吗？' :
@@ -781,6 +780,7 @@ export struct LogsReaderPage {
   private async switchModule(index: number, discardNotes: boolean, discardQa: boolean,
     afterSwitch: () => void = () => {}): Promise<void> {
     const revision = ++this.moduleSwitchRevision;
+    this.moduleRequestedTab = index;
     if (this.isWide() && !this.logsReadingMode) {
       this.workspaceTransition.clear();
       await this.workspaceTransition.cover('module');
@@ -800,10 +800,8 @@ export struct LogsReaderPage {
       this.editorInitialText = this.savedText;
       this.previewText = this.savedText;
     }
-    this.notesOpen = index === 1;
-    this.favoritesOpen = index === 2;
-    this.qaOpen = index === 3;
-    this.statsOpen = index === 4;
+    this.selectedModule = index;
+    this.moduleRequestedTab = -1;
     if (index === 0 && this.readFailed) this.showReadFailure();
     else if (index !== 0) appFeedback.dismissScope('log-read');
     this.closeNavigation();
@@ -838,38 +836,38 @@ export struct LogsReaderPage {
       secondaryButton: { value: '放弃修改', fontColor: $r('app.color.error'), action: leave } });
   }
 
-  private async openStatsEntry(entry: StatsEntry): Promise<void> {
-    this.statsOpen = false;
-    await this.loadTargetDate(entry.date, () => {
-      this.targetHeading = entry.rawHeading;
-      this.targetHeadingIndex = entry.headingIndex;
-      this.targetHeadingId = '';
-      this.targetKind = 'stats';
-      this.targetQuery = '';
-      this.targetRevision++;
+  private openStatsEntry(entry: StatsEntry): void {
+    this.requestModule(0, false, false, async () => {
+      await this.loadTargetDate(entry.date, () => {
+        this.targetHeading = entry.rawHeading;
+        this.targetHeadingIndex = entry.headingIndex;
+        this.targetHeadingId = '';
+        this.targetKind = 'stats';
+        this.targetQuery = '';
+        this.targetRevision++;
+      });
     });
   }
 
   private confirmNotesLeave(action: () => void): void {
     if (this.notesBusy) return;
-    if (!this.notesDirty) { this.notesOpen = false; action(); return; }
+    if (!this.notesDirty) { action(); return; }
     AlertDialog.show({ message: '随记尚未保存，确定放弃修改吗？',
       primaryButton: { value: '继续编辑', action: () => {} },
       secondaryButton: { value: '放弃修改', fontColor: $r('app.color.error'), action: () => {
         this.notesDirty = false;
         this.noteDiscardRevision++;
-        this.notesOpen = false;
         action();
       } } });
   }
 
   private confirmQaLeave(action: () => void): void {
     if (this.qaBusy) { appFeedback.show('请先停止当前回答', 'error'); return; }
-    if (!this.qaDirty && !this.qaPending) { this.qaOpen = false; action(); return; }
+    if (!this.qaDirty && !this.qaPending) { action(); return; }
     AlertDialog.show({ message: this.qaPending ? '当前问答尚未保存，确定放弃吗？' : '问答输入尚未提交，确定放弃吗？',
       primaryButton: { value: '继续编辑', action: () => {} },
       secondaryButton: { value: '放弃', fontColor: $r('app.color.error'), action: () => {
-        this.qaDirty = false; this.qaPending = false; this.qaDiscardRevision++; this.qaOpen = false; action();
+        this.qaDirty = false; this.qaPending = false; this.qaDiscardRevision++; action();
       } } });
   }
 
@@ -881,7 +879,7 @@ export struct LogsReaderPage {
       this.railPopover = '';
       this.qaSessionId = id; this.qaRequestRevision++;
       if (focusQuestion) setTimeout(() => {
-        if (this.qaOpen && !this.qaBusy) this.qaQuestionFocusRevision++;
+        if ((this.selectedModule === 3) && !this.qaBusy) this.qaQuestionFocusRevision++;
       }, 40);
     };
     if (!this.qaDirty && !this.qaPending) { change(); return; }
@@ -891,7 +889,7 @@ export struct LogsReaderPage {
   }
 
   private openQaCitation(date: string, heading: string, headingIndex: number): void {
-    this.confirmQaLeave(async () => {
+    this.requestModule(0, false, false, async () => {
       await this.loadTargetDate(date, () => {
         this.targetHeading = heading;
         this.targetHeadingIndex = headingIndex;
@@ -915,7 +913,7 @@ export struct LogsReaderPage {
   }
 
   private openNoteLink(date: string, heading: string): void {
-    this.confirmNotesLeave(async () => {
+    this.requestModule(0, false, false, async () => {
       await this.loadTargetDate(date, () => {
         this.targetHeading = heading;
         this.targetHeadingIndex = -1;
@@ -927,15 +925,16 @@ export struct LogsReaderPage {
     });
   }
 
-  private async openFavorite(favorite: FavoriteHeading): Promise<void> {
-    this.favoritesOpen = false;
-    await this.loadTargetDate(favorite.date, () => {
-      this.targetHeading = favorite.exists ? favorite.headingText : '';
-      this.targetHeadingIndex = -1;
-      this.targetHeadingId = favorite.exists ? (favorite.resolvedHeadingId || favorite.headingId) : `missing-${favorite.id}`;
-      this.targetKind = 'favorite';
-      this.targetQuery = '';
-      this.targetRevision++;
+  private openFavorite(favorite: FavoriteHeading): void {
+    this.requestModule(0, false, false, async () => {
+      await this.loadTargetDate(favorite.date, () => {
+        this.targetHeading = favorite.exists ? favorite.headingText : '';
+        this.targetHeadingIndex = -1;
+        this.targetHeadingId = favorite.exists ? (favorite.resolvedHeadingId || favorite.headingId) : `missing-${favorite.id}`;
+        this.targetKind = 'favorite';
+        this.targetQuery = '';
+        this.targetRevision++;
+      });
     });
   }
 
@@ -2389,7 +2388,7 @@ export struct LogsReaderPage {
     Column({ space: 8 }) {
       this.navigationRailButton('expand', $r('app.media.rail_chevron_right'), '展开侧栏',
         () => { this.railPopover = ''; this.expandNavigation(); })
-      if (this.qaOpen) {
+      if ((this.selectedModule === 3)) {
         this.navigationRailButton('new_question', $r('app.media.rail_square_pen'), '新建问答',
           () => { this.railPopover = ''; this.switchQaSession(''); }, false, !this.qaBusy)
         this.navigationRailButton('search', $r('app.media.rail_search'), '搜索历史',
@@ -2397,16 +2396,16 @@ export struct LogsReaderPage {
         this.navigationRailButton('recent', $r('app.media.rail_message_square_text'), '最近问答',
           () => { this.qaQuery = ''; this.railPopover = this.railPopover === 'recent' ? '' : 'recent'; },
           this.railPopover === 'recent')
-      } else if (this.notesOpen) {
+      } else if ((this.selectedModule === 1)) {
         this.navigationRailButton('new_note', $r('app.media.rail_plus'), '新建随记',
           () => { this.railPopover = ''; this.noteNewRevision++; }, false, !this.notesBusy)
         this.navigationRailButton('tags', $r('app.media.rail_tag'), '年份和标签',
           () => this.railPopover = this.railPopover === 'tags' ? '' : 'tags', this.railPopover === 'tags')
-      } else if (this.favoritesOpen) {
+      } else if ((this.selectedModule === 2)) {
         this.navigationRailButton('favorite_filters', $r('app.media.tab_star'), '筛选收藏',
           () => this.railPopover = this.railPopover === 'favorite_filters' ? '' : 'favorite_filters',
           this.railPopover === 'favorite_filters')
-      } else if (this.statsOpen) {
+      } else if ((this.selectedModule === 4)) {
         this.navigationRailButton('stats_months', $r('app.media.rail_calendar_days'), '选择统计月份',
           () => this.railPopover = this.railPopover === 'stats_months' ? '' : 'stats_months',
           this.railPopover === 'stats_months')
@@ -2424,7 +2423,7 @@ export struct LogsReaderPage {
 
   @Builder
   private moduleNavigationContent(popover: boolean = false) {
-    if (this.qaOpen) {
+    if ((this.selectedModule === 3)) {
       QaNavigation({ qaRailPopover: popover ? this.railPopover : '', moduleFrameHeight: this.moduleFrameHeight,
                     qaSessions: this.qaNavigation.qaSessions, qaSessionQuery: this.qaQuery,
                     qaSearchRevision: this.qaSearchRevision,
@@ -2446,17 +2445,17 @@ export struct LogsReaderPage {
                     onCancelRename: () => this.qaNavigation.qaRenameId = '',
                     onDelete: (session: RagSessionSummary) => this.confirmQaDelete(session),
                     onRetry: () => this.qaNavigation.loadQaNavigation() })
-    } else if (this.notesOpen) {
+    } else if ((this.selectedModule === 1)) {
       NotesNavigation({ filtersOnly: popover, noteYearFilter: this.noteYearFilter, noteTagFilter: this.noteTagFilter,
                     noteCount: this.noteCount, noteYears: this.noteYears, noteTags: this.noteTags,
                     noteEditorBusy: this.notesBusy,
                     onNew: () => { this.noteNewRevision++; this.railPopover = ''; },
                     onYear: (year: string) => { this.noteYearFilter = year; this.railPopover = ''; },
                     onTag: (tag: string) => { this.noteTagFilter = tag; this.railPopover = ''; } })
-    } else if (this.favoritesOpen) {
+    } else if ((this.selectedModule === 2)) {
       FavoritesNavigation({ data: this.favoritesData, wide: true,
                     onRetry: () => this.favoritesData.load() })
-    } else if (this.statsOpen) {
+    } else if ((this.selectedModule === 4)) {
       StatsNavigation({ monthsOnly: false, onTaxonomy: () => this.openTaxonomy(), statsMonths: this.statsMonths,
                     statsMonth: this.statsMonth, statsMonthsLoading: this.statsMonthsLoading,
                     statsMonthsError: this.statsMonthsError,
@@ -2529,23 +2528,23 @@ export struct LogsReaderPage {
   }
 
   private hasNavigationFilters(): boolean {
-    if (this.notesOpen) return this.noteYearFilter !== 'all' || this.noteTagFilter !== 'all';
-    if (this.favoritesOpen) return this.favoritesData.selectedGroup !== 'all' || this.favoritesData.selectedMonth !== 'all';
-    if (this.statsOpen) return this.statsMonths.length > 0 && this.statsMonth !== this.statsMonths[0].id;
+    if ((this.selectedModule === 1)) return this.noteYearFilter !== 'all' || this.noteTagFilter !== 'all';
+    if ((this.selectedModule === 2)) return this.favoritesData.selectedGroup !== 'all' || this.favoritesData.selectedMonth !== 'all';
+    if ((this.selectedModule === 4)) return this.statsMonths.length > 0 && this.statsMonth !== this.statsMonths[0].id;
     return false;
   }
 
   private resetNavigationFilters(): void {
-    if (this.notesOpen) { this.noteYearFilter = 'all'; this.noteTagFilter = 'all'; }
-    else if (this.favoritesOpen) { this.favoritesData.selectGroup('all'); this.favoritesData.selectMonth('all'); }
-    else if (this.statsOpen && this.statsMonths.length > 0) {
+    if ((this.selectedModule === 1)) { this.noteYearFilter = 'all'; this.noteTagFilter = 'all'; }
+    else if ((this.selectedModule === 2)) { this.favoritesData.selectGroup('all'); this.favoritesData.selectMonth('all'); }
+    else if ((this.selectedModule === 4) && this.statsMonths.length > 0) {
       this.statsMonth = this.statsMonths[0].id; this.statsMonthRevision++;
     }
   }
 
   @Builder
   private navigationFilterReset(id: string = 'navigation_reset_filters') {
-    if (this.notesOpen || this.favoritesOpen || this.statsOpen) {
+    if ((this.selectedModule === 1) || (this.selectedModule === 2) || (this.selectedModule === 4)) {
       Button('重置筛选', { type: ButtonType.Normal }).id(id).width(64).height(34).padding(0)
         .fontSize(12).fontColor($r('app.color.muted')).backgroundColor(Color.Transparent).borderRadius(8)
         .visibility(this.hasNavigationFilters() ? Visibility.Visible : Visibility.Hidden)
@@ -2556,10 +2555,10 @@ export struct LogsReaderPage {
   @Builder
   private moduleNavigationHeader() {
     Row({ space: 6 }) {
-      Image(this.notesOpen ? $r('app.media.tab_lightbulb_active') : this.favoritesOpen ?
-        $r('app.media.tab_star_active') : this.qaOpen ? $r('app.media.rail_message_square_text') :
+      Image((this.selectedModule === 1) ? $r('app.media.tab_lightbulb_active') : (this.selectedModule === 2) ?
+        $r('app.media.tab_star_active') : (this.selectedModule === 3) ? $r('app.media.rail_message_square_text') :
         $r('app.media.tab_chart_column')).width(19).height(19).objectFit(ImageFit.Contain)
-      Text(this.notesOpen ? '随记' : this.favoritesOpen ? '收藏中心' : this.qaOpen ? '知识问答' : '学习统计')
+      Text((this.selectedModule === 1) ? '随记' : (this.selectedModule === 2) ? '收藏中心' : (this.selectedModule === 3) ? '知识问答' : '学习统计')
         .fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.body_strong')).layoutWeight(1)
         .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
       this.navigationFilterReset()
@@ -2607,12 +2606,12 @@ export struct LogsReaderPage {
 
   @Builder
   private railPopoverPanel() {
-    if (this.qaOpen) {
+    if ((this.selectedModule === 3)) {
       this.moduleNavigationContent(true)
     } else {
       Column() {
         Row() {
-        Text(this.notesOpen ? '年份和标签' : this.favoritesOpen ? '筛选收藏' : '统计月份')
+        Text((this.selectedModule === 1) ? '年份和标签' : (this.selectedModule === 2) ? '筛选收藏' : '统计月份')
           .fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.ink'))
           .layoutWeight(1)
         this.navigationFilterReset('navigation_popover_reset_filters')
@@ -2860,17 +2859,17 @@ export struct LogsReaderPage {
 
   @Builder
   private compactNavigationContent() {
-    if (this.notesOpen) {
+    if ((this.selectedModule === 1)) {
       NotesNavigation({ noteYearFilter: this.noteYearFilter, noteTagFilter: this.noteTagFilter,
         noteCount: this.noteCount, noteYears: this.noteYears, noteTags: this.noteTags,
         noteEditorBusy: this.notesBusy,
         onNew: () => { this.noteNewRevision++; this.closeNavigation(); },
         onYear: (year: string) => { this.noteYearFilter = year; this.closeNavigation(); },
         onTag: (tag: string) => { this.noteTagFilter = tag; this.closeNavigation(); } })
-    } else if (this.favoritesOpen) {
+    } else if ((this.selectedModule === 2)) {
       FavoritesNavigation({ data: this.favoritesData, wide: false,
         onRetry: () => this.favoritesData.load() })
-    } else if (this.qaOpen) {
+    } else if ((this.selectedModule === 3)) {
       QaNavigation({ qaSessions: this.qaNavigation.qaSessions, qaSessionQuery: this.qaQuery,
         qaSearchRevision: this.qaSearchRevision,
         qaActiveSessionId: this.qaSessionId, qaBusy: this.qaBusy,
@@ -2890,7 +2889,7 @@ export struct LogsReaderPage {
         onCancelRename: () => this.qaNavigation.qaRenameId = '',
         onDelete: (session: RagSessionSummary) => this.confirmQaDelete(session),
         onRetry: () => this.qaNavigation.loadQaNavigation() })
-    } else if (this.statsOpen) {
+    } else if ((this.selectedModule === 4)) {
       StatsNavigation({ monthsOnly: false, onTaxonomy: () => this.openTaxonomy(), statsMonths: this.statsMonths, statsMonth: this.statsMonth,
         statsMonthsLoading: this.statsMonthsLoading, statsMonthsError: this.statsMonthsError,
         onMonth: (month: string) => {
@@ -2904,8 +2903,8 @@ export struct LogsReaderPage {
     Column({ space: 1 }) {
       Row({ space: 10 }) {
         Image(WORKSPACE_TABS[this.selectedTab()].activeIcon).width(20).height(20).objectFit(ImageFit.Contain)
-        Text(this.notesOpen ? '随记' : this.favoritesOpen ? '收藏中心' : this.qaOpen ? '知识问答' :
-          this.statsOpen ? '学习统计' : '学习日志')
+        Text((this.selectedModule === 1) ? '随记' : (this.selectedModule === 2) ? '收藏中心' : (this.selectedModule === 3) ? '知识问答' :
+          (this.selectedModule === 4) ? '学习统计' : '学习日志')
           .fontFamily(workspaceSansFamily(this.workspaceBreakpoint)).fontSize(15)
           .fontWeight(FontWeight.Medium).fontColor($r('app.color.body_strong'))
           .maxLines(1).layoutWeight(1)
@@ -2917,8 +2916,8 @@ export struct LogsReaderPage {
           .onClick(() => this.closeNavigation())
           .id('navigation_drawer_close').accessibilityText('关闭侧栏').bindTips('关闭侧栏', WORKSPACE_TIPS)
       }.width('100%').height(40)
-      Text(this.notesOpen ? '按年份和标签筛选' : this.favoritesOpen ? '按分组和日志月份筛选' :
-        this.qaOpen ? '历史会话' : this.statsOpen ? '切换月份与管理分类' : '按月份和日期浏览')
+      Text((this.selectedModule === 1) ? '按年份和标签筛选' : (this.selectedModule === 2) ? '按分组和日志月份筛选' :
+        (this.selectedModule === 3) ? '历史会话' : (this.selectedModule === 4) ? '切换月份与管理分类' : '按月份和日期浏览')
         .fontSize(11).fontColor($r('app.color.muted')).maxLines(1).margin({ left: 30 })
     }.width('100%').height(64).padding({ left: 18, right: 12 }).alignItems(HorizontalAlign.Start)
       .border({ width: { bottom: 1 }, color: $r('app.color.hairline_soft') })
@@ -3674,7 +3673,7 @@ export struct LogsReaderPage {
         if (this.isWide()) {
         Stack({ alignContent: Alignment.Top }) {
         Row({ space: 12 }) {
-          if (!this.isWide() && !this.statsOpen && !this.favoritesOpen && !this.notesOpen && !this.qaOpen) {
+          if (!this.isWide() && !(this.selectedModule === 4) && !(this.selectedModule === 2) && !(this.selectedModule === 1) && !(this.selectedModule === 3)) {
             Button({ type: ButtonType.Normal }) {
               SymbolGlyph($r('sys.symbol.line_3_horizontal')).fontSize(20).fontColor([$r('app.color.ink')])
             }.width(42).height(42).backgroundColor(Color.Transparent).accessibilityText('打开日期导航')
@@ -3685,7 +3684,7 @@ export struct LogsReaderPage {
             Column({ space: 2 }) {
               Text('学习日志工作台').fontFamily(workspaceSansFamily(this.workspaceBreakpoint))
                 .fontSize(15).fontWeight(FontWeight.Bold).fontColor($r('app.color.ink')).maxLines(1)
-              Text(this.notesOpen ? '随记' : this.qaOpen ? '知识问答' : this.statsOpen ? '学习统计' : this.favoritesOpen ? '收藏中心' :
+              Text((this.selectedModule === 1) ? '随记' : (this.selectedModule === 3) ? '知识问答' : (this.selectedModule === 4) ? '学习统计' : (this.selectedModule === 2) ? '收藏中心' :
                 (this.day?.headings[0] || this.selectedDate || '日志'))
                 .fontFamily(workspaceSansFamily(this.workspaceBreakpoint)).fontSize(12)
                 .fontColor($r('app.color.muted')).maxLines(1)
@@ -3720,17 +3719,17 @@ export struct LogsReaderPage {
               } })
           }
             ToolbarAction({ label: '随记', icon: $r('app.media.tab_lightbulb_active'),
-              showLabel: this.desktopTopBarDensity === ToolbarDensity.FULL, active: this.notesOpen,
-              onAction: () => this.selectTab(this.notesOpen ? 0 : 1) })
+              showLabel: this.desktopTopBarDensity === ToolbarDensity.FULL, active: (this.selectedModule === 1),
+              onAction: () => this.selectTab((this.selectedModule === 1) ? 0 : 1) })
             ToolbarAction({ label: '收藏', icon: $r('app.media.tab_star_active'),
-              showLabel: this.desktopTopBarDensity === ToolbarDensity.FULL, active: this.favoritesOpen,
-              onAction: () => this.selectTab(this.favoritesOpen ? 0 : 2) })
+              showLabel: this.desktopTopBarDensity === ToolbarDensity.FULL, active: (this.selectedModule === 2),
+              onAction: () => this.selectTab((this.selectedModule === 2) ? 0 : 2) })
             ToolbarAction({ label: '问答', icon: $r('app.media.tab_message_square_text_active'),
-              showLabel: this.desktopTopBarDensity === ToolbarDensity.FULL, active: this.qaOpen,
-              onAction: () => this.selectTab(this.qaOpen ? 0 : 3) })
+              showLabel: this.desktopTopBarDensity === ToolbarDensity.FULL, active: (this.selectedModule === 3),
+              onAction: () => this.selectTab((this.selectedModule === 3) ? 0 : 3) })
             ToolbarAction({ label: '统计', icon: $r('app.media.tab_chart_column'),
-              showLabel: this.desktopTopBarDensity === ToolbarDensity.FULL, active: this.statsOpen,
-              onAction: () => this.selectTab(this.statsOpen ? 0 : 4) })
+              showLabel: this.desktopTopBarDensity === ToolbarDensity.FULL, active: (this.selectedModule === 4),
+              onAction: () => this.selectTab((this.selectedModule === 4) ? 0 : 4) })
           ToolbarAction({ label: '更多设置', icon: $r('app.media.more_horizontal'), showLabel: false,
             active: this.topMoreOpen, onAction: () => this.topMoreOpen = !this.topMoreOpen })
             .bindPopup(this.topMoreOpen, { builder: this.topMoreActions(), placement: Placement.BottomRight,
@@ -3753,9 +3752,9 @@ export struct LogsReaderPage {
           .hitTestBehavior(this.logsReadingMode ? HitTestMode.None : HitTestMode.Default)
           .accessibilityLevel(this.logsReadingMode ? 'no-hide-descendants' : 'auto')
         } else {
-          AppTopBar({ title: this.notesOpen ? '随记' : this.favoritesOpen ? '收藏中心' :
-            this.qaOpen ? '知识问答' : this.statsOpen ? '学习统计' : '学习日志',
-            showSearch: this.selectedTab() === 0 || this.qaOpen,
+          AppTopBar({ title: (this.selectedModule === 1) ? '随记' : (this.selectedModule === 2) ? '收藏中心' :
+            (this.selectedModule === 3) ? '知识问答' : (this.selectedModule === 4) ? '学习统计' : '学习日志',
+            showSearch: this.selectedTab() === 0 || (this.selectedModule === 3),
             showDivider: this.showTopBarDivider(),
             onOpenNavigation: () => this.openNavigation(),
             onOpenSearch: () => this.openCurrentSearch(),
@@ -3780,7 +3779,7 @@ export struct LogsReaderPage {
             }
             Stack() {
           Row() {
-              QaPage({ workspaceActive: this.qaOpen, navigationSessionId: this.qaSessionId,
+              QaPage({ workspaceActive: (this.selectedModule === 3), navigationSessionId: this.qaSessionId,
                 themePreference: this.themePreference,
                 navigationRequestRevision: this.qaRequestRevision, discardRevision: this.qaDiscardRevision,
                 questionFocusRevision: this.qaQuestionFocusRevision, topRevision: this.topRequests[3],
@@ -3797,12 +3796,12 @@ export struct LogsReaderPage {
                 onCitation: (date: string, heading: string, headingIndex: number) =>
                   this.openQaCitation(date, heading, headingIndex) }).layoutWeight(1)
           }.width('100%').height('100%')
-            .visibility(this.qaOpen || this.outgoingTab === 3 ? Visibility.Visible : Visibility.None)
-            .opacity(this.qaOpen ? this.moduleReveal : 1)
-            .hitTestBehavior(this.qaOpen ? HitTestMode.Default : HitTestMode.None)
-            .zIndex(this.qaOpen ? 1 : 0)
+            .visibility((this.selectedModule === 3) || this.outgoingTab === 3 ? Visibility.Visible : Visibility.None)
+            .opacity((this.selectedModule === 3) ? this.moduleReveal : 1)
+            .hitTestBehavior((this.selectedModule === 3) ? HitTestMode.Default : HitTestMode.None)
+            .zIndex((this.selectedModule === 3) ? 1 : 0)
           Row() {
-              NotesPage({ workspaceActive: this.notesOpen,
+              NotesPage({ workspaceActive: (this.selectedModule === 1),
                 navigationYear: this.noteYearFilter, navigationTag: this.noteTagFilter,
                 navigationNewRevision: this.noteNewRevision, discardRevision: this.noteDiscardRevision,
                 saveRevision: this.noteSaveRevision, topRevision: this.topRequests[1],
@@ -3816,10 +3815,10 @@ export struct LogsReaderPage {
                 onOpenLog: () => this.selectTab(0),
                 onInternalLink: (date: string, heading: string) => this.openNoteLink(date, heading) }).layoutWeight(1)
           }.width('100%').height('100%')
-            .visibility(this.notesOpen || this.outgoingTab === 1 ? Visibility.Visible : Visibility.None)
-            .opacity(this.notesOpen ? this.moduleReveal : 1)
-            .hitTestBehavior(this.notesOpen ? HitTestMode.Default : HitTestMode.None)
-            .zIndex(this.notesOpen ? 1 : 0)
+            .visibility((this.selectedModule === 1) || this.outgoingTab === 1 ? Visibility.Visible : Visibility.None)
+            .opacity((this.selectedModule === 1) ? this.moduleReveal : 1)
+            .hitTestBehavior((this.selectedModule === 1) ? HitTestMode.Default : HitTestMode.None)
+            .zIndex((this.selectedModule === 1) ? 1 : 0)
           Row() {
               FavoritesPage({ data: this.favoritesData, viewMode: this.favoritesViewMode,
                 onScrollStateChange: (scrolled: boolean) => this.favoritesScrolled = scrolled,
@@ -3832,10 +3831,10 @@ export struct LogsReaderPage {
                 onOpenLog: () => this.selectTab(0),
                 onOpenFavorite: (favorite: FavoriteHeading) => this.openFavorite(favorite) }).layoutWeight(1)
           }.width('100%').height('100%')
-            .visibility(this.favoritesOpen || this.outgoingTab === 2 ? Visibility.Visible : Visibility.None)
-            .opacity(this.favoritesOpen ? this.moduleReveal : 1)
-            .hitTestBehavior(this.favoritesOpen ? HitTestMode.Default : HitTestMode.None)
-            .zIndex(this.favoritesOpen ? 1 : 0)
+            .visibility((this.selectedModule === 2) || this.outgoingTab === 2 ? Visibility.Visible : Visibility.None)
+            .opacity((this.selectedModule === 2) ? this.moduleReveal : 1)
+            .hitTestBehavior((this.selectedModule === 2) ? HitTestMode.Default : HitTestMode.None)
+            .zIndex((this.selectedModule === 2) ? 1 : 0)
           Row() {
               Stack() {
                 StatsPage({ showTaxonomyManager: true, onOpenTaxonomyManager: () => this.openTaxonomy(),
@@ -3862,10 +3861,10 @@ export struct LogsReaderPage {
                 }
               }.layoutWeight(1).height('100%')
           }.width('100%').height('100%')
-            .visibility(this.statsOpen || this.outgoingTab === 4 ? Visibility.Visible : Visibility.None)
-            .opacity(this.statsOpen ? this.moduleReveal : 1)
-            .hitTestBehavior(this.statsOpen ? HitTestMode.Default : HitTestMode.None)
-            .zIndex(this.statsOpen ? 1 : 0)
+            .visibility((this.selectedModule === 4) || this.outgoingTab === 4 ? Visibility.Visible : Visibility.None)
+            .opacity((this.selectedModule === 4) ? this.moduleReveal : 1)
+            .hitTestBehavior((this.selectedModule === 4) ? HitTestMode.Default : HitTestMode.None)
+            .zIndex((this.selectedModule === 4) ? 1 : 0)
           Row() {
             if (this.isWide()) {
               Stack({ alignContent: Alignment.BottomEnd }) {

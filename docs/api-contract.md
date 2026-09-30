@@ -30,7 +30,9 @@
 
 - 所有 `/api/favorites` 方法先认证且禁止缓存。GET返回 `{favorites,groups}`，来自同一收藏JSON快照；收藏按创建时间倒序，分组按order升序。空实例两个数组均为空，不预置个人分组。
 - POST接收 `{date,headingText,headingId,level:3}` 返回 `{favorite}`；相同日期、标题和标题ID重复收藏保持同一id与createdAt。只支持真实产品已有的三级小节收藏，date负责定位原日块，不提供整日收藏。
-- POST `{action:"createGroup",name}` 返回 `{group}`，同名复用已有组。PATCH `{action:"renameGroup",groupId,name}` 改名，拒绝与其他组重名；PATCH `{id,groupIds:string[]}` 更新多组归属，去重并忽略已经不存在的组，返回 `{favorite}`。
+- POST `{action:"createGroup",name}` 返回 `{group}`，同名复用已有组。PATCH `{action:"renameGroup",groupId,name}` 改名，拒绝与其他组重名。
+- 当前 Web 与鸿蒙客户端通过 PATCH `{action:"setGroup",id,groupId,selected:boolean}` 加入或移除一个分组，返回 `{favorite}`；在实例内队列中基于最新快照修改，保留其他组归属，重复同向操作幂等，目标分组已删除则拒绝。同一分组的相反操作按服务端执行顺序处理，不提供版本冲突提示。
+- 兼容接口 PATCH `{id,groupIds:string[]}` 仍表示替换全部归属，去重并忽略已经不存在的组，返回 `{favorite}`。它没有版本前提：旧客户端提交过期数组可能覆盖其他客户端刚修改的归属，串行存储不能消除此语义风险；新客户端应使用上述单组操作。
 - DELETE `?id=...` 取消收藏；DELETE `?groupId=...` 删除分组并解除归属，保留收藏，均返回 `{ok:true}`。两个删除目标不能同时提供。
 - favorite包括date/month、原headingText/headingId、resolvedHeadingId、groupIds、level、createdAt/updatedAt、exists、sectionPreview（最多180字符）及sectionSearchText（最多12000字符）。解析原文时按标题ID与文字优先，再按同文字回退；原标题改名或删除仍保留收藏，exists为false。小节边界使用AST，不把围栏或引用里的伪标题当边界。
 - 收藏仅持久化于显式实例data下的`.study-log-favorites.json`。实例内修改串行执行，通过同目录唯一临时文件、sync与rename原子替换；写入/替换失败保留旧JSON，损坏JSON或结构错误明确失败，不静默重建空集合。拒绝实例根或收藏文件符号链接。参数问题400，存储问题500且不回传路径。此队列不提供跨进程并发写入支持。

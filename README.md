@@ -34,6 +34,14 @@ node ops/run-web.mjs start "/absolute/path/to/new-instance" 3560
 
 ## 当前验收边界
 
-维护者已用合成资料完成网页生产构建、主要浏览器流程、Linux 容器部署和少量真实模型调用；详细结果在[实施状态](docs/implementation-status.md)、[浏览器回归](docs/web-regression-b28.md)和[模型小样本记录](docs/model-validation.md)。独立使用者安装仍须按[试装清单](docs/independent-install-checklist.md)取得证据，维护者本机测试不能替代。真实向量/重排提供方、复杂材料的模型质量和 Firefox 也未完成相应验收。鸿蒙公开版迁移已启动，进度见[鸿蒙迁移记录](docs/harmony-migration.md)；这不改变网页独立试装的未通过状态。
+维护者已用合成资料完成网页生产构建、主要浏览器流程、Linux 容器部署和少量真实模型调用；详细结果在[实施状态](docs/implementation-status.md)、[浏览器回归](docs/web-regression-b28.md)和[模型小样本记录](docs/model-validation.md)。独立使用者安装仍须按[试装清单](docs/independent-install-checklist.md)取得证据，维护者本机测试不能替代。真实向量/重排提供方、复杂材料的模型质量和 Firefox 也未完成相应验收。鸿蒙主要模块已接入，仍在源码对齐和跨端验收中；这不改变网页独立试装的未通过状态。
 
-源码位于 `study-log-web/`、`study-log-mcp/` 和 `ops/`；接口与数据约束见[架构](docs/architecture.md)及[API 契约](docs/api-contract.md)。界面修改遵循 [DESIGN.md](DESIGN.md)。项目代码按 MIT 许可发布；第三方依赖说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+源码位于 `study-log-web/`、`study-log-mcp/`、`study-log-harmony/` 和 `ops/`；接口与数据约束见[架构](docs/architecture.md)及[API 契约](docs/api-contract.md)。界面修改遵循 [DESIGN.md](DESIGN.md)。项目代码按 MIT 许可发布；第三方依赖说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
+## 鸿蒙客户端
+
+客户端连接你明确配置的自部署 Web/API，支持手机、平板和 PC（2in1）。构建要求和签名边界见[客户端说明](study-log-harmony/README.md)。本阶段面向源码构建及侧载验证，尚未完成独立签名安装与外部网络连接验收，也未完成完整视觉／动效矩阵，不能视为可直接安装的正式发行版。
+
+已完成项目与历史证据见[鸿蒙迁移记录](docs/harmony-migration.md)，当前 R1–R6 收尾范围见[工作台恢复与剩余批次](docs/harmony-workspace-recovery.md)。源码对照及需要交给个人版核查的事项集中在[源码对齐审计](docs/harmony-source-alignment-audit.md)；其中源码风险、公开版复现和原版设备复现是不同证据，不应直接整批回填。
+
+目前还有两项使用限制：同日同名标题的内部文本链接不能区分第二处；随记记录时间按北京时间解释，设备时钟快于服务器时可能被拒绝为未来时间。遇到后者可核对设备时间或手动选择正确的记录时间，服务端不会为通过校验而自动改写记录时间。Wiki、分享、跨设备接续与完整离线能力仍属后续进阶议题。

@@ -8,6 +8,7 @@ import { SearchField } from '../../common/ui/FormControls';
 import { common } from '@kit.AbilityKit';
 import { saveExport } from '../../common/files/DocumentExport';
 import { apiClient } from '../../common/network/ApiClient';
+import { activeInstance } from '../../common/network/InstanceConfig';
 import { NoteEditorFields } from './components/NoteEditorFields';
 import { NoteCandidateExtractor } from './components/NoteCandidateExtractor';
 import { NoteRecordedAt } from './components/NoteRecordedAt';
@@ -22,6 +23,7 @@ import { WorkspaceBreakpoint, READING_MAX_WIDTH } from '../../common/AppConfig';
 import { workspaceSerifFamily } from '../../common/ui/Typography';
 import { StudyNote, StudyNoteFacet } from './NoteModels';
 import { NoteEditorSession } from './NoteEditorSession';
+import { noteDraftStore } from './NoteDraftStore';
 import { NotesController } from './NotesController';
 
 @Component
@@ -107,6 +109,8 @@ export struct NotesPage {
   }
 
   aboutToAppear(): void {
+    const draft = noteDraftStore.load(activeInstance.namespace);
+    if (draft) this.noteEditor.restore(draft);
     this.load();
   }
 
@@ -155,6 +159,10 @@ export struct NotesPage {
   }
 
   aboutToDisappear(): void {
+    if (this.noteEditor.editing && this.editorValue() !== this.noteEditor.baseline && activeInstance.namespace) {
+      try { noteDraftStore.save(this.noteEditor.draft(activeInstance.namespace)); }
+      catch (_) { this.showToast('随记草稿暂存失败，请及时复制当前内容', 'error'); }
+    }
     this.data.dispose();
     this.noteEditor.revision += 1;
     this.resultChanges.reset('');
@@ -251,7 +259,12 @@ export struct NotesPage {
   }
 
   private reportDirty(): void {
-    this.onDirtyChange(this.noteEditor.editing && this.editorValue() !== this.noteEditor.baseline);
+    const dirty = this.noteEditor.editing && this.editorValue() !== this.noteEditor.baseline;
+    if (!dirty && activeInstance.namespace) {
+      try { noteDraftStore.clear(activeInstance.namespace); }
+      catch (_) { this.showToast('随记草稿清理失败', 'error'); }
+    }
+    this.onDirtyChange(dirty);
   }
 
   @Builder

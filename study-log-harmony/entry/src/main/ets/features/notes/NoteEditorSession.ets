@@ -1,5 +1,6 @@
 import { StudyNote, StudyNoteRequest } from './NoteModels';
 import { util } from '@kit.ArkTS';
+import { PreservedNoteDraft } from './NoteDraftStore';
 
 @Observed
 export class NoteEditorSession {
@@ -18,6 +19,23 @@ export class NoteEditorSession {
 
   value(): string {
     return JSON.stringify([this.title, this.body, this.insight, this.sourcesText, this.tagsText, this.recordedAt]);
+  }
+
+  draft(namespace: string): PreservedNoteDraft {
+    return { namespace, editingId: this.editingId, clientId: this.clientId,
+      title: this.title, body: this.body, insight: this.insight, sourcesText: this.sourcesText,
+      tagsText: this.tagsText, recordedAt: this.recordedAt, baseVersion: this.baseVersion,
+      baseline: this.baseline };
+  }
+
+  restore(draft: PreservedNoteDraft): void {
+    this.revision += 1;
+    this.editing = true;
+    this.editingId = draft.editingId; this.clientId = draft.clientId;
+    this.title = draft.title; this.body = draft.body; this.insight = draft.insight;
+    this.sourcesText = draft.sourcesText; this.tagsText = draft.tagsText;
+    this.recordedAt = draft.recordedAt; this.baseVersion = draft.baseVersion;
+    this.baseline = draft.baseline;
   }
 
   startNew(recordedAt: string): void {

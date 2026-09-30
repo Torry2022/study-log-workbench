@@ -15,6 +15,66 @@ async function loadClass(path, mock) {
   return module.exports;
 }
 
+test('leaving a pending new note isolates its outcome without losing a committed record on refresh', async () => {
+  for (const leave of ['new-editor', 'dispose']) {
+    for (const outcome of ['success', 'lost-response', 'not-written']) {
+      let nextId = 0, resolve, reject, writes = 0;
+      const { NoteEditorSession } = await loadClass('../entry/src/main/ets/features/notes/NoteEditorSession.ets',
+        () => ({ util: { generateRandomUUID: () => `synthetic-${++nextId}` } }));
+      const editor = new NoteEditorSession();
+      editor.startNew('2026-09-28T17:00:00+08:00');
+      editor.title = '提交中的随记'; editor.body = '合成正文';
+      const submittedId = editor.clientId;
+      const remote = [];
+      const transport = {
+        post: (route, request) => {
+          writes += 1;
+          assert.equal(route, '/notes/batch');
+          assert.equal(request.notes[0].clientId, submittedId);
+          if (outcome !== 'not-written') remote.push({ ...request.notes[0], id: submittedId,
+            version: 'v1', year: '2026', updatedAt: editor.recordedAt });
+          return new Promise((yes, no) => { resolve = yes; reject = no; });
+        },
+        get: async () => ({ notes: remote, years: [], tags: [] })
+      };
+      const events = [];
+      const view = { blocked: () => false, uploading: () => false,
+        navigationChanged: () => events.push('navigation'), loaded: () => events.push('loaded'),
+        success: () => events.push('success'), failure: () => events.push('failure') };
+      const { NotesController } = await loadClass('../entry/src/main/ets/features/notes/NotesController.ets',
+        () => ({ ApiError }));
+      const controller = new NotesController(transport, editor, view);
+      const pending = controller.save();
+      if (leave === 'dispose') controller.dispose();
+      editor.startNew('2026-09-28T18:00:00+08:00');
+      editor.body = '另一份未保存草稿';
+      const replacementId = editor.clientId;
+      controller.errorMessage = '当前编辑状态';
+      if (outcome === 'success') resolve({ notes: remote });
+      else reject(new ApiError('旧请求失败', 502));
+      await pending;
+      assert.equal(editor.clientId, replacementId);
+      assert.notEqual(editor.clientId, submittedId);
+      assert.equal(editor.body, '另一份未保存草稿');
+      assert.equal(editor.editingId, '');
+      assert.equal(editor.editing, true);
+      assert.equal(controller.errorMessage, '当前编辑状态');
+      assert.equal(controller.saving, false);
+      assert.deepEqual(events, []);
+      assert.equal(writes, 1, 'an obsolete create must not be retried automatically');
+
+      const active = leave === 'dispose' ? new NotesController(transport, editor, view) : controller;
+      await active.load();
+      assert.equal(active.notes.length, outcome === 'not-written' ? 0 : 1);
+      if (active.notes.length) assert.equal(active.notes[0].id, submittedId);
+      assert.equal(editor.body, '另一份未保存草稿');
+      assert.equal(editor.clientId, replacementId);
+      assert.equal(writes, 1, 'refresh must read back without creating a duplicate');
+      assert.deepEqual(events, ['navigation', 'loaded']);
+    }
+  }
+});
+
 test('new note retry reuses one client identity after a lost response', async () => {
   let nextId = 0;
   const { NoteEditorSession } = await loadClass('../entry/src/main/ets/features/notes/NoteEditorSession.ets',
@@ -249,4 +309,67 @@ test('a successful note delete removes the old card when its follow-up list refr
   assert.equal(loaded, 1);
   assert.equal(controller.notes.length, 0);
   assert.equal(controller.loadFailed, true);
+});
+
+
+test('late uncertain note reconciliation cannot publish errors into a replacement editor or disposed view', async () => {
+  for (const operation of ['save', 'delete']) {
+    for (const readFails of [false, true]) {
+      const { NoteEditorSession } = await loadClass('../entry/src/main/ets/features/notes/NoteEditorSession.ets',
+        () => ({ util: { generateRandomUUID: () => 'replacement' } }));
+      const note = { id: 'note-1', title: '合成', body: '旧正文', insight: '', sources: [], tags: [],
+        recordedAt: '2026-09-28T17:00:00+08:00', version: 'v0' };
+      const editor = new NoteEditorSession(); editor.startEdit(note); editor.body = '提交正文';
+      let resolve, reject;
+      const transport = {
+        patch: async () => { throw new ApiError('旧更新错误', 502); },
+        delete: async () => { throw new ApiError('旧删除错误', 502); },
+        get: () => new Promise((yes, no) => { resolve = yes; reject = no; })
+      };
+      const view = { blocked: () => false, uploading: () => false, navigationChanged() {}, loaded() {},
+        success() { assert.fail('obsolete success'); }, failure() { assert.fail('obsolete failure'); } };
+      const { NotesController } = await loadClass('../entry/src/main/ets/features/notes/NotesController.ets',
+        () => ({ ApiError }));
+      const controller = new NotesController(transport, editor, view);
+      const pending = operation === 'save' ? controller.save() : controller.deleteNote(note);
+      while (!resolve) await Promise.resolve();
+      if (operation === 'save') { editor.startNew(note.recordedAt); editor.body = '另一份草稿'; }
+      else controller.dispose();
+      controller.errorMessage = '当前状态';
+      if (readFails) reject(new ApiError('旧读取错误', 503));
+      else resolve({ notes: [note], years: [], tags: [] });
+      await pending;
+      assert.equal(controller.errorMessage, '当前状态', operation + ':' + readFails);
+      if (operation === 'save') assert.equal(editor.body, '另一份草稿');
+    }
+  }
+});
+
+
+test('new note rejects another record identity and keeps its original draft for explicit retry', async () => {
+ const {NoteEditorSession}=await loadClass('../entry/src/main/ets/features/notes/NoteEditorSession.ets',()=>({util:{generateRandomUUID:()=> 'synthetic-confirmation'}}));
+ const {NotesController}=await loadClass('../entry/src/main/ets/features/notes/NotesController.ets',()=>({ApiError}));
+ const editor=new NoteEditorSession();editor.startNew('2026-02-05T12:00:00+08:00');editor.body='保留合成草稿';
+ const requests=[],successes=[];let correct=false,remote;
+ const transport={post:async(_,request)=>{requests.push(request.notes[0].clientId);remote={...request.notes[0],id:correct?request.notes[0].clientId:'other-record',version:'v1'};return {notes:[remote]};},get:async()=>({notes:[remote],years:[],tags:[]})};
+ const view={blocked:()=>false,uploading:()=>false,navigationChanged(){},loaded(){},success:value=>successes.push(value),failure(){}};
+ const controller=new NotesController(transport,editor,view);const baseline=editor.baseline;
+ await controller.save();
+ assert.equal(editor.editing,true);assert.equal(editor.editingId,'');assert.equal(editor.baseline,baseline);assert.equal(editor.body,'保留合成草稿');assert.equal(controller.errorMessage,'未能确认保存结果，草稿仍保留，请重试');assert.deepEqual(successes,[]);
+ correct=true;await controller.save();assert.deepEqual(requests,['synthetic-confirmation','synthetic-confirmation']);assert.equal(editor.editing,false);assert.equal(editor.editingId,'synthetic-confirmation');assert.equal(successes.length,1);
+});
+
+
+test('editing a note rejects another record identity without replacing its id, baseline or version', async () => {
+ const {NoteEditorSession}=await loadClass('../entry/src/main/ets/features/notes/NoteEditorSession.ets',()=>({util:{generateRandomUUID:()=> 'unused'}}));
+ const {NotesController}=await loadClass('../entry/src/main/ets/features/notes/NotesController.ets',()=>({ApiError}));
+ const original={id:'edited-note',version:'v1',title:'合成标题',body:'原正文',insight:'',sources:[],tags:[],recordedAt:'2026-02-05T12:00:00+08:00'};
+ const editor=new NoteEditorSession();editor.startEdit(original);editor.body='应当保留的修改';
+ const requests=[],successes=[];let correct=false,remote;
+ const transport={patch:async(_,request)=>{requests.push({id:request.id,baseVersion:request.baseVersion});remote={...request,id:correct?request.id:'other-record',version:'v2'};return {note:remote};},get:async()=>({notes:[remote],years:[],tags:[]})};
+ const view={blocked:()=>false,uploading:()=>false,navigationChanged(){},loaded(){},success:value=>successes.push(value),failure(){}};
+ const controller=new NotesController(transport,editor,view);const baseline=editor.baseline;
+ await controller.save();
+ assert.equal(editor.editing,true);assert.equal(editor.editingId,'edited-note');assert.equal(editor.baseVersion,'v1');assert.equal(editor.baseline,baseline);assert.equal(editor.body,'应当保留的修改');assert.deepEqual(successes,[]);
+ correct=true;await controller.save();assert.deepEqual(requests,[{id:'edited-note',baseVersion:'v1'},{id:'edited-note',baseVersion:'v1'}]);assert.equal(editor.editing,false);assert.equal(editor.editingId,'edited-note');assert.equal(editor.baseVersion,'v2');assert.equal(successes.length,1);
 });

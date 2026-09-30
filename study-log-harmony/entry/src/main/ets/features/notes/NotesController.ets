@@ -99,6 +99,7 @@ export class NotesController {
     const revision = this.editor.revision;
     const snapshot = this.editor.value();
     const id = this.editor.editingId;
+    const expectedId = id || this.editor.clientId;
     const body = this.editor.request();
     this.saving = true; this.errorMessage = '';
     try {
@@ -113,9 +114,18 @@ export class NotesController {
           insight: body.insight, sources: body.sources, tags: body.tags,
           recordedAt: body.recordedAt, clientId: this.editor.clientId }] };
         const result = await this.transport.post<StudyNoteBatchResponse>('/notes/batch', request);
+        if (lifetime !== this.lifetime || revision !== this.editor.revision) return;
+        if (!result || !Array.isArray(result.notes) || result.notes.length !== 1) {
+          this.errorMessage = '未能确认保存结果，草稿仍保留，请重试';
+          return;
+        }
         response = { note: result.notes[0] };
       }
       if (lifetime !== this.lifetime || revision !== this.editor.revision) return;
+      if (!response || !response.note || response.note.id !== expectedId) {
+        this.errorMessage = '未能确认保存结果，草稿仍保留，请重试';
+        return;
+      }
       // Keep any input delivered after submission; the saved baseline is the submitted snapshot.
       this.editor.editingId = response.note.id;
       this.editor.baseVersion = response.note.version;
@@ -141,6 +151,7 @@ export class NotesController {
           }
         } catch (_) { /* Retain the draft and report the original write error. */ }
       }
+      if (lifetime !== this.lifetime || revision !== this.editor.revision) return;
       this.errorMessage = error instanceof ApiError && error.statusCode === 409 ?
         '服务器随记已变化，未覆盖。当前编辑仍保留，请先复制内容，再重新打开核对。' : this.message(error, '随记保存失败');
     } finally { if (lifetime === this.lifetime) this.saving = false; }
@@ -170,6 +181,7 @@ export class NotesController {
           }
         } catch (_) { /* Keep the original error when the server cannot be checked. */ }
       }
+      if (lifetime !== this.lifetime) return;
       this.errorMessage = this.message(error, '删除随记失败');
     } finally { if (lifetime === this.lifetime) this.deletingId = ''; }
   }

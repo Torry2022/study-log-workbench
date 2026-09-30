@@ -135,6 +135,7 @@ export struct NoteCandidateExtractor {
   @State private resultSummary: string = '';
   @State private contentWidth: number = 0;
   private acceptedRevision: number = -1;
+  private lifecycleRevision: number = 0;
 
   aboutToAppear(): void {
     this.recordedAt = this.timestamp();
@@ -142,11 +143,18 @@ export struct NoteCandidateExtractor {
   }
 
   aboutToDisappear(): void {
+    this.lifecycleRevision++;
     this.files.forEach((file: NoteImportFile) => { try { fileIo.unlinkSync(file.path); } catch (_) {} });
   }
 
+  private current(lifecycle: number, instance: number): boolean {
+    return lifecycle === this.lifecycleRevision && instance === activeInstance.revision;
+  }
+
   private importRevisionChanged(): void {
-    setTimeout(() => this.acceptImport(), 0);
+    const lifecycle = this.lifecycleRevision;
+    const instance = activeInstance.revision;
+    setTimeout(() => { if (this.current(lifecycle, instance)) this.acceptImport(); }, 0);
   }
 
   private acceptImport(): void {
@@ -163,13 +171,16 @@ export struct NoteCandidateExtractor {
 
   private async chooseFiles(): Promise<void> {
     if (this.loading || this.saving || this.files.length >= 5) return;
+    const lifecycle = this.lifecycleRevision;
+    const instance = activeInstance.revision;
+    const selected: NoteImportFile[] = [];
     try {
       const viewPicker = new picker.DocumentViewPicker(this.context());
       const options = new picker.DocumentSelectOptions();
       options.maxSelectNumber = Math.max(1, 5 - this.files.length);
       options.fileSuffixFilters = ['文档|.txt,.md,.markdown,.pdf,.docx,.pptx'];
       const uris = await viewPicker.select(options);
-      const selected: NoteImportFile[] = [];
+      if (!this.current(lifecycle, instance)) return;
       for (let index = 0; index < uris.length && index < 5; index += 1) {
         selected.push(cacheImportUri(this.context(), uris[index], index));
       }
@@ -178,6 +189,8 @@ export struct NoteCandidateExtractor {
       this.message = '';
       this.warning = '';
     } catch (error) {
+      selected.forEach((file: NoteImportFile) => { try { fileIo.unlinkSync(file.path); } catch (_) {} });
+      if (!this.current(lifecycle, instance)) return;
       const message = error instanceof Error ? error.message : '';
       if (message) this.message = message;
     }
@@ -201,6 +214,8 @@ export struct NoteCandidateExtractor {
       if (this.files.length === 0) this.message = '请先选择文档';
       return;
     }
+    const lifecycle = this.lifecycleRevision;
+    const instance = activeInstance.revision;
     this.loading = true;
     this.onBusyChange(true);
     this.message = '';
@@ -210,10 +225,12 @@ export struct NoteCandidateExtractor {
       for (const file of this.files) {
         const uploads: ApiUploadFile[] = [new UploadFile(file)];
         const parsed = await apiClient.postFiles<ParsedMaterialResponse>('/materials/extract', uploads);
+        if (!this.current(lifecycle, instance)) return;
         documents.push(parsed.document);
       }
       const response = await apiClient.post<StudyNoteCandidateResponse>('/notes/candidates',
         { documents } as CandidateDocumentsRequest);
+      if (!this.current(lifecycle, instance)) return;
       this.drafts = response.result.candidates.map((candidate: StudyNoteCandidate) => this.toDraft(candidate));
       this.activeId = this.drafts.length > 0 ? this.drafts[0].id : '';
       this.materialsExpanded = this.drafts.length === 0;
@@ -222,10 +239,12 @@ export struct NoteCandidateExtractor {
       this.resultSummary = `${response.result.documents.length} 个文件 · ${response.result.documents.reduce((sum, doc) => sum + doc.sectionCount, 0)} 个内容区段 · ${response.result.model}`;
       if (this.drafts.length === 0 && !this.warning) this.message = '没有提取到适合沉淀的随记';
     } catch (error) {
-      this.message = error instanceof ApiError ? error.message : 'AI提取失败，请稍后重试';
+      if (this.current(lifecycle, instance)) this.message = error instanceof ApiError ? error.message : 'AI提取失败，请稍后重试';
     } finally {
-      this.loading = false;
-      this.onBusyChange(false);
+      if (this.current(lifecycle, instance)) {
+        this.loading = false;
+        this.onBusyChange(false);
+      }
     }
   }
 
@@ -319,6 +338,8 @@ export struct NoteCandidateExtractor {
 
   private async saveSelected(): Promise<void> {
     if (this.saving) return;
+    const lifecycle = this.lifecycleRevision;
+    const instance = activeInstance.revision;
     const selected = this.drafts.filter((draft: CandidateDraft) => draft.selected);
     if (selected.length === 0) {
       this.message = '请至少选择一条有正文的候选随记';
@@ -342,13 +363,21 @@ export struct NoteCandidateExtractor {
     selected.forEach((draft: CandidateDraft) => notes.push(new CandidateNote(draft, recordedAt,
       (value: string): string[] => this.values(value))));
     try {
-      await apiClient.post<StudyNoteBatchResponse>('/notes/batch', new CandidateBatch(notes));
+      const response = await apiClient.post<StudyNoteBatchResponse>('/notes/batch', new CandidateBatch(notes));
+      if (!this.current(lifecycle, instance)) return;
+      if (!response || !Array.isArray(response.notes) || response.notes.length !== notes.length ||
+        response.notes.some((note, index) => !note || note.id !== notes[index].clientId)) {
+        this.message = '未能确认保存结果，候选仍保留，请重试';
+        return;
+      }
       this.onSaved();
     } catch (error) {
-      this.message = error instanceof ApiError ? error.message : '候选随记保存失败';
+      if (this.current(lifecycle, instance)) this.message = error instanceof ApiError ? error.message : '候选随记保存失败';
     } finally {
-      this.saving = false;
-      this.onBusyChange(false);
+      if (this.current(lifecycle, instance)) {
+        this.saving = false;
+        this.onBusyChange(false);
+      }
     }
   }
 

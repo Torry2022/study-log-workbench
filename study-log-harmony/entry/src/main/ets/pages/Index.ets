@@ -30,6 +30,7 @@ import { LoginPage } from '../app/LoginPage';
 import { TokenStore } from '../common/storage/TokenStore';
 import { LogsReaderPage, PreservedLogDraft } from '../features/logs/LogsReaderPage';
 import { logDraftStore } from '../features/logs/LogDraftStore';
+import { noteDraftStore } from '../features/notes/NoteDraftStore';
 import { taxonomyDraftStore } from '../features/stats/TaxonomyDraftStore';
 import { DesktopLogCommands, DesktopMenuEntry } from '../app/DesktopMenu';
 import { DesktopTitleBar } from '../app/components/DesktopTitleBar';
@@ -781,6 +782,8 @@ struct Index {
     if (revision !== activeInstance.revision) return;
     try {
       await logDraftStore.initialize(this.getUIContext().getHostContext() as common.Context);
+      if (revision !== activeInstance.revision) return;
+      await noteDraftStore.initialize(this.getUIContext().getHostContext() as common.Context);
       if (revision !== activeInstance.revision) return;
       await taxonomyDraftStore.initialize(this.getUIContext().getHostContext() as common.Context);
       if (revision !== activeInstance.revision) return;

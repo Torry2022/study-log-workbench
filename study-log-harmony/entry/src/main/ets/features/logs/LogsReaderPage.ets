@@ -64,7 +64,8 @@ import { QaPage } from '../qa/QaPage';
 import { QaNavigation } from '../qa/components/QaNavigation';
 import { QaNavigationController } from '../qa/QaNavigationController';
 import { RagSessionSummary } from '../qa/QaModels';
-import { AppTopBar, BottomNavigation } from '../../app/components/WorkspaceNavigation';
+import { AppTopBar } from '../../app/components/WorkspaceNavigation';
+import { WorkspaceFrame } from '../../app/components/WorkspaceFrame';
 import { PreservedLogDraft, restoredLogDraft } from './LogDraftPolicy';
 import { WorkspaceTransitionCoordinator } from '../../app/WorkspaceTransitionCoordinator';
 import { ReadingTransitionCoordinator } from '../../app/ReadingTransitionCoordinator';
@@ -3667,277 +3668,260 @@ export struct LogsReaderPage {
       this.desktopTopBarWidth - 208 - this.desktopTopActionsWidth(this.desktopTopBarDensity === ToolbarDensity.FULL) - 48));
   }
 
+  @Builder
+  private desktopTopBar() {
+    Row({ space: 12 }) {
+      if (!this.isWide() && !(this.selectedModule === 4) && !(this.selectedModule === 2) && !(this.selectedModule === 1) && !(this.selectedModule === 3)) {
+        Button({ type: ButtonType.Normal }) {
+          SymbolGlyph($r('sys.symbol.line_3_horizontal')).fontSize(20).fontColor([$r('app.color.ink')])
+        }.width(42).height(42).backgroundColor(Color.Transparent).accessibilityText('打开日期导航')
+          .onClick(() => this.openNavigation())
+      }
+      Row({ space: 10 }) {
+        AppLogo({ iconSize: 38, cornerRadius: 8 })
+        Column({ space: 2 }) {
+          Text('学习日志工作台').fontFamily(workspaceSansFamily(this.workspaceBreakpoint))
+            .fontSize(15).fontWeight(FontWeight.Bold).fontColor($r('app.color.ink')).maxLines(1)
+          Text((this.selectedModule === 1) ? '随记' : (this.selectedModule === 3) ? '知识问答' : (this.selectedModule === 4) ? '学习统计' : (this.selectedModule === 2) ? '收藏中心' :
+            (this.day?.headings[0] || this.selectedDate || '日志'))
+            .fontFamily(workspaceSansFamily(this.workspaceBreakpoint)).fontSize(12)
+            .fontColor($r('app.color.muted')).maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+        }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+      }.layoutWeight(1).constraintSize({ minWidth: 208 })
+      if (this.desktopTopBarDensity !== ToolbarDensity.OVERFLOW) {
+        Stack({ alignContent: Alignment.TopStart }) {
+          SearchField({ value: this.searchQuery, focusKey: 'global_log_search',
+            focusRevision: this.searchFocusRevision,
+            placeholder: this.searchHeadingsOnly ? '搜索小节标题' : '搜索日志、术语、代码标识',
+            loading: this.searchLoading, showHeadingToggle: true, headingOnly: this.searchHeadingsOnly,
+            showCaseToggle: true, caseSensitive: !this.searchIgnoreCase,
+            onChange: (query: string) => this.changeSearch(query),
+            onSubmit: () => { this.searchOpen = true; this.searchLogs(); },
+            onClear: () => this.changeSearch(''),
+            onHeadingToggle: () => this.searchHeadingsOnly = !this.searchHeadingsOnly,
+            onCaseToggle: () => this.searchIgnoreCase = !this.searchIgnoreCase,
+            onFocusChange: (focused: boolean) => { if (focused) this.searchOpen = true; },
+            onSearchKey: (event: KeyEvent) => {
+              if (!this.searchOpen || this.calendarOpen ||
+                !workspaceKey(event, KeyCode.KEYCODE_ESCAPE)) return false;
+              this.closeSearch(); return true;
+            } })
+          this.desktopSearchResults()
+        }.width(this.desktopTopSearchWidth()).height(42).zIndex(40)
+      } else {
+        ToolbarAction({ label: '搜索日志内容', icon: $r('app.media.search'),
+          showLabel: false, onAction: () => {
+            this.searchOpen = true;
+            this.searchFocusRevision++;
+          } })
+      }
+        ToolbarAction({ label: '随记', icon: $r('app.media.tab_lightbulb_active'),
+          showLabel: this.desktopTopBarDensity === ToolbarDensity.FULL, active: (this.selectedModule === 1),
+          onAction: () => this.selectTab((this.selectedModule === 1) ? 0 : 1) })
+        ToolbarAction({ label: '收藏', icon: $r('app.media.tab_star_active'),
+          showLabel: this.desktopTopBarDensity === ToolbarDensity.FULL, active: (this.selectedModule === 2),
+          onAction: () => this.selectTab((this.selectedModule === 2) ? 0 : 2) })
+        ToolbarAction({ label: '问答', icon: $r('app.media.tab_message_square_text_active'),
+          showLabel: this.desktopTopBarDensity === ToolbarDensity.FULL, active: (this.selectedModule === 3),
+          onAction: () => this.selectTab((this.selectedModule === 3) ? 0 : 3) })
+        ToolbarAction({ label: '统计', icon: $r('app.media.tab_chart_column'),
+          showLabel: this.desktopTopBarDensity === ToolbarDensity.FULL, active: (this.selectedModule === 4),
+          onAction: () => this.selectTab((this.selectedModule === 4) ? 0 : 4) })
+      ToolbarAction({ label: '更多设置', icon: $r('app.media.more_horizontal'), showLabel: false,
+        active: this.topMoreOpen, onAction: () => this.topMoreOpen = !this.topMoreOpen })
+        .bindPopup(this.topMoreOpen, { builder: this.topMoreActions(), placement: Placement.BottomRight,
+          enableArrow: false, popupColor: $r('app.color.canvas'), radius: 8,
+          onStateChange: (event) => { if (!event.isVisible) this.topMoreOpen = false; } })
+    }.width('100%').height(64).padding({ left: 12, right: 12 })
+      .onAreaChange((_oldArea: Area, area: Area) => {
+        this.desktopTopBarWidth = Number(area.width);
+        this.desktopTopBarDensity = resolveToolbarDensity(this.desktopTopBarWidth,
+          208 + 260 + this.desktopTopActionsWidth(false) + 48,
+          208 + 260 + this.desktopTopActionsWidth(true) + 48,
+          this.desktopTopBarDensity);
+      })
+      .backgroundColor($r('app.color.canvas'))
+      .zIndex(30)
+      .border({ width: { bottom: 1 }, color: $r('app.color.hairline') })
+  }
+
+  @Builder
+  private compactTopBar() {
+    AppTopBar({ title: (this.selectedModule === 1) ? '随记' : (this.selectedModule === 2) ? '收藏中心' :
+      (this.selectedModule === 3) ? '知识问答' : (this.selectedModule === 4) ? '学习统计' : '学习日志',
+      showSearch: this.selectedTab() === 0 || (this.selectedModule === 3),
+      showDivider: this.showTopBarDivider(),
+      onOpenNavigation: () => this.openNavigation(),
+      onOpenSearch: () => this.openCurrentSearch(),
+      onOpenMore: () => this.compactSettingsOpen = true })
+      .bindSheet($$this.compactSettingsOpen, this.compactAppSettingsPanel(), {
+        preferType: SheetType.BOTTOM, height: SheetSize.FIT_CONTENT,
+        dragBar: false, showClose: false, maskColor: $r('app.color.scrim'),
+        radius: LengthMetrics.vp(12)
+      })
+  }
+
+  @Builder
+  private workspaceContent() {
+    Stack() {
+      Row() {
+          QaPage({ workspaceActive: (this.selectedModule === 3), navigationSessionId: this.qaSessionId,
+            themePreference: this.themePreference,
+            navigationRequestRevision: this.qaRequestRevision, discardRevision: this.qaDiscardRevision,
+            questionFocusRevision: this.qaQuestionFocusRevision, topRevision: this.topRequests[3],
+            configured: !!activeInstance.capabilities?.features.rag.configured,
+            onSessionsChange: (sessions: RagSessionSummary[]) => this.qaNavigation.acceptQaNavigation(sessions),
+            onSessionsError: (message: string) => this.qaNavigation.qaNavigationError = message,
+            onActiveSessionChange: (id: string) => this.qaSessionId = id,
+            onBusyChange: (busy: boolean) => this.qaBusy = busy,
+            onDraftChange: (dirty: boolean) => this.qaDirty = dirty,
+            onPendingChange: (pending: boolean) => this.qaPending = pending,
+            onScrollStateChange: (scrolled: boolean) => this.qaScrolled = scrolled,
+            onLoadingHintChange: (placement: LoadingHintPlacement) => this.qaLoadingHint = placement,
+            onOpenLog: () => this.selectTab(0),
+            onCitation: (date: string, heading: string, headingIndex: number) =>
+              this.openQaCitation(date, heading, headingIndex) }).layoutWeight(1)
+      }.width('100%').height('100%')
+        .visibility((this.selectedModule === 3) || this.outgoingTab === 3 ? Visibility.Visible : Visibility.None)
+        .opacity((this.selectedModule === 3) ? this.moduleReveal : 1)
+        .hitTestBehavior((this.selectedModule === 3) ? HitTestMode.Default : HitTestMode.None)
+        .zIndex((this.selectedModule === 3) ? 1 : 0)
+      Row() {
+          NotesPage({ workspaceActive: (this.selectedModule === 1),
+            navigationYear: this.noteYearFilter, navigationTag: this.noteTagFilter,
+            navigationNewRevision: this.noteNewRevision, discardRevision: this.noteDiscardRevision,
+            saveRevision: this.noteSaveRevision, topRevision: this.topRequests[1],
+            onNavigationDataChange: (years: StudyNoteFacet[], tags: StudyNoteFacet[], total: number) => {
+              this.noteYears = years; this.noteTags = tags; this.noteCount = total;
+            },
+            onEditorBusyChange: (busy: boolean) => this.notesBusy = busy,
+            onDirtyChange: (dirty: boolean) => this.notesDirty = dirty,
+            onScrollStateChange: (scrolled: boolean) => this.notesScrolled = scrolled,
+            onLoadingHintChange: (placement: LoadingHintPlacement) => this.notesLoadingHint = placement,
+            onOpenLog: () => this.selectTab(0),
+            onInternalLink: (date: string, heading: string) => this.openNoteLink(date, heading) }).layoutWeight(1)
+      }.width('100%').height('100%')
+        .visibility((this.selectedModule === 1) || this.outgoingTab === 1 ? Visibility.Visible : Visibility.None)
+        .opacity((this.selectedModule === 1) ? this.moduleReveal : 1)
+        .hitTestBehavior((this.selectedModule === 1) ? HitTestMode.Default : HitTestMode.None)
+        .zIndex((this.selectedModule === 1) ? 1 : 0)
+      Row() {
+          FavoritesPage({ data: this.favoritesData, viewMode: this.favoritesViewMode,
+            onScrollStateChange: (scrolled: boolean) => this.favoritesScrolled = scrolled,
+            topRevision: this.topRequests[2],
+            onLoadingHintChange: (placement: LoadingHintPlacement) => this.favoritesLoadingHint = placement,
+            onViewModeChange: (mode: string) => {
+              workspacePreferences.set('favoritesView', mode)
+                .catch(() => appFeedback.show('收藏显示方式保存失败', 'error'));
+            },
+            onOpenLog: () => this.selectTab(0),
+            onOpenFavorite: (favorite: FavoriteHeading) => this.openFavorite(favorite) }).layoutWeight(1)
+      }.width('100%').height('100%')
+        .visibility((this.selectedModule === 2) || this.outgoingTab === 2 ? Visibility.Visible : Visibility.None)
+        .opacity((this.selectedModule === 2) ? this.moduleReveal : 1)
+        .hitTestBehavior((this.selectedModule === 2) ? HitTestMode.Default : HitTestMode.None)
+        .zIndex((this.selectedModule === 2) ? 1 : 0)
+      Row() {
+          Stack() {
+            StatsPage({ showTaxonomyManager: true, onOpenTaxonomyManager: () => this.openTaxonomy(),
+              onScrollStateChange: (scrolled: boolean) => this.statsScrolled = scrolled,
+              topRevision: this.topRequests[4],
+              requestedMonth: this.statsMonth, requestedMonthRevision: this.statsMonthRevision,
+              refreshRevision: this.statsRefreshRevision,
+              onLoadingHintChange: (placement: LoadingHintPlacement) => this.statsLoadingHint = placement,
+              onMonthsChange: (months: MonthSummary[]) => this.statsMonths = months,
+              onMonthsLoadingChange: (loading: boolean) => this.statsMonthsLoading = loading,
+              onMonthsErrorChange: (error: string) => this.statsMonthsError = error,
+              onSelectedMonthChange: (month: string) => this.statsMonth = month,
+              onOpenLog: () => this.selectTab(0),
+              onOpenEntry: (entry: StatsEntry) => this.openStatsEntry(entry) })
+              .width('100%').height('100%')
+            if (this.isWide() && this.taxonomyOpen) {
+              TaxonomyManagerPage({
+                onBack: () => this.confirmTaxonomyLeave(() => {}),
+                onStateChange: (dirty: boolean, busy: boolean) => {
+                  this.taxonomyDirty = dirty; this.taxonomyBusy = busy;
+                },
+                onSaved: () => this.statsRefreshRevision++
+              }).width('100%').height('100%').transition(secondaryPageTransition())
+            }
+          }.layoutWeight(1).height('100%')
+      }.width('100%').height('100%')
+        .visibility((this.selectedModule === 4) || this.outgoingTab === 4 ? Visibility.Visible : Visibility.None)
+        .opacity((this.selectedModule === 4) ? this.moduleReveal : 1)
+        .hitTestBehavior((this.selectedModule === 4) ? HitTestMode.Default : HitTestMode.None)
+        .zIndex((this.selectedModule === 4) ? 1 : 0)
+      Row() {
+        if (this.isWide()) {
+          Stack({ alignContent: Alignment.BottomEnd }) {
+            Column() { this.reader() }.width('100%').height('100%')
+            BackToTopControl({ visible: !this.sourceMode && this.previewOffset > 8,
+              progress: this.previewProgress, scrollOffset: this.previewOffset,
+              onBackToTop: () => this.previewTopRequest++ })
+              .margin({ right: 14, bottom: 14 }).zIndex(3)
+          }.layoutWeight(1).height('100%')
+        } else {
+          this.reader()
+        }
+        if (this.isWide()) {
+          Stack({ alignContent: Alignment.TopEnd }) {
+            this.aiToolsRail()
+            if (this.aiOpen) this.aiToolsPanel()
+            if (this.aiOpen && this.aiOffset === 0 && !this.logsReadingMode) this.aiResizer()
+          }.width((52 + (this.aiPanelWidth - 52) * (1 - this.aiOffset / 420)) *
+              (1 - this.readingProgress))
+            .height('100%')
+            .backgroundColor(this.aiOpen ? $r('app.color.canvas') : $r('app.color.surface_soft'))
+            .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
+            .border({ width: { left: 1 }, color: $r('app.color.hairline') })
+            .hitTestBehavior(this.logsReadingMode ? HitTestMode.None : HitTestMode.Default)
+            .clip(true).id('log_ai_dock')
+        }
+      }.width('100%').height('100%')
+        .visibility(this.selectedTab() === 0 || this.outgoingTab === 0 ? Visibility.Visible : Visibility.None)
+        .opacity(this.selectedTab() === 0 ? this.moduleReveal : 1)
+        .hitTestBehavior(this.selectedTab() === 0 ? HitTestMode.Default : HitTestMode.None)
+        .zIndex(this.selectedTab() === 0 ? 1 : 0)
+      if (this.aiOpen && !this.isWide() && this.selectedTab() === 0) {
+        Stack({ alignContent: Alignment.TopEnd }) { this.aiToolsPanel() }
+          .width('100%').height('100%').zIndex(2)
+      }
+      if (this.outlineOpen && this.selectedTab() === 0) {
+        Stack({ alignContent: Alignment.TopEnd }) {
+          AppModalScrim({ onDismiss: () => this.closeOutline() })
+            .opacity(this.outlineScrimOpacity)
+          Column().width(this.isWide() ? 320 : '82%').height('100%')
+            .backgroundColor($r('app.color.surface_soft'))
+            .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+            .translate({ x: this.outlineOffset })
+          this.compactOutlinePanel()
+        }.width('100%').height('100%').zIndex(4)
+      }
+    }.layoutWeight(1).height('100%')
+  }
+
   build() {
     Stack() {
-      Column() {
-        if (this.isWide()) {
-        Stack({ alignContent: Alignment.Top }) {
-        Row({ space: 12 }) {
-          if (!this.isWide() && !(this.selectedModule === 4) && !(this.selectedModule === 2) && !(this.selectedModule === 1) && !(this.selectedModule === 3)) {
-            Button({ type: ButtonType.Normal }) {
-              SymbolGlyph($r('sys.symbol.line_3_horizontal')).fontSize(20).fontColor([$r('app.color.ink')])
-            }.width(42).height(42).backgroundColor(Color.Transparent).accessibilityText('打开日期导航')
-              .onClick(() => this.openNavigation())
+      WorkspaceFrame({ wide: this.isWide(), readingMode: this.logsReadingMode,
+        readingProgress: this.readingProgress, readingAnimating: this.readingTransition.animating,
+        sidebarWidth: this.desktopNavigationWidth(), sidebarPopover: !!this.railPopover,
+        keyboardVisible: this.softwareKeyboardVisible, selectedModule: this.selectedModule,
+        coordinator: this.workspaceTransition,
+        desktopTopBar: () => { this.desktopTopBar() }, compactTopBar: () => { this.compactTopBar() },
+        navigation: () => { this.desktopNavigation() }, content: () => { this.workspaceContent() },
+        onSelect: (index: number) => this.selectTab(index),
+        onContentArea: (area: Area) => {
+          this.aiAvailableWidth = Number(area.width);
+          this.resizeAiPanel(this.aiWidthAdjusted ? this.aiPanelWidth : 340);
+          if (this.isWide() && this.aiOpen && !this.aiClosing && !this.aiAnimating && this.aiOffset === 420) {
+            this.moveAiTools(0);
           }
-          Row({ space: 10 }) {
-            AppLogo({ iconSize: 38, cornerRadius: 8 })
-            Column({ space: 2 }) {
-              Text('学习日志工作台').fontFamily(workspaceSansFamily(this.workspaceBreakpoint))
-                .fontSize(15).fontWeight(FontWeight.Bold).fontColor($r('app.color.ink')).maxLines(1)
-              Text((this.selectedModule === 1) ? '随记' : (this.selectedModule === 3) ? '知识问答' : (this.selectedModule === 4) ? '学习统计' : (this.selectedModule === 2) ? '收藏中心' :
-                (this.day?.headings[0] || this.selectedDate || '日志'))
-                .fontFamily(workspaceSansFamily(this.workspaceBreakpoint)).fontSize(12)
-                .fontColor($r('app.color.muted')).maxLines(1)
-                .textOverflow({ overflow: TextOverflow.Ellipsis })
-            }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-          }.layoutWeight(1).constraintSize({ minWidth: 208 })
-          if (this.desktopTopBarDensity !== ToolbarDensity.OVERFLOW) {
-            Stack({ alignContent: Alignment.TopStart }) {
-              SearchField({ value: this.searchQuery, focusKey: 'global_log_search',
-                focusRevision: this.searchFocusRevision,
-                placeholder: this.searchHeadingsOnly ? '搜索小节标题' : '搜索日志、术语、代码标识',
-                loading: this.searchLoading, showHeadingToggle: true, headingOnly: this.searchHeadingsOnly,
-                showCaseToggle: true, caseSensitive: !this.searchIgnoreCase,
-                onChange: (query: string) => this.changeSearch(query),
-                onSubmit: () => { this.searchOpen = true; this.searchLogs(); },
-                onClear: () => this.changeSearch(''),
-                onHeadingToggle: () => this.searchHeadingsOnly = !this.searchHeadingsOnly,
-                onCaseToggle: () => this.searchIgnoreCase = !this.searchIgnoreCase,
-                onFocusChange: (focused: boolean) => { if (focused) this.searchOpen = true; },
-                onSearchKey: (event: KeyEvent) => {
-                  if (!this.searchOpen || this.calendarOpen ||
-                    !workspaceKey(event, KeyCode.KEYCODE_ESCAPE)) return false;
-                  this.closeSearch(); return true;
-                } })
-              this.desktopSearchResults()
-            }.width(this.desktopTopSearchWidth()).height(42).zIndex(40)
-          } else {
-            ToolbarAction({ label: '搜索日志内容', icon: $r('app.media.search'),
-              showLabel: false, onAction: () => {
-                this.searchOpen = true;
-                this.searchFocusRevision++;
-              } })
-          }
-            ToolbarAction({ label: '随记', icon: $r('app.media.tab_lightbulb_active'),
-              showLabel: this.desktopTopBarDensity === ToolbarDensity.FULL, active: (this.selectedModule === 1),
-              onAction: () => this.selectTab((this.selectedModule === 1) ? 0 : 1) })
-            ToolbarAction({ label: '收藏', icon: $r('app.media.tab_star_active'),
-              showLabel: this.desktopTopBarDensity === ToolbarDensity.FULL, active: (this.selectedModule === 2),
-              onAction: () => this.selectTab((this.selectedModule === 2) ? 0 : 2) })
-            ToolbarAction({ label: '问答', icon: $r('app.media.tab_message_square_text_active'),
-              showLabel: this.desktopTopBarDensity === ToolbarDensity.FULL, active: (this.selectedModule === 3),
-              onAction: () => this.selectTab((this.selectedModule === 3) ? 0 : 3) })
-            ToolbarAction({ label: '统计', icon: $r('app.media.tab_chart_column'),
-              showLabel: this.desktopTopBarDensity === ToolbarDensity.FULL, active: (this.selectedModule === 4),
-              onAction: () => this.selectTab((this.selectedModule === 4) ? 0 : 4) })
-          ToolbarAction({ label: '更多设置', icon: $r('app.media.more_horizontal'), showLabel: false,
-            active: this.topMoreOpen, onAction: () => this.topMoreOpen = !this.topMoreOpen })
-            .bindPopup(this.topMoreOpen, { builder: this.topMoreActions(), placement: Placement.BottomRight,
-              enableArrow: false, popupColor: $r('app.color.canvas'), radius: 8,
-              onStateChange: (event) => { if (!event.isVisible) this.topMoreOpen = false; } })
-        }.width('100%').height(64).padding({ left: 12, right: 12 })
-          .onAreaChange((_oldArea: Area, area: Area) => {
-            this.desktopTopBarWidth = Number(area.width);
-            this.desktopTopBarDensity = resolveToolbarDensity(this.desktopTopBarWidth,
-              208 + 260 + this.desktopTopActionsWidth(false) + 48,
-              208 + 260 + this.desktopTopActionsWidth(true) + 48,
-              this.desktopTopBarDensity);
-          })
-          .backgroundColor($r('app.color.canvas'))
-          .zIndex(30)
-          .border({ width: { bottom: 1 }, color: $r('app.color.hairline') })
-          .translate({ y: -64 * this.readingProgress })
-        }.width('100%').height(64 * (1 - this.readingProgress))
-          .clip(this.readingTransition.animating || this.logsReadingMode)
-          .hitTestBehavior(this.logsReadingMode ? HitTestMode.None : HitTestMode.Default)
-          .accessibilityLevel(this.logsReadingMode ? 'no-hide-descendants' : 'auto')
-        } else {
-          AppTopBar({ title: (this.selectedModule === 1) ? '随记' : (this.selectedModule === 2) ? '收藏中心' :
-            (this.selectedModule === 3) ? '知识问答' : (this.selectedModule === 4) ? '学习统计' : '学习日志',
-            showSearch: this.selectedTab() === 0 || (this.selectedModule === 3),
-            showDivider: this.showTopBarDivider(),
-            onOpenNavigation: () => this.openNavigation(),
-            onOpenSearch: () => this.openCurrentSearch(),
-            onOpenMore: () => this.compactSettingsOpen = true })
-            .bindSheet($$this.compactSettingsOpen, this.compactAppSettingsPanel(), {
-              preferType: SheetType.BOTTOM, height: SheetSize.FIT_CONTENT,
-              dragBar: false, showClose: false, maskColor: $r('app.color.scrim'),
-              radius: LengthMetrics.vp(12)
-            })
-        }
-        Stack() {
-          Row() {
-            if (this.isWide()) {
-              Stack({ alignContent: Alignment.TopStart }) {
-                Column() { this.desktopNavigation() }.width(this.desktopNavigationWidth()).height('100%')
-                  .translate({ x: -this.desktopNavigationWidth() * this.readingProgress })
-              }.width(this.desktopNavigationWidth() * (1 - this.readingProgress)).height('100%')
-                .clip(this.readingTransition.animating || this.logsReadingMode)
-                .zIndex(this.railPopover ? 40 : 1)
-                .hitTestBehavior(this.logsReadingMode ? HitTestMode.None : HitTestMode.Default)
-                .accessibilityLevel(this.logsReadingMode ? 'no-hide-descendants' : 'auto')
-            }
-            Stack() {
-          Row() {
-              QaPage({ workspaceActive: (this.selectedModule === 3), navigationSessionId: this.qaSessionId,
-                themePreference: this.themePreference,
-                navigationRequestRevision: this.qaRequestRevision, discardRevision: this.qaDiscardRevision,
-                questionFocusRevision: this.qaQuestionFocusRevision, topRevision: this.topRequests[3],
-                configured: !!activeInstance.capabilities?.features.rag.configured,
-                onSessionsChange: (sessions: RagSessionSummary[]) => this.qaNavigation.acceptQaNavigation(sessions),
-                onSessionsError: (message: string) => this.qaNavigation.qaNavigationError = message,
-                onActiveSessionChange: (id: string) => this.qaSessionId = id,
-                onBusyChange: (busy: boolean) => this.qaBusy = busy,
-                onDraftChange: (dirty: boolean) => this.qaDirty = dirty,
-                onPendingChange: (pending: boolean) => this.qaPending = pending,
-                onScrollStateChange: (scrolled: boolean) => this.qaScrolled = scrolled,
-                onLoadingHintChange: (placement: LoadingHintPlacement) => this.qaLoadingHint = placement,
-                onOpenLog: () => this.selectTab(0),
-                onCitation: (date: string, heading: string, headingIndex: number) =>
-                  this.openQaCitation(date, heading, headingIndex) }).layoutWeight(1)
-          }.width('100%').height('100%')
-            .visibility((this.selectedModule === 3) || this.outgoingTab === 3 ? Visibility.Visible : Visibility.None)
-            .opacity((this.selectedModule === 3) ? this.moduleReveal : 1)
-            .hitTestBehavior((this.selectedModule === 3) ? HitTestMode.Default : HitTestMode.None)
-            .zIndex((this.selectedModule === 3) ? 1 : 0)
-          Row() {
-              NotesPage({ workspaceActive: (this.selectedModule === 1),
-                navigationYear: this.noteYearFilter, navigationTag: this.noteTagFilter,
-                navigationNewRevision: this.noteNewRevision, discardRevision: this.noteDiscardRevision,
-                saveRevision: this.noteSaveRevision, topRevision: this.topRequests[1],
-                onNavigationDataChange: (years: StudyNoteFacet[], tags: StudyNoteFacet[], total: number) => {
-                  this.noteYears = years; this.noteTags = tags; this.noteCount = total;
-                },
-                onEditorBusyChange: (busy: boolean) => this.notesBusy = busy,
-                onDirtyChange: (dirty: boolean) => this.notesDirty = dirty,
-                onScrollStateChange: (scrolled: boolean) => this.notesScrolled = scrolled,
-                onLoadingHintChange: (placement: LoadingHintPlacement) => this.notesLoadingHint = placement,
-                onOpenLog: () => this.selectTab(0),
-                onInternalLink: (date: string, heading: string) => this.openNoteLink(date, heading) }).layoutWeight(1)
-          }.width('100%').height('100%')
-            .visibility((this.selectedModule === 1) || this.outgoingTab === 1 ? Visibility.Visible : Visibility.None)
-            .opacity((this.selectedModule === 1) ? this.moduleReveal : 1)
-            .hitTestBehavior((this.selectedModule === 1) ? HitTestMode.Default : HitTestMode.None)
-            .zIndex((this.selectedModule === 1) ? 1 : 0)
-          Row() {
-              FavoritesPage({ data: this.favoritesData, viewMode: this.favoritesViewMode,
-                onScrollStateChange: (scrolled: boolean) => this.favoritesScrolled = scrolled,
-                topRevision: this.topRequests[2],
-                onLoadingHintChange: (placement: LoadingHintPlacement) => this.favoritesLoadingHint = placement,
-                onViewModeChange: (mode: string) => {
-                  workspacePreferences.set('favoritesView', mode)
-                    .catch(() => appFeedback.show('收藏显示方式保存失败', 'error'));
-                },
-                onOpenLog: () => this.selectTab(0),
-                onOpenFavorite: (favorite: FavoriteHeading) => this.openFavorite(favorite) }).layoutWeight(1)
-          }.width('100%').height('100%')
-            .visibility((this.selectedModule === 2) || this.outgoingTab === 2 ? Visibility.Visible : Visibility.None)
-            .opacity((this.selectedModule === 2) ? this.moduleReveal : 1)
-            .hitTestBehavior((this.selectedModule === 2) ? HitTestMode.Default : HitTestMode.None)
-            .zIndex((this.selectedModule === 2) ? 1 : 0)
-          Row() {
-              Stack() {
-                StatsPage({ showTaxonomyManager: true, onOpenTaxonomyManager: () => this.openTaxonomy(),
-                  onScrollStateChange: (scrolled: boolean) => this.statsScrolled = scrolled,
-                  topRevision: this.topRequests[4],
-                  requestedMonth: this.statsMonth, requestedMonthRevision: this.statsMonthRevision,
-                  refreshRevision: this.statsRefreshRevision,
-                  onLoadingHintChange: (placement: LoadingHintPlacement) => this.statsLoadingHint = placement,
-                  onMonthsChange: (months: MonthSummary[]) => this.statsMonths = months,
-                  onMonthsLoadingChange: (loading: boolean) => this.statsMonthsLoading = loading,
-                  onMonthsErrorChange: (error: string) => this.statsMonthsError = error,
-                  onSelectedMonthChange: (month: string) => this.statsMonth = month,
-                  onOpenLog: () => this.selectTab(0),
-                  onOpenEntry: (entry: StatsEntry) => this.openStatsEntry(entry) })
-                  .width('100%').height('100%')
-                if (this.isWide() && this.taxonomyOpen) {
-                  TaxonomyManagerPage({
-                    onBack: () => this.confirmTaxonomyLeave(() => {}),
-                    onStateChange: (dirty: boolean, busy: boolean) => {
-                      this.taxonomyDirty = dirty; this.taxonomyBusy = busy;
-                    },
-                    onSaved: () => this.statsRefreshRevision++
-                  }).width('100%').height('100%').transition(secondaryPageTransition())
-                }
-              }.layoutWeight(1).height('100%')
-          }.width('100%').height('100%')
-            .visibility((this.selectedModule === 4) || this.outgoingTab === 4 ? Visibility.Visible : Visibility.None)
-            .opacity((this.selectedModule === 4) ? this.moduleReveal : 1)
-            .hitTestBehavior((this.selectedModule === 4) ? HitTestMode.Default : HitTestMode.None)
-            .zIndex((this.selectedModule === 4) ? 1 : 0)
-          Row() {
-            if (this.isWide()) {
-              Stack({ alignContent: Alignment.BottomEnd }) {
-                Column() { this.reader() }.width('100%').height('100%')
-                BackToTopControl({ visible: !this.sourceMode && this.previewOffset > 8,
-                  progress: this.previewProgress, scrollOffset: this.previewOffset,
-                  onBackToTop: () => this.previewTopRequest++ })
-                  .margin({ right: 14, bottom: 14 }).zIndex(3)
-              }.layoutWeight(1).height('100%')
-            } else {
-              this.reader()
-            }
-            if (this.isWide()) {
-              Stack({ alignContent: Alignment.TopEnd }) {
-                this.aiToolsRail()
-                if (this.aiOpen) this.aiToolsPanel()
-                if (this.aiOpen && this.aiOffset === 0 && !this.logsReadingMode) this.aiResizer()
-              }.width((52 + (this.aiPanelWidth - 52) * (1 - this.aiOffset / 420)) *
-                  (1 - this.readingProgress))
-                .height('100%')
-                .backgroundColor(this.aiOpen ? $r('app.color.canvas') : $r('app.color.surface_soft'))
-                .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
-                .border({ width: { left: 1 }, color: $r('app.color.hairline') })
-                .hitTestBehavior(this.logsReadingMode ? HitTestMode.None : HitTestMode.Default)
-                .clip(true).id('log_ai_dock')
-            }
-          }.width('100%').height('100%')
-            .visibility(this.selectedTab() === 0 || this.outgoingTab === 0 ? Visibility.Visible : Visibility.None)
-            .opacity(this.selectedTab() === 0 ? this.moduleReveal : 1)
-            .hitTestBehavior(this.selectedTab() === 0 ? HitTestMode.Default : HitTestMode.None)
-            .zIndex(this.selectedTab() === 0 ? 1 : 0)
-          if (this.aiOpen && !this.isWide() && this.selectedTab() === 0) {
-            Stack({ alignContent: Alignment.TopEnd }) { this.aiToolsPanel() }
-              .width('100%').height('100%').zIndex(2)
-          }
-          if (this.outlineOpen && this.selectedTab() === 0) {
-            Stack({ alignContent: Alignment.TopEnd }) {
-              AppModalScrim({ onDismiss: () => this.closeOutline() })
-                .opacity(this.outlineScrimOpacity)
-              Column().width(this.isWide() ? 320 : '82%').height('100%')
-                .backgroundColor($r('app.color.surface_soft'))
-                .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
-                .translate({ x: this.outlineOffset })
-              this.compactOutlinePanel()
-            }.width('100%').height('100%').zIndex(4)
-          }
-            }.layoutWeight(1).height('100%')
-          }.width('100%').height('100%')
-            .onAreaChange((_: Area, area: Area) => {
-              this.aiAvailableWidth = Number(area.width);
-              this.resizeAiPanel(this.aiWidthAdjusted ? this.aiPanelWidth : 340);
-              if (this.isWide() && this.aiOpen && !this.aiClosing && !this.aiAnimating && this.aiOffset === 420) {
-                this.moveAiTools(0);
-              }
-            })
-          if (this.workspaceTransition.snapshot && this.workspaceTransition.kind === 'module') {
-            Image(this.workspaceTransition.snapshot).width('100%').height('100%')
-              .objectFit(ImageFit.Fill).syncLoad(true).opacity(this.workspaceTransition.opacity).zIndex(10)
-              .onComplete(() => this.workspaceTransition.rendered())
-              .onError(() => this.workspaceTransition.clear())
-              .hitTestBehavior(HitTestMode.None)
-          }
-        }.id('module_frame').layoutWeight(1).width('100%')
-        if (!this.isWide() && !this.softwareKeyboardVisible) {
-          BottomNavigation({ selectedIndex: this.selectedTab(), onSelect: (index: number) => this.selectTab(index) })
-        }
-      }.width('100%').height('100%').backgroundColor($r('app.color.canvas'))
-        .id('workspace_frame')
-        .hitTestBehavior(this.readingTransition.animating ? HitTestMode.None : HitTestMode.Default)
-        .onAreaChange((_oldArea: Area, area: Area) => {
+        },
+        onWorkspaceArea: (area: Area) => {
           this.workspaceOriginX = Number(area.globalPosition.x);
           this.workspaceOriginY = Number(area.globalPosition.y);
-        })
+        } })
       DelayedLoadingHint({ loading: this.selectedTab() === 0 && this.logLoadingHint.loading,
         text: '正在加载日志…' })
         .width(this.logLoadingHint.width).height(this.logLoadingHint.height)

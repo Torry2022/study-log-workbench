@@ -184,7 +184,7 @@ export class QaSessionController {
 
   async send(): Promise<void> {
     const clean = this.question.trim();
-    if (!clean || this.sending) return;
+    if (!clean || this.sending || this.sessionLoading) return;
     if (this.pendingWrite) { this.errorMessage = '上一次回答尚未保存，请先重试保存'; return; }
     let attempt = this.failedAttempt?.answerId === this.editingFailedId ? this.failedAttempt : undefined;
     if (attempt) {
@@ -206,7 +206,7 @@ export class QaSessionController {
   }
 
   async runAttempt(attempt: QaAttempt): Promise<void> {
-    if (this.sending || this.pageDisposed) return;
+    if (this.sending || this.sessionLoading || this.pageDisposed) return;
     this.sessionRequestRevision += 1;
     this.view.beforeSend();
     this.sending = true;

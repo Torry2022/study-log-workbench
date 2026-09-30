@@ -4,7 +4,6 @@ import { InstanceCapabilities, activeInstance, normalizeInstanceOrigin, validCap
 import { instanceStore } from '../common/storage/InstanceStore';
 import { TokenStore } from '../common/storage/TokenStore';
 import { workspaceSansFamily, workspaceSerifFamily } from '../common/ui/Typography';
-import { KeyboardAvoidMode } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { AppLogo } from '../common/ui/AppLogo';
 
@@ -45,7 +44,6 @@ export struct LoginPage {
   @State private viewportWidth: number = 0;
   @StorageLink('softwareKeyboardVisible') private softwareKeyboardVisible: boolean = false;
   private textureAnimationStarted: boolean = false;
-  private previousKeyboardAvoidMode?: KeyboardAvoidMode;
   private generation: number = 0;
 
   async aboutToAppear(): Promise<void> {
@@ -395,16 +393,6 @@ export struct LoginPage {
       }
       if (width > 0 && !this.textureAnimationStarted) {
         setTimeout(() => this.startTextureAnimation(), 0);
-      }
-    })
-    .onAppear(() => {
-      this.previousKeyboardAvoidMode = this.getUIContext().getKeyboardAvoidMode();
-      this.getUIContext().setKeyboardAvoidMode(KeyboardAvoidMode.RESIZE);
-    })
-    .onDisAppear(() => {
-      if (this.previousKeyboardAvoidMode !== undefined) {
-        this.getUIContext().setKeyboardAvoidMode(this.previousKeyboardAvoidMode);
-        this.previousKeyboardAvoidMode = undefined;
       }
     })
   }

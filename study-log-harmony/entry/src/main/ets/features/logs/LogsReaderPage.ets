@@ -1,3 +1,6 @@
+import { AppModalFrame } from '../../common/ui/AppModalFrame';
+import { WorkspaceSidebarState } from '../../app/WorkspaceSidebarState';
+import { WorkspaceReadingState } from '../../app/WorkspaceReadingState';
 import { WorkspaceBreakpoint, WORKSPACE_TABS, READING_MAX_WIDTH } from '../../common/AppConfig';
 import { apiClient, ApiError, ApiUploadFile } from '../../common/network/ApiClient';
 import { activeInstance } from '../../common/network/InstanceConfig';
@@ -9,9 +12,10 @@ import { common } from '@kit.AbilityKit';
 import { LengthMetrics } from '@kit.ArkUI';
 import { saveExport } from '../../common/files/DocumentExport';
 import { EditorLinkPicker } from '../../common/editor/EditorLinkPicker';
-import { DayEntry, DaySummary, MonthSummary } from './LogModels';
+import { DayEntry, DaySummary } from './LogModels';
 import { editableDayBody, matchesDeletedDay } from './LogDayBody';
 import { LogSession } from './LogSession';
+import { LogNavigationController } from './LogNavigationController';
 import { LogDocumentController } from './LogDocumentController';
 import { LogReadRepository } from './LogReadRepository';
 import { LogWriteRepository } from './LogWriteRepository';
@@ -44,7 +48,6 @@ import { StatsEntry } from '../stats/StatsModels';
 import { FavoritesController } from '../favorites/FavoritesController';
 import { FavoriteHeading } from '../favorites/FavoriteModels';
 import { LogFavoriteGroupPanel } from './components/LogFavoriteGroupPanel';
-import { workspacePreferences } from '../../common/storage/WorkspacePreferences';
 import { appFeedback } from '../../common/ui/AppFeedback';
 import { WorkspaceSearchController } from '../../app/WorkspaceSearchController';
 import { GlobalSearchCandidates } from '../../app/components/GlobalSearchCandidates';
@@ -55,9 +58,11 @@ import { LogHighlightReview } from './components/LogHighlightReview';
 import { QaNavigationController } from '../qa/QaNavigationController';
 import { RagSessionSummary } from '../qa/QaModels';
 import { AppTopBar } from '../../app/components/WorkspaceNavigation';
+import { WorkspaceNavigationView, WorkspaceNavigationCommands } from '../../app/WorkspaceNavigationBridge';
 import { WorkspaceModuleState } from '../../app/WorkspaceModuleState';
 import { DesktopThemePanel } from '../../app/components/DesktopThemePanel';
 import { DesktopWorkspaceTopBar } from '../../app/components/DesktopWorkspaceTopBar';
+import { DesktopWorkspaceNavigation } from '../../app/components/DesktopWorkspaceNavigation';
 import { WorkspaceModuleNavigation } from '../../app/components/WorkspaceModuleNavigation';
 import { WorkspaceContent, WorkspaceTaxonomyPage } from '../../app/components/WorkspaceContent';
 import { WorkspaceFrame } from '../../app/components/WorkspaceFrame';
@@ -74,7 +79,8 @@ interface AddFavoriteRequest { date: string; headingText: string; headingId: str
 
 @Component
 export struct LogsReaderPage {
-  @Link @Watch('moduleNavigationChanged') selectedModule: number;
+  @Link selectedModule: number;
+  @Prop desktopWindowChrome: boolean = false;
   @ObjectLink modules: WorkspaceModuleState;
   @Consume('workspaceBreakpoint') @Watch('workspaceBreakpointChanged')
   private workspaceBreakpoint: WorkspaceBreakpoint;
@@ -90,15 +96,10 @@ export struct LogsReaderPage {
   onRegisterDesktopCommands: (commands: DesktopLogCommands) => void = () => {};
   initialDraft: PreservedLogDraft | undefined = undefined;
   @State private session: LogSession = new LogSession();
-  @State private months: MonthSummary[] = [];
-  @State private days: DaySummary[] = [];
-  @State private month: string = '';
-  @State private monthsLoading: boolean = true;
-  @State private daysLoading: boolean = false;
+  @ObjectLink logNavigation: LogNavigationController;
   @State private refreshing: boolean = false;
   @State private readFailed: boolean = false;
   @State private errorMessage: string = '';
-  @State private navigationError: string = '';
   private retryRead: () => Promise<void> = async () => this.loadMonths();
   @State private navigationOpen: boolean = false;
   @State private navigationClosing: boolean = false;
@@ -122,20 +123,9 @@ export struct LogsReaderPage {
   @State private favoriteGroupDialogOpen: boolean = false;
   private favoriteSuccessRevision: number = 0;
   private favoriteSuccessTimer: number = -1;
-  @State private outgoingTab: number = -1;
-  @State private moduleReveal: number = 1;
-  @State private readingTransition: ReadingTransitionCoordinator = new ReadingTransitionCoordinator();
-  @State private logsReadingMode: boolean = false;
-  @State private readingProgress: number = 0;
-  @State private readingCoverX: number = 0;
-  @State private readingCoverY: number = 0;
-  @State private readingCoverWidth: number = 0;
-  @State private readingCoverHeight: number = 0;
-  @State private readingImageInset: number = 0;
-  private readingImageWidth: number = 0;
-  private readingImageHeight: number = 0;
-  private workspaceOriginX: number = 0;
-  private workspaceOriginY: number = 0;
+  @ObjectLink readingTransition: ReadingTransitionCoordinator;
+  @ObjectLink reading: WorkspaceReadingState;
+  @ObjectLink sidebar: WorkspaceSidebarState;
   @State private logLoadingHint: LoadingHintPlacement = new LoadingHintPlacement();
 
   private preparationHint(): LoadingHintPlacement {
@@ -148,10 +138,6 @@ export struct LogsReaderPage {
     }
   }
 
-  private readingViewportX: number = 0;
-  private readingViewportY: number = 0;
-  private readingViewportWidth: number = 0;
-  private readingViewportHeight: number = 0;
   @State private readingOutlineOpen: boolean = false;
   @State private readerReady: boolean = false;
   @State private renderedPreviewDate: string = '';
@@ -160,35 +146,14 @@ export struct LogsReaderPage {
   @State private previewTopRequest: number = 0;
   @State private previewRestoreOffset: number = 0;
   private previewScrollOffsets: Record<string, number> = {};
-  @State private workspaceLayoutRevision: number = 0;
-  @State private workspaceTransition: WorkspaceTransitionCoordinator = new WorkspaceTransitionCoordinator({
-    tab: () => this.selectedTab(),
-    canCapture: (kind: string) => this.isWide() &&
-      (kind === 'module' || ((kind === 'document' || kind === 'mode') && this.selectedTab() === 0 && !!this.session.day)),
-    capture: (kind: string) => this.getUIContext().getComponentSnapshot().get(
-      kind === 'module' ? 'module_frame' : 'workspace_frame', { waitUntilRenderFinished: true }),
-    fade: (update: () => void, finished: () => void) => {
-      this.getUIContext().animateTo({ duration: 160, curve: Curve.EaseOut, onFinish: finished }, update);
-    }
-  });
-  private moduleSwitchRevision: number = 0;
-  @State private moduleRequestedTab: number = -1;
-  @State private collapsedModules: boolean[] = [false, false, false, false, false];
+  @ObjectLink workspaceTransition: WorkspaceTransitionCoordinator;
+  onRegisterNavigation: (view: WorkspaceNavigationView) => WorkspaceNavigationCommands = () => new WorkspaceNavigationCommands();
+  private navigationCommands: WorkspaceNavigationCommands = new WorkspaceNavigationCommands();
   @State private railPopover: string = '';
   @State private moduleFrameHeight: number = 0;
 
-  private isDesktopNavigationCollapsed(): boolean { return this.collapsedModules[this.selectedTab()]; }
+  private isDesktopNavigationCollapsed(): boolean { return this.sidebar.collapsedModules[this.selectedTab()]; }
 
-  private moduleNavigationChanged(): void {
-    this.railPopover = '';
-    this.sidebarMotionRevision++;
-    this.sidebarAnimating = false;
-    this.finishToolbarMotion();
-  }
-  @State private sidebarExpansion: number = 1;
-  @State private sidebarAnimating: boolean = false;
-  private sidebarMotionRevision: number = 0;
-  @State private navigationRailHover: string = '';
   @State private navigationMonthsExpanded: boolean = false;
   @State private navigationDayQuery: string = '';
   @State private targetHeading: string = '';
@@ -197,7 +162,9 @@ export struct LogsReaderPage {
   @State private targetKind: string = '';
   @State private targetQuery: string = '';
   @State private targetRevision: number = 0;
-  @State private activeOutlineIndex: number = 0;
+  @State private activeOutlineId: string = '';
+  @State private outlineRequestRevision: number = 0;
+  private desktopOutlineScroller: Scroller = new Scroller();
   @State private headerWidth: number = 600;
   @State private headerDateWidth: number = 190;
   @State private toolbarDensity: ToolbarDensity = ToolbarDensity.OVERFLOW;
@@ -248,24 +215,89 @@ export struct LogsReaderPage {
   @State private hoveredMoreAction: string = '';
   @State private saveError: string = '';
   @State private newLogDate: string = '';
-  @State private calendarMonth: string = '';
-  @State private calendarDates: string[] = [];
   @State private calendarMode: string = 'create';
   @State private calendarOpen: boolean = false;
-  @State private calendarLoading: boolean = false;
-  @State private calendarError: boolean = false;
   private reads: LogReadRepository = new LogReadRepository(apiClient);
   private writes: LogWriteRepository = new LogWriteRepository(apiClient);
   @State private documents: LogDocumentController = new LogDocumentController(this.session, this.reads, this.writes);
   private editor: SourceEditorSession = new SourceEditorSession();
   private lifecycle: number = 0;
-  private listRevision: number = 0;
   private restoredDraftApplied: boolean = false;
   private leaveCheckPending: boolean = false;
-  private calendarRevision: number = 0;
   private linkTarget: EditorSnapshot | undefined = undefined;
-  private focusRegion: number = -1;
   private logNavigationScroller: Scroller = new Scroller();
+
+  private bindWorkspaceNavigation(): void {
+    this.navigationCommands = this.onRegisterNavigation({
+      openLogDatePicker: (mode: string) => this.openCalendar(mode),
+      hasLog: () => !!this.session.day,
+      isReading: () => this.reading.logsReadingMode,
+      canRead: (active: boolean) => !!this.session.day && !this.sourceMode && !this.splitMode && !this.sidebar.sidebarAnimating &&
+        (!active || this.renderedPreviewDate === this.session.selectedDate),
+      beforeReading: () => this.readingOutlineOpen = false,
+      canMoveSidebar: () => !this.aiAnimating,
+      beginSidebarMotion: (width: number) => this.beginToolbarMotion(this.aiAvailableWidth - width -
+        (52 + (this.aiPanelWidth - 52) * (1 - this.aiOffset / 420))),
+      advanceSidebarMotion: (widths: number[][], progress: number) => this.advanceToolbarMotion(widths, progress),
+      finishSidebarMotion: () => { if (!this.aiAnimating) this.finishToolbarMotion(); },
+      scrollSidebar: (section: number): void => { this.logNavigationScroller.scrollToIndex(section, false, ScrollAlign.START); },
+      isDocumentReady: (date: string) => this.isLogDocumentReady(date),
+      confirmLogLeave: (action: () => void) => this.confirmDiscard(action),
+      leaveLog: () => {
+        this.readingOutlineOpen = false;
+        this.session.text = this.session.baseline;
+        this.session.editorInitialText = this.session.baseline;
+        this.previewText = this.session.baseline;
+      },
+      closeNavigation: () => { this.closeNavigation(); this.railPopover = ''; },
+      changed: (index: number) => {
+        this.finishToolbarMotion();
+        if (index === 0 && this.readFailed) this.showReadFailure();
+        else if (index !== 0) appFeedback.dismissScope('log-read');
+        this.closeNavigation();
+        if (index !== 0) this.closeOutline();
+        this.closeSearch();
+      }
+    });
+  }
+
+  private requestModule(index: number, discardNotes: boolean = false, discardQa: boolean = false,
+    afterSwitch: () => void = () => {}, targetDate: string = ''): void {
+    this.navigationCommands.request(index, discardNotes, discardQa, afterSwitch, targetDate);
+  }
+
+  private openTaxonomy(): void { this.navigationCommands.openTaxonomy(); }
+  private switchQaSession(id: string, focusQuestion: boolean = false): void { this.navigationCommands.qaSession(id, focusQuestion); }
+  private confirmQaDelete(session: RagSessionSummary): void { this.navigationCommands.qaDelete(session); }
+  private confirmNotesLeave(action: () => void): void { this.navigationCommands.notesLeave(action); }
+  private confirmQaLeave(action: () => void): void { this.navigationCommands.qaLeave(action); }
+  private confirmTaxonomyLeave(action: () => void): void { this.navigationCommands.taxonomyLeave(action); }
+  private logDocumentReady(date: string): void { this.navigationCommands.ready(date); }
+  private logNavigationFailed(date: string): void { this.navigationCommands.failed(date); }
+
+  private bindNavigation(): void {
+    this.logNavigation.bind(this.reads, {
+      lifecycle: () => this.lifecycle,
+      restoreDate: () => this.initialDraft?.namespace === activeInstance.namespace ? this.initialDraft.date : '',
+      beforeRead: () => appFeedback.dismissScope('log-read'),
+      readingStarted: (months: boolean) => { this.readFailed = false; if (months) this.errorMessage = ''; },
+      beforeChange: async () => { this.documents.dayLoadRevision++; await this.coverLogDocument(); },
+      openDay: async (date: string) => this.loadDay(date),
+      documentFailed: () => !!this.errorMessage && !!this.session.day,
+      clearDocument: () => this.session.clearDocument(),
+      emptyDayList: () => {
+        this.readerReady = false; this.renderedPreviewDate = '';
+        this.workspaceTransition.finish('document');
+      },
+      finishTransition: () => this.workspaceTransition.finish('document'),
+      message: (error: Error) => this.message(error),
+      setRetry: (retry: () => Promise<void>) => this.retryRead = retry,
+      failed: (message: string, retry: () => Promise<void>) => {
+        this.readFailed = true; this.errorMessage = message; this.retryRead = retry; this.showReadFailure();
+        this.logNavigationFailed(this.modules.pendingLogDate);
+      }
+    });
+  }
 
   private bindDocuments(): void {
     this.documents.bind({
@@ -290,12 +322,14 @@ export struct LogsReaderPage {
         this.retryRead = async () => this.loadDay(date, heading, headingIndex);
         this.showReadFailure();
         this.workspaceTransition.finish('document');
+        this.logNavigationFailed(date);
       },
       readFinished: (date: string, revision: number, lifecycle: number) => {
         if ((this.sourceMode || this.splitMode && !this.isWide()) && this.editor.loadedDocumentKey === date) {
           this.getUIContext().postFrameCallback(new FrameAction(() => {
             if (lifecycle === this.lifecycle && revision === this.documents.dayLoadRevision) {
               this.workspaceTransition.finish('document');
+              this.logDocumentReady(date);
             }
           }));
         }
@@ -304,15 +338,15 @@ export struct LogsReaderPage {
   }
 
   aboutToAppear(): void {
+    this.bindWorkspaceNavigation();
     this.bindDocuments();
-    this.collapsedModules = [0, 1, 2, 3, 4].map((index: number) =>
-      AppStorage.get<boolean>(`pref_sidebarCollapsed${index}`) || false);
+    this.bindNavigation();
     this.lifecycle++;
     this.favoritesData.load();
     const commands = new DesktopLogCommands();
     commands.entries = (menu: string): DesktopMenuEntry[] => {
       const logActive = this.selectedTab() === 0;
-      const ready = logActive && !!this.session.day && !this.documents.dayRequestLoading && !this.daysLoading &&
+      const ready = logActive && !!this.session.day && !this.documents.dayRequestLoading && !this.logNavigation.daysLoading &&
         !this.documents.saving && !this.deleting && !this.exportBusy && !this.imageBusy && !this.backupOpen && !this.linkOpen;
       const editing = ready && this.editorReady && (this.sourceMode || this.splitMode);
       if (menu === '文件') return [
@@ -329,10 +363,10 @@ export struct LogsReaderPage {
         new DesktopMenuEntry('find', '查找与替换', ready, false, 'Ctrl+F')
       ];
       if (menu === '视图') return [
-        new DesktopMenuEntry('sidebar', '左侧导航', this.isWide() && !this.logsReadingMode,
+        new DesktopMenuEntry('sidebar', '左侧导航', this.isWide() && !this.reading.logsReadingMode,
           !this.isDesktopNavigationCollapsed()),
         new DesktopMenuEntry('reading', '阅读模式', this.selectedTab() === 0 && !!this.session.day &&
-          !this.sourceMode && !this.splitMode, this.logsReadingMode),
+          !this.sourceMode && !this.splitMode, this.reading.logsReadingMode),
         new DesktopMenuEntry('preview', '浏览', ready, !this.sourceMode && !this.splitMode),
         new DesktopMenuEntry('source', '源码', ready, this.sourceMode),
         new DesktopMenuEntry('split', '分屏', ready, this.splitMode)
@@ -351,7 +385,7 @@ export struct LogsReaderPage {
       }
       else if (id === 'find') this.findInEditor();
       else if (id === 'sidebar') this.setDesktopNavigationCollapsed(!this.isDesktopNavigationCollapsed());
-      else if (id === 'reading') this.setLogsReadingMode(!this.logsReadingMode);
+      else if (id === 'reading') this.setLogsReadingMode(!this.reading.logsReadingMode);
       else if (id === 'preview') this.switchMode(false);
       else if (id === 'source') this.switchMode(true);
       else if (id === 'split') this.switchMode(false, true);
@@ -361,7 +395,7 @@ export struct LogsReaderPage {
     commands.editorFocused = (): boolean => (this.sourceMode || this.splitMode) && this.editor.focused;
     commands.blocked = (): boolean => this.shortcutBlocked();
     commands.navigate = (offset: number): void => {
-      if (!this.sourceMode && !this.splitMode && !this.documents.dayRequestLoading && !this.daysLoading) this.navigateDay(offset);
+      if (!this.sourceMode && !this.splitMode && !this.documents.dayRequestLoading && !this.logNavigation.daysLoading) this.navigateDay(offset);
     };
     this.onRegisterDesktopCommands(commands);
     this.onCaptureDraft(() => this.captureDraft());
@@ -375,6 +409,7 @@ export struct LogsReaderPage {
         if (documentKey === this.session.selectedDate && (this.sourceMode || this.splitMode && !this.isWide())) {
           this.workspaceTransition.finish('mode');
           this.workspaceTransition.finish('document');
+          this.logDocumentReady(documentKey);
         }
       }));
     };
@@ -393,11 +428,18 @@ export struct LogsReaderPage {
       if (this.sourceMode || this.splitMode && !this.isWide()) {
         this.workspaceTransition.finish('mode');
         this.workspaceTransition.finish('document');
+        this.logNavigationFailed(this.session.selectedDate);
       }
     };
     this.editor.onCommand = (command: string) => {
       if (command === 'save') this.save();
-      else if (command === 'globalSearch') this.searchOpen = true;
+      else if (command === 'globalSearch' && !this.shortcutBlocked()) {
+        this.searchOpen = true;
+        this.searchFocusRevision++;
+      } else if (command === 'internalLink' && !this.shortcutBlocked()) this.openLink();
+      else if (['help', 'focusNext', 'focusPrevious', 'menuFocus', 'newLog', 'newQa'].includes(command)) {
+        this.navigationCommands.editorCommand(command);
+      }
     };
     this.editor.onImages = (target: EditorSnapshot, images: EditorImageData[]) => this.receiveImages(target, images);
     this.search.restoreSearchHistory();
@@ -406,19 +448,14 @@ export struct LogsReaderPage {
 
   aboutToDisappear(): void {
     this.documents.dispose();
+    this.logNavigation.dispose();
     this.navigationRefresh.invalidate();
     this.closeFavoriteFeedback();
     this.onRegisterDesktopCommands(new DesktopLogCommands());
-    this.moduleSwitchRevision++;
-    this.moduleRequestedTab = -1;
+    this.navigationCommands.dispose();
     this.modeRequestRevision++;
-    this.readingTransition.clear();
-    this.workspaceTransition.clear();
-    this.sidebarMotionRevision++;
     this.ai.dispose();
     this.lifecycle++;
-    this.listRevision++;
-    this.calendarRevision++;
     this.search.dispose();
     this.reads.invalidate();
     this.editor.onChange = () => {};
@@ -473,12 +510,7 @@ export struct LogsReaderPage {
   }
 
   private focusWorkspaceRegion(reverse: boolean): void {
-    const regions = this.logsReadingMode ? ['module_frame'] : ['global_log_search',
-      this.isDesktopNavigationCollapsed() ? 'sidebar_rail_expand' : 'sidebar_collapse', 'module_frame'];
-    for (let index = 0; index < regions.length; index++) {
-      this.focusRegion = (this.focusRegion + (reverse ? -1 : 1) + regions.length) % regions.length;
-      if (focusControl.requestFocus(regions[this.focusRegion])) break;
-    }
+    this.navigationCommands.focusRegion(reverse);
   }
 
   private handleWorkspaceKey(event: KeyEvent): boolean {
@@ -497,7 +529,7 @@ export struct LogsReaderPage {
       else if (this.outlineOpen) this.closeOutline();
       else if (this.searchOpen) this.closeSearch();
       else if (this.navigationOpen) this.closeNavigation();
-      else if (this.logsReadingMode && !this.shortcutBlocked()) this.setLogsReadingMode(false);
+      else if (this.reading.logsReadingMode && !this.shortcutBlocked()) this.setLogsReadingMode(false);
       else return false;
       return true;
     }
@@ -547,77 +579,28 @@ export struct LogsReaderPage {
     }
     if (this.selectedTab() === 0 && !this.sourceMode && !this.splitMode) {
       if (workspaceKey(event, KeyCode.KEYCODE_DPAD_LEFT, false, false, true)) {
-        if (!this.documents.dayRequestLoading && !this.daysLoading) this.navigateDay(1);
+        if (!this.documents.dayRequestLoading && !this.logNavigation.daysLoading) this.navigateDay(1);
         return true;
       }
       if (workspaceKey(event, KeyCode.KEYCODE_DPAD_RIGHT, false, false, true)) {
-        if (!this.documents.dayRequestLoading && !this.daysLoading) this.navigateDay(-1);
+        if (!this.documents.dayRequestLoading && !this.logNavigation.daysLoading) this.navigateDay(-1);
         return true;
       }
     }
     return false;
   }
 
-  private async setLogsReadingMode(active: boolean): Promise<void> {
-    if (!this.isWide() || this.selectedTab() !== 0 || !this.session.day || this.sourceMode || this.splitMode ||
-      active === this.logsReadingMode || this.readingTransition.animating || this.sidebarAnimating ||
-      this.workspaceTransition.task || this.workspaceTransition.snapshot ||
-      (active && this.renderedPreviewDate !== this.session.selectedDate)) return;
-    this.readingOutlineOpen = false;
-    const revision = this.readingTransition.begin();
-    if (this.readingViewportWidth > 0) {
-      try {
-        const snapshot = await this.getUIContext().getComponentSnapshot().get('log_reading_surface',
-          { waitUntilRenderFinished: true });
-        if (revision !== this.readingTransition.revision) { snapshot.release(); return; }
-        this.readingCoverX = this.readingViewportX;
-        this.readingCoverY = this.readingViewportY;
-        this.readingCoverWidth = this.readingImageWidth = this.readingViewportWidth;
-        this.readingCoverHeight = this.readingImageHeight = this.readingViewportHeight;
-        this.readingImageInset = 0;
-        await this.readingTransition.install(snapshot, revision);
-      } catch (_) {
-        // A failed capture must not block the mode change.
-      }
-    }
-    if (revision !== this.readingTransition.revision) return;
-    this.readingTransition.viewportReady = false;
-    this.readingTransition.motionFinished = false;
-    this.logsReadingMode = active;
-    this.getUIContext().animateTo({ duration: 240, curve: Curve.EaseInOut, onFinish: () => {
-      if (revision !== this.readingTransition.revision) return;
-      this.readingTransition.motionFinished = true;
-      this.workspaceLayoutRevision++;
-      this.readingTransition.finish();
-    } }, () => this.readingProgress = active ? 1 : 0);
-  }
+  private async setLogsReadingMode(active: boolean): Promise<void> { await this.navigationCommands.readingMode(active); }
 
   private workspaceBreakpointChanged(): void {
     this.closeNavigation();
     if (this.isWide()) return;
-    this.readingTransition.clear();
-    this.logsReadingMode = false;
-    this.readingProgress = 0;
     this.readingOutlineOpen = false;
     this.topMoreOpen = false;
     this.desktopThemeOpen = false;
   }
 
-  private readingViewportChanged(area: Area): void {
-    this.readingViewportX = Number(area.globalPosition.x) - this.workspaceOriginX;
-    this.readingViewportY = Number(area.globalPosition.y) - this.workspaceOriginY;
-    this.readingViewportWidth = Number(area.width);
-    this.readingViewportHeight = Number(area.height);
-    if (!this.readingTransition.snapshot || !this.readingTransition.animating) return;
-    this.getUIContext().animateTo({ duration: 240, curve: Curve.EaseInOut }, () => {
-      this.readingCoverX = this.readingViewportX;
-      this.readingCoverY = this.readingViewportY;
-      this.readingCoverWidth = this.readingViewportWidth;
-      this.readingCoverHeight = this.readingViewportHeight;
-      this.readingImageInset = Math.max(0, (this.readingViewportWidth - READING_MAX_WIDTH) / 2) -
-        Math.max(0, (this.readingImageWidth - READING_MAX_WIDTH) / 2);
-    });
-  }
+  private readingViewportChanged(area: Area): void { this.navigationCommands.readingViewport(area); }
 
   private openNavigation(): void {
     if (this.isWide() || this.navigationOpen) return;
@@ -651,14 +634,18 @@ export struct LogsReaderPage {
   }
 
   private openOutline(): void {
-    if (this.outlineOpen || this.navigationOpen || this.outlineHeadings().length === 0) return;
+    const headings = this.outlineHeadings();
+    if (this.outlineOpen || this.navigationOpen || headings.length === 0) return;
     this.favoritesData.load();
     const revision = ++this.outlineMotionRevision;
+    const lifecycle = this.lifecycle;
+    if (!this.readerReady || this.sourceMode) this.activeOutlineId = headings[0].id;
+    if (!this.sourceMode && this.readerReady) this.outlineRequestRevision++;
     this.outlineClosing = false;
     this.outlineOffset = 340;
     this.outlineScrimOpacity = 0;
     this.outlineOpen = true;
-    revealPanel(this.getUIContext(), () => revision === this.outlineMotionRevision &&
+    revealPanel(this.getUIContext(), () => lifecycle === this.lifecycle && revision === this.outlineMotionRevision &&
       this.outlineOpen && !this.outlineClosing, () => {
       this.outlineOffset = 0;
       this.outlineScrimOpacity = 1;
@@ -668,9 +655,10 @@ export struct LogsReaderPage {
   private closeOutline(): void {
     if (!this.outlineOpen || this.outlineClosing) return;
     const revision = ++this.outlineMotionRevision;
+    const lifecycle = this.lifecycle;
     this.outlineClosing = true;
     animateTo({ duration: 180, curve: Curve.EaseIn, onFinish: () => {
-      if (revision !== this.outlineMotionRevision) return;
+      if (lifecycle !== this.lifecycle || revision !== this.outlineMotionRevision) return;
       this.outlineOpen = false;
       this.outlineClosing = false;
     } }, () => {
@@ -710,101 +698,15 @@ export struct LogsReaderPage {
 
 
   private selectTab(index: number): void {
-    if (index === this.selectedTab() && this.moduleRequestedTab < 0) return;
+    if (index === this.selectedTab() && this.modules.moduleRequestedTab < 0) return;
     this.requestModule(index);
   }
 
-  private requestModule(index: number, discardNotes: boolean = false, discardQa: boolean = false,
-    afterSwitch: () => void = () => {}): void {
-    if (index === this.selectedTab() && this.moduleRequestedTab < 0) { afterSwitch(); return; }
-    if (this.modules.taxonomyOpen) {
-      this.confirmTaxonomyLeave(() => this.requestModule(index, discardNotes, discardQa, afterSwitch)); return;
-    }
-    if ((this.selectedModule === 1)) {
-      if (this.modules.notesBusy) return;
-      if (this.modules.notesDirty && !discardNotes) {
-        AlertDialog.show({ message: '随记尚未保存，确定放弃修改吗？',
-          primaryButton: { value: '继续编辑', action: () => {} },
-          secondaryButton: { value: '放弃修改', fontColor: $r('app.color.error'), action: () => {
-            this.requestModule(index, true, discardQa, afterSwitch);
-          } } });
-        return;
-      }
-    }
-    if ((this.selectedModule === 3)) {
-      if (this.modules.qaBusy) { appFeedback.show('请先停止当前回答', 'error'); return; }
-      if ((this.modules.qaDirty || this.modules.qaPending) && !discardQa) {
-        AlertDialog.show({ message: this.modules.qaPending ? '当前问答尚未保存，确定放弃吗？' :
-          '问答输入尚未提交，确定放弃吗？',
-          primaryButton: { value: '继续编辑', action: () => {} },
-          secondaryButton: { value: '放弃', fontColor: $r('app.color.error'), action: () => {
-            this.requestModule(index, discardNotes, true, afterSwitch);
-          } } });
-        return;
-      }
-    }
-    const change = (): void => { this.switchModule(index, discardNotes, discardQa, afterSwitch); };
-    if (index === 0) change();
-    else this.confirmDiscard(change);
-  }
-
-  private async switchModule(index: number, discardNotes: boolean, discardQa: boolean,
-    afterSwitch: () => void = () => {}): Promise<void> {
-    const revision = ++this.moduleSwitchRevision;
-    this.moduleRequestedTab = index;
-    if (this.isWide() && !this.logsReadingMode) {
-      this.workspaceTransition.clear();
-      await this.workspaceTransition.cover('module');
-      if (revision !== this.moduleSwitchRevision) return;
-    }
-    const covered = this.workspaceTransition.snapshot && this.workspaceTransition.kind === 'module';
-    this.outgoingTab = covered ? -1 : this.selectedTab();
-    this.moduleReveal = covered ? 1 : 0;
-    if (discardNotes) { this.modules.notesDirty = false; this.modules.noteDiscardRevision++; }
-    if (discardQa) { this.modules.qaDirty = false; this.modules.qaPending = false; this.modules.qaDiscardRevision++; }
-    if (index !== 0) {
-      this.readingTransition.clear();
-      this.logsReadingMode = false;
-      this.readingProgress = 0;
-      this.readingOutlineOpen = false;
-      this.session.text = this.session.baseline;
-      this.session.editorInitialText = this.session.baseline;
-      this.previewText = this.session.baseline;
-    }
-    this.selectedModule = index;
-    this.moduleRequestedTab = -1;
-    if (index === 0 && this.readFailed) this.showReadFailure();
-    else if (index !== 0) appFeedback.dismissScope('log-read');
-    this.closeNavigation();
-    if (index !== 0) this.closeOutline();
-    this.closeSearch();
-    if (index === 3) this.qaNavigation.loadQaNavigation();
-    afterSwitch();
-    this.getUIContext().postFrameCallback(new FrameAction(() => {
-      if (revision !== this.moduleSwitchRevision) return;
-      if (covered) {
-        this.workspaceTransition.finish('module');
-      } else {
-        this.getUIContext().animateTo({ duration: 160, curve: Curve.EaseOut, onFinish: () => {
-          if (revision === this.moduleSwitchRevision) this.outgoingTab = -1;
-        } }, () => this.moduleReveal = 1);
-      }
-    }));
-  }
-
-  private openTaxonomy(): void {
-    this.closeNavigation();
-    this.railPopover = '';
-    this.modules.taxonomyOpen = true;
-  }
-
-  private confirmTaxonomyLeave(action: () => void): void {
-    if (this.modules.taxonomyBusy) { appFeedback.show('分类操作正在进行，请稍候'); return; }
-    const leave = (): void => { this.modules.taxonomyDirty = false; this.modules.taxonomyOpen = false; action(); };
-    if (!this.modules.taxonomyDirty) { leave(); return; }
-    AlertDialog.show({ message: '当前分类修改或建议尚未处理，确定放弃吗？',
-      primaryButton: { value: '继续编辑', action: () => {} },
-      secondaryButton: { value: '放弃修改', fontColor: $r('app.color.error'), action: leave } });
+  private isLogDocumentReady(date: string): boolean {
+    if (date !== this.session.selectedDate) return false;
+    return this.sourceMode || this.splitMode && !this.isWide() ?
+      this.editorReady && this.editor.loadedDocumentKey === date :
+      this.readerReady && this.renderedPreviewDate === date;
   }
 
   private openStatsEntry(entry: StatsEntry): void {
@@ -817,46 +719,7 @@ export struct LogsReaderPage {
         this.targetQuery = '';
         this.targetRevision++;
       });
-    });
-  }
-
-  private confirmNotesLeave(action: () => void): void {
-    if (this.modules.notesBusy) return;
-    if (!this.modules.notesDirty) { action(); return; }
-    AlertDialog.show({ message: '随记尚未保存，确定放弃修改吗？',
-      primaryButton: { value: '继续编辑', action: () => {} },
-      secondaryButton: { value: '放弃修改', fontColor: $r('app.color.error'), action: () => {
-        this.modules.notesDirty = false;
-        this.modules.noteDiscardRevision++;
-        action();
-      } } });
-  }
-
-  private confirmQaLeave(action: () => void): void {
-    if (this.modules.qaBusy) { appFeedback.show('请先停止当前回答', 'error'); return; }
-    if (!this.modules.qaDirty && !this.modules.qaPending) { action(); return; }
-    AlertDialog.show({ message: this.modules.qaPending ? '当前问答尚未保存，确定放弃吗？' : '问答输入尚未提交，确定放弃吗？',
-      primaryButton: { value: '继续编辑', action: () => {} },
-      secondaryButton: { value: '放弃', fontColor: $r('app.color.error'), action: () => {
-        this.modules.qaDirty = false; this.modules.qaPending = false; this.modules.qaDiscardRevision++; action();
-      } } });
-  }
-
-  private switchQaSession(id: string, focusQuestion: boolean = false): void {
-    if (this.modules.qaBusy) return;
-    const change = (): void => {
-      this.modules.qaDirty = false; this.modules.qaPending = false;
-      this.closeNavigation();
-      this.railPopover = '';
-      this.modules.qaSessionId = id; this.modules.qaRequestRevision++;
-      if (focusQuestion) setTimeout(() => {
-        if ((this.selectedModule === 3) && !this.modules.qaBusy) this.modules.qaQuestionFocusRevision++;
-      }, 40);
-    };
-    if (!this.modules.qaDirty && !this.modules.qaPending) { change(); return; }
-    AlertDialog.show({ message: this.modules.qaPending ? '当前问答尚未保存，确定切换会话吗？' : '问答输入尚未提交，确定切换会话吗？',
-      primaryButton: { value: '继续编辑', action: () => {} },
-      secondaryButton: { value: '放弃', fontColor: $r('app.color.error'), action: change } });
+    }, entry.date);
   }
 
   private openQaCitation(date: string, heading: string, headingIndex: number): void {
@@ -869,18 +732,7 @@ export struct LogsReaderPage {
         this.targetQuery = '';
         this.targetRevision++;
       });
-    });
-  }
-
-  private confirmQaDelete(session: RagSessionSummary): void {
-    if (this.modules.qaBusy) return;
-    if (session.id === this.modules.qaSessionId && (this.modules.qaDirty || this.modules.qaPending)) {
-      appFeedback.show('请先处理当前未保存的问答', 'error'); return;
-    }
-    AlertDialog.show({ message: `确认删除问答“${session.title}”吗？`,
-      primaryButton: { value: '取消', action: () => {} },
-      secondaryButton: { value: '删除', fontColor: $r('app.color.error'),
-        action: () => this.qaNavigation.deleteQaSession(session.id) } });
+    }, date);
   }
 
   private openNoteLink(date: string, heading: string): void {
@@ -893,7 +745,7 @@ export struct LogsReaderPage {
         this.targetQuery = '';
         this.targetRevision++;
       });
-    });
+    }, date);
   }
 
   private openFavorite(favorite: FavoriteHeading): void {
@@ -906,7 +758,7 @@ export struct LogsReaderPage {
         this.targetQuery = '';
         this.targetRevision++;
       });
-    });
+    }, favorite.date);
   }
 
   private updateToolbarWidth(width: number): void {
@@ -972,7 +824,7 @@ export struct LogsReaderPage {
   }
 
   private showDesktopOutline(): boolean {
-    return this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE && !this.logsReadingMode && !this.sourceMode &&
+    return this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE && !this.reading.logsReadingMode && !this.sourceMode &&
       !this.splitMode && this.outlineHeadings().length > 0;
   }
 
@@ -1011,8 +863,33 @@ export struct LogsReaderPage {
   }
 
   private updateActiveOutline(headingId: string): void {
-    const index = this.outlineHeadings().findIndex((heading: LogOutlineHeading) => heading.id === headingId);
-    if (index >= 0) this.activeOutlineIndex = index;
+    const headings = this.outlineHeadings();
+    const index = headings.findIndex((heading: LogOutlineHeading) => heading.id === headingId);
+    if (index < 0 || this.activeOutlineId === headingId) return;
+    this.activeOutlineId = headingId;
+    if (this.showDesktopOutline()) {
+      const lifecycle = this.lifecycle;
+      const date = this.session.selectedDate;
+      const revision = this.documents.dayLoadRevision;
+      setTimeout((): void => {
+        if (lifecycle !== this.lifecycle || date !== this.session.selectedDate ||
+          revision !== this.documents.dayLoadRevision || headingId !== this.activeOutlineId ||
+          !this.showDesktopOutline()) return;
+        this.desktopOutlineScroller.scrollToIndex(index, true, ScrollAlign.AUTO);
+      }, 0);
+    }
+  }
+
+  private locateOutlineHeading(heading: LogOutlineHeading): void {
+    this.closeOutline();
+    this.readingOutlineOpen = false;
+    this.activeOutlineId = heading.id;
+    this.targetHeading = heading.text;
+    this.targetHeadingIndex = this.outlineHeadings().findIndex((item: LogOutlineHeading) => item.id === heading.id);
+    this.targetHeadingId = '';
+    this.targetKind = 'outline';
+    this.targetQuery = '';
+    this.targetRevision++;
   }
 
   private outlineFavorite(heading: LogOutlineHeading): FavoriteHeading | undefined {
@@ -1229,7 +1106,7 @@ export struct LogsReaderPage {
     this.splitMode = split;
     this.updateToolbarWidth(this.headerWidth);
     this.modeLayoutRevision++;
-    if (!this.session.day || this.documents.dayRequestLoading || this.daysLoading ||
+    if (!this.session.day || this.documents.dayRequestLoading || this.logNavigation.daysLoading ||
       (source && this.editor.loadedDocumentKey === this.session.selectedDate)) {
       this.getUIContext().postFrameCallback(new FrameAction(() => {
         if (revision === this.modeRequestRevision) this.workspaceTransition.finish('mode');
@@ -1254,14 +1131,14 @@ export struct LogsReaderPage {
     try {
       const result = await Promise.all([this.reads.months(), this.reads.days(month)]);
       if (lifecycle !== this.lifecycle) return;
-      this.months = result[0].months;
-      if (this.month === month && this.session.selectedDate === date) {
-        this.days = result[1].days;
-        this.navigationError = '';
+      this.logNavigation.months = result[0].months;
+      if (this.logNavigation.month === month && this.session.selectedDate === date) {
+        this.logNavigation.days = result[1].days;
+        this.logNavigation.navigationError = '';
       }
     } catch (error) {
-      if (lifecycle === this.lifecycle && this.month === month && this.session.selectedDate === date) {
-        this.navigationError = this.message(error as Error);
+      if (lifecycle === this.lifecycle && this.logNavigation.month === month && this.session.selectedDate === date) {
+        this.logNavigation.navigationError = this.message(error as Error);
       }
     }
   }
@@ -1363,7 +1240,7 @@ export struct LogsReaderPage {
   }
 
   private async receivePreviewImages(event: DragEvent): Promise<void> {
-    if (!this.session.day || this.documents.dayRequestLoading || this.daysLoading || this.documents.saving || this.deleting ||
+    if (!this.session.day || this.documents.dayRequestLoading || this.logNavigation.daysLoading || this.documents.saving || this.deleting ||
       this.imageBusy || this.pendingImageCount || this.backupOpen || this.linkOpen) {
       appFeedback.show('请先完成当前图片或编辑操作', 'warning');
       return;
@@ -1593,7 +1470,8 @@ export struct LogsReaderPage {
       this.closeSearch();
       this.openInternalLink(result.date, result.headings.includes(heading) ? heading : '', 'search', query);
     };
-    if (result.date === this.session.selectedDate) navigate();
+    if (this.selectedTab() !== 0) this.requestModule(0, false, false, navigate, result.date);
+    else if (result.date === this.session.selectedDate) navigate();
     else this.confirmDiscard(navigate);
   }
 
@@ -1733,78 +1611,11 @@ export struct LogsReaderPage {
   }
 
   private async loadMonths(): Promise<void> {
-    const lifecycle = this.lifecycle;
-    appFeedback.dismissScope('log-read');
-    this.monthsLoading = true;
-    this.readFailed = false;
-    this.errorMessage = '';
-    try {
-      const response = await this.reads.months();
-      if (lifecycle !== this.lifecycle) return;
-      if (!Array.isArray(response.months)) throw new Error('月份响应格式异常');
-      this.months = response.months;
-      const restoreDate = this.initialDraft?.namespace === activeInstance.namespace ? this.initialDraft.date : '';
-      if (restoreDate || response.months.length > 0) {
-        await this.loadDays(restoreDate ? restoreDate.slice(0, 7) : response.months[0].id, restoreDate);
-      }
-      else { this.month = ''; this.days = []; this.session.clearDocument(); }
-    } catch (error) {
-      if (lifecycle === this.lifecycle) {
-        this.readFailed = true;
-        this.errorMessage = this.message(error as Error);
-        this.retryRead = async () => this.loadMonths();
-        this.showReadFailure();
-      }
-    } finally {
-      if (lifecycle === this.lifecycle) this.monthsLoading = false;
-    }
+    await this.logNavigation.loadMonths();
   }
 
   private async loadDays(month: string, targetDate: string = ''): Promise<void> {
-    const lifecycle = this.lifecycle;
-    appFeedback.dismissScope('log-read');
-    const revision = ++this.listRevision;
-    this.documents.dayLoadRevision++;
-    await this.coverLogDocument();
-    if (lifecycle !== this.lifecycle || revision !== this.listRevision) return;
-    const previousMonth = this.month;
-    const previousDays = this.days;
-    this.month = month;
-    this.daysLoading = true;
-    this.readFailed = false;
-    this.navigationError = '';
-    try {
-      const response = await this.reads.days(month);
-      if (lifecycle !== this.lifecycle || revision !== this.listRevision) return;
-      if (!Array.isArray(response.days)) throw new Error('日期响应格式异常');
-      this.days = response.days;
-      if (targetDate) await this.loadDay(targetDate);
-      else if (response.days.length > 0) await this.loadDay(response.days[0].date);
-      else {
-        this.session.clearDocument();
-        this.readerReady = false;
-        this.renderedPreviewDate = '';
-        this.workspaceTransition.finish('document');
-      }
-      if (lifecycle !== this.lifecycle || revision !== this.listRevision) return;
-      if (this.errorMessage && this.session.day) {
-        this.month = previousMonth;
-        this.days = previousDays;
-        this.retryRead = async () => this.loadDays(month, targetDate);
-      }
-    } catch (error) {
-      if (lifecycle === this.lifecycle && revision === this.listRevision) {
-        this.month = previousMonth;
-        this.navigationError = this.message(error as Error);
-        this.readFailed = true;
-        this.errorMessage = this.navigationError;
-        this.retryRead = async () => this.loadDays(month, targetDate);
-        this.showReadFailure();
-        this.workspaceTransition.finish('document');
-      }
-    } finally {
-      if (lifecycle === this.lifecycle && revision === this.listRevision) this.daysLoading = false;
-    }
+    await this.logNavigation.loadDays(month, targetDate);
   }
 
   private installDay(day: DayEntry, date: string, heading: string, headingIndex: number): void {
@@ -1822,7 +1633,6 @@ export struct LogsReaderPage {
     }
     this.previewRestoreOffset = this.previewScrollOffsets[date] || 0;
     this.previewOffset = this.previewRestoreOffset;
-    this.activeOutlineIndex = Math.max(0, headingIndex);
     if (this.initialDraft?.namespace === activeInstance.namespace && this.initialDraft.date === date) {
       this.restoredDraftApplied = true;
     }
@@ -1831,6 +1641,7 @@ export struct LogsReaderPage {
       this.session.baseVersion = this.initialDraft!.baseVersion;
     }
     this.previewText = this.session.text;
+    this.activeOutlineId = this.outlineHeadings()[Math.max(0, headingIndex)]?.id || '';
     this.reportDraft();
     this.saveError = restore?.conflict ?
       '已恢复本机草稿，但服务器版本已变化。请核对后复制草稿并刷新，保存不会覆盖新版本。' : '';
@@ -1841,7 +1652,10 @@ export struct LogsReaderPage {
     this.targetQuery = '';
     if (heading) this.targetRevision++;
     this.closeNavigation();
-    if (!changed) this.workspaceTransition.finish('document');
+    if (!changed) {
+      this.workspaceTransition.finish('document');
+      if (this.isLogDocumentReady(date)) this.logDocumentReady(date);
+    }
   }
 
   private async loadDay(date: string, heading: string = '', headingIndex: number = -1): Promise<void> {
@@ -1849,6 +1663,7 @@ export struct LogsReaderPage {
   }
 
   private async coverLogDocument(): Promise<void> {
+    if (this.workspaceTransition.kind === 'module' || this.workspaceTransition.waitingKind === 'module') return;
     if ((this.workspaceTransition.waitingKind && this.workspaceTransition.waitingKind !== 'document') ||
       (this.workspaceTransition.kind && this.workspaceTransition.kind !== 'document')) {
       this.workspaceTransition.clear();
@@ -1859,7 +1674,7 @@ export struct LogsReaderPage {
   private async loadTargetDate(date: string, apply: () => void): Promise<void> {
     const lifecycle = this.lifecycle;
     if (this.session.day?.date !== date) {
-      if (date.slice(0, 7) !== this.month) await this.loadDays(date.slice(0, 7), date);
+      if (date.slice(0, 7) !== this.logNavigation.month) await this.loadDays(date.slice(0, 7), date);
       else await this.loadDay(date);
     }
     if (lifecycle !== this.lifecycle) return;
@@ -1910,46 +1725,35 @@ export struct LogsReaderPage {
   private openCalendar(mode: string): void {
     this.calendarMode = mode;
     if (!this.newLogDate) this.newLogDate = this.calendarDate(new Date());
-    this.calendarMonth = (mode === 'jump' ? this.session.selectedDate || this.newLogDate : this.newLogDate).slice(0, 7);
+    this.logNavigation.calendarMonth = (mode === 'jump' ? this.session.selectedDate || this.newLogDate : this.newLogDate).slice(0, 7);
     this.calendarOpen = true;
     this.loadCalendar();
   }
 
   private async loadCalendar(): Promise<void> {
-    const revision = ++this.calendarRevision;
-    this.calendarLoading = true;
-    this.calendarError = false;
-    this.calendarDates = [];
-    try {
-      const response = await this.reads.days(this.calendarMonth);
-      if (revision === this.calendarRevision) this.calendarDates = response.days.map((day: DaySummary) => day.date);
-    } catch (_) {
-      if (revision === this.calendarRevision) this.calendarError = true;
-    } finally {
-      if (revision === this.calendarRevision) this.calendarLoading = false;
-    }
+    await this.logNavigation.loadCalendar();
   }
 
   private shiftCalendar(offset: number): void {
-    const parts = this.calendarMonth.split('-');
-    this.calendarMonth = this.calendarDate(new Date(Number(parts[0]), Number(parts[1]) - 1 + offset, 1)).slice(0, 7);
+    const parts = this.logNavigation.calendarMonth.split('-');
+    this.logNavigation.calendarMonth = this.calendarDate(new Date(Number(parts[0]), Number(parts[1]) - 1 + offset, 1)).slice(0, 7);
     this.loadCalendar();
   }
 
   private calendarCells(): string[] {
-    if (!this.calendarMonth) return [];
-    const parts = this.calendarMonth.split('-');
+    if (!this.logNavigation.calendarMonth) return [];
+    const parts = this.logNavigation.calendarMonth.split('-');
     const first = new Date(Number(parts[0]), Number(parts[1]) - 1, 1);
     const count = new Date(Number(parts[0]), Number(parts[1]), 0).getDate();
     const cells: string[] = [];
     for (let index = 0; index < (first.getDay() + 6) % 7; index++) cells.push('');
-    for (let day = 1; day <= count; day++) cells.push(`${this.calendarMonth}-${day.toString().padStart(2, '0')}`);
+    for (let day = 1; day <= count; day++) cells.push(`${this.logNavigation.calendarMonth}-${day.toString().padStart(2, '0')}`);
     return cells;
   }
 
   private canSelectCalendarDate(date: string): boolean {
     return !!date && date <= this.calendarDate(new Date()) &&
-      (this.calendarMode === 'create' || (!this.calendarLoading && !this.calendarError && this.calendarDates.includes(date)));
+      (this.calendarMode === 'create' || (!this.logNavigation.calendarLoading && !this.logNavigation.calendarError && this.logNavigation.calendarDates.includes(date)));
   }
 
   private selectCalendarDate(date: string): void {
@@ -1960,7 +1764,7 @@ export struct LogsReaderPage {
   }
 
   private async openDate(date: string, edit: boolean): Promise<void> {
-    if (date.slice(0, 7) === this.month) await this.loadDay(date);
+    if (date.slice(0, 7) === this.logNavigation.month) await this.loadDay(date);
     else await this.loadDays(date.slice(0, 7), date);
     if (edit && this.session.day?.date === date) { this.sourceMode = true; this.splitMode = false; }
   }
@@ -1979,10 +1783,10 @@ export struct LogsReaderPage {
         Button('‹', { type: ButtonType.Normal }).width(36).height(36)
           .fontSize(20).fontColor($r('app.color.body')).backgroundColor(Color.Transparent)
           .accessibilityText('上一个月').onClick(() => this.shiftCalendar(-1))
-        Text(this.calendarMonth).fontSize(14).fontColor($r('app.color.ink')).layoutWeight(1).textAlign(TextAlign.Center)
+        Text(this.logNavigation.calendarMonth).fontSize(14).fontColor($r('app.color.ink')).layoutWeight(1).textAlign(TextAlign.Center)
         Button('›', { type: ButtonType.Normal }).width(36).height(36)
           .fontSize(20).fontColor($r('app.color.body')).backgroundColor(Color.Transparent)
-          .enabled(this.calendarMonth < this.calendarDate(new Date()).slice(0, 7))
+          .enabled(this.logNavigation.calendarMonth < this.calendarDate(new Date()).slice(0, 7))
           .accessibilityText('下一个月').onClick(() => this.shiftCalendar(1))
       }.width('100%')
       Row() {
@@ -1996,7 +1800,7 @@ export struct LogsReaderPage {
             Column({ space: 2 }) {
               Text(date ? Number(date.slice(-2)).toString() : '').fontSize(13)
                 .fontColor(this.canSelectCalendarDate(date) ? $r('app.color.ink') : $r('app.color.muted_soft'))
-              Circle().width(3).height(3).fill(this.calendarDates.includes(date) ? $r('app.color.primary') : Color.Transparent)
+              Circle().width(3).height(3).fill(this.logNavigation.calendarDates.includes(date) ? $r('app.color.primary') : Color.Transparent)
             }
           }
           .id(`log_calendar_day_${date || index}`).width('14.2857%').height(36).padding(0)
@@ -2006,11 +1810,11 @@ export struct LogsReaderPage {
           .accessibilityText(date).onClick(() => this.selectCalendarDate(date))
         }, (date: string, index: number) => `${date}:${index}`)
       }.width('100%')
-      if (this.calendarError) {
+      if (this.logNavigation.calendarError) {
         Button('读取失败，点击重试', { type: ButtonType.Normal }).fontSize(12)
           .fontColor($r('app.color.muted')).backgroundColor(Color.Transparent).onClick(() => this.loadCalendar())
       } else {
-        Text(this.calendarLoading ? '正在读取日志日期…' :
+        Text(this.logNavigation.calendarLoading ? '正在读取日志日期…' :
           this.calendarMode === 'jump' ? '有记录的日期可直接跳转' : '选定日期后，点击“新建”打开日块')
           .fontSize(12).fontColor($r('app.color.muted'))
       }
@@ -2082,9 +1886,9 @@ export struct LogsReaderPage {
   }
 
   private adjacentDay(offset: number): string {
-    const index = this.days.findIndex((item: DaySummary) => item.date === this.session.selectedDate);
+    const index = this.logNavigation.days.findIndex((item: DaySummary) => item.date === this.session.selectedDate);
     if (index < 0) return '';
-    return this.days[index + offset]?.date || '';
+    return this.logNavigation.days[index + offset]?.date || '';
   }
 
   private navigateDay(offset: number): void {
@@ -2095,7 +1899,7 @@ export struct LogsReaderPage {
   @Builder
   private desktopAdjacentButton(label: string, direction: number) {
     Button({ type: ButtonType.Normal }) {
-      if (this.logsReadingMode || this.showToolbarLabels('navigation')) {
+      if (this.reading.logsReadingMode || this.showToolbarLabels('navigation')) {
         Row({ space: 4 }) {
           if (direction > 0) {
             SymbolGlyph($r('sys.symbol.chevron_left')).fontSize(12).fontColor([$r('app.color.body')])
@@ -2110,10 +1914,10 @@ export struct LogsReaderPage {
           .fontSize(16).fontColor([$r('app.color.body')])
       }
     }.id(direction > 0 ? 'log_previous_day' : 'log_next_day')
-      .width(this.logsReadingMode || this.showToolbarLabels('navigation') ? undefined : 32)
-      .height(this.logsReadingMode ? 34 : 32)
-      .padding({ left: this.logsReadingMode ? 10 : this.showToolbarLabels('navigation') ? 12 : 0,
-        right: this.logsReadingMode ? 10 : this.showToolbarLabels('navigation') ? 12 : 0 })
+      .width(this.reading.logsReadingMode || this.showToolbarLabels('navigation') ? undefined : 32)
+      .height(this.reading.logsReadingMode ? 34 : 32)
+      .padding({ left: this.reading.logsReadingMode ? 10 : this.showToolbarLabels('navigation') ? 12 : 0,
+        right: this.reading.logsReadingMode ? 10 : this.showToolbarLabels('navigation') ? 12 : 0 })
       .backgroundColor($r('app.color.canvas'))
       .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(7)
       .accessibilityText(label).enabled(this.adjacentDay(direction).length > 0)
@@ -2137,16 +1941,16 @@ export struct LogsReaderPage {
         }.width('100%').height(52).padding({ left: 16, right: 10 })
           .border({ width: { bottom: 1 }, color: $r('app.color.hairline_soft') })
       }
-      LogNavigation({ navigationMonths: this.months, navigationDays: this.days,
-        navigationMonth: this.month, requestedDate: this.session.selectedDate,
+      LogNavigation({ navigationMonths: this.logNavigation.months, navigationDays: this.logNavigation.days,
+        navigationMonth: this.logNavigation.month, requestedDate: this.session.selectedDate,
         logNavigationScroller: this.logNavigationScroller,
         navigationMonthsExpanded: this.navigationMonthsExpanded,
         navigationDayQuery: this.navigationDayQuery,
-        navigationLoading: this.monthsLoading || this.daysLoading,
-        navigationError: this.navigationError,
+        navigationLoading: this.logNavigation.monthsLoading || this.logNavigation.daysLoading,
+        navigationError: this.logNavigation.navigationError,
         dateActions: (): void => this.dateActions(),
         jumpDatePicker: (): void => this.jumpDatePicker(),
-        onMonth: (month: string) => { if (month !== this.month) this.confirmDiscard(() => this.loadDays(month)); },
+        onMonth: (month: string) => { if (month !== this.logNavigation.month) this.confirmDiscard(() => this.loadDays(month)); },
         onDay: (date: string) => {
           if (date !== this.session.selectedDate || this.documents.dayRequestLoading) this.confirmDiscard(() => this.loadDay(date));
         },
@@ -2155,45 +1959,14 @@ export struct LogsReaderPage {
         onToggleMonths: () => expandSection(this.getUIContext(), () => {
           this.navigationMonthsExpanded = !this.navigationMonthsExpanded;
         }),
-        onRetry: () => this.month ? this.loadDays(this.month) : this.loadMonths() })
+        onRetry: () => this.logNavigation.month ? this.loadDays(this.logNavigation.month) : this.loadMonths() })
     }
     .width('100%').height('100%')
     .backgroundColor(this.isWide() ? $r('app.color.surface_soft') : $r('app.color.canvas'))
   }
 
   private setDesktopNavigationCollapsed(collapsed: boolean, section: number = -1): void {
-    if (collapsed === this.isDesktopNavigationCollapsed() || this.sidebarAnimating || this.aiAnimating) return;
-    const revision = ++this.sidebarMotionRevision;
-    const origin = this.isDesktopNavigationCollapsed() ? 0 : 1;
-    const target = collapsed ? 0 : 1;
-    this.sidebarExpansion = origin;
-    this.sidebarAnimating = true;
-    this.railPopover = '';
-    const module = this.selectedTab();
-    this.collapsedModules = this.collapsedModules.map((value: boolean, index: number) => index === module ? collapsed : value);
-    workspacePreferences.set(`sidebarCollapsed${module}`, collapsed)
-      .catch(() => appFeedback.show('侧栏状态保存失败', 'error'));
-    const targetNavigationWidth = collapsed ? 52 :
-      (this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE ? 260 : 220);
-    const toolbarWidths: number[][] = module === 0 ? this.beginToolbarMotion(this.aiAvailableWidth - targetNavigationWidth -
-      (52 + (this.aiPanelWidth - 52) * (1 - this.aiOffset / 420))) : [];
-    const started = Date.now();
-    const step = (): void => {
-      if (revision !== this.sidebarMotionRevision) return;
-      const progress = Math.min(1, (Date.now() - started) / 240);
-      const eased = progress * progress * (3 - 2 * progress);
-      this.sidebarExpansion = origin + (target - origin) * eased;
-      if (toolbarWidths.length) this.advanceToolbarMotion(toolbarWidths, eased);
-      if (progress < 1) this.getUIContext().postFrameCallback(new FrameAction(step));
-      else {
-        this.sidebarAnimating = false;
-        this.getUIContext().postFrameCallback(new FrameAction(() => {
-          if (revision === this.sidebarMotionRevision && !this.aiAnimating) this.finishToolbarMotion();
-        }));
-        if (!collapsed && section >= 0) this.logNavigationScroller.scrollToIndex(section, false, ScrollAlign.START);
-      }
-    };
-    this.getUIContext().postFrameCallback(new FrameAction(step));
+    this.navigationCommands.sidebarCollapsed(collapsed, section);
   }
 
   private expandNavigation(section: number = -1): void {
@@ -2202,70 +1975,11 @@ export struct LogsReaderPage {
 
   private desktopNavigationWidth(): number {
     const full = this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE ? 260 : 220;
-    return 52 + (full - 52) * (this.sidebarAnimating ? this.sidebarExpansion :
+    return 52 + (full - 52) * (this.sidebar.sidebarAnimating ? this.sidebar.sidebarExpansion :
       (this.isDesktopNavigationCollapsed() ? 0 : 1));
   }
 
-  @Builder
-  private navigationRailButton(id: string, icon: Resource, label: string, action: () => void,
-    active: boolean = false, enabled: boolean = true) {
-    Button({ type: ButtonType.Normal }) {
-      Image(icon).width(id === 'expand' ? 18 : 17).height(id === 'expand' ? 18 : 17)
-        .objectFit(ImageFit.Contain)
-        .colorFilter(iconTint(active || this.navigationRailHover === id || id === 'expand' ?
-          $r('app.color.ink') : $r('app.color.muted')))
-    }.id(`sidebar_rail_${id}`).width(38).height(38).padding(0).borderRadius(8)
-      .backgroundColor(active ? $r('app.color.surface_card') : this.navigationRailHover === id ?
-        $r('app.color.interaction_hover') : $r('app.color.interaction_hover_clear'))
-      .hoverEffect(HoverEffect.None)
-      .onHover((hovered: boolean) => animateHover(this.getUIContext(), () => this.navigationRailHover = hovered ? id : ''))
-      .enabled(enabled).accessibilityText(label).bindTips(label, WORKSPACE_TIPS).onClick(action)
-      .bindPopup(this.railPopover === id, {
-        builder: this.railPopoverPanel(), placement: Placement.RightTop, enableArrow: false,
-        popupColor: $r('app.color.canvas'), radius: 10, autoCancel: true,
-        backgroundBlurStyle: BlurStyle.NONE, targetSpace: 6,
-        shadow: { radius: 12, color: $r('app.color.popover_shadow'), offsetY: 4 },
-        onStateChange: (event) => { if (!event.isVisible && this.railPopover === id) this.railPopover = ''; }
-      })
-  }
 
-  @Builder
-  private desktopNavigationRail() {
-    Column({ space: 8 }) {
-      this.navigationRailButton('expand', $r('app.media.rail_chevron_right'), '展开侧栏',
-        () => { this.railPopover = ''; this.expandNavigation(); })
-      if ((this.selectedModule === 3)) {
-        this.navigationRailButton('new_question', $r('app.media.rail_square_pen'), '新建问答',
-          () => { this.railPopover = ''; this.switchQaSession(''); }, false, !this.modules.qaBusy)
-        this.navigationRailButton('search', $r('app.media.rail_search'), '搜索历史',
-          () => this.railPopover = this.railPopover === 'search' ? '' : 'search', this.railPopover === 'search')
-        this.navigationRailButton('recent', $r('app.media.rail_message_square_text'), '最近问答',
-          () => { this.modules.qaQuery = ''; this.railPopover = this.railPopover === 'recent' ? '' : 'recent'; },
-          this.railPopover === 'recent')
-      } else if ((this.selectedModule === 1)) {
-        this.navigationRailButton('new_note', $r('app.media.rail_plus'), '新建随记',
-          () => { this.railPopover = ''; this.modules.noteNewRevision++; }, false, !this.modules.notesBusy)
-        this.navigationRailButton('tags', $r('app.media.rail_tag'), '年份和标签',
-          () => this.railPopover = this.railPopover === 'tags' ? '' : 'tags', this.railPopover === 'tags')
-      } else if ((this.selectedModule === 2)) {
-        this.navigationRailButton('favorite_filters', $r('app.media.tab_star'), '筛选收藏',
-          () => this.railPopover = this.railPopover === 'favorite_filters' ? '' : 'favorite_filters',
-          this.railPopover === 'favorite_filters')
-      } else if ((this.selectedModule === 4)) {
-        this.navigationRailButton('stats_months', $r('app.media.rail_calendar_days'), '选择统计月份',
-          () => this.railPopover = this.railPopover === 'stats_months' ? '' : 'stats_months',
-          this.railPopover === 'stats_months')
-      } else {
-      this.navigationRailButton('months', $r('app.media.rail_calendar_days'), '展开月份列表',
-        () => this.expandNavigation(0))
-      this.navigationRailButton('dates', $r('app.media.rail_file_text'), '展开日期列表',
-        () => this.expandNavigation(2))
-      this.navigationRailButton('today', $r('app.media.rail_plus'), '新建今日日志',
-        () => this.openNewLog(this.calendarDate(new Date())))
-      }
-    }.id('sidebar_rail').width('100%').height('100%')
-      .alignItems(HorizontalAlign.Center).padding({ top: 14, bottom: 14 })
-  }
 
   @Builder
   private moduleNavigationContent(popover: boolean = false) {
@@ -2283,10 +1997,10 @@ export struct LogsReaderPage {
     const tab = this.selectedTab();
     const instance = activeInstance.revision;
     const lifecycle = this.lifecycle;
-    const month = this.month || this.session.selectedDate.slice(0, 7);
+    const month = this.logNavigation.month || this.session.selectedDate.slice(0, 7);
     const date = this.session.selectedDate;
-    const months = this.months;
-    const days = this.days;
+    const months = this.logNavigation.months;
+    const days = this.logNavigation.days;
     const years = this.modules.noteYears;
     const qa = this.qaNavigation.qaSessions;
     const stats = this.modules.statsMonths;
@@ -2294,8 +2008,8 @@ export struct LogsReaderPage {
     const groups = this.favoritesData.groups;
     await this.navigationRefresh.refresh(tab, month, () => {
       if (instance !== activeInstance.revision || lifecycle !== this.lifecycle || this.selectedTab() !== tab) return false;
-      if (tab === 0) return date === this.session.selectedDate && month === (this.month || this.session.selectedDate.slice(0, 7)) &&
-        months === this.months && days === this.days;
+      if (tab === 0) return date === this.session.selectedDate && month === (this.logNavigation.month || this.session.selectedDate.slice(0, 7)) &&
+        months === this.logNavigation.months && days === this.logNavigation.days;
       if (tab === 1) return years === this.modules.noteYears;
       if (tab === 2) return favorites === this.favoritesData.favorites && groups === this.favoritesData.groups &&
         !this.favoritesData.loading && !this.favoritesData.groupSaving && !this.favoritesData.groupUpdating &&
@@ -2304,9 +2018,9 @@ export struct LogsReaderPage {
       return stats === this.modules.statsMonths;
     }, (snapshot: NavigationSnapshot) => {
       if (tab === 0 && snapshot.months) {
-        this.months = snapshot.months.months;
-        if (snapshot.days) this.days = snapshot.days.days;
-        this.navigationError = '';
+        this.logNavigation.months = snapshot.months.months;
+        if (snapshot.days) this.logNavigation.days = snapshot.days.days;
+        this.logNavigation.navigationError = '';
       }
       if (snapshot.notes) {
         this.modules.noteYears = snapshot.notes.years;
@@ -2364,56 +2078,20 @@ export struct LogsReaderPage {
     }
   }
 
-  @Builder
-  private moduleNavigationHeader() {
-    Row({ space: 6 }) {
-      Image((this.selectedModule === 1) ? $r('app.media.tab_lightbulb_active') : (this.selectedModule === 2) ?
-        $r('app.media.tab_star_active') : (this.selectedModule === 3) ? $r('app.media.rail_message_square_text') :
-        $r('app.media.tab_chart_column')).width(19).height(19).objectFit(ImageFit.Contain)
-      Text((this.selectedModule === 1) ? '随记' : (this.selectedModule === 2) ? '收藏中心' : (this.selectedModule === 3) ? '知识问答' : '学习统计')
-        .fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.body_strong')).layoutWeight(1)
-        .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
-      this.navigationFilterReset()
-      Button({ type: ButtonType.Normal }) {
-        SymbolGlyph($r('sys.symbol.chevron_left')).fontSize(16).fontColor([$r('app.color.body')])
-      }.width(34).height(34).padding(0).backgroundColor(Color.Transparent).borderRadius(8)
-        .id('sidebar_collapse').accessibilityText('折叠侧栏').bindTips('折叠侧栏', WORKSPACE_TIPS)
-        .onClick(() => this.setDesktopNavigationCollapsed(true))
-    }.width('100%').height(52).padding({ left: 16, right: 10 })
-      .border({ width: { bottom: 1 }, color: $r('app.color.hairline_soft') })
-  }
 
   @Builder
   private desktopNavigation() {
-    Stack({ alignContent: Alignment.TopStart }) {
-      Column() {
-        if (this.selectedTab() !== 0) this.moduleNavigationHeader()
-        this.refreshableNavigationContent()
-      }
-        .width(this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE ? 260 : 220)
-        .height('100%')
-        .opacity(this.sidebarAnimating ? this.sidebarExpansion :
-          (this.isDesktopNavigationCollapsed() ? 0 : 1))
-        .visibility(!this.isDesktopNavigationCollapsed() || this.sidebarAnimating ?
-          Visibility.Visible : Visibility.Hidden)
-        .hitTestBehavior(this.isDesktopNavigationCollapsed() || this.sidebarAnimating ?
-          HitTestMode.None : HitTestMode.Default)
-        .accessibilityLevel(this.isDesktopNavigationCollapsed() ? 'no-hide-descendants' : 'auto')
-      Column() { this.desktopNavigationRail() }.width(52).height('100%')
-        .opacity(this.sidebarAnimating ? 1 - this.sidebarExpansion :
-          (this.isDesktopNavigationCollapsed() ? 1 : 0))
-        .visibility(this.isDesktopNavigationCollapsed() || this.sidebarAnimating ?
-          Visibility.Visible : Visibility.Hidden)
-        .hitTestBehavior(!this.isDesktopNavigationCollapsed() || this.sidebarAnimating ?
-          HitTestMode.None : HitTestMode.Default)
-        .accessibilityLevel(this.isDesktopNavigationCollapsed() ? 'auto' : 'no-hide-descendants')
-    }.width(this.desktopNavigationWidth())
-      .height('100%').backgroundColor($r('app.color.surface_soft'))
-      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
-      .clip(this.sidebarAnimating)
-      .border({ width: { right: 1 }, color: $r('app.color.hairline') })
-      .id('desktop_navigation_frame').zIndex(this.railPopover ? 40 : 1)
-      .onAreaChange((_: Area, area: Area) => this.moduleFrameHeight = Number(area.height))
+    DesktopWorkspaceNavigation({ modules: this.modules, selectedModule: this.selectedModule,
+      collapsed: this.isDesktopNavigationCollapsed(), sidebarAnimating: this.sidebar.sidebarAnimating,
+      sidebarExpansion: this.sidebar.sidebarExpansion, sidebarWidth: this.desktopNavigationWidth(),
+      railPopover: $railPopover, onExpand: (section: number) => this.expandNavigation(section),
+      onCollapse: () => this.setDesktopNavigationCollapsed(true),
+      onNewQuestion: () => this.switchQaSession(''),
+      onToday: () => this.openNewLog(this.calendarDate(new Date())),
+      onHeight: (height: number) => this.moduleFrameHeight = height,
+      navigationContent: (): void => this.refreshableNavigationContent(),
+      filtersContent: (): void => this.navigationFilterReset(),
+      popoverContent: (): void => this.railPopoverPanel() })
   }
 
   @Builder
@@ -2820,6 +2498,40 @@ export struct LogsReaderPage {
       onAction: () => this.setLogsReadingMode(true) }).id('log_reading_enter')
   }
 
+  private closeBackup(): void {
+    if (this.backupBusy) return;
+    this.backupOpen = false;
+    this.backupMaximized = false;
+  }
+
+  @Builder
+  private backupSheet() {
+    BackupPanel({ date: this.session.day?.date || '', maximized: $backupMaximized, themePreference: this.themePreference,
+      onClose: () => this.closeBackup(),
+      onBeforeRestore: () => this.beforeRestore(),
+      onRestored: (day: DayEntry) => this.applyRestoredDay(day),
+      onBusyChange: (busy: boolean) => this.backupBusy = busy })
+  }
+
+  @Builder
+  private backupDialog() {
+    AppModalFrame({ content: (): void => this.backupDialogContent() })
+  }
+
+  @Builder
+  private backupDialogContent() {
+    Stack({ alignContent: Alignment.Center }) {
+      AppModalScrim({ onDismiss: () => this.closeBackup() })
+      Column() { this.backupSheet() }
+        .width(this.backupMaximized ? '100%' : '92%')
+        .constraintSize({ maxWidth: this.backupMaximized ? '100%' : 1120 })
+        .height(this.backupMaximized ? '100%' : '85%')
+        .border({ width: this.backupMaximized ? 0 : 1, color: $r('app.color.hairline') })
+        .borderRadius(this.backupMaximized ? 0 : 12).clip(true)
+        .id('backup_dialog_surface')
+    }.width('100%').height('100%').id('backup_dialog_viewport')
+  }
+
   @Builder
   private heading() {
     if (this.isWide()) {
@@ -2838,12 +2550,16 @@ export struct LogsReaderPage {
                 this.updateToolbarWidth(this.headerWidth);
               }
             } })
+            .bindContentCover($$this.backupOpen, this.backupDialog(), {
+              transition: floatingSurfaceTransition(), backgroundColor: Color.Transparent, enableSafeArea: true,
+              onWillDismiss: (action: DismissContentCoverAction) => { if (!this.backupBusy) action.dismiss(); }
+            })
         }.width('100%').height(64)
-          .opacity(Math.max(0, 1 - 2 * this.readingProgress))
-          .visibility(this.readingProgress < 1 ? Visibility.Visible : Visibility.Hidden)
-          .zIndex(this.logsReadingMode ? 0 : 1)
-          .hitTestBehavior(this.logsReadingMode ? HitTestMode.None : HitTestMode.Default)
-          .accessibilityLevel(this.logsReadingMode ? 'no-hide-descendants' : 'auto')
+          .opacity(Math.max(0, 1 - 2 * this.reading.readingProgress))
+          .visibility(this.reading.readingProgress < 1 ? Visibility.Visible : Visibility.Hidden)
+          .zIndex(this.reading.logsReadingMode ? 0 : 1)
+          .hitTestBehavior(this.reading.logsReadingMode ? HitTestMode.None : HitTestMode.Default)
+          .accessibilityLevel(this.reading.logsReadingMode ? 'no-hide-descendants' : 'auto')
         Column() {
           ReadingLogHeader({ selectedDate: this.session.selectedDate, workspaceBreakpoint: this.workspaceBreakpoint,
             hasOutline: this.outlineHeadings().length > 0,
@@ -2852,14 +2568,16 @@ export struct LogsReaderPage {
             onOutline: () => this.readingOutlineOpen = true,
             onExit: () => this.setLogsReadingMode(false) })
         }.width('100%').height(64)
-          .opacity(Math.max(0, 2 * this.readingProgress - 1))
-          .visibility(this.readingProgress > 0 ? Visibility.Visible : Visibility.Hidden)
-          .zIndex(this.logsReadingMode ? 1 : 0)
-          .hitTestBehavior(this.logsReadingMode ? HitTestMode.Default : HitTestMode.None)
-          .accessibilityLevel(this.logsReadingMode ? 'auto' : 'no-hide-descendants')
+          .opacity(Math.max(0, 2 * this.reading.readingProgress - 1))
+          .visibility(this.reading.readingProgress > 0 ? Visibility.Visible : Visibility.Hidden)
+          .zIndex(this.reading.logsReadingMode ? 1 : 0)
+          .hitTestBehavior(this.reading.logsReadingMode ? HitTestMode.Default : HitTestMode.None)
+          .accessibilityLevel(this.reading.logsReadingMode ? 'auto' : 'no-hide-descendants')
       }.width('100%').height(64).clip(true).id('log_reader_header')
     } else {
       CompactLogHeader({ selectedDate: this.session.selectedDate, workspaceBreakpoint: this.workspaceBreakpoint,
+        desktopWindowChrome: this.desktopWindowChrome,
+        backupRestoring: this.backupBusy, backupOpen: $backupOpen, backupSheet: (): void => this.backupSheet(),
         sourceMode: this.sourceMode, saving: this.documents.saving, dirty: this.editorReady && this.session.isDirty(),
         moreOpen: $moreOpen, moreActionsPanel: (): void => this.compactMoreActionsPanel(),
         onActionsDisappear: () => this.handleActionsDisappear(),
@@ -2869,64 +2587,65 @@ export struct LogsReaderPage {
   }
 
   @Builder
-  private desktopOutline() {
-    Column({ space: 10 }) {
-      Text('目录').fontSize(12).fontWeight(FontWeight.Medium).fontColor($r('app.color.muted'))
-        .width('100%').padding({ left: 8 })
-      List({ space: 2 }) {
-        ForEach(this.outlineHeadings(), (heading: LogOutlineHeading, index: number) => {
-          ListItem() {
-            Row({ space: 2 }) {
-            Button({ type: ButtonType.Normal, stateEffect: false }) {
-              Text(heading.text).width('100%').maxLines(1)
-                .textOverflow({ overflow: TextOverflow.Ellipsis }).textAlign(TextAlign.Start)
-                .fontSize(12).fontWeight(this.activeOutlineIndex === index ? FontWeight.Medium : FontWeight.Regular)
-                .fontColor(this.activeOutlineIndex === index ? $r('app.color.ink') : $r('app.color.muted'))
-            }.layoutWeight(1).constraintSize({ minHeight: 30 })
-              .padding({ left: 8, right: 4, top: 4, bottom: 4 })
-              .onClick(() => {
-                this.activeOutlineIndex = index;
-                this.targetHeading = heading.text;
-                this.targetHeadingIndex = index;
-                this.targetHeadingId = '';
-                this.targetKind = 'outline';
-                this.targetQuery = '';
-                this.targetRevision++;
-                if (this.readingOutlineOpen) this.readingOutlineOpen = false;
-              })
-              .backgroundColor(Color.Transparent).borderRadius(6)
-            if (heading.level === 3) {
-              Button({ type: ButtonType.Normal }) {
-                if (this.outlineFavorite(heading)) {
-                  SymbolGlyph($r('sys.symbol.star_fill')).fontSize(14).fontColor([$r('app.color.ink')])
-                } else {
-                  SymbolGlyph($r('sys.symbol.star')).fontSize(14).fontColor([$r('app.color.muted_soft')])
+  private desktopOutline(feedbackEnabled: boolean) {
+    Column() {
+      Column({ space: 10 }) {
+        Text('目录').fontSize(12).fontWeight(FontWeight.Medium).fontColor($r('app.color.muted'))
+          .width('100%').padding({ left: 8 })
+        List({ space: 2, scroller: this.desktopOutlineScroller }) {
+          ForEach(this.outlineHeadings(), (heading: LogOutlineHeading) => {
+            ListItem() {
+              Row({ space: 2 }) {
+                Button({ type: ButtonType.Normal, stateEffect: false }) {
+                  Text(heading.text).width('100%').maxLines(1)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis }).textAlign(TextAlign.Start)
+                    .fontSize(12)
+                    .fontWeight(this.activeOutlineId === heading.id ? FontWeight.Medium : FontWeight.Regular)
+                    .fontColor(this.activeOutlineId === heading.id ? $r('app.color.ink') : $r('app.color.muted'))
                 }
-              }.width(28).height(28).padding(0).backgroundColor(Color.Transparent).borderRadius(6)
-                .enabled(!this.favoriteBusy)
-                .accessibilityText(this.outlineFavorite(heading) ? '取消收藏' : '收藏小节')
-                .onClick(() => this.toggleOutlineFavorite(heading))
-                .bindPopup(this.favoriteFeedbackVisible(heading), {
-                  builder: () => { this.favoriteFeedbackPopup(heading) },
-                  placement: Placement.Left, popupColor: $r('app.color.canvas'),
-                  enableArrow: false, autoCancel: true, targetSpace: 8,
-                  width: 236, radius: 10, backgroundBlurStyle: BlurStyle.NONE,
-                  shadow: { radius: 12, color: $r('app.color.popover_shadow'), offsetY: 4 },
-                  onStateChange: (event) => {
-                    if (!event.isVisible && this.favoriteFeedbackVisible(heading)) this.closeFavoriteFeedback();
-                  }
-                })
+                .layoutWeight(1).constraintSize({ minHeight: 30 }).padding({ left: 8, right: 4, top: 4, bottom: 4 })
+                .backgroundColor(Color.Transparent).borderRadius(6).onClick(() => this.locateOutlineHeading(heading))
+                if (heading.level === 3) {
+                  Button({ type: ButtonType.Normal }) {
+                    if (this.outlineFavorite(heading)) {
+                      SymbolGlyph($r('sys.symbol.star_fill')).fontSize(14).fontColor([$r('app.color.ink')])
+                    } else {
+                      SymbolGlyph($r('sys.symbol.star')).fontSize(14).fontColor([$r('app.color.muted_soft')])
+                    }
+                  }.width(28).height(28).padding(0).backgroundColor(Color.Transparent).borderRadius(6)
+                    .id(`log_outline_favorite_${heading.id}`)
+                    .enabled(!this.favoriteBusy)
+                    .accessibilityText(this.outlineFavorite(heading) ? '取消收藏' : '收藏小节').bindTips(this.outlineFavorite(heading) ? '取消收藏' : '收藏小节', WORKSPACE_TIPS)
+                    .onClick(() => this.toggleOutlineFavorite(heading))
+                    .bindPopup(feedbackEnabled && this.favoriteFeedbackVisible(heading), {
+                      builder: () => { this.favoriteFeedbackPopup(heading) },
+                      placement: Placement.Left,
+                      popupColor: $r('app.color.canvas'),
+                      enableArrow: false,
+                      autoCancel: true,
+                      targetSpace: 8,
+                      width: 236,
+                      radius: 10,
+                      backgroundBlurStyle: BlurStyle.NONE,
+                      shadow: { radius: 12, color: $r('app.color.popover_shadow'), offsetY: 4 },
+                      onStateChange: (event) => {
+                        if (!event.isVisible && this.favoriteFeedbackVisible(heading)) this.closeFavoriteFeedback();
+                      }
+                    })
+                }
+              }.width('100%').padding({ right: 3 })
+                .backgroundColor(this.activeOutlineId === heading.id ? $r('app.color.surface_soft') : Color.Transparent)
+                .border({ width: { left: this.activeOutlineId === heading.id ? 2 : 0 }, color: $r('app.color.primary') })
+                .borderRadius(6)
             }
-            }.width('100%').padding({ right: 3 })
-              .backgroundColor(this.activeOutlineIndex === index ? $r('app.color.surface_soft') : Color.Transparent)
-              .border({ width: { left: this.activeOutlineIndex === index ? 2 : 0 },
-                color: $r('app.color.primary') }).borderRadius(6)
-          }
-        }, (heading: LogOutlineHeading) => heading.id)
-      }.layoutWeight(1).width('100%').scrollBar(BarState.Off)
-    }.width(this.readingOutlineOpen ? 320 : 224).height('100%')
-      .padding({ left: 8, right: 8, top: 28, bottom: 18 })
-      .border({ width: { left: this.readingOutlineOpen ? 0 : 1 }, color: $r('app.color.hairline_soft') })
+          }, (heading: LogOutlineHeading) => heading.id)
+        }.layoutWeight(1).width('100%')
+          .scrollBar(BarState.Off)
+          .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
+      }.layoutWeight(1).width('100%').padding({ left: 8, right: 8, top: 28, bottom: 18 })
+        .border({ width: { left: this.reading.logsReadingMode ? 0 : 1 }, color: $r('app.color.hairline_soft') })
+    }
+    .width('100%').height('100%').backgroundColor($r('app.color.canvas'))
   }
 
   private async importAiMaterial(): Promise<void> {
@@ -2989,14 +2708,14 @@ export struct LogsReaderPage {
       }.width('100%').height(64).padding({ left: 18, right: 12 })
         .border({ width: { bottom: 1 }, color: $r('app.color.hairline_soft') })
       List({ space: 8 }) {
-        ForEach(this.outlineHeadings(), (heading: LogOutlineHeading, index: number) => {
+        ForEach(this.outlineHeadings(), (heading: LogOutlineHeading) => {
           ListItem() {
             Row() {
               Button({ type: ButtonType.Normal }) {
                 Text(heading.text)
                   .fontSize(heading.level <= 2 ? 15 : (heading.level === 3 ? 14 : 13))
                   .fontWeight(heading.level <= 2 ? FontWeight.Medium : FontWeight.Regular)
-                  .fontColor(this.activeOutlineIndex === index ? $r('app.color.ink') :
+                  .fontColor(this.activeOutlineId === heading.id ? $r('app.color.ink') :
                     (heading.level <= 3 ? $r('app.color.body') : $r('app.color.muted')))
                   .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
                   .width('100%').textAlign(TextAlign.Start)
@@ -3004,14 +2723,7 @@ export struct LogsReaderPage {
                 .padding({ left: 10 + Math.max(0, heading.level - 2) * 12, right: 4, top: 7, bottom: 7 })
                 .backgroundColor(Color.Transparent).borderRadius(8)
                 .onClick(() => {
-                  this.closeOutline();
-                  this.activeOutlineIndex = index;
-                  this.targetHeading = heading.text;
-                  this.targetHeadingIndex = index;
-                  this.targetHeadingId = '';
-                  this.targetKind = 'outline';
-                  this.targetQuery = '';
-                  this.targetRevision++;
+                  this.locateOutlineHeading(heading);
                   if (this.sourceMode || this.splitMode) this.switchMode(false);
                 })
               if (heading.level === 3) {
@@ -3038,9 +2750,9 @@ export struct LogsReaderPage {
                   })
               }
             }.width('100%').constraintSize({ minHeight: 44 }).padding({ right: 4 })
-              .backgroundColor(this.activeOutlineIndex === index ? $r('app.color.primary_tint') :
+              .backgroundColor(this.activeOutlineId === heading.id ? $r('app.color.primary_tint') :
                 $r('app.color.surface_card'))
-              .border({ width: 1, color: this.activeOutlineIndex === index ?
+              .border({ width: 1, color: this.activeOutlineId === heading.id ?
                 $r('app.color.primary') : $r('app.color.hairline') })
               .borderRadius(8).clip(true)
           }
@@ -3133,7 +2845,7 @@ export struct LogsReaderPage {
   }
 
   private openAiTools(mode: string = 'generate'): void {
-    if (this.sidebarAnimating) return;
+    if (this.sidebar.sidebarAnimating) return;
     this.aiMode = mode;
     if (this.aiOpen && !this.aiClosing) return;
     this.aiClosing = false;
@@ -3142,7 +2854,7 @@ export struct LogsReaderPage {
   }
 
   private closeAiTools(): void {
-    if (this.sidebarAnimating) return;
+    if (this.sidebar.sidebarAnimating) return;
     if (!this.aiOpen || this.aiClosing) return;
     this.aiClosing = true;
     this.moveAiTools(420);
@@ -3196,7 +2908,7 @@ export struct LogsReaderPage {
         }
         if (this.isWide()) {
           this.getUIContext().postFrameCallback(new FrameAction(() => {
-            if (revision !== this.aiMotionRevision || this.sidebarAnimating) return;
+            if (revision !== this.aiMotionRevision || this.sidebar.sidebarAnimating) return;
             this.finishToolbarMotion();
           }));
         }
@@ -3307,7 +3019,7 @@ export struct LogsReaderPage {
   @Builder
   private reader() {
     Column() {
-      if (this.monthsLoading || !this.session.day && (this.daysLoading || this.documents.dayRequestLoading)) {
+      if (this.logNavigation.monthsLoading || !this.session.day && (this.logNavigation.daysLoading || this.documents.dayRequestLoading)) {
         Column() {
           LoadingProgress().width(26).height(26).color($r('app.color.primary'))
         }.layoutWeight(1).width('100%').justifyContent(FlexAlign.Center)
@@ -3348,7 +3060,7 @@ export struct LogsReaderPage {
                 onImageDrop: (event: DragEvent) => this.receivePreviewImages(event),
                 themePreference: this.themePreference,
                 stableViewport: this.isWide(), fillAvailableWidth: this.splitMode,
-                viewportRequestRevision: this.modeLayoutRevision + this.workspaceLayoutRevision,
+                viewportRequestRevision: this.modeLayoutRevision + this.reading.workspaceLayoutRevision,
                 restoreScrollOffset: this.previewRestoreOffset,
                 showBackToTop: !this.isWide(), trackScrollProgress: true,
                 scrollToTopRequestRevision: this.previewTopRequest,
@@ -3359,15 +3071,13 @@ export struct LogsReaderPage {
                 },
                 onViewportReady: () => {
                   this.workspaceTransition.finish('mode');
-                  if (this.readingTransition.animating) {
-                    this.readingTransition.viewportReady = true;
-                    this.readingTransition.finish();
-                  }
+                  this.navigationCommands.readingReady();
                 },
                 onContentRendered: (_content: string, date: string) => {
                   if (date !== this.session.selectedDate) return;
                   this.renderedPreviewDate = date;
                   this.workspaceTransition.finish('document');
+                  if (!(this.sourceMode || this.splitMode && !this.isWide())) this.logDocumentReady(date);
                 },
                 onRenderReady: () => {
                   this.readerReady = true;
@@ -3380,8 +3090,10 @@ export struct LogsReaderPage {
                   this.errorMessage = '日志正文渲染失败，请刷新重试';
                   this.showReadFailure();
                   this.workspaceTransition.finish('document');
+                  if (!(this.sourceMode || this.splitMode && !this.isWide())) this.logNavigationFailed(date);
                 },
                 targetHeading: this.targetHeading, targetHeadingIndex: this.targetHeadingIndex,
+                outlineRequestRevision: this.outlineRequestRevision,
                 targetHeadingId: this.targetHeadingId,
                 targetKind: this.targetKind, targetQuery: this.targetQuery, targetRevision: this.targetRevision,
                 onTargetResult: (kind: string, found: boolean) => this.showTargetResult(kind, found),
@@ -3409,19 +3121,21 @@ export struct LogsReaderPage {
                   .backgroundColor($r('app.color.canvas')).zIndex(2)
                   .hitTestBehavior(HitTestMode.None)
               }
-              if (this.isWide() && !this.logsReadingMode && !this.sourceMode && !this.splitMode &&
+              if (this.isWide() && !this.reading.logsReadingMode && !this.sourceMode && !this.splitMode &&
                 this.readerReady && this.renderedPreviewDate === this.session.selectedDate) {
                 Column() { this.readingModeEntryButton() }
                   .width(36).height(36).margin({ top: 16, right: 16 }).zIndex(3)
               }
               }.layoutWeight(1).height('100%')
-              if (this.showDesktopOutline()) this.desktopOutline()
+              if (this.showDesktopOutline()) {
+                Column() { this.desktopOutline(true) }.width(224).height('100%')
+              }
             }.width(this.isWide() && this.splitMode ? '50%' :
               (this.sourceMode || this.splitMode && !this.isWide() ? 0 : '100%'))
               .height('100%').visibility(this.sourceMode || this.splitMode && !this.isWide() ?
                 Visibility.None : Visibility.Visible)
           }.width('100%').height('100%')
-          LoadingHintAnchor({ loading: !this.readFailed && (this.documents.dayRequestLoading || this.daysLoading ||
+          LoadingHintAnchor({ loading: !this.readFailed && (this.documents.dayRequestLoading || this.logNavigation.daysLoading ||
             !this.sourceMode && this.renderedPreviewDate.length > 0 && !this.readerReady),
             onChange: (placement: LoadingHintPlacement) => this.logLoadingHint = placement })
             .hitTestBehavior(HitTestMode.None)
@@ -3460,7 +3174,7 @@ export struct LogsReaderPage {
       logSubtitle: this.session.day?.headings[0] || this.session.selectedDate || '日志',
       onSelect: (index: number) => this.selectTab(index),
       themePreference: this.themePreference, desktopKeyboardFocus: this.desktopKeyboardFocus,
-      moduleRequestedTab: this.moduleRequestedTab,
+      moduleRequestedTab: this.modules.moduleRequestedTab,
       onOpenTheme: () => { this.topMoreOpen = false; this.desktopThemeOpen = !this.desktopThemeOpen; },
       onOpenHelp: () => this.onOpenHelp(),
       onChangeServer: () => this.confirmQaLeave(() => this.confirmNotesLeave(() =>
@@ -3480,7 +3194,8 @@ export struct LogsReaderPage {
       onOpenSearch: () => this.openCurrentSearch(),
       onOpenMore: () => this.compactSettingsOpen = true })
       .bindSheet($$this.compactSettingsOpen, this.compactAppSettingsPanel(), {
-        preferType: SheetType.BOTTOM, height: SheetSize.FIT_CONTENT,
+        preferType: !this.desktopWindowChrome && this.workspaceBreakpoint === WorkspaceBreakpoint.COMPACT ? SheetType.BOTTOM : SheetType.CENTER,
+        height: SheetSize.FIT_CONTENT,
         dragBar: false, showClose: false, maskColor: $r('app.color.scrim'),
         radius: LengthMetrics.vp(12)
       })
@@ -3489,7 +3204,7 @@ export struct LogsReaderPage {
   @Builder
   private workspaceContent() {
     WorkspaceContent({ modules: this.modules, favoritesData: this.favoritesData, qaNavigation: this.qaNavigation,
-      selectedModule: this.selectedModule, outgoingTab: this.outgoingTab, moduleReveal: this.moduleReveal,
+      selectedModule: this.selectedModule, outgoingTab: this.modules.outgoingTab, moduleReveal: this.modules.moduleReveal,
       wide: this.isWide(), themePreference: this.themePreference,
       onSelect: (index: number) => this.selectTab(index),
       onCitation: (date: string, heading: string, index: number) => this.openQaCitation(date, heading, index),
@@ -3519,20 +3234,20 @@ export struct LogsReaderPage {
           Stack({ alignContent: Alignment.TopEnd }) {
             this.aiToolsRail()
             if (this.aiOpen) this.aiToolsPanel()
-            if (this.aiOpen && this.aiOffset === 0 && !this.logsReadingMode) this.aiResizer()
+            if (this.aiOpen && this.aiOffset === 0 && !this.reading.logsReadingMode) this.aiResizer()
           }.width((52 + (this.aiPanelWidth - 52) * (1 - this.aiOffset / 420)) *
-              (1 - this.readingProgress))
+              (1 - this.reading.readingProgress))
             .height('100%')
             .backgroundColor(this.aiOpen ? $r('app.color.canvas') : $r('app.color.surface_soft'))
             .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
             .border({ width: { left: 1 }, color: $r('app.color.hairline') })
-            .hitTestBehavior(this.logsReadingMode ? HitTestMode.None : HitTestMode.Default)
+            .hitTestBehavior(this.reading.logsReadingMode ? HitTestMode.None : HitTestMode.Default)
             .clip(true).id('log_ai_dock')
         }
-      }.width('100%').height('100%')
-        .visibility(this.selectedTab() === 0 || this.outgoingTab === 0 ? Visibility.Visible : Visibility.None)
-        .opacity(this.selectedTab() === 0 ? this.moduleReveal : 1)
-        .hitTestBehavior(this.selectedTab() === 0 ? HitTestMode.Default : HitTestMode.None)
+      }.width('100%').height('100%').backgroundColor($r('app.color.canvas'))
+        .visibility(this.selectedTab() === 0 || this.modules.outgoingTab === 0 ? Visibility.Visible : Visibility.None)
+        .opacity(this.selectedTab() === 0 ? this.modules.moduleReveal : 1)
+        .hitTestBehavior(this.selectedTab() === 0 && !this.modules.pendingLogDate ? HitTestMode.Default : HitTestMode.None)
         .zIndex(this.selectedTab() === 0 ? 1 : 0)
       if (this.aiOpen && !this.isWide() && this.selectedTab() === 0) {
         Stack({ alignContent: Alignment.TopEnd }) { this.aiToolsPanel() }
@@ -3553,8 +3268,8 @@ export struct LogsReaderPage {
 
   build() {
     Stack() {
-      WorkspaceFrame({ wide: this.isWide(), readingMode: this.logsReadingMode,
-        readingProgress: this.readingProgress, readingAnimating: this.readingTransition.animating,
+      WorkspaceFrame({ wide: this.isWide(), readingMode: this.reading.logsReadingMode,
+        readingProgress: this.reading.readingProgress, readingAnimating: this.readingTransition.animating,
         sidebarWidth: this.desktopNavigationWidth(), sidebarPopover: !!this.railPopover,
         keyboardVisible: this.softwareKeyboardVisible, selectedModule: this.selectedModule,
         coordinator: this.workspaceTransition,
@@ -3569,8 +3284,7 @@ export struct LogsReaderPage {
           }
         },
         onWorkspaceArea: (area: Area) => {
-          this.workspaceOriginX = Number(area.globalPosition.x);
-          this.workspaceOriginY = Number(area.globalPosition.y);
+          this.navigationCommands.readingOrigin(area);
         } })
       if (this.isWide() && this.desktopThemeOpen) {
         DesktopThemePanel({ themePreference: this.themePreference,
@@ -3580,51 +3294,51 @@ export struct LogsReaderPage {
       DelayedLoadingHint({ loading: this.selectedTab() === 0 && this.logLoadingHint.loading,
         text: '正在加载日志…' })
         .width(this.logLoadingHint.width).height(this.logLoadingHint.height)
-        .position({ x: this.logLoadingHint.x - this.workspaceOriginX,
-          y: this.logLoadingHint.y - this.workspaceOriginY })
+        .position({ x: this.logLoadingHint.x - this.reading.workspaceOriginX,
+          y: this.logLoadingHint.y - this.reading.workspaceOriginY })
         .zIndex(20).hitTestBehavior(HitTestMode.None)
       DelayedLoadingHint({ loading: this.selectedTab() === 3 && this.modules.qaLoadingHint.loading,
         text: '正在读取会话…' })
         .width(this.modules.qaLoadingHint.width).height(this.modules.qaLoadingHint.height)
-        .position({ x: this.modules.qaLoadingHint.x - this.workspaceOriginX,
-          y: this.modules.qaLoadingHint.y - this.workspaceOriginY })
+        .position({ x: this.modules.qaLoadingHint.x - this.reading.workspaceOriginX,
+          y: this.modules.qaLoadingHint.y - this.reading.workspaceOriginY })
         .zIndex(20).hitTestBehavior(HitTestMode.None)
       DelayedLoadingHint({ loading: this.selectedTab() === 1 && this.modules.notesLoadingHint.loading,
         text: '正在加载随记…' })
         .width(this.modules.notesLoadingHint.width).height(this.modules.notesLoadingHint.height)
-        .position({ x: this.modules.notesLoadingHint.x - this.workspaceOriginX,
-          y: this.modules.notesLoadingHint.y - this.workspaceOriginY })
+        .position({ x: this.modules.notesLoadingHint.x - this.reading.workspaceOriginX,
+          y: this.modules.notesLoadingHint.y - this.reading.workspaceOriginY })
         .zIndex(20).hitTestBehavior(HitTestMode.None)
       DelayedLoadingHint({ loading: this.selectedTab() === 2 && this.modules.favoritesLoadingHint.loading,
         text: '正在加载收藏…' })
         .width(this.modules.favoritesLoadingHint.width).height(this.modules.favoritesLoadingHint.height)
-        .position({ x: this.modules.favoritesLoadingHint.x - this.workspaceOriginX,
-          y: this.modules.favoritesLoadingHint.y - this.workspaceOriginY })
+        .position({ x: this.modules.favoritesLoadingHint.x - this.reading.workspaceOriginX,
+          y: this.modules.favoritesLoadingHint.y - this.reading.workspaceOriginY })
         .zIndex(20).hitTestBehavior(HitTestMode.None)
       DelayedLoadingHint({ loading: this.selectedTab() === 4 && !this.modules.taxonomyOpen && this.modules.statsLoadingHint.loading,
         text: '正在加载统计…' })
         .width(this.modules.statsLoadingHint.width).height(this.modules.statsLoadingHint.height)
-        .position({ x: this.modules.statsLoadingHint.x - this.workspaceOriginX,
-          y: this.modules.statsLoadingHint.y - this.workspaceOriginY })
+        .position({ x: this.modules.statsLoadingHint.x - this.reading.workspaceOriginX,
+          y: this.modules.statsLoadingHint.y - this.reading.workspaceOriginY })
         .zIndex(20).hitTestBehavior(HitTestMode.None)
       DelayedLoadingHint({ loading: (this.workspaceTransition.waitingKind === 'mode' ||
         this.workspaceTransition.waitingKind === 'module') &&
         !this.preparationHint().loading && this.preparationHint().width > 0,
         text: '正在准备页面…' })
         .width(this.preparationHint().width).height(this.preparationHint().height)
-        .position({ x: this.preparationHint().x - this.workspaceOriginX,
-          y: this.preparationHint().y - this.workspaceOriginY })
+        .position({ x: this.preparationHint().x - this.reading.workspaceOriginX,
+          y: this.preparationHint().y - this.reading.workspaceOriginY })
         .zIndex(20).hitTestBehavior(HitTestMode.None)
         .transition(floatingSurfaceTransition())
       if (this.readingTransition.snapshot) {
         Stack({ alignContent: Alignment.TopStart }) {
-          Image(this.readingTransition.snapshot).width(this.readingImageWidth).height(this.readingImageHeight)
-            .constraintSize({ minWidth: this.readingImageWidth, minHeight: this.readingImageHeight })
-            .objectFit(ImageFit.Fill).syncLoad(true).translate({ x: this.readingImageInset })
+          Image(this.readingTransition.snapshot).width(this.reading.readingImageWidth).height(this.reading.readingImageHeight)
+            .constraintSize({ minWidth: this.reading.readingImageWidth, minHeight: this.reading.readingImageHeight })
+            .objectFit(ImageFit.Fill).syncLoad(true).translate({ x: this.reading.readingImageInset })
             .onComplete(() => this.readingTransition.rendered())
             .onError(() => this.readingTransition.clear())
-        }.width(this.readingCoverWidth).height(this.readingCoverHeight)
-          .position({ x: this.readingCoverX, y: this.readingCoverY })
+        }.width(this.reading.readingCoverWidth).height(this.reading.readingCoverHeight)
+          .position({ x: this.reading.readingCoverX, y: this.reading.readingCoverY })
           .backgroundColor($r('app.color.canvas')).clip(true).zIndex(5)
           .hitTestBehavior(HitTestMode.None)
       }
@@ -3635,10 +3349,10 @@ export struct LogsReaderPage {
           .onError(() => this.workspaceTransition.clear())
           .hitTestBehavior(HitTestMode.None)
       }
-      if (this.readingOutlineOpen && this.logsReadingMode && this.isWide()) {
+      if (this.readingOutlineOpen && this.reading.logsReadingMode && this.isWide()) {
         Stack({ alignContent: Alignment.TopEnd }) {
           Column().width('100%').height('100%').onClick(() => this.readingOutlineOpen = false)
-          Column() { this.desktopOutline() }
+          Column() { this.desktopOutline(true) }
             .width(320).height(Math.min(560, 76 + this.outlineHeadings().length * 34))
             .margin({ top: 80, right: 16 })
             .backgroundColor($r('app.color.canvas'))
@@ -3669,24 +3383,6 @@ export struct LogsReaderPage {
             .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
             .translate({ x: this.navigationOffset })
         }.width('100%').height('100%')
-      }
-      if (this.backupOpen && this.session.day) {
-        Stack() {
-          BackupPanel({ date: this.session.day.date, maximized: $backupMaximized, themePreference: this.themePreference,
-            onClose: () => { if (!this.backupBusy) { this.backupOpen = false; this.backupMaximized = false; } },
-            onBeforeRestore: () => this.beforeRestore(),
-            onRestored: (day: DayEntry) => this.applyRestoredDay(day),
-            onBusyChange: (busy: boolean) => this.backupBusy = busy })
-            .width(this.isWide() ? (this.backupMaximized ? '100%' : '92%') : '100%')
-            .constraintSize({ maxWidth: this.isWide() && !this.backupMaximized ? 1120 : '100%' })
-            .height(this.isWide() ? (this.backupMaximized ? '100%' : '85%') : '100%')
-            .border({ width: this.isWide() && !this.backupMaximized ? 1 : 0,
-              color: $r('app.color.hairline') })
-            .borderRadius(this.isWide() && !this.backupMaximized ? 12 : 0)
-            .clip(true)
-        }.width('100%').height('100%')
-          .backgroundColor($r('app.color.scrim'))
-          .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
       }
       if (this.linkOpen) {
         Stack() {

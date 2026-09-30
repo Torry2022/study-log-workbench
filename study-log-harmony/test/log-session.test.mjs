@@ -29,8 +29,9 @@ function subject() {
   session.commitDocument(day('v1'), 'baseline');
   const page = new module.exports.Page();
   Object.assign(page, { session, editorReady: true, lifecycle: 1, dayRevision: 1,
-    reportDraft() {}, refreshNavigation() {}, cancelPendingImages() {},
+    outlineHeadings: () => [], reportDraft() {}, refreshNavigation() {}, cancelPendingImages() {},
     closeFavoriteFeedback() {}, coverLogDocument: async () => {}, closeNavigation() {},
+    logNavigationFailed() {}, logDocumentReady() {}, isLogDocumentReady: () => false,
     message: error => error.message, showReadFailure() {},
     previewScrollOffsets: {}, workspaceTransition: { finish() {} },
     reads: { invalidate() {} }, bodyFromDay: day => day.content });

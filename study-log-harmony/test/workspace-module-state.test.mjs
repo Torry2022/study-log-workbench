@@ -7,8 +7,8 @@ import ts from 'typescript';
 const base = '../entry/src/main/ets/';
 const sources = await Promise.all(['app/WorkspaceModuleState.ets', 'features/qa/QaNavigationController.ets',
   'features/favorites/FavoritesController.ets', 'pages/Index.ets', 'app/WorkspaceSearchController.ets',
-  'features/logs/LogSearchRepository.ets', 'features/logs/SearchHistoryStore.ets'].map(path => readFile(new URL(base + path, import.meta.url), 'utf8')));
-const rootMethods = ['createQaNavigation', 'createWorkspaceSearch', 'invalidateModules', 'resetModules', 'connectedTo', 'changeServer'].map(name => {
+  'features/logs/LogSearchRepository.ets', 'features/logs/SearchHistoryStore.ets', 'features/logs/LogNavigationController.ets'].map(path => readFile(new URL(base + path, import.meta.url), 'utf8')));
+const rootMethods = ['resetSidebarMotion', 'resetReadingMode', 'clearModuleNavigation', 'createQaNavigation', 'createWorkspaceSearch', 'invalidateModules', 'resetModules', 'connectedTo', 'changeServer'].map(name => {
   const start = sources[3].search(new RegExp(`^  private (?:async )?${name}\\(`, 'm'));
   assert.ok(start >= 0, name);
   const end = sources[3].slice(start + 1).search(/^  (?:private |aboutTo|build\()/m);
@@ -30,13 +30,14 @@ function subject(api = {}) {
     logDraftStore: { initialize: async () => {}, load: () => undefined },
     appFeedback: { show() {} } });
   const root = new module.exports.Root();
-  Object.assign(root, { connected: true, selectedModule: 3,
+  Object.assign(root, { connected: true, selectedModule: 3, moduleSwitchRevision: 0, sidebar: {sidebarMotionRevision:0}, reading: {}, readingTransition: {clear() {}}, workspaceTransition: {clear() {}},
     modules: new module.exports.WorkspaceModuleState(),
     favoritesData: new module.exports.FavoritesController(transport),
     preferencesReady: Promise.resolve(), drafts: new Map(), rememberSearch: false, searchOpen: false,
     getUIContext: () => ({ getHostContext: () => ({}) }) });
   root.qaNavigation = root.createQaNavigation();
   root.search = root.createWorkspaceSearch();
+  root.logNavigation = new module.exports.LogNavigationController();
   return { root, instance };
 }
 

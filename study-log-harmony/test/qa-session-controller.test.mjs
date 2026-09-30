@@ -34,6 +34,44 @@ function view() { return {
   beforeSend() {}, showComposer() {}, afterFrame(action) { action(); }
 }; }
 
+test('history loading preserves a new question and cannot send it with the previous session context', async () => {
+  const Controller = await loadController();
+  let finishOpen, streams = 0;
+  const sent = [];
+  const controller = new Controller({
+    get: path => path === '/rag/sessions/target' ? new Promise(resolve => { finishOpen = resolve; }) :
+      Promise.resolve({ sessions: [] }),
+    postStream: async (_path, request, chunk) => {
+      streams++; sent.push(structuredClone(request));
+      chunk('event: done\ndata: {"answer":"new answer","citations":[]}\n\n');
+    },
+    put: async () => ({ session: { id: 'target', version: 'v2' } }),
+    post: async () => assert.fail('must not create a competing session')
+  }, view());
+  controller.sessionId = 'previous'; controller.sessionVersion = 'old';
+  controller.messages = [{ id: 'old-u', role: 'user', content: 'old question' },
+    { id: 'old-a', role: 'assistant', content: 'old answer' }];
+  const opening = controller.openSession('target');
+  controller.question = 'question typed while loading';
+  await controller.send();
+  assert.equal(streams, 0, 'do not answer using the previous session while the selected one loads');
+  assert.equal(controller.question, 'question typed while loading');
+  assert.equal(controller.messages.length, 2);
+  assert.equal(controller.sessionLoading, true);
+  finishOpen({ session: { id: 'target', version: 'v1', answerMode: 'logs_only', messages: [
+    { id: 'new-u', role: 'user', content: 'target question' },
+    { id: 'new-a', role: 'assistant', content: 'target answer' }
+  ] } });
+  await opening;
+  assert.equal(controller.sessionLoading, false);
+  assert.equal(controller.question, 'question typed while loading');
+  await controller.send();
+  assert.equal(streams, 1);
+  assert.deepEqual(sent[0].history, [{ role: 'user', content: 'target question' },
+    { role: 'assistant', content: 'target answer' }]);
+  assert.equal(controller.sessionId, 'target');
+});
+
 test('partial SSE answer is never saved without done', async () => {
   const QaSessionController = await loadController();
   const writes = [];
@@ -223,4 +261,32 @@ test('late stopped-answer save cannot replace a newly opened session', async () 
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(controller.sessionId, 'new-session');
   assert.equal(controller.sessionVersion, 'v2');
+});
+
+
+test('accepted session navigation discards the composer before loading while retries keep their draft', async () => {
+  const source = await readFile(new URL('../entry/src/main/ets/features/qa/QaPage.ets', import.meta.url), 'utf8');
+  const start = source.indexOf('  private navigationRequestChanged(): void {');
+  const end = source.indexOf('  private discardRequested()', start);
+  const module = { exports: {} };
+  const code = ts.transpileModule(`export class Page { ${source.slice(start, end)} }`, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS }
+  }).outputText;
+  runInNewContext(code, { module, exports: module.exports });
+  const page = new module.exports.Page();
+  const calls = [];
+  page.data = { question: 'unsent', openSession: id => calls.push([id, page.data.question]), newSession: () => calls.push(['new', page.data.question]) };
+  page.onPendingChange = () => {};
+  page.onDraftChange = dirty => calls.push(['dirty', dirty]);
+  page.navigationRequestRevision = 0;
+  page.navigationRequestChanged();
+  assert.equal(page.data.question, 'unsent');
+  page.navigationRequestRevision = 1;
+  page.navigationSessionId = 'history';
+  page.navigationRequestChanged();
+  assert.equal(page.data.question, '');
+  assert.deepEqual(calls, [['dirty', false], ['history', '']]);
+  page.data.question = 'draft during failed load';
+  page.data.openSession('history');
+  assert.equal(page.data.question, 'draft during failed load');
 });

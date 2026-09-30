@@ -6,7 +6,6 @@ import { EmptyState, InlineStatus, LoadFailure } from '../../common/ui/FeedbackS
 import { ModulePageTitle, ModuleLogButton } from '../../common/ui/WorkspaceChrome';
 import { SearchField } from '../../common/ui/FormControls';
 import { common } from '@kit.AbilityKit';
-import { KeyboardAvoidMode } from '@kit.ArkUI';
 import { saveExport } from '../../common/files/DocumentExport';
 import { apiClient } from '../../common/network/ApiClient';
 import { NoteEditorFields } from './components/NoteEditorFields';
@@ -29,25 +28,7 @@ import { NotesController } from './NotesController';
 export struct NotesPage {
   @StorageProp('pref_readingScale') private readingScale: number = 1;
   @Prop @Watch('topRequested') topRevision: number = 0;
-  @Prop @Watch('workspaceActiveChanged') workspaceActive: boolean = true;
-  private previousKeyboardAvoidMode?: KeyboardAvoidMode;
-
-  private workspaceActiveChanged(): void { if (!this.workspaceActive) this.blurSearch(); }
-
-  private focusSearch(): void {
-    if (!this.workspaceActive) return;
-    const context = this.getUIContext();
-    if (this.previousKeyboardAvoidMode === undefined) {
-      this.previousKeyboardAvoidMode = context.getKeyboardAvoidMode();
-    }
-    context.setKeyboardAvoidMode(KeyboardAvoidMode.RESIZE);
-  }
-
-  private blurSearch(): void {
-    if (this.previousKeyboardAvoidMode === undefined) return;
-    this.getUIContext().setKeyboardAvoidMode(this.previousKeyboardAvoidMode);
-    this.previousKeyboardAvoidMode = undefined;
-  }
+  @Prop workspaceActive: boolean = true;
 
   private topRequested(): void {
     if (this.topRevision > 0 && !this.noteEditor.editing && !this.extracting) this.scrollToTop();
@@ -174,7 +155,6 @@ export struct NotesPage {
   }
 
   aboutToDisappear(): void {
-    this.blurSearch();
     this.data.dispose();
     this.noteEditor.revision += 1;
     this.resultChanges.reset('');
@@ -422,7 +402,6 @@ export struct NotesPage {
   private searchField() {
     SearchField({ value: this.query, placeholder: '搜索随记内容、来源或标签', placeholderFontSize: 13,
       focusKey: 'notes_search', focusRevision: this.searchRevision,
-      onFocusChange: (focused: boolean) => focused ? this.focusSearch() : this.blurSearch(),
       onChange: (value: string) => { this.query = value; this.applyFilter(); },
       onSubmit: () => this.applyFilter() })
   }
@@ -472,7 +451,6 @@ export struct NotesPage {
           placeholderFontSize: 13,
           focusKey: 'notes_search',
           focusRevision: this.searchRevision,
-          onFocusChange: (focused: boolean) => focused ? this.focusSearch() : this.blurSearch(),
           onChange: (value: string) => { this.query = value; this.applyFilter(); },
           onSubmit: () => this.applyFilter()
         }).layoutWeight(1)

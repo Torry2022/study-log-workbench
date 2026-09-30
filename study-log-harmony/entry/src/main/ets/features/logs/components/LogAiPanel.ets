@@ -3,7 +3,6 @@ import { SegmentIndicator } from '../../../common/ui/SegmentIndicator';
 import { InteractiveSurface, animateHover } from '../../../common/ui/InteractiveSurface';
 import { iconTint } from '../../../common/ui/IconTint';
 import { KeyCode } from '@kit.InputKit';
-import { KeyboardAvoidMode } from '@kit.ArkUI';
 
 @Component
 export struct LogAiPanel {
@@ -29,7 +28,6 @@ export struct LogAiPanel {
   @State private hovered: string = '';
   @State private instructionHasText: boolean = false;
   @State private materialHasText: boolean = false;
-  private previousKeyboardAvoidMode?: KeyboardAvoidMode;
   onClose: () => void = () => {};
   onImport: () => void = () => {};
   onGenerate: () => void = () => {};
@@ -40,23 +38,6 @@ export struct LogAiPanel {
     this.instructionHasText = !!this.instruction.trim();
     this.materialHasText = !!this.material.trim();
   }
-
-  private focusInput(): void {
-    const context = this.getUIContext();
-    if (this.previousKeyboardAvoidMode === undefined) {
-      this.previousKeyboardAvoidMode = context.getKeyboardAvoidMode();
-    }
-    context.setKeyboardAvoidMode(KeyboardAvoidMode.RESIZE);
-  }
-
-  private blurInput(): void {
-    if (this.previousKeyboardAvoidMode !== undefined) {
-      this.getUIContext().setKeyboardAvoidMode(this.previousKeyboardAvoidMode);
-      this.previousKeyboardAvoidMode = undefined;
-    }
-  }
-
-  aboutToDisappear(): void { this.blurInput(); }
 
   @Builder
   private tab(mode: string, label: string, icon: Resource) {
@@ -125,7 +106,7 @@ export struct LogAiPanel {
               .onChange((value: string) => {
                 this.instructionHasText = !!value.trim();
                 this.onInstruction(value);
-              }).onFocus(() => this.focusInput()).onBlur(() => this.blurInput()).id('log_ai_instruction')
+              }).id('log_ai_instruction')
             Row({ space: 8 }) {
               Text('学习材料').layoutWeight(1).fontSize(13).fontWeight(FontWeight.Medium).fontColor($r('app.color.muted'))
               ToolbarAction({ label: this.importing ? '导入中' : '导入文件', icon: $r('app.media.upload'), iconSize: 14,
@@ -139,7 +120,7 @@ export struct LogAiPanel {
               .onChange((value: string) => {
                 this.materialHasText = !!value.trim();
                 this.onMaterial(value);
-              }).onFocus(() => this.focusInput()).onBlur(() => this.blurInput()).id('log_ai_material')
+              }).id('log_ai_material')
             this.action(() => this.busy ? '生成中' : '生成日志草稿', $r('app.media.wand_sparkles'),
               () => this.ready && this.generateConfigured && !this.busy && !this.importing &&
               (this.materialHasText || this.instructionHasText || !!this.material.trim() || !!this.instruction.trim()),
@@ -151,7 +132,7 @@ export struct LogAiPanel {
               .backgroundColor($r('app.color.surface_soft')).borderRadius(8)
               .border({ width: 1, color: $r('app.color.hairline') }).enabled(!this.busy)
               .onChange((value: string) => this.onOutput(value))
-              .onFocus(() => this.focusInput()).onBlur(() => this.blurInput()).id('log_ai_output')
+              .id('log_ai_output')
           } else {
             Column({ space: 8 }) {
               Text('AI 文本增强').fontSize(11).fontColor($r('app.color.primary'))

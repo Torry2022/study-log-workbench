@@ -12,6 +12,14 @@ import { BackupRepository } from '../BackupRepository';
 import { matchesRestoredContent } from '../LogDayBody';
 import { DayEntry } from '../LogModels';
 
+class BackupFrameBridge {
+  onRendered: (revision: number) => void = () => {};
+
+  rendered(revision: number): void {
+    this.onRendered(revision);
+  }
+}
+
 @Component
 export struct BackupPanel {
   @Consume('workspaceBreakpoint') private breakpoint: WorkspaceBreakpoint;
@@ -41,13 +49,19 @@ export struct BackupPanel {
   @State private panelHeight: number = 0;
   private repository: BackupRepository = new BackupRepository(apiClient);
   private controller: webview.WebviewController = new webview.WebviewController();
+  private frameBridge: BackupFrameBridge = new BackupFrameBridge();
   private webPageReady: boolean = false;
   private lifecycle: number = 0;
   private listRevision: number = 0;
   private previewRevision: number = 0;
 
   aboutToAppear(): void {
-    this.lifecycle++;
+    const lifecycle = ++this.lifecycle;
+    this.frameBridge.onRendered = (revision: number) => {
+      if (lifecycle === this.lifecycle && revision === this.previewRevision && this.webPageReady) {
+        this.webContentReady = true;
+      }
+    };
     this.loadVersions();
   }
 
@@ -135,8 +149,8 @@ export struct BackupPanel {
     const label = this.selected ? this.time(this.selected.createdAt) : '';
     try {
       await this.controller.runJavaScript(`window.renderBackup(${JSON.stringify(preview.currentContent)},` +
-        `${JSON.stringify(preview.historicalContent)},${this.darkTheme()},${JSON.stringify(label)})`);
-      if (revision === this.previewRevision) this.webContentReady = true;
+        `${JSON.stringify(preview.historicalContent)},${this.darkTheme()},${JSON.stringify(label)});` +
+        `requestAnimationFrame(() => requestAnimationFrame(() => window.backupFrames.rendered(${revision})));`);
     } catch (_) {
       if (revision === this.previewRevision) this.previewError = '历史版本显示失败，请重新选择版本';
     }
@@ -309,6 +323,7 @@ export struct BackupPanel {
             .id('backup_comparison_web').width('100%').height('100%')
             .opacity(this.webContentReady ? 1 : 0)
             .javaScriptAccess(true).domStorageAccess(false).onlineImageAccess(false)
+            .javaScriptProxy({ object: this.frameBridge, name: 'backupFrames', methodList: ['rendered'], controller: this.controller })
             .backgroundColor($r('app.color.canvas')).monopolizeEvents(true)
             .onOverrideUrlLoading(() => true)
             .onPageBegin(() => { this.webPageReady = false; this.webContentReady = false; })

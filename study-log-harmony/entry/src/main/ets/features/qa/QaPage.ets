@@ -2,7 +2,6 @@ import { BackToTopControl } from '../../common/ui/BackToTopControl';
 import { EmptyState, InlineStatus, LoadFailure } from '../../common/ui/FeedbackStates';
 import { ModulePageHeader } from '../../common/ui/WorkspaceChrome';
 import { KeyCode } from '@kit.InputKit';
-import { KeyboardAvoidMode } from '@kit.ArkUI';
 import { workspaceKey, textNavigationKey } from '../../common/ui/WorkspaceKeys';
 import { WORKSPACE_TIPS } from '../../common/ui/WorkspaceTips';
 import { LoadingHintAnchor, LoadingHintPlacement } from '../../common/ui/LoadingHintAnchor';
@@ -78,7 +77,6 @@ export struct QaPage {
   @State private scrollToTopRequestRevision: number = 0;
   @State private questionFocused: boolean = false;
   private composingQuestion: boolean = false;
-  private previousKeyboardAvoidMode?: KeyboardAvoidMode;
   private questionController: TextAreaController = new TextAreaController();
   private questionSelectionStart: number = 0;
   private questionSelectionEnd: number = 0;
@@ -95,27 +93,20 @@ export struct QaPage {
   aboutToAppear(): void { this.data.activate(); }
 
   private focusQuestion(): void {
-    const context = this.getUIContext();
-    if (this.previousKeyboardAvoidMode === undefined) {
-      this.previousKeyboardAvoidMode = context.getKeyboardAvoidMode();
-    }
-    context.setKeyboardAvoidMode(KeyboardAvoidMode.RESIZE);
     this.questionFocused = true;
     this.setComposerHidden(false);
   }
 
   private blurQuestion(): void {
     this.questionFocused = false;
-    if (this.previousKeyboardAvoidMode !== undefined) {
-      this.getUIContext().setKeyboardAvoidMode(this.previousKeyboardAvoidMode);
-      this.previousKeyboardAvoidMode = undefined;
-    }
   }
 
   aboutToDisappear(): void { this.data.dispose(); this.blurQuestion(); }
 
   private navigationRequestChanged(): void {
     if (this.navigationRequestRevision <= 0) return;
+    this.data.question = '';
+    this.onDraftChange(false);
     this.onPendingChange(false);
     if (this.navigationSessionId) this.data.openSession(this.navigationSessionId);
     else this.data.newSession();
@@ -409,9 +400,9 @@ export struct QaPage {
                   .backgroundColor($r('app.color.primary'))
                   .fontColor(Color.White)
                   .opacity(this.data.sending && (this.data.receivedDone || !!this.data.pendingWrite) ||
-                    !this.data.sending && this.data.question.trim().length === 0 ? 0.58 : 1)
+                    !this.data.sending && (this.data.sessionLoading || this.data.question.trim().length === 0) ? 0.58 : 1)
                   .enabled(this.data.sending ? !this.data.receivedDone && !this.data.pendingWrite :
-                    this.configured && this.data.question.trim().length > 0)
+                    this.configured && !this.data.sessionLoading && this.data.question.trim().length > 0)
                   .accessibilityText(this.data.sending ? (this.data.receivedDone || !!this.data.pendingWrite ?
                     '正在保存回答' : '停止生成') : '发送问题')
                   .bindTips(this.data.sending ? (this.data.receivedDone || !!this.data.pendingWrite ?

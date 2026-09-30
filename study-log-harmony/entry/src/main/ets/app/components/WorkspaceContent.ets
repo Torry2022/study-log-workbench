@@ -57,7 +57,7 @@ export struct WorkspaceContent {
             onOpenLog: () => this.onSelect(0),
             onCitation: (date: string, heading: string, headingIndex: number) =>
               this.onCitation(date, heading, headingIndex) }).layoutWeight(1)
-      }.width('100%').height('100%')
+      }.width('100%').height('100%').backgroundColor($r('app.color.canvas'))
         .visibility((this.selectedModule === 3) || this.outgoingTab === 3 ? Visibility.Visible : Visibility.None)
         .opacity((this.selectedModule === 3) ? this.moduleReveal : 1)
         .hitTestBehavior((this.selectedModule === 3) ? HitTestMode.Default : HitTestMode.None)
@@ -76,7 +76,7 @@ export struct WorkspaceContent {
             onLoadingHintChange: (placement: LoadingHintPlacement) => this.modules.notesLoadingHint = placement,
             onOpenLog: () => this.onSelect(0),
             onInternalLink: (date: string, heading: string) => this.onNoteLink(date, heading) }).layoutWeight(1)
-      }.width('100%').height('100%')
+      }.width('100%').height('100%').backgroundColor($r('app.color.canvas'))
         .visibility((this.selectedModule === 1) || this.outgoingTab === 1 ? Visibility.Visible : Visibility.None)
         .opacity((this.selectedModule === 1) ? this.moduleReveal : 1)
         .hitTestBehavior((this.selectedModule === 1) ? HitTestMode.Default : HitTestMode.None)
@@ -92,7 +92,7 @@ export struct WorkspaceContent {
             },
             onOpenLog: () => this.onSelect(0),
             onOpenFavorite: (favorite: FavoriteHeading) => this.onFavorite(favorite) }).layoutWeight(1)
-      }.width('100%').height('100%')
+      }.width('100%').height('100%').backgroundColor($r('app.color.canvas'))
         .visibility((this.selectedModule === 2) || this.outgoingTab === 2 ? Visibility.Visible : Visibility.None)
         .opacity((this.selectedModule === 2) ? this.moduleReveal : 1)
         .hitTestBehavior((this.selectedModule === 2) ? HitTestMode.Default : HitTestMode.None)
@@ -116,7 +116,7 @@ export struct WorkspaceContent {
               WorkspaceTaxonomyPage({ modules: this.modules, onBack: () => this.onCloseTaxonomy() }).width('100%').height('100%').transition(secondaryPageTransition())
             }
           }.layoutWeight(1).height('100%')
-      }.width('100%').height('100%')
+      }.width('100%').height('100%').backgroundColor($r('app.color.canvas'))
         .visibility((this.selectedModule === 4) || this.outgoingTab === 4 ? Visibility.Visible : Visibility.None)
         .opacity((this.selectedModule === 4) ? this.moduleReveal : 1)
         .hitTestBehavior((this.selectedModule === 4) ? HitTestMode.Default : HitTestMode.None)

@@ -6,6 +6,10 @@ import { LoadingHintPlacement } from '../common/ui/LoadingHintAnchor';
 // A shared observed record keeps the navigation and mounted module content on the same state.
 @Observed
 export class WorkspaceModuleState {
+  outgoingTab: number = -1;
+  moduleReveal: number = 1;
+  pendingLogDate: string = '';
+  moduleRequestedTab: number = -1;
   taxonomyOpen: boolean = false;
   taxonomyDirty: boolean = false;
   taxonomyBusy: boolean = false;

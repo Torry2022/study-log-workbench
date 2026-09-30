@@ -7,41 +7,62 @@ import ts from 'typescript';
 // Execute the component's actual event handlers; native dialogs and frame scheduling are controlled here.
 const source = await readFile(new URL('../entry/src/main/ets/features/logs/LogsReaderPage.ets', import.meta.url), 'utf8');
 const stateSource = (await readFile(new URL('../entry/src/main/ets/app/WorkspaceModuleState.ets', import.meta.url), 'utf8')).replace(/^import .*;\r?\n/gm, '').replace('@Observed', '');
-const names = ['selectedTab', 'selectTab', 'requestModule', 'switchModule', 'confirmNotesLeave', 'confirmQaLeave',
-  'confirmTaxonomyLeave', 'openNoteLink', 'openQaCitation', 'openFavorite', 'openStatsEntry'];
-const methods = names.map(name => {
-  const start = source.search(new RegExp(`^  private (?:async )?${name}\\(`, 'm'));
+const rootSource = await readFile(new URL('../entry/src/main/ets/pages/Index.ets', import.meta.url), 'utf8');
+const bridgeSource = await readFile(new URL('../entry/src/main/ets/app/WorkspaceNavigationBridge.ets', import.meta.url), 'utf8');
+function extract(text, names) {
+ return names.map(name => {
+  const start = text.search(new RegExp(`^  private (?:async )?${name}\\(`, 'm'));
   assert.ok(start >= 0, `Missing handler ${name}`);
-  const rest = source.slice(start + 1);
-  const end = rest.search(/^  (?:private |@Builder|build\()/m);
+  const end = text.slice(start + 1).search(/^  (?:private |@Builder|aboutTo|build\()/m);
   assert.ok(end >= 0, `Missing handler boundary ${name}`);
-  return source.slice(start, start + 1 + end);
-}).join('\n');
+  return text.slice(start, start + 1 + end);
+ }).join('\n');
+}
+const methods = extract(source, ['bindWorkspaceNavigation','isLogDocumentReady','logDocumentReady','logNavigationFailed',
+ 'selectedTab','selectTab','requestModule','confirmNotesLeave','confirmQaLeave','confirmTaxonomyLeave',
+ 'openTaxonomy','switchQaSession','confirmQaDelete','selectSearchResult','coverLogDocument','openNoteLink','openQaCitation','openFavorite','openStatsEntry']);
+const rootMethods = extract(rootSource, ['resetSidebarMotion','resetReadingMode','registerWorkspaceNavigation','clearModuleNavigation','requestModule','switchModule',
+ 'openTaxonomy','switchQaSession','confirmQaDelete','revealModule','logDocumentReady','logNavigationFailed','confirmTaxonomyLeave','confirmNotesLeave','confirmQaLeave']);
 
 function workspace(tab) {
   const dialogs = [], frames = [], targets = [];
   const module = { exports: {} };
   const code = ts.transpileModule(`${stateSource}
+${bridgeSource.replace(/^import .*;\r?\n/gm, '')}
+export class Root { ${rootMethods} }
 export class Workspace { ${methods} }`, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }
   }).outputText;
   runInNewContext(code, { module, exports: module.exports, $r: value => value,
-    LoadingHintPlacement: class {}, AlertDialog: { show: value => dialogs.push(value) },
-    appFeedback: { show() {}, dismissScope() {} }, Curve: { EaseOut: 0 },
+    AppStorage: {get: () => false}, LoadingHintPlacement: class {}, AlertDialog: { show: value => dialogs.push(value) },
+    setTimeout: fn => frames.push(fn), appFeedback: { show() {}, dismissScope() {} }, Curve: { EaseOut: 0 },
     FrameAction: class { constructor(action) { this.action = action; } } });
   const page = new module.exports.Workspace();
+  const root = new module.exports.Root();
   Object.assign(page, {
-    selectedModule: tab, moduleRequestedTab: -1, moduleSwitchRevision: 0, modules: new module.exports.WorkspaceModuleState(),
+    pendingLogDate: '', selectedModule: tab, moduleRequestedTab: -1, moduleSwitchRevision: 0, modules: new module.exports.WorkspaceModuleState(),
     targetRevision: 0, session: { text: 'saved', baseline: 'saved', isDirty: () => false },
-    isWide: () => false, closeNavigation() {}, closeOutline() {}, closeSearch() {},
-    readingTransition: { clear() {} }, workspaceTransition: { clear() {}, finish() {} },
+    isWide: () => false, finishToolbarMotion() {}, closeNavigation() {}, closeOutline() {}, closeSearch() {},
+    sidebar: {collapsedModules:[false,false,false,false,false],sidebarMotionRevision:0,sidebarAnimating:false}, reading: { logsReadingMode: false, readingProgress: 0 }, readingTransition: { clear() {} }, workspaceTransition: { clear() {}, finish() {} },
     qaNavigation: { loadQaNavigation() {} },
     confirmDiscard: action => action(),
-    getUIContext: () => ({ postFrameCallback: frame => frames.push(frame.action),
+    getUIContext: () => ({ getFocusController: () => ({ clearFocus() {} }), postFrameCallback: frame => frames.push(frame.action),
       animateTo: (options, action) => { action(); options.onFinish?.(); } }),
     loadTargetDate: async (date, action) => { targets.push(date); action(); }
   });
-  return { page, dialogs, frames, targets };
+  Object.assign(root, {selectedModule:tab,modules:page.modules,moduleSwitchRevision:0,
+    sidebar:page.sidebar,reading:page.reading,readingTransition:page.readingTransition,workspaceTransition:page.workspaceTransition,qaNavigation:page.qaNavigation,
+    isWide:()=>page.isWide(),getUIContext:()=>page.getUIContext()});
+  for (const key of ['selectedModule','moduleSwitchRevision','workspaceTransition']) {
+    Object.defineProperty(page,key,{get:()=>root[key],set:value=>root[key]=value,configurable:true});
+  }
+  for (const key of ['pendingLogDate','moduleRequestedTab','moduleReveal','outgoingTab']) {
+    Object.defineProperty(page,key,{get:()=>root.modules[key],set:value=>root.modules[key]=value,configurable:true});
+  }
+  page.switchModule = (...args)=>root.switchModule(...args);
+  page.onRegisterNavigation = view=>root.registerWorkspaceNavigation(view);
+  page.bindWorkspaceNavigation();
+  return { root, page, dialogs, frames, targets };
 }
 
 test('note source navigation preserves its module and draft until leave is accepted', () => {
@@ -89,6 +110,8 @@ test('favorite and statistics sources use the same module transition as navigati
     assert.equal(page.outgoingTab, tab);
     assert.equal(page.moduleReveal, 0);
     assert.deepEqual(targets, ['2026-01-15']);
+    assert.equal(frames.length, 0, 'wait for the requested document before revealing');
+    page.logDocumentReady('2026-01-15');
     frames[0]();
     assert.equal(page.moduleReveal, 1);
     assert.equal(page.outgoingTab, -1);
@@ -155,4 +178,152 @@ test('taxonomy leave protects the workspace-owned draft and busy state before sw
   assert.equal(page.modules.taxonomyOpen, false);
   assert.equal(page.modules.taxonomyDirty, false);
   assert.equal(page.selectedModule, 1);
+});
+
+
+test('global search leaves non-log modules through the same unsaved-draft guard', () => {
+  const { page, dialogs, targets } = workspace(1);
+  page.modules.notesDirty = true;
+  page.search = { searchQuery: 'sample' };
+  page.openInternalLink = date => targets.push(date);
+  page.selectSearchResult({ date: '2026-01-15', matches: [], headings: [] });
+  assert.equal(targets.length, 0, 'search must not navigate behind the unsaved note');
+  assert.equal(dialogs.length, 1);
+  dialogs[0].primaryButton.action();
+  assert.equal(page.selectedModule, 1);
+  page.selectSearchResult({ date: '2026-01-15', matches: [], headings: [] });
+  dialogs[1].secondaryButton.action();
+  assert.equal(page.selectedModule, 0);
+  assert.deepEqual(targets, ['2026-01-15']);
+});
+
+test('document reads do not discard the covering source-module image', async () => {
+  const { page } = workspace(2);
+  const calls = [];
+  page.workspaceTransition = { kind: 'module', waitingKind: 'module', snapshot: {},
+    clear: () => calls.push('clear'), cover: kind => calls.push(kind) };
+  await page.coverLogDocument();
+  assert.deepEqual(calls, [], 'keep source module covered until the target document is ready');
+});
+
+
+test('cross-module reveal waits for the exact requested document, not the first scheduled frame', async () => {
+  const { page, frames } = workspace(2);
+  const finishes = [];
+  page.isWide = () => true;
+  page.workspaceTransition = { kind: 'module', snapshot: {}, clear() {}, cover: async () => {},
+    finish: kind => finishes.push(kind) };
+  await page.switchModule(0, false, false, () => {}, '2026-01-15');
+  assert.equal(frames.length, 0);
+  page.logDocumentReady('2026-02-05');
+  assert.equal(frames.length, 0, 'old mounted preview must not reveal the target');
+  page.logDocumentReady('2026-01-15');
+  assert.equal(frames.length, 1); frames[0]();
+  assert.deepEqual(finishes, ['module']);
+});
+
+test('failed target navigation releases the source cover and cannot release a newer target', async () => {
+  const { page, frames } = workspace(4);
+  await page.switchModule(0, false, false, () => {}, '2026-01-15');
+  page.requestModule(0, false, false, () => {}, '2026-01-17');
+  page.logNavigationFailed('2026-01-15');
+  assert.equal(frames.length, 0);
+  page.logNavigationFailed('2026-01-17'); frames[0]();
+  assert.equal(page.moduleReveal, 1); assert.equal(page.outgoingTab, -1);
+});
+
+test('late reveal frame does not finish a newer module transition', async () => {
+  const { page, frames } = workspace(2);
+  await page.switchModule(0, false, false, () => {}, '2026-01-15');
+  page.logDocumentReady('2026-01-15');
+  await page.switchModule(1, false, false);
+  frames[0](); assert.equal(page.moduleReveal, 0);
+  frames[1](); assert.equal(page.moduleReveal, 1); assert.equal(page.selectedModule, 1);
+});
+
+test('already mounted target uses the readiness of the visible preview or source editor', async () => {
+  for (const sourceMode of [false, true]) {
+    const { page, frames } = workspace(2);
+    Object.assign(page, { sourceMode, session: { selectedDate: '2026-01-15' },
+      readerReady: !sourceMode, renderedPreviewDate: sourceMode ? '' : '2026-01-15',
+      editorReady: sourceMode, editor: { loadedDocumentKey: '2026-01-15' } });
+    await page.switchModule(0, false, false, () => {}, '2026-01-15');
+    assert.equal(frames.length, 1); frames[0](); assert.equal(page.moduleReveal, 1);
+  }
+});
+
+
+test('module navigation clears input focus only after the unsaved decision is accepted', () => {
+  const { page, dialogs } = workspace(1);
+  let cleared = 0; const context = page.getUIContext();
+  page.getUIContext = () => ({ ...context, getFocusController: () => ({clearFocus: () => cleared++}) });
+  page.modules.notesDirty = true;
+  page.selectTab(2); dialogs[0].primaryButton.action(); assert.equal(cleared, 0);
+  page.selectTab(2); dialogs[1].secondaryButton.action(); assert.equal(cleared, 1);
+});
+
+
+test('commands from an unmounted log view cannot navigate or dispose the newer workspace binding', () => {
+ const {root,page}=workspace(1);const old=page.navigationCommands;page.bindWorkspaceNavigation();const current=root.workspaceNavigationView;
+ old.request(2,false,false,()=>assert.fail('old callback executed'),'');old.dispose();
+ assert.equal(root.selectedModule,1);assert.equal(root.workspaceNavigationView,current);
+ root.modules.pendingLogDate='2026-01-15';old.ready('2026-01-15');assert.equal(root.modules.pendingLogDate,'2026-01-15');
+ root.reading.workspaceOriginX = 7;old.readingOrigin({globalPosition:{x:99,y:99}});
+ old.readingReady();old.readingViewport({});old.readingMode(true);old.sidebarCollapsed(true,-1);
+ assert.equal(root.reading.workspaceOriginX,7);assert.equal(root.reading.logsReadingMode,false);
+});
+test('accepted stale note, QA and taxonomy prompts cannot discard a new workspace draft', () => {
+ for(const kind of ['notes','qa','taxonomy']) {
+  const {root,page,dialogs}=workspace(kind==='notes'?1:kind==='qa'?3:4);
+  page.modules[kind+'Dirty']=true;if(kind==='taxonomy')page.modules.taxonomyOpen=true;
+  page.selectTab(2);assert.equal(dialogs.length,1);page.bindWorkspaceNavigation();
+  dialogs[0].secondaryButton.action();assert.equal(root.selectedModule,kind==='notes'?1:kind==='qa'?3:4);
+  assert.equal(root.modules[kind+'Dirty'],true);
+ }
+});
+test('a log leave decision resolved after rebinding cannot start an old module switch', () => {
+ const {root,page}=workspace(0);let resume;page.confirmDiscard=action=>resume=action;
+ page.selectTab(1);assert.ok(resume);page.bindWorkspaceNavigation();resume();assert.equal(root.selectedModule,0);
+});
+test('unmount invalidates pending capture and resets all application-owned transition state', async () => {
+ const {root,page}=workspace(0);let release;page.isWide=()=>true;page.workspaceTransition.cover=()=>new Promise(resolve=>release=resolve);
+ const pending=page.switchModule(1,false,false);page.navigationCommands.dispose();release();await pending;
+ assert.equal(root.selectedModule,0);assert.equal(root.modules.moduleRequestedTab,-1);
+ assert.equal(root.modules.pendingLogDate,'');assert.equal(root.modules.outgoingTab,-1);assert.equal(root.modules.moduleReveal,1);
+});
+
+
+test('QA session leave and delayed focus use the application binding and ignore an obsolete prompt', () => {
+ const {root,page,dialogs,frames}=workspace(3);page.modules.qaDirty=true;
+ page.switchQaSession('history',true);dialogs[0].primaryButton.action();assert.equal(page.modules.qaSessionId,'');
+ page.switchQaSession('history',true);dialogs[1].secondaryButton.action();assert.equal(page.modules.qaSessionId,'history');
+ const focus=page.modules.qaQuestionFocusRevision;page.bindWorkspaceNavigation();frames[0]();assert.equal(page.modules.qaQuestionFocusRevision,focus);
+ page.modules.qaDirty=true;page.switchQaSession('other');page.bindWorkspaceNavigation();dialogs[2].secondaryButton.action();assert.equal(root.modules.qaSessionId,'history');
+});
+test('QA deletion confirmed after workspace replacement cannot issue a request against the new instance', () => {
+ const {root,page,dialogs}=workspace(3);let deleted=0;root.qaNavigation.deleteQaSession=()=>deleted++;
+ page.confirmQaDelete({id:'old',title:'synthetic'});assert.equal(dialogs.length,1);page.bindWorkspaceNavigation();dialogs[0].secondaryButton.action();assert.equal(deleted,0);
+ page.confirmQaDelete({id:'current',title:'synthetic'});dialogs[1].secondaryButton.action();assert.equal(deleted,1);
+});
+
+
+test('window resize policy survives question blur and focus transfer to workspace search', async () => {
+ const qa = await readFile(new URL('../entry/src/main/ets/features/qa/QaPage.ets', import.meta.url), 'utf8');
+ const start = rootSource.indexOf('  aboutToAppear(): void {');
+ const end = rootSource.indexOf('  aboutToDisappear()', start);
+ const module = { exports: {} };
+ let mode = 0;
+ const context = { setKeyboardAvoidMode(value) { mode = value; }, getKeyboardAvoidMode() { return mode; }, getHostContext() { return {}; } };
+ const code = ts.transpileModule(`export class Root { ${rootSource.slice(start, end)} }
+export class Qa { ${extract(qa, ['focusQuestion', 'blurQuestion'])} }`, {
+  compilerOptions: { module: ts.ModuleKind.CommonJS }
+ }).outputText;
+ runInNewContext(code, { module, exports: module.exports, KeyboardAvoidMode: { RESIZE: 1 },
+  appFeedback: { attach() {} }, workspacePreferences: { initialize() {} }, apiClient: { setUnauthorizedHandler() {} } });
+ const root = new module.exports.Root(); root.getUIContext = () => context; root.registerFonts = () => {};
+ const page = new module.exports.Qa(); page.getUIContext = () => context; page.setComposerHidden = () => {};
+ root.aboutToAppear(); assert.equal(mode, 1);
+ page.focusQuestion(); page.blurQuestion();
+ assert.equal(mode, 1, 'leaving composer must not restore OFFSET for the next input');
+ assert.equal(page.questionFocused, false);
 });

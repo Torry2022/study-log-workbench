@@ -12,7 +12,10 @@ export struct CompactLogHeader {
   @Prop sourceMode: boolean = false;
   @Prop saving: boolean = false;
   @Prop dirty: boolean = false;
+  @Prop backupRestoring: boolean = false;
+  @Link backupOpen: boolean;
   @Link moreOpen: boolean;
+  @BuilderParam backupSheet: () => void = this.emptyContent;
   @BuilderParam moreActionsPanel: () => void = this.emptyContent;
   onMode: (mode: string) => void = () => {};
   onSave: () => void = () => {};
@@ -31,6 +34,14 @@ export struct CompactLogHeader {
         .fontFeature('"tnum" 1')
         .fontColor($r('app.color.ink'))
         .layoutWeight(1)
+        .bindSheet($$this.backupOpen, this.backupSheet(), {
+          height: SheetSize.LARGE,
+          onWillDismiss: (action: DismissSheetAction) => { if (!this.backupRestoring) action.dismiss(); },
+          dragBar: false,
+          showClose: false,
+          maskColor: $r('app.color.scrim'),
+          radius: LengthMetrics.vp(12)
+        })
 
       Stack() {
         SegmentIndicator({ selected: this.sourceMode ? 1 : 0 })

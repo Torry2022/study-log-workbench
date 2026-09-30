@@ -1,4 +1,5 @@
 import { WorkspaceBreakpoint } from '../../../common/AppConfig';
+import { beijingNoteTimestamp, notePickerDate } from '../NoteTime';
 
 @Component
 export struct NoteRecordedAt {
@@ -8,17 +9,16 @@ export struct NoteRecordedAt {
   onChange: (value: string) => void = () => {};
 
   private choose(): void {
-    const current = new Date(this.value);
+    const current = notePickerDate(this.value);
     this.getUIContext().showDatePickerDialog({
-      selected: current, end: new Date(),
+      selected: current, end: notePickerDate(beijingNoteTimestamp()),
       onDateAccept: (day: Date) => {
         this.getUIContext().showTimePickerDialog({
           selected: current, useMilitaryTime: true,
           onAccept: (time: TimePickerResult) => {
-            day.setHours(time.hour, time.minute, 0, 0);
-            if (day.getTime() > Date.now()) day = new Date();
             const pad = (part: number): string => part.toString().padStart(2, '0');
-            this.onChange(`${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}T${pad(day.getHours())}:${pad(day.getMinutes())}:00+08:00`);
+            const selected = `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}T${pad(time.hour)}:${pad(time.minute)}:00+08:00`;
+            this.onChange(Date.parse(selected) > Date.now() ? beijingNoteTimestamp() : selected);
           }
         });
       }

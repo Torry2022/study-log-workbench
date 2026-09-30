@@ -75,6 +75,60 @@ test('leaving a pending new note isolates its outcome without losing a committed
   }
 });
 
+test('server future-time rejection preserves new and existing drafts until an explicit corrected retry', async () => {
+  const { normalizeNoteRecordedAt } = await import('../../study-log-web/lib/notes-markdown.ts');
+  const { beijingNoteTimestamp } = await loadClass('../entry/src/main/ets/features/notes/NoteTime.ets',
+    () => assert.fail('unexpected time dependency'));
+  const { NoteEditorSession } = await loadClass('../entry/src/main/ets/features/notes/NoteEditorSession.ets',
+    () => ({ util: { generateRandomUUID: () => 'synthetic-clock-id' } }));
+  const { NotesController } = await loadClass('../entry/src/main/ets/features/notes/NotesController.ets',
+    () => ({ ApiError }));
+  for (const existing of [false, true]) {
+    const editor = new NoteEditorSession();
+    const past = beijingNoteTimestamp(Date.now() - 3600000);
+    let remote = existing ? { id: 'existing-note', version: 'v1', title: '旧标题', body: '旧正文',
+      insight: '', sources: [], tags: [], recordedAt: past } : undefined;
+    if (existing) editor.startEdit(remote); else editor.startNew(past);
+    editor.title = '合成时钟偏差'; editor.body = '时间被拒绝后仍需保留的草稿';
+    editor.recordedAt = beijingNoteTimestamp(Date.now() + 300000);
+    const snapshot = editor.value(), baseline = editor.baseline, identity = editor.clientId;
+    let requests = 0, reads = 0;
+    const successes = [];
+    const write = async (item) => {
+      requests++;
+      try { normalizeNoteRecordedAt(item.recordedAt); }
+      catch (error) { throw new ApiError(error.message, 400); }
+      remote = { ...item, id: existing ? 'existing-note' : item.clientId, version: 'v2' };
+      return remote;
+    };
+    const transport = {
+      post: async (_, request) => ({ notes: [await write(request.notes[0])] }),
+      patch: async (_, request) => ({ note: await write(request) }),
+      get: async () => { reads++; return { notes: remote ? [remote] : [], years: [], tags: [] }; }
+    };
+    const controller = new NotesController(transport, editor, { blocked: () => false,
+      uploading: () => false, navigationChanged: () => {}, loaded: () => {},
+      success: value => successes.push(value), failure: () => {} });
+    await controller.save();
+    assert.equal(controller.errorMessage, '不能创建未来时间的随记');
+    assert.equal(controller.saving, false);
+    assert.equal(editor.editing, true);
+    assert.equal(editor.value(), snapshot);
+    assert.equal(editor.baseline, baseline);
+    assert.equal(editor.clientId, identity);
+    assert.equal(editor.baseVersion, existing ? 'v1' : '');
+    assert.equal(remote?.body, existing ? '旧正文' : undefined);
+    assert.equal(requests, 1); assert.equal(reads, 0); assert.deepEqual(successes, []);
+    editor.recordedAt = past;
+    await controller.save();
+    assert.equal(requests, 2); assert.equal(reads, 1);
+    assert.equal(editor.editing, false);
+    assert.equal(remote.body, '时间被拒绝后仍需保留的草稿');
+    assert.equal(remote.recordedAt, past);
+    assert.deepEqual(successes, [existing ? '随记已更新' : '随记已保存']);
+  }
+});
+
 test('new note retry reuses one client identity after a lost response', async () => {
   let nextId = 0;
   const { NoteEditorSession } = await loadClass('../entry/src/main/ets/features/notes/NoteEditorSession.ets',

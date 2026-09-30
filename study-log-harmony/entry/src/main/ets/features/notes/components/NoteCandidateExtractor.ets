@@ -10,6 +10,7 @@ import { InlineStatus } from '../../../common/ui/FeedbackStates';
 import { NoteEditorFields } from './NoteEditorFields';
 import { ToolbarAction } from '../../../common/ui/ToolbarAction';
 import { NoteRecordedAt } from './NoteRecordedAt';
+import { beijingNoteTimestamp } from '../NoteTime';
 import { iconTint } from '../../../common/ui/IconTint';
 
 @Observed
@@ -331,9 +332,7 @@ export struct NoteCandidateExtractor {
   }
 
   private timestamp(): string {
-    const now = new Date();
-    const pad = (value: number): string => value.toString().padStart(2, '0');
-    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:00+08:00`;
+    return beijingNoteTimestamp();
   }
 
   private async saveSelected(): Promise<void> {

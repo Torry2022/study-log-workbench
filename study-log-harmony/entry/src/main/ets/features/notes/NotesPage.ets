@@ -25,6 +25,7 @@ import { StudyNote, StudyNoteFacet } from './NoteModels';
 import { NoteEditorSession } from './NoteEditorSession';
 import { noteDraftStore } from './NoteDraftStore';
 import { NotesController } from './NotesController';
+import { beijingNoteTimestamp } from './NoteTime';
 
 @Component
 export struct NotesPage {
@@ -170,9 +171,7 @@ export struct NotesPage {
   }
 
   private localTimestamp(): string {
-    const now = new Date();
-    const pad = (value: number): string => value.toString().padStart(2, '0');
-    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:00+08:00`;
+    return beijingNoteTimestamp();
   }
 
   private startNew(): void {

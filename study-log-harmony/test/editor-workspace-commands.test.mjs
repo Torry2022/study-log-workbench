@@ -23,7 +23,7 @@ test('the actual editor callback forwards workspace commands and preserves local
 
 const rootSource = await readFile(new URL('../entry/src/main/ets/pages/Index.ets', import.meta.url), 'utf8');
 const bridgeSource = await readFile(new URL('../entry/src/main/ets/app/WorkspaceNavigationBridge.ets', import.meta.url), 'utf8');
-const methods = ['focusWorkspaceRegion', 'editorWorkspaceCommand', 'registerWorkspaceNavigation'].map(name => {
+const methods = ['workspaceShortcutBlocked', 'focusWorkspaceRegion', 'editorWorkspaceCommand', 'registerWorkspaceNavigation'].map(name => {
   const start = rootSource.indexOf(`  private ${name}(`);
   assert.ok(start >= 0);
   const end = rootSource.slice(start + 1).search(/^  private /m);
@@ -38,7 +38,7 @@ function fixture() {
   const root = new module.exports.Root();
   Object.assign(root, { connected: true, isWide: () => true, focusRegion: -1, selectedModule: 0,
     sidebar: { collapsedModules: [false, false, false, false, false] }, reading: { logsReadingMode: false },
-    modules: {}, desktopWindowChrome: true, menuFocusRevision: 0, desktopCommands: { blocked: () => false },
+    modules: {}, qaNavigation: {}, desktopWindowChrome: true, menuFocusRevision: 0, desktopCommands: { blocked: () => false },
     clearModuleNavigation: () => { root.workspaceNavigationView = undefined; },
     openHelp: () => actions.push('help'), requestModule: (tab, _notes, _qa, action) => pending.push({ tab, action }),
     switchQaSession: (id, focus) => actions.push(['qa', id, focus]) });

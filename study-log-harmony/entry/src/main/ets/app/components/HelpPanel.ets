@@ -65,7 +65,7 @@ export struct HelpPanel {
       this.helpShortcut('Ctrl + Alt + Q', '新建知识问答')
       this.helpShortcut('F1', '打开使用帮助')
       this.helpShortcut('F6 / Shift + F6', '切换工作区焦点')
-      this.helpShortcut('F10', '聚焦 PC 菜单栏', '方向键选择，Enter 执行')
+      this.helpShortcut('Alt / F10', '聚焦 PC 菜单栏', '方向键选择，Enter 执行')
       this.helpShortcut('Esc', '关闭最上层浮层', '没有浮层时退出阅读模式')
     }.width('100%').alignItems(HorizontalAlign.Start)
   }
@@ -80,11 +80,14 @@ export struct HelpPanel {
       this.helpShortcut('Alt + ↑', '返回当前阅读区顶部', '输入框外')
       this.helpShortcut('Ctrl + S', '保存当前日志或随记')
       this.helpShortcut('Ctrl + F', '打开查找与替换', '源码或分屏模式')
+      this.helpShortcut('F3 / Shift + F3', '下一个 / 上一个匹配项')
+      this.helpShortcut('Ctrl + G / Ctrl + Shift + G', '下一个 / 上一个匹配项', '编辑器或查找面板内')
       this.helpShortcut('Ctrl + Z / Ctrl + Shift + Z', '撤销 / 重做', '编辑器内')
       this.helpShortcut('Ctrl + B / I / `', '加粗 / 斜体 / 行内代码', '日志编辑器内')
       this.helpShortcut('Ctrl + K / Ctrl + Shift + K', '插入链接 / 内部链接', '日志编辑器内')
       this.helpShortcut('Ctrl + Alt + 3', '切换三级标题', '日志编辑器内')
       this.helpShortcut('Tab / Shift + Tab', '缩进 / 取消缩进', '日志编辑器内')
+      this.helpShortcut('Ctrl + Alt + G', '跳转行号', '日志编辑器内')
     }.width('100%').alignItems(HorizontalAlign.Start)
   }
 
@@ -193,7 +196,7 @@ export struct HelpPanel {
           .backgroundColor($r('app.color.surface_soft')).key('help_close_button')
           .accessibilityText('关闭帮助').bindTips('关闭帮助', WORKSPACE_TIPS).onClick(() => this.onClose())
       }.width('100%')
-      Text('通过左上角按钮打开日期导航。日志或随记有未保存修改时，离开前会提示确认。可在随记页选择材料，提取候选后逐条审阅。')
+      Text('从屏幕左侧内缘向右滑，或点左上角按钮打开日期导航。日志或随记有未保存修改时，离开前会提示确认。可在随记页选择材料，提取候选后逐条审阅。')
         .width('100%').fontSize(14).lineHeight(23).fontColor($r('app.color.body'))
       Button('知道了').width('100%').height(42).fontSize(14).fontWeight(FontWeight.Medium).borderRadius(8)
         .fontColor($r('app.color.on_primary')).backgroundColor($r('app.color.primary'))

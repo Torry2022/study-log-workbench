@@ -37,11 +37,13 @@ export struct WorkspaceContent {
   onStatsEntry: (entry: StatsEntry) => void = () => {};
   onOpenTaxonomy: () => void = () => {};
   onCloseTaxonomy: () => void = () => {};
+  onWorkspaceKey: (event: KeyEvent) => boolean = () => false;
 
   build() {
     Stack() {
       Row() {
           QaPage({ workspaceActive: (this.selectedModule === 3), navigationSessionId: this.modules.qaSessionId,
+            onWorkspaceKey: (event: KeyEvent) => this.onWorkspaceKey(event),
             themePreference: this.themePreference,
             navigationRequestRevision: this.modules.qaRequestRevision, discardRevision: this.modules.qaDiscardRevision,
             questionFocusRevision: this.modules.qaQuestionFocusRevision, topRevision: this.modules.topRequests[3],

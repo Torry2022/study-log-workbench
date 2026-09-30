@@ -2,6 +2,7 @@ import { ApiClient, ApiError } from '../../common/network/ApiClient';
 import { Taxonomy, TaxonomyCatalogItem, TaxonomyResponse, TaxonomySaveRequest, TaxonomySaveResponse,
   TaxonomySuggestion, TaxonomySuggestionResponse, TaxonomySuggestionResultItem, TaxonomySuggestionRequest,
   TaxonomySuggestionRequestItem } from './TaxonomyModels';
+import { PreservedTaxonomyDraft } from './TaxonomyDraftStore';
 
 @Observed
 export class TaxonomyController {
@@ -42,6 +43,18 @@ export class TaxonomyController {
   }
 
   hasPendingSuggestions(): boolean { return this.suggestions.length > 0; }
+
+  restoreDraft(draft: PreservedTaxonomyDraft): void {
+    this.taxonomy = this.copy(draft.taxonomy);
+    this.suggestions = draft.suggestions.map((item: TaxonomySuggestion): TaxonomySuggestion =>
+      ({ tag: item.tag, domain: item.domain, confidence: item.confidence, selected: item.selected }));
+    const versionChanged = this.savedTaxonomy.version !== draft.baseVersion;
+    this.conflict = versionChanged && (this.hasChanges() || this.hasPendingSuggestions());
+    this.suggestionSnapshot = !versionChanged && !this.hasChanges() && this.hasPendingSuggestions() ?
+      this.copy(this.savedTaxonomy) : undefined;
+    if (this.conflict) this.errorMessage = '服务器分类版本已变化，本机草稿仍保留；请核对后重新读取，不能直接覆盖保存';
+    this.changed();
+  }
 
   private same(left: Taxonomy, right: Taxonomy): boolean {
     return left.version === right.version && JSON.stringify(left.domains) === JSON.stringify(right.domains) &&

@@ -81,6 +81,7 @@ export struct MarkdownReader {
   onScrollProgress: (progress: number) => void = () => {};
   onTopDividerPosition: (yOffset: number) => void = () => {};
   onActiveHeading: (headingId: string) => void = () => {};
+  onWorkspaceKey: (event: KeyEvent) => boolean = () => false;
   private controller: webview.WebviewController = new webview.WebviewController();
   private frameBridge: ReaderFrameBridge = new ReaderFrameBridge();
   @State private ready: boolean = false;
@@ -478,6 +479,7 @@ export struct MarkdownReader {
         .verticalScrollBarAccess(false)
         .overScrollMode(this.contentMode === 'log' ? OverScrollMode.NEVER : OverScrollMode.ALWAYS)
         .onScroll((event: OnScrollEvent) => this.handleScroll(event.yOffset))
+        .onKeyEvent((event: KeyEvent) => this.onWorkspaceKey(event))
         .onOverrideUrlLoading((request) => this.handleNavigation(request.getRequestUrl()))
         .onPageBegin(() => {
           this.completedContentKey = '';

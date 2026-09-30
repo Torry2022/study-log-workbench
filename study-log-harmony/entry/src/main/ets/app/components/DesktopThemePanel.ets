@@ -1,5 +1,6 @@
 import { WorkspaceBreakpoint } from '../../common/AppConfig';
 import { workspaceSansFamily } from '../../common/ui/Typography';
+import { FrameAction } from '../../common/ui/FrameAction';
 import { floatingSurfaceTransition } from '../../common/ui/WorkspaceMotion';
 
 @Component
@@ -8,6 +9,17 @@ export struct DesktopThemePanel {
   @Prop themePreference: string = 'system';
   onSetTheme: (value: string) => void = () => {};
   onClose: () => void = () => {};
+
+  private focusRevision: number = 0;
+
+  private focusPanel(): void {
+    const revision = ++this.focusRevision;
+    this.getUIContext().postFrameCallback(new FrameAction(() => {
+      if (revision === this.focusRevision) focusControl.requestFocus('desktop_theme_close');
+    }));
+  }
+
+  aboutToDisappear(): void { this.focusRevision++; }
 
   @Builder
   private themeChoice(value: string, label: string, symbol: Resource = $r('sys.symbol.sun_max')) {
@@ -57,7 +69,8 @@ export struct DesktopThemePanel {
           Button({ type: ButtonType.Normal }) {
             SymbolGlyph($r('sys.symbol.xmark')).fontSize(15).fontColor([$r('app.color.body')])
           }.width(34).height(34).padding(0).backgroundColor($r('app.color.surface_soft'))
-            .borderRadius(8).onClick(() => this.onClose())
+            .borderRadius(8).id('desktop_theme_close').accessibilityText('关闭主题模式')
+            .onClick(() => this.onClose())
         }.width('100%').height(42)
         Row({ space: 6 }) {
           this.themeChoice('system', '系统')
@@ -70,6 +83,7 @@ export struct DesktopThemePanel {
       .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(10)
       .shadow({ radius: 18, color: $r('app.color.popover_shadow'), offsetY: 6 })
     }.width('100%').height('100%').zIndex(35).transition(floatingSurfaceTransition())
+      .onAppear(() => this.focusPanel())
   }
 
 }

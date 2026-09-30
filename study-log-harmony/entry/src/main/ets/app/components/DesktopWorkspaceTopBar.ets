@@ -1,3 +1,9 @@
+import { WorkspaceSearchController } from '../WorkspaceSearchController';
+import { GlobalSearchCandidates } from './GlobalSearchCandidates';
+import { LogSearchResult } from '../../features/logs/LogSearchPanel';
+import { SearchField } from '../../common/ui/FormControls';
+import { workspaceKey } from '../../common/ui/WorkspaceKeys';
+import { KeyCode } from '@kit.InputKit';
 import { WorkspaceBreakpoint, WORKSPACE_TABS, TabDefinition } from '../../common/AppConfig';
 import { AppLogo } from '../../common/ui/AppLogo';
 import { workspaceSansFamily } from '../../common/ui/Typography';
@@ -20,16 +26,130 @@ export struct DesktopWorkspaceTopBar {
   @State private hoveredModule: number = -1;
   @State private desktopTopBarWidth: number = 0;
   @State private desktopToolbarDensity: ToolbarDensity = ToolbarDensity.OVERFLOW;
-  @BuilderParam searchContent: () => void;
-  @BuilderParam moreActions: () => void;
+  @ObjectLink search: WorkspaceSearchController;
+  @Link searchOpen: boolean;
+  @Prop searchFocusRevision: number = 0;
+  @Prop calendarOpen: boolean = false;
+  @Prop moduleFrameHeight: number = 0;
+  private searchResultScroller: Scroller = new Scroller();
+  onSearchResult: (result: LogSearchResult) => void = () => {};
+  @State private hoveredMoreAction: string = '';
+  onOpenSettings: () => void = () => {};
+  onOpenAbout: () => void = () => {};
   onSelect: (index: number) => void = () => {};
   onOpenSearch: () => void = () => {};
   onOpenTheme: () => void = () => {};
   onOpenHelp: () => void = () => {};
   onChangeServer: () => void = () => {};
 
+  private changeSearch(query: string, reset: boolean = false): void { this.search.changeLogSearchQuery(query, reset); }
+  private closeSearch(): void { this.searchOpen = false; this.search.dismissSearchResults(); }
+  private showSearchHistory(): boolean { return this.search.showSearchHistory(); }
+  private updateSearchHistory(items: string[]): void { this.search.updateSearchHistory(items); }
+  private selectSearchHistory(query: string): void { this.changeSearch(query); this.searchLogs(); }
+  private async searchLogs(): Promise<void> { await this.search.searchLogs(); }
+  private selectSearchResult(result: LogSearchResult): void { this.onSearchResult(result); }
+
+  private searchCandidatesHeight(): number {
+    if (this.showSearchHistory()) return Math.min(50 + this.search.searchHistory.length * 40, Math.max(90, this.moduleFrameHeight - 16));
+    if (this.search.searchError) return 92;
+    if (this.search.searchLoading || !this.search.searchResults.length) return 66;
+    return Math.min(this.search.searchResults.length * 70 + 12, Math.max(82, Math.min(420, this.moduleFrameHeight - 16)));
+  }
+
+  private handleSearchKey(event: KeyEvent): boolean {
+    if (this.calendarOpen) return false;
+    if (workspaceKey(event, KeyCode.KEYCODE_ESCAPE)) {
+      if (!this.searchOpen) return false;
+      this.closeSearch();
+      return true;
+    }
+    if (workspaceKey(event, KeyCode.KEYCODE_ENTER)) {
+      if (this.showSearchHistory() && this.search.searchActiveIndex >= 0) {
+        this.selectSearchHistory(this.search.searchHistory[this.search.searchActiveIndex]);
+      } else if (this.searchOpen && this.search.searchSubmitted && this.search.searchActiveIndex >= 0 && this.search.searchActiveIndex < this.search.searchResults.length) {
+        this.selectSearchResult(this.search.searchResults[this.search.searchActiveIndex]);
+      } else this.searchLogs();
+      return true;
+    }
+    const count = this.showSearchHistory() ? this.search.searchHistory.length : this.search.searchResults.length;
+    if (this.searchOpen && count &&
+      (workspaceKey(event, KeyCode.KEYCODE_DPAD_UP) || workspaceKey(event, KeyCode.KEYCODE_DPAD_DOWN))) {
+      const direction = event.keyCode === KeyCode.KEYCODE_DPAD_DOWN ? 1 : -1;
+      this.search.searchActiveIndex = this.search.searchActiveIndex < 0 ? (direction > 0 ? 0 : count - 1) :
+        (this.search.searchActiveIndex + direction + count) % count;
+      this.searchResultScroller.scrollToIndex(this.search.searchActiveIndex, false, ScrollAlign.AUTO);
+      return true;
+    }
+    return false;
+  }
+
   @Builder
-  private popupContent() { this.moreActions() }
+  private desktopSearchResults() {
+    if (this.searchOpen && (this.showSearchHistory() || this.search.searchSubmitted || this.search.searchLoading || this.search.searchError)) {
+      GlobalSearchCandidates({
+        searchHistory: this.search.searchHistory, searchResults: this.search.searchResults,
+        searchActiveIndex: this.search.searchActiveIndex, showHistory: this.showSearchHistory(),
+        searchLoading: this.search.searchLoading, searchError: this.search.searchError,
+        candidatesHeight: this.searchCandidatesHeight(), searchResultScroller: this.searchResultScroller,
+        onResultSelect: (result: LogSearchResult) => this.selectSearchResult(result),
+        onHistorySelect: (query: string) => this.selectSearchHistory(query),
+        onHistoryRemove: (query: string) => this.updateSearchHistory(this.search.searchHistory.filter((entry: string) => entry !== query)),
+        onRetry: () => this.searchLogs(),
+        onHistoryClear: () => { this.updateSearchHistory([]); this.searchOpen = false; }
+      })
+      .width('100%')
+      .height(this.searchCandidatesHeight())
+      .id('global_search_candidates')
+      .position({ x: 0, y: 50 })
+      .padding(8)
+      .backgroundColor($r('app.color.canvas'))
+      .border({ width: 1, color: $r('app.color.hairline') })
+      .borderRadius(12)
+      .shadow({ radius: 18, color: $r('app.color.popover_shadow'), offsetY: 6 })
+      .zIndex(40)
+    }
+  }
+
+  @Builder
+  private desktopSearchContent() {
+    SearchField({ value: this.search.searchQuery, focusKey: 'global_log_search',
+      focusRevision: this.searchFocusRevision,
+      placeholder: this.search.searchHeadingsOnly ? '搜索小节标题' : '搜索日志、术语、代码标识',
+      loading: this.search.searchLoading, showHeadingToggle: true, headingOnly: this.search.searchHeadingsOnly,
+      showCaseToggle: true, caseSensitive: !this.search.searchIgnoreCase,
+      onChange: (query: string) => this.changeSearch(query),
+      onSubmit: () => { this.searchOpen = true; this.searchLogs(); },
+      onClear: () => this.changeSearch(''),
+      onHeadingToggle: () => { this.search.searchHeadingsOnly = !this.search.searchHeadingsOnly; this.changeSearch(this.search.searchQuery, true); },
+      onCaseToggle: () => { this.search.searchIgnoreCase = !this.search.searchIgnoreCase; this.changeSearch(this.search.searchQuery, true); },
+      onFocusChange: (focused: boolean) => { if (focused) this.searchOpen = true; },
+      onSearchKey: (event: KeyEvent) => this.handleSearchKey(event) })
+    this.desktopSearchResults()
+  }
+
+  @Builder
+  private desktopMoreItem(icon: Resource, label: string, enabled: boolean, action: () => void) {
+    Button({ type: ButtonType.Normal }) {
+      Row({ space: 8 }) {
+        Image(icon).width(16).height(16).colorFilter(iconTint($r('app.color.body')))
+        Text(label).fontSize(13)
+          .fontColor(label === '删除日块' ? $r('app.color.error') : $r('app.color.body'))
+      }.width('100%')
+    }.width('100%').height(40).padding({ left: 10, right: 10 }).borderRadius(8)
+      .attributeModifier(new InteractiveSurface(Color.Transparent, this.hoveredMoreAction === label))
+      .enabled(enabled).opacity(enabled ? 1 : 0.45)
+      .onHover((hover: boolean) => animateHover(this.getUIContext(), () => this.hoveredMoreAction = hover ? label : ''))
+      .onClick(() => { this.topMoreOpen = false; action(); })
+  }
+
+  @Builder
+  private popupContent() {
+    Column() {
+      this.desktopMoreItem($r('app.media.settings_2'), '设置', true, () => this.onOpenSettings())
+      this.desktopMoreItem($r('app.media.info'), '关于', true, () => this.onOpenAbout())
+    }.width(176).padding(6)
+  }
 
   private showDesktopNavigationLabels(): boolean {
     return this.desktopToolbarDensity === ToolbarDensity.FULL;
@@ -127,7 +247,7 @@ export struct DesktopWorkspaceTopBar {
         })
       } else {
       Stack({ alignContent: Alignment.TopStart }) {
-        this.searchContent()
+        this.desktopSearchContent()
       }
       .width(this.desktopSearchWidth())
       .constraintSize({ minWidth: 260, maxWidth: 384 })

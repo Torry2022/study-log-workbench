@@ -43,6 +43,26 @@ test('taxonomy conflict preserves edits and blocks blind retries until explicit 
   await c.load(); assert.equal(c.conflict, false); assert.equal(c.hasChanges(), false);
 });
 
+test('taxonomy restores an expired-session draft only against its original server version', async () => {
+  let server = { ...initial(), version: 'v1' }; let writes = 0;
+  const c = await controller({ get: async () => ({ taxonomy: server, catalog: [] }),
+    put: async () => { writes++; return { taxonomy: server }; } });
+  await c.load();
+  const draft = { namespace: 'instance-a', taxonomy: { ...initial(), domains: ['本机领域', '其他'], version: 'v1' },
+    baseVersion: 'v1', domainDraft: '', suggestions: [] };
+  c.restoreDraft(draft);
+  assert.equal(c.hasChanges(), true);
+  assert.equal(c.conflict, false);
+  assert.ok(c.taxonomy.domains.includes('本机领域'));
+
+  server = { ...initial(), domains: ['另一客户端', '其他'], version: 'v2' };
+  await c.load(); c.restoreDraft(draft);
+  assert.equal(c.conflict, true);
+  assert.ok(c.taxonomy.domains.includes('本机领域'));
+  assert.equal(await c.save(), false);
+  assert.equal(writes, 0);
+});
+
 test('taxonomy network failure retains edits and retry uses the same base version', async () => {
   let calls = 0;
   const c = await controller({ get: async () => ({ taxonomy: { ...initial(), version: 'base' }, catalog: [] }),

@@ -18,7 +18,7 @@ function subject() {
   Curve:{EaseIn:0},animateTo:(options,action)=>{action();finishes.push(options.onFinish);}});
  const page=new module.exports.Page();Object.assign(page,{workspaceBreakpoint:'xl',reading:{logsReadingMode:false},
   sourceMode:false,splitMode:false,activeOutlineId:'',activeOutlineIndex:0,lifecycle:1,
-  session:{selectedDate:'2026-01-15',text:'### First\nbody\n### Second\nbody'},documents:{dayLoadRevision:1},previewText:'### First\nbody\n### Second\nbody',
+  sidebar:{navigationOpen:false},session:{selectedDate:'2026-01-15',text:'### First\nbody\n### Second\nbody'},documents:{dayLoadRevision:1},previewText:'### First\nbody\n### Second\nbody',
   outlineMotionRevision:0,outlineRequestRevision:0,readerReady:true,
   favoritesData:{load(){}},getUIContext:()=>({}),
   desktopOutlineScroller:{scrollToIndex:(...args)=>scrolled.push(args)}});

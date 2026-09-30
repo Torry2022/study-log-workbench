@@ -7,6 +7,7 @@ import { WorkspaceBreakpoint } from '../../common/AppConfig';
 import { workspaceSerifFamily } from '../../common/ui/Typography';
 import { TaxonomyCatalogItem, TaxonomySuggestion } from './TaxonomyModels';
 import { TaxonomyController } from './TaxonomyController';
+import { taxonomyDraftStore } from './TaxonomyDraftStore';
 
 @Component
 export struct TaxonomyManagerPage {
@@ -15,18 +16,43 @@ export struct TaxonomyManagerPage {
   onSaved: () => void = () => {};
   onStateChange: (dirty: boolean, busy: boolean) => void = () => {};
   private alive: boolean = false;
+  private draftNamespace: string = '';
   @State private data: TaxonomyController = new TaxonomyController(apiClient, () => this.reportState());
   @State private query: string = '';
   @State private monthFilter: string = 'all';
   @State private domainFilter: string = 'all';
   @State private statusFilter: string = 'all';
   @State private domainDraft: string = '';
-  aboutToAppear(): void { this.alive = true; this.data.load(); }
-  aboutToDisappear(): void { this.alive = false; this.data.dispose(); }
+  aboutToAppear(): void {
+    this.alive = true;
+    this.draftNamespace = activeInstance.namespace;
+    this.data.load().then((loaded: boolean) => {
+      if (!loaded || !this.alive || activeInstance.namespace !== this.draftNamespace) return;
+      const draft = taxonomyDraftStore.load(this.draftNamespace);
+      if (draft) { this.data.restoreDraft(draft); this.domainDraft = draft.domainDraft; this.reportState(); }
+    });
+  }
+  aboutToDisappear(): void {
+    if (!apiClient.getToken() && this.draftNamespace && activeInstance.namespace === this.draftNamespace &&
+      (this.data.hasChanges() || this.data.hasPendingSuggestions() || this.domainDraft.trim().length > 0)) {
+      try {
+        taxonomyDraftStore.save({ namespace: this.draftNamespace, taxonomy: this.data.taxonomy,
+          baseVersion: this.data.savedTaxonomy.version, domainDraft: this.domainDraft,
+          suggestions: this.data.suggestions });
+      } catch (_) { this.showToast('分类草稿暂存失败，请及时复制当前内容', 'error'); }
+    }
+    this.alive = false;
+    this.data.dispose();
+  }
 
   private reportState(): void {
     if (this.alive) this.onStateChange(this.data.hasChanges() || this.data.hasPendingSuggestions() ||
       this.domainDraft.trim().length > 0, this.data.busy || this.data.suggestionBusy);
+  }
+
+  private clearDraft(): void {
+    try { taxonomyDraftStore.clear(this.draftNamespace); }
+    catch (_) { this.showToast('本机分类草稿清理失败', 'error'); }
   }
 
   private requestBack(): void { this.onBack(); }
@@ -37,7 +63,11 @@ export struct TaxonomyManagerPage {
       secondaryButton: { value: '放弃并重新读取', fontColor: $r('app.color.error'), action: () => {
         if (!this.alive || this.data.busy) return;
         this.data.load().then((loaded: boolean) => {
-          if (loaded && this.alive) { this.domainDraft = ''; this.reportState(); }
+          if (loaded && this.alive) {
+            this.domainDraft = '';
+            this.clearDraft();
+            this.reportState();
+          }
         });
       } }
     });
@@ -110,7 +140,10 @@ export struct TaxonomyManagerPage {
   private async save(): Promise<void> {
     const saved = await this.data.save();
     if (!this.alive) return;
-    if (saved) { this.onSaved(); this.showToast('领域映射已保存', 'success'); }
+    if (saved) {
+      this.clearDraft();
+      this.onSaved(); this.showToast('领域映射已保存', 'success');
+    }
   }
 
   private requestSuggestions(): void {

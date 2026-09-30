@@ -1,7 +1,23 @@
+import { LogSearchResult } from '../features/logs/LogSearchPanel';
+import { DaySummary, LogSourceTarget } from '../features/logs/LogModels';
+import { FavoriteHeading } from '../features/favorites/FavoriteModels';
+import { StatsEntry } from '../features/stats/StatsModels';
 import { RagSessionSummary } from '../features/qa/QaModels';
 
 export interface WorkspaceNavigationView {
+  selectLogMonth: (month: string) => void;
+  selectLogDay: (date: string) => void;
+  selectLogHeading: (day: DaySummary, heading: string, index: number) => void;
+  selectLogDate: (date: string) => void;
+  createLog: (date: string) => void;
+  retryLogNavigation: () => void;
+  closeLogMenu: () => void;
+  workspaceAreaChanged: (area: Area) => void;
+
+  openLogSource: (target: LogSourceTarget) => Promise<void>;
+  currentLogDate: () => string;
   hasLog: () => boolean;
+  isLogOutlineOpen: () => boolean;
   isReading: () => boolean;
   canRead: (active: boolean) => boolean;
   beforeReading: () => void;
@@ -20,6 +36,18 @@ export interface WorkspaceNavigationView {
 
 // The mounted log view registers its feature callbacks; Index owns module decisions and transitions.
 export class WorkspaceNavigationCommands {
+  openSearch: () => void = () => {};
+  settings: () => void = () => {};
+  about: () => void = () => {};
+  help: () => void = () => {};
+  theme: (value: string) => void = () => {};
+  changeServer: () => void = () => {};
+  refreshNavigation: () => Promise<void> = async () => {};
+  searchResult: (result: LogSearchResult) => void = () => {};
+  citation: (date: string, heading: string, index: number) => void = () => {};
+  noteLink: (date: string, heading: string) => void = () => {};
+  favorite: (favorite: FavoriteHeading) => void = () => {};
+  statsEntry: (entry: StatsEntry) => void = () => {};
   request: (index: number, discardNotes: boolean, discardQa: boolean, afterSwitch: () => void,
     targetDate: string) => void = () => {};
   notesLeave: (action: () => void) => void = () => {};
@@ -34,6 +62,7 @@ export class WorkspaceNavigationCommands {
   readingViewport: (area: Area) => void = () => {};
   readingReady: () => void = () => {};
   readingOrigin: (area: Area) => void = () => {};
+  navigation: (open: boolean) => void = () => {};
   sidebarCollapsed: (collapsed: boolean, section: number) => void = () => {};
   editorCommand: (command: string) => void = () => {};
   focusRegion: (reverse: boolean) => void = () => {};

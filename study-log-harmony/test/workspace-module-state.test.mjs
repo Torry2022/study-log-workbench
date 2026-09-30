@@ -7,8 +7,8 @@ import ts from 'typescript';
 const base = '../entry/src/main/ets/';
 const sources = await Promise.all(['app/WorkspaceModuleState.ets', 'features/qa/QaNavigationController.ets',
   'features/favorites/FavoritesController.ets', 'pages/Index.ets', 'app/WorkspaceSearchController.ets',
-  'features/logs/LogSearchRepository.ets', 'features/logs/SearchHistoryStore.ets', 'features/logs/LogNavigationController.ets'].map(path => readFile(new URL(base + path, import.meta.url), 'utf8')));
-const rootMethods = ['resetSidebarMotion', 'resetReadingMode', 'clearModuleNavigation', 'createQaNavigation', 'createWorkspaceSearch', 'invalidateModules', 'resetModules', 'connectedTo', 'changeServer'].map(name => {
+  'features/logs/LogSearchRepository.ets', 'features/logs/SearchHistoryStore.ets', 'features/logs/LogNavigationController.ets', 'features/logs/LogSession.ets'].map(path => readFile(new URL(base + path, import.meta.url), 'utf8')));
+const rootMethods = ['cancelNavigationPan', 'resetNavigationDrawer', 'resetSidebarMotion', 'resetReadingMode', 'clearModuleNavigation', 'createQaNavigation', 'createWorkspaceSearch', 'invalidateModules', 'resetModules', 'connectedTo', 'changeServer'].map(name => {
   const start = sources[3].search(new RegExp(`^  private (?:async )?${name}\\(`, 'm'));
   assert.ok(start >= 0, name);
   const end = sources[3].slice(start + 1).search(/^  (?:private |aboutTo|build\()/m);
@@ -21,20 +21,20 @@ const code = ts.transpileModule([...sources.slice(0, 3), ...sources.slice(4)].ma
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS }
 }).outputText;
 
-function subject(api = {}) {
+function subject(api = {}, history = {}) {
   const module = { exports: {} };
   const instance = { revision: 1, namespace: 'synthetic-a', activate() { this.revision++; this.namespace = ''; } };
-  const transport = { setToken() {}, ...api };
+  const transport = { setToken() {}, get: async () => ({ favorites: [], groups: [] }), ...api };
   runInNewContext(code, { module, exports: module.exports, apiClient: transport, activeInstance: instance,
     LoadingHintPlacement: class {}, util: { generateRandomUUID: () => 'synthetic-mutation' },
     logDraftStore: { initialize: async () => {}, load: () => undefined },
-    appFeedback: { show() {} } });
+    appFeedback: { show() {} }, preferences: { getPreferences: async (_context, options) => ({ get: async () => history[options.name] || [] }) } });
   const root = new module.exports.Root();
   Object.assign(root, { connected: true, selectedModule: 3, moduleSwitchRevision: 0, sidebar: {sidebarMotionRevision:0}, reading: {}, readingTransition: {clear() {}}, workspaceTransition: {clear() {}},
-    modules: new module.exports.WorkspaceModuleState(),
+    logSession: new module.exports.LogSession(), modules: new module.exports.WorkspaceModuleState(),
     favoritesData: new module.exports.FavoritesController(transport),
     preferencesReady: Promise.resolve(), drafts: new Map(), rememberSearch: false, searchOpen: false,
-    getUIContext: () => ({ getHostContext: () => ({}) }) });
+    getUIContext: () => ({ getHostContext: () => ({ getApplicationContext: () => ({}) }) }) });
   root.qaNavigation = root.createQaNavigation();
   root.search = root.createWorkspaceSearch();
   root.logNavigation = new module.exports.LogNavigationController();
@@ -43,6 +43,7 @@ function subject(api = {}) {
 
 test('successful connection resets module filters, drafts and controllers as one workspace lifetime', async () => {
   const { root } = subject();
+  const oldLogSession = root.logSession; oldLogSession.selectedDate = '2026-01-15'; oldLogSession.text = 'old instance draft';
   const old = root.modules, oldFavorites = root.favoritesData, oldQa = root.qaNavigation;
   old.notesDirty = true;
   old.noteYearFilter = '2026';
@@ -50,8 +51,12 @@ test('successful connection resets module filters, drafts and controllers as one
   old.qaSessionId = 'old-session';
   old.statsMonth = '2026-02';
   old.taxonomyOpen = true;
+  root.navigationMonthsExpanded = true; root.navigationDayQuery = 'old filter';
+  root.newLogDate = '2026-01-01'; root.calendarMode = 'jump'; root.calendarOpen = true;
   await root.connectedTo('', {});
   assert.notEqual(root.modules, old);
+  assert.notEqual(root.logSession, oldLogSession);
+  assert.equal(root.logSession.selectedDate, '');
   assert.notEqual(root.favoritesData, oldFavorites);
   assert.notEqual(root.qaNavigation, oldQa);
   assert.equal(oldFavorites.generation(), 1);
@@ -63,6 +68,8 @@ test('successful connection resets module filters, drafts and controllers as one
   assert.equal(root.modules.statsMonth, '');
   assert.equal(root.modules.taxonomyOpen, false);
   assert.equal(root.selectedModule, 0);
+  assert.equal(root.navigationMonthsExpanded, false); assert.equal(root.navigationDayQuery, '');
+  assert.equal(root.newLogDate, ''); assert.equal(root.calendarMode, 'create'); assert.equal(root.calendarOpen, false);
 });
 
 test('a superseded connection cannot reset the current workspace modules', async () => {
@@ -124,4 +131,30 @@ test('late search response after changing instance cannot populate either worksp
   release({ results: [{ date: 'old-instance' }] }); await request;
   assert.equal(old.searchResults.length, 0); assert.equal(root.search.searchResults.length, 0);
   assert.equal(root.searchOpen, false); assert.equal(root.search.searchQuery, '');
+});
+
+
+test('connected workspace initializes favorites and scoped search history without mounting the log page', async () => {
+ const requests=[];
+ const {root}=subject({get:async path=>{requests.push(path);return {favorites:[],groups:[]};}},
+  {study_log_search_synthetic:[], 'study_log_search_synthetic-a':['current instance']});
+ await root.connectedTo('',{});
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.deepEqual(requests,['/favorites']);
+ assert.deepEqual(Array.from(root.search.searchHistory),['current instance']);
+ assert.equal(root.favoritesData.loading,false);
+});
+
+test('workspace exit rejects initial favorites response before a replacement connection', async () => {
+ let release;
+ const {root}=subject({get:()=>new Promise(resolve=>release=resolve)});
+ await root.connectedTo('',{});
+ const old=root.favoritesData;
+ assert.equal(old.loading,true);
+ root.changeServer();root.resetModules();
+ release({favorites:[{id:'old',month:'2026-01'}],groups:[]});
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(old.favorites.length,0);
+ assert.equal(root.favoritesData.favorites.length,0);
+ assert.equal(root.connected,false);
 });

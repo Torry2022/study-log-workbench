@@ -72,7 +72,7 @@ export struct SettingsPanel {
         Row() {
           Text('设置').fontFamily(workspaceSerifFamily(this.breakpoint)).fontSize(28)
             .fontColor($r('app.color.ink')).layoutWeight(1)
-          ToolbarAction({ label: '关闭设置', showLabel: false, useSymbol: true,
+          ToolbarAction({ label: '关闭设置', focusKey: 'settings_close_focus', showLabel: false, useSymbol: true,
             symbol: $r('sys.symbol.xmark'), controlHeight: 36, iconWidth: 36,
             onAction: this.onClose }).id('settings_close')
         }.width('100%').padding(16).flexShrink(0).border({ width: { bottom: 1 }, color: $r('app.color.hairline') })
@@ -128,6 +128,6 @@ export struct SettingsPanel {
       if (event.type === KeyType.Down && event.keyCode === KeyCode.KEYCODE_ESCAPE) {
         event.stopPropagation(); this.onClose();
       }
-    }).onAppear(() => setTimeout(() => focusControl.requestFocus('settings_close'), 20))
+    }).onAppear(() => setTimeout(() => focusControl.requestFocus('settings_close_focus'), 20))
   }
 }

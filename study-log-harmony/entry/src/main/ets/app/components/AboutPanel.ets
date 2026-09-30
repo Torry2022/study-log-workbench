@@ -67,7 +67,7 @@ export struct AboutPanel {
       Text(this.licensesOpen ? '开源许可' : '关于')
         .fontFamily(workspaceSerifFamily(this.breakpoint)).fontSize(28)
         .fontColor($r('app.color.ink')).layoutWeight(1)
-      ToolbarAction({ label: '关闭关于', showLabel: false, useSymbol: true,
+      ToolbarAction({ label: '关闭关于', focusKey: 'about_close_focus', showLabel: false, useSymbol: true,
         symbol: $r('sys.symbol.xmark'), controlHeight: 36, iconWidth: 36,
         onAction: this.onClose }).id('about_close_button')
     }.width('100%').padding(20)
@@ -93,7 +93,7 @@ export struct AboutPanel {
             Row() {
               ToolbarAction({ label: '返回关于', showIcon: false, onAction: () => {
                 this.licensesOpen = false;
-                setTimeout(() => focusControl.requestFocus('about_licenses_button'), 20);
+                setTimeout(() => focusControl.requestFocus('about_licenses_focus'), 20);
               } }).id('about_back_button')
             }.width('100%').justifyContent(FlexAlign.End)
           }.width('100%').layoutWeight(1).padding(20)
@@ -104,7 +104,7 @@ export struct AboutPanel {
             Text(this.version).fontSize(13).fontColor($r('app.color.body'))
               .copyOption(CopyOptions.LocalDevice).margin({ top: 8 }).id('about_version')
             Row() {
-              ToolbarAction({ label: '开源许可', showIcon: false, onAction: () => {
+              ToolbarAction({ label: '开源许可', focusKey: 'about_licenses_focus', showIcon: false, onAction: () => {
                 this.licensesOpen = true;
                 this.loadLicense(0);
                 setTimeout(() => focusControl.requestFocus('about_license_select'), 20);
@@ -124,6 +124,6 @@ export struct AboutPanel {
         event.stopPropagation();
         this.onClose();
       })
-      .onAppear(() => setTimeout(() => focusControl.requestFocus('about_close_button'), 20))
+      .onAppear(() => setTimeout(() => focusControl.requestFocus('about_close_focus'), 20))
   }
 }

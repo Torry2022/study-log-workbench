@@ -26,7 +26,8 @@ export struct LogSearchPanel {
   @Prop submitted: boolean = false;
   @Prop error: string = '';
   @Prop results: LogSearchResult[] = [];
-  @Prop history: string[] = [];
+  @Prop searchHistory: string[] = [];
+  @Prop showHistory: boolean = false;
   onClose: () => void = () => {};
   onQuery: (query: string) => void = () => {};
   onSearch: () => void = () => {};
@@ -72,8 +73,8 @@ export struct LogSearchPanel {
           }, onClear: () => { this.activeIndex = -1; this.onQuery(''); },
           onSearchKey: (event: KeyEvent) => this.searchKey(event) }).onAppear(() => this.focusRevision++)
       }.width('100%').padding({ left: 14, right: 14, top: 12, bottom: 8 })
-      if (this.history.length > 0) {
-        Column() { SearchHistoryList({ searchHistory: this.history, listHeight: 400,
+      if (this.showHistory) {
+        Column() { SearchHistoryList({ searchHistory: this.searchHistory, listHeight: 400,
           onSelect: this.onHistorySelect, onRemove: this.onHistoryRemove,
           onClear: this.onHistoryClear }) }.width('100%').padding({ left: 14, right: 14 }).layoutWeight(1)
       } else if (this.error) {

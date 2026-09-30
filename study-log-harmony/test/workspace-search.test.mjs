@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
-const source = await readFile(new URL('../entry/src/main/ets/features/logs/LogsReaderPage.ets', import.meta.url), 'utf8');
+const source = await readFile(new URL('../entry/src/main/ets/app/components/DesktopWorkspaceTopBar.ets', import.meta.url), 'utf8');
 const controller = (await readFile(new URL('../entry/src/main/ets/app/WorkspaceSearchController.ets', import.meta.url), 'utf8')).replace(/^import .*;\r?\n/gm, '').replace('@Observed', '');
 const methods = ['changeSearch', 'closeSearch', 'showSearchHistory', 'updateSearchHistory', 'selectSearchHistory', 'searchLogs', 'handleSearchKey'].map(name => {
   const start = source.search(new RegExp(`^  private (?:async )?${name}\\(`, 'm'));

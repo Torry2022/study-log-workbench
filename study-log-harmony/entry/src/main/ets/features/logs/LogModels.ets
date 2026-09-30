@@ -35,3 +35,12 @@ export interface DeleteDayRequest {
   date: string;
   baseVersion: string;
 }
+
+export interface LogSourceTarget {
+  query?: string;
+  date: string;
+  heading: string;
+  headingIndex: number;
+  headingId: string;
+  kind: string;
+}

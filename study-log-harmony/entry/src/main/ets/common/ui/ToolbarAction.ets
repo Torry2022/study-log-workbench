@@ -7,6 +7,7 @@ import { WORKSPACE_TIPS } from './WorkspaceTips';
 export struct ToolbarAction {
   @State private hovered: boolean = false;
   @Prop label: string = '';
+  @Prop focusKey: string = '';
   @Prop reservedLabel: string = '';
   @Prop tooltip: string = '';
   @Prop disabledReason: string = '';
@@ -64,6 +65,7 @@ export struct ToolbarAction {
       this.segmented ? Color.Transparent : $r('app.color.canvas'), this.hovered, this.active))
     .onHover((hover: boolean) => animateHover(this.getUIContext(), () => this.hovered = hover))
     .enabled(this.available && !this.busy)
+    .key(this.focusKey)
     .accessibilityText(this.label)
     .onClick(this.onAction)
     }

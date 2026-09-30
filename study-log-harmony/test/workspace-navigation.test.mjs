@@ -20,8 +20,8 @@ function extract(text, names) {
 }
 const methods = extract(source, ['bindWorkspaceNavigation','isLogDocumentReady','logDocumentReady','logNavigationFailed',
  'selectedTab','selectTab','requestModule','confirmNotesLeave','confirmQaLeave','confirmTaxonomyLeave',
- 'openTaxonomy','switchQaSession','confirmQaDelete','selectSearchResult','coverLogDocument','openNoteLink','openQaCitation','openFavorite','openStatsEntry']);
-const rootMethods = extract(rootSource, ['resetSidebarMotion','resetReadingMode','registerWorkspaceNavigation','clearModuleNavigation','requestModule','switchModule',
+ 'openTaxonomy','coverLogDocument','openLogSource']);
+const rootMethods = extract(rootSource, ['openCurrentSearch','selectSearchResult','openLogSource','openNoteLink','openQaCitation','openFavorite','openStatsEntry','cancelNavigationPan', 'resetNavigationDrawer', 'resetSidebarMotion','resetReadingMode','registerWorkspaceNavigation','clearModuleNavigation','requestModule','switchModule',
  'openTaxonomy','switchQaSession','confirmQaDelete','revealModule','logDocumentReady','logNavigationFailed','confirmTaxonomyLeave','confirmNotesLeave','confirmQaLeave']);
 
 function workspace(tab) {
@@ -68,13 +68,13 @@ export class Workspace { ${methods} }`, {
 test('note source navigation preserves its module and draft until leave is accepted', () => {
   const { page, dialogs, targets } = workspace(1);
   page.modules.notesDirty = true;
-  page.openNoteLink('2026-01-15', 'sample');
+  page.navigationCommands.noteLink('2026-01-15', 'sample');
   assert.equal(page.selectedModule, 1);
   assert.equal(targets.length, 0);
   dialogs[0].primaryButton.action();
   assert.equal(page.selectedModule, 1);
   assert.equal(page.modules.notesDirty, true);
-  page.openNoteLink('2026-01-15', 'sample');
+  page.navigationCommands.noteLink('2026-01-15', 'sample');
   dialogs[1].secondaryButton.action();
   assert.equal(page.selectedModule, 0);
   assert.equal(page.modules.noteDiscardRevision, 1);
@@ -85,16 +85,16 @@ test('note source navigation preserves its module and draft until leave is accep
 test('citation navigation is blocked while streaming and protects pending answers', () => {
   const { page, dialogs, targets } = workspace(3);
   page.modules.qaBusy = true;
-  page.openQaCitation('2026-01-15', 'sample', 2);
+  page.navigationCommands.citation('2026-01-15', 'sample', 2);
   assert.equal(page.selectedModule, 3);
   assert.equal(targets.length, 0);
   page.modules.qaBusy = false;
   page.modules.qaPending = true;
-  page.openQaCitation('2026-01-15', 'sample', 2);
+  page.navigationCommands.citation('2026-01-15', 'sample', 2);
   dialogs[0].primaryButton.action();
   assert.equal(page.selectedModule, 3);
   assert.equal(page.modules.qaPending, true);
-  page.openQaCitation('2026-01-15', 'sample', 2);
+  page.navigationCommands.citation('2026-01-15', 'sample', 2);
   dialogs[1].secondaryButton.action();
   assert.equal(page.selectedModule, 0);
   assert.equal(page.modules.qaDiscardRevision, 1);
@@ -104,8 +104,8 @@ test('citation navigation is blocked while streaming and protects pending answer
 test('favorite and statistics sources use the same module transition as navigation', () => {
   for (const tab of [2, 4]) {
     const { page, frames, targets } = workspace(tab);
-    if (tab === 2) page.openFavorite({ date: '2026-01-15', exists: true, headingText: 'sample', headingId: 'h2' });
-    else page.openStatsEntry({ date: '2026-01-15', rawHeading: 'sample', headingIndex: 2 });
+    if (tab === 2) page.navigationCommands.favorite({ date: '2026-01-15', exists: true, headingText: 'sample', headingId: 'h2' });
+    else page.navigationCommands.statsEntry({ date: '2026-01-15', rawHeading: 'sample', headingIndex: 2 });
     assert.equal(page.selectedModule, 0);
     assert.equal(page.outgoingTab, tab);
     assert.equal(page.moduleReveal, 0);
@@ -182,16 +182,16 @@ test('taxonomy leave protects the workspace-owned draft and busy state before sw
 
 
 test('global search leaves non-log modules through the same unsaved-draft guard', () => {
-  const { page, dialogs, targets } = workspace(1);
+  const { root, page, dialogs, targets } = workspace(1);
   page.modules.notesDirty = true;
-  page.search = { searchQuery: 'sample' };
-  page.openInternalLink = date => targets.push(date);
-  page.selectSearchResult({ date: '2026-01-15', matches: [], headings: [] });
+  page.search = { searchQuery: 'sample', dismissSearchResults() {} };
+  root.search = page.search;
+  page.navigationCommands.searchResult({ date: '2026-01-15', matches: [], headings: [] });
   assert.equal(targets.length, 0, 'search must not navigate behind the unsaved note');
   assert.equal(dialogs.length, 1);
   dialogs[0].primaryButton.action();
   assert.equal(page.selectedModule, 1);
-  page.selectSearchResult({ date: '2026-01-15', matches: [], headings: [] });
+  page.navigationCommands.searchResult({ date: '2026-01-15', matches: [], headings: [] });
   dialogs[1].secondaryButton.action();
   assert.equal(page.selectedModule, 0);
   assert.deepEqual(targets, ['2026-01-15']);
@@ -295,15 +295,15 @@ test('unmount invalidates pending capture and resets all application-owned trans
 
 test('QA session leave and delayed focus use the application binding and ignore an obsolete prompt', () => {
  const {root,page,dialogs,frames}=workspace(3);page.modules.qaDirty=true;
- page.switchQaSession('history',true);dialogs[0].primaryButton.action();assert.equal(page.modules.qaSessionId,'');
- page.switchQaSession('history',true);dialogs[1].secondaryButton.action();assert.equal(page.modules.qaSessionId,'history');
+ page.navigationCommands.qaSession('history',true);dialogs[0].primaryButton.action();assert.equal(page.modules.qaSessionId,'');
+ page.navigationCommands.qaSession('history',true);dialogs[1].secondaryButton.action();assert.equal(page.modules.qaSessionId,'history');
  const focus=page.modules.qaQuestionFocusRevision;page.bindWorkspaceNavigation();frames[0]();assert.equal(page.modules.qaQuestionFocusRevision,focus);
- page.modules.qaDirty=true;page.switchQaSession('other');page.bindWorkspaceNavigation();dialogs[2].secondaryButton.action();assert.equal(root.modules.qaSessionId,'history');
+ page.modules.qaDirty=true;page.navigationCommands.qaSession('other');page.bindWorkspaceNavigation();dialogs[2].secondaryButton.action();assert.equal(root.modules.qaSessionId,'history');
 });
 test('QA deletion confirmed after workspace replacement cannot issue a request against the new instance', () => {
  const {root,page,dialogs}=workspace(3);let deleted=0;root.qaNavigation.deleteQaSession=()=>deleted++;
- page.confirmQaDelete({id:'old',title:'synthetic'});assert.equal(dialogs.length,1);page.bindWorkspaceNavigation();dialogs[0].secondaryButton.action();assert.equal(deleted,0);
- page.confirmQaDelete({id:'current',title:'synthetic'});dialogs[1].secondaryButton.action();assert.equal(deleted,1);
+ page.navigationCommands.qaDelete({id:'old',title:'synthetic'});assert.equal(dialogs.length,1);page.bindWorkspaceNavigation();dialogs[0].secondaryButton.action();assert.equal(deleted,0);
+ page.navigationCommands.qaDelete({id:'current',title:'synthetic'});dialogs[1].secondaryButton.action();assert.equal(deleted,1);
 });
 
 
@@ -326,4 +326,121 @@ export class Qa { ${extract(qa, ['focusQuestion', 'blurQuestion'])} }`, {
  page.focusQuestion(); page.blurQuestion();
  assert.equal(mode, 1, 'leaving composer must not restore OFFSET for the next input');
  assert.equal(page.questionFocused, false);
+});
+
+test('source commands cannot navigate after their view is replaced or disposed', () => {
+  const {root, page, targets} = workspace(2);
+  const stale = page.navigationCommands;
+  page.bindWorkspaceNavigation();
+  stale.citation('2026-01-15', 'old citation', 1);
+  stale.noteLink('2026-01-15', 'old note');
+  stale.favorite({ date: '2026-01-15', exists: false, id: 'old' });
+  stale.statsEntry({ date: '2026-01-15', rawHeading: 'old stats', headingIndex: 1 });
+  assert.deepEqual(targets, []);
+  assert.equal(root.selectedModule, 2);
+  page.navigationCommands.dispose();
+  page.navigationCommands.noteLink('2026-01-15', 'disposed');
+  assert.deepEqual(targets, []);
+});
+
+test('source leave confirmation cannot open the previous instance after rebinding', () => {
+  const { page, dialogs, targets } = workspace(1);
+  page.modules.notesDirty = true;
+  page.navigationCommands.noteLink('2026-01-15', 'old instance');
+  assert.equal(dialogs.length, 1);
+  page.bindWorkspaceNavigation();
+  dialogs[0].secondaryButton.action();
+  assert.deepEqual(targets, []);
+  assert.equal(page.selectedModule, 1);
+  assert.equal(page.modules.notesDirty, true);
+});
+
+test('favorites retain resolved and missing heading identity while statistics retain raw headings', () => {
+  for (const exists of [true, false]) {
+    const { page, targets } = workspace(2);
+    page.navigationCommands.favorite({ date:'2026-01-15', exists, id:'favorite-id',
+      headingText:'same title', headingId:'old-heading', resolvedHeadingId:'resolved-heading' });
+    assert.deepEqual(targets, ['2026-01-15']);
+    assert.equal(page.targetHeading, exists ? 'same title' : '');
+    assert.equal(page.targetHeadingId, exists ? 'resolved-heading' : 'missing-favorite-id');
+    assert.equal(page.targetHeadingIndex, -1);
+    assert.equal(page.targetKind, 'favorite');
+  }
+  const { page } = workspace(4);
+  page.navigationCommands.statsEntry({ date:'2026-01-15', rawHeading:'1. **Raw title**', headingIndex:2 });
+  assert.equal(page.targetHeading, '1. **Raw title**');
+  assert.equal(page.targetHeadingIndex, 2);
+  assert.equal(page.targetKind, 'stats');
+});
+
+test('search within the current log preserves its draft while another date requires confirmation', () => {
+ const {root,page,targets}=workspace(0);const confirmations=[];
+ root.search={searchQuery:'  sample  ',dismissSearchResults(){}};root.searchOpen=true;
+ page.session.selectedDate='2026-01-15';page.confirmDiscard=action=>confirmations.push(action);
+ page.navigationCommands.searchResult({date:'2026-01-15',matches:['### 1. sample'],headings:['sample']});
+ assert.equal(confirmations.length,0);assert.equal(root.searchOpen,false);
+ assert.equal(page.targetHeading,'sample');assert.equal(page.targetQuery,'sample');assert.equal(page.targetKind,'search');
+ root.searchOpen=true;
+ page.navigationCommands.searchResult({date:'2026-02-05',matches:[],headings:[]});
+ assert.equal(confirmations.length,1);assert.deepEqual(targets,['2026-01-15']);assert.equal(root.searchOpen,true);
+ confirmations[0]();assert.deepEqual(targets,['2026-01-15','2026-02-05']);assert.equal(root.searchOpen,false);
+});
+
+test('search confirmation and commands cannot act on a replacement view', () => {
+ const {root,page,targets}=workspace(0);const confirmations=[];
+ root.search={searchQuery:'sample',dismissSearchResults(){}};root.searchOpen=true;
+ page.session.selectedDate='2026-01-15';page.confirmDiscard=action=>confirmations.push(action);
+ const old=page.navigationCommands;
+ old.searchResult({date:'2026-02-05',matches:[],headings:[]});
+ page.bindWorkspaceNavigation();confirmations[0]();
+ old.searchResult({date:'2026-02-05',matches:[],headings:[]});
+ assert.deepEqual(targets,[]);assert.equal(root.searchOpen,true);
+ page.navigationCommands.searchResult({date:'invalid',matches:[],headings:[]});
+ assert.equal(confirmations.length,1);assert.deepEqual(targets,[]);
+});
+
+
+test('workspace actions are bound to the mounted view and server leave preserves all confirmations', () => {
+ const {root,page,dialogs}=workspace(3);const calls=[];const logConfirm=[];
+ root.openHelp=()=>calls.push('help');root.setTheme=value=>calls.push(value);root.changeServer=()=>calls.push('server');
+ page.confirmDiscard=action=>logConfirm.push(action);
+ const commands=page.navigationCommands;
+ assert.equal(root.workspaceCommands, commands);
+ commands.settings();commands.about();commands.help();commands.theme('dark');
+ assert.equal(root.settingsOpen,true);assert.equal(root.aboutOpen,true);assert.deepEqual(calls,['help','dark']);
+ page.modules.qaDirty=true;page.modules.notesDirty=true;commands.changeServer();
+ assert.equal(dialogs.length,1);assert.equal(logConfirm.length,0);
+ dialogs[0].secondaryButton.action();assert.equal(dialogs.length,2);assert.equal(logConfirm.length,0);
+ dialogs[1].secondaryButton.action();assert.equal(logConfirm.length,1);assert.deepEqual(calls,['help','dark']);
+ page.bindWorkspaceNavigation();logConfirm[0]();commands.help();commands.theme('light');commands.changeServer();
+ assert.deepEqual(calls,['help','dark']);
+ root.settingsOpen=false;root.aboutOpen=false;commands.settings();commands.about();
+ assert.equal(root.settingsOpen,false);assert.equal(root.aboutOpen,false);
+ page.navigationCommands.changeServer();assert.equal(logConfirm.length,2);logConfirm[1]();assert.deepEqual(calls,['help','dark','server']);
+});
+
+test('delayed log and history search focus cannot target a replacement workspace', () => {
+ for(const tab of [0,3]){
+  const {root,page,frames}=workspace(tab);
+  root.search={changeLogSearchQuery(){}};root.searchFocusRevision=0;root.modules.qaSearchRevision=0;
+  root.openNavigation=()=>root.sidebar.navigationOpen=true;
+  page.navigationCommands.openSearch();assert.equal(frames.length,1);
+  frames.shift()();assert.equal(tab===0?root.searchFocusRevision:root.modules.qaSearchRevision,1);
+  page.navigationCommands.openSearch();page.bindWorkspaceNavigation();
+  const before=tab===0?root.searchFocusRevision:root.modules.qaSearchRevision;
+  frames.shift()();assert.equal(tab===0?root.searchFocusRevision:root.modules.qaSearchRevision,before);
+ }
+});
+
+
+test('candidate busy gate blocks server leave before log confirmation and permits it after release', () => {
+ const {root,page,dialogs}=workspace(1);const calls=[];
+ root.changeServer=()=>calls.push('server');
+ page.confirmDiscard=action=>{calls.push('log-confirm');action();};
+ page.modules.notesBusy=true;
+ page.navigationCommands.changeServer();
+ assert.deepEqual(calls,[]);assert.equal(dialogs.length,0);
+ page.modules.notesBusy=false;
+ page.navigationCommands.changeServer();
+ assert.deepEqual(calls,['log-confirm','server']);
 });

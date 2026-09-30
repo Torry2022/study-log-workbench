@@ -32,6 +32,7 @@ export struct QaPage {
   onBeforeSessionChange: () => Promise<void> = async () => {};
   onLoadingHintChange: (placement: LoadingHintPlacement) => void = () => {};
   onSessionReady: () => void = () => {};
+  onWorkspaceKey: (event: KeyEvent) => boolean = () => false;
 
   private workspaceLayoutChanged(): void {
     if (this.data.messages.length === 0) this.onWorkspaceLayoutReady();
@@ -283,6 +284,7 @@ export struct QaPage {
               .padding({ bottom: this.composerHeight })
             } else {
               MarkdownReader({
+                onWorkspaceKey: (event: KeyEvent) => this.onWorkspaceKey(event),
                 viewportRequestRevision: this.workspaceLayoutRevision,
                 onViewportReady: this.onWorkspaceLayoutReady,
                 onRenderReady: this.onWorkspaceLayoutReady,

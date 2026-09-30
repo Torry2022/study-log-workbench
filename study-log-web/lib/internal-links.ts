@@ -5,6 +5,7 @@ export interface InternalLinkCandidate {
   kind: "day" | "heading";
   date: string;
   heading: string | null;
+  headingId?: string;
   preview: string;
 }
 
@@ -27,10 +28,14 @@ export function buildInternalLinkMarkup(candidate: InternalLinkCandidate, alias 
   if (candidate.heading && /[#|\r\n]|\]\]/.test(candidate.heading)) {
     throw new Error("目标标题包含内部链接不支持的字符");
   }
-  const target = candidate.heading ? `${candidate.date}#${candidate.heading}` : candidate.date;
+  if (candidate.headingId && (!candidate.heading || !/^[\w\u3400-\u9fff-]+$/u.test(candidate.headingId))) {
+    throw new Error("目标小节标识无效");
+  }
+  const target = candidate.heading ? `${candidate.date}#${candidate.headingId || candidate.heading}` : candidate.date;
   const normalizedAlias = normalizeInternalLinkAlias(alias);
   if (/[|]|\]\]/.test(normalizedAlias)) throw new Error("显示文字不能包含 | 或 ]]");
   const defaultLabel = candidate.heading || candidate.date;
-  const aliasPart = normalizedAlias && normalizedAlias !== defaultLabel ? `|${normalizedAlias}` : "";
+  const label = normalizedAlias || defaultLabel;
+  const aliasPart = label !== (candidate.headingId || defaultLabel) ? `|${label}` : "";
   return `[[${target}${aliasPart}]]`;
 }

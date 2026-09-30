@@ -1454,7 +1454,7 @@ export struct LogsReaderPage {
     await this.loadTargetDate(date, () => {
       this.targetHeading = heading;
       this.targetHeadingIndex = -1;
-      this.targetHeadingId = '';
+      this.targetHeadingId = heading;
       this.targetKind = kind;
       this.targetQuery = query;
       this.targetRevision++;

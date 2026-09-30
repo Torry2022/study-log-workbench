@@ -15,13 +15,18 @@ function cleanInternalLinkText(markdown: string): string {
     .trim();
 }
 
-function getInternalLinkSections(markdown: string): Array<{ heading: string; body: string }> {
+function getInternalLinkSections(markdown: string): Array<{ heading: string; headingId?: string; body: string }> {
   const headings = findRootAtxHeadings(markdown, 3);
-  const outline = new Map(buildMarkdownOutline(markdown).map(heading => [heading.line, heading.text]));
-  return headings.map((node, index) => ({
-    heading: (outline.get(node.line) || node.text).replace(/^\d+\.\s+/, "").trim(),
+  const outline = new Map(buildMarkdownOutline(markdown).map(heading => [heading.line, heading]));
+  const sections = headings.map((node, index) => ({
+    heading: (outline.get(node.line)?.text || node.text).replace(/^\d+\.\s+/, "").trim(),
+    id: outline.get(node.line)?.id,
     body: markdown.slice(node.end, headings[index + 1]?.start ?? markdown.length)
   })).filter(({ heading }) => heading && !/[#|]|\]\]/.test(heading));
+  const counts = new Map<string, number>();
+  for (const section of sections) counts.set(section.heading, (counts.get(section.heading) || 0) + 1);
+  return sections.map(section => ({ heading: section.heading,
+    headingId: (counts.get(section.heading) || 0) > 1 ? section.id : undefined, body: section.body }));
 }
 
 export async function searchInternalLinkCandidates(
@@ -77,6 +82,7 @@ export async function searchInternalLinkCandidates(
           kind: "heading",
           date: block.date,
           heading: section.heading,
+          headingId: section.headingId,
           preview
         },
         score

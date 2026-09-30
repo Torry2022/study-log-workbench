@@ -472,7 +472,7 @@ struct Index {
   }
 
   private openNoteLink(date: string, heading: string): void {
-    this.openLogSource({ date: date, heading: heading, headingIndex: -1, headingId: '', kind: 'internal' });
+    this.openLogSource({ date: date, heading: heading, headingIndex: -1, headingId: heading, kind: 'internal' });
   }
 
   private openFavorite(favorite: FavoriteHeading): void {

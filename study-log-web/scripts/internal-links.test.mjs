@@ -32,13 +32,37 @@ test("ordinary internal links preserve date, section and selected aliases", () =
   assert.equal(buildInternalLinkMarkup(section), "[[2026-01-15#并发控制]]");
   assert.equal(buildInternalLinkMarkup(section, "  所选\n 内容  "), "[[2026-01-15#并发控制|所选 内容]]");
   assert.equal(buildInternalLinkMarkup(section, "并发控制"), "[[2026-01-15#并发控制]]");
+  assert.equal(buildInternalLinkMarkup({ ...section, headingId: "2-并发控制" }),
+    "[[2026-01-15#2-并发控制|并发控制]]");
   assert.equal(normalizeInternalLinkAlias(" \t换行\n别名 "), "换行 别名");
   assert.throws(() => buildInternalLinkMarkup(day, "别名|注入"), /显示文字/);
   assert.throws(() => buildInternalLinkMarkup(day, "别名]]注入"), /显示文字/);
+  assert.throws(() => buildInternalLinkMarkup({ ...section, headingId: "错误#标识" }), /小节标识/);
   for (const heading of ["标题|注入", "标题]]注入", "标题#注入", "标题\n注入"]) {
     assert.throws(() => buildInternalLinkMarkup({ ...section, heading }), /目标标题/);
   }
   assert.throws(() => buildInternalLinkMarkup({ ...day, date: "2026-02-30" }), /日期无效/);
+});
+
+test("duplicate section candidates link to the selected occurrence while old title links keep their behavior", async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "workbench-duplicate-link-test-"));
+  const oldRoot = process.env.LOG_ROOT;
+  process.env.LOG_ROOT = root;
+  t.after(async () => {
+    if (oldRoot === undefined) delete process.env.LOG_ROOT; else process.env.LOG_ROOT = oldRoot;
+    await fs.rm(root, { recursive: true, force: true });
+  });
+  const markdown = "## 2026-01-15\n\n### 1. 并发控制\n\n第一处内容。\n\n### 2. 并发控制\n\n第二处内容。";
+  await fs.writeFile(path.join(root, "2026-01_学习日志.md"), markdown);
+  const candidates = (await searchInternalLinkCandidates("并发控制")).filter(row => row.kind === "heading");
+  assert.deepEqual(candidates.map(row => row.headingId), ["1-并发控制", "2-并发控制"]);
+  assert.deepEqual(candidates.map(row => row.preview), ["第一处内容。", "第二处内容。"]);
+  assert.deepEqual(candidates.map(row => buildInternalLinkMarkup(row)), [
+    "[[2026-01-15#1-并发控制|并发控制]]", "[[2026-01-15#2-并发控制|并发控制]]"
+  ]);
+  const headings = buildMarkdownOutline(markdown);
+  assert.equal(findInternalLinkHeading(headings, candidates[1].headingId), headings[1]);
+  assert.equal(findInternalLinkHeading(headings, "并发控制"), headings[0]);
 });
 
 test("link search reads only explicit synthetic source files, ranks targets and never mutates sources", async t => {

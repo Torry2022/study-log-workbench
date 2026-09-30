@@ -40,6 +40,7 @@ import { workspacePreferences } from '../common/storage/WorkspacePreferences';
 import { SettingsPanel } from '../app/components/SettingsPanel';
 import { AboutPanel } from '../app/components/AboutPanel';
 import { HelpPanel } from '../app/components/HelpPanel';
+import { LaunchIntro } from '../app/components/LaunchIntro';
 import { KeyCode } from '@kit.InputKit';
 import { workspaceKey } from '../common/ui/WorkspaceKeys';
 import { revealPanel, floatingSurfaceTransition } from '../common/ui/WorkspaceMotion';
@@ -66,6 +67,8 @@ struct Index {
   @State private desktopKeyboardFocus: boolean = false;
   @State private compactSettingsOpen: boolean = false;
   @State private connected: boolean = false;
+  @State private launchCoverVisible: boolean = true;
+  @State private launchReady: boolean = false;
   @State private selectedModule: number = 0;
   @State private modules: WorkspaceModuleState = new WorkspaceModuleState();
   @State private favoritesData: FavoritesController = new FavoritesController(apiClient);
@@ -565,6 +568,7 @@ struct Index {
   }
 
   private logDocumentReady(date: string): void {
+    if (this.connected) this.launchReady = true;
     if (this.selectedModule !== 0 || !this.modules.pendingLogDate || date !== this.modules.pendingLogDate) return;
     this.modules.pendingLogDate = '';
     this.revealModule(this.moduleSwitchRevision);
@@ -1097,7 +1101,18 @@ struct Index {
 
       } else {
         LoginPage({ restoreOnAppear: this.restoreOnAppear,
+          onInitialReady: () => this.launchReady = true,
           onConnected: (origin: string, capabilities: InstanceCapabilities) => this.connectedTo(origin, capabilities) })
+      }
+      if (this.launchCoverVisible) {
+        Stack() {
+          LaunchIntro({ ready: this.launchReady,
+            onDismissed: () => this.launchCoverVisible = false })
+        }
+        .width('100%').height('100%')
+        .backgroundColor($r('app.color.canvas'))
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+        .zIndex(100)
       }
       if (this.previewImageSource) {
         Stack() {

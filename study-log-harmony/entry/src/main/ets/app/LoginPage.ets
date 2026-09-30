@@ -31,6 +31,7 @@ function loginErrorMessage(error: Object, fallback: string): string {
 export struct LoginPage {
   @Consume('workspaceBreakpoint') private workspaceBreakpoint: WorkspaceBreakpoint;
   onConnected: (origin: string, capabilities: InstanceCapabilities) => void = () => {};
+  onInitialReady: () => void = () => {};
   restoreOnAppear: boolean = true;
   @State private origin: string = '';
   @State private localHttp: boolean = false;
@@ -48,6 +49,7 @@ export struct LoginPage {
 
   async aboutToAppear(): Promise<void> {
     const generation = ++this.generation;
+    let restoredConnection = false;
     try {
       await instanceStore.initialize(this.getUIContext().getHostContext() as common.Context);
       const saved = await instanceStore.restore();
@@ -66,6 +68,7 @@ export struct LoginPage {
         throw new Error('服务器实例身份已变化，请重新输入密码连接');
       }
       activeInstance.activate(saved.origin, saved.namespace, capabilities);
+      restoredConnection = true;
       this.onConnected(saved.origin, capabilities);
     } catch (error) {
       if (generation !== this.generation) return;
@@ -78,7 +81,10 @@ export struct LoginPage {
         this.errorMessage = loginErrorMessage(error, '无法恢复连接，请检查服务器地址和网络后重试');
       }
     } finally {
-      if (generation === this.generation) this.ready = true;
+      if (generation === this.generation) {
+        this.ready = true;
+        if (!restoredConnection) this.onInitialReady();
+      }
     }
   }
 

@@ -4,7 +4,6 @@ import { activeInstance } from '../../common/network/InstanceConfig';
 import { EmptyState, LoadFailure } from '../../common/ui/FeedbackStates';
 import { MarkdownReader } from '../../common/ui/MarkdownReader';
 import { workspaceSansFamily } from '../../common/ui/Typography';
-import { AppLogo } from '../../common/ui/AppLogo';
 import { SourceEditor, SourceEditorSession, EditorSnapshot, EditorImageData } from '../../common/editor/SourceEditor';
 import { common } from '@kit.AbilityKit';
 import { LengthMetrics } from '@kit.ArkUI';
@@ -62,6 +61,8 @@ import { QaNavigationController } from '../qa/QaNavigationController';
 import { RagSessionSummary } from '../qa/QaModels';
 import { AppTopBar } from '../../app/components/WorkspaceNavigation';
 import { WorkspaceModuleState } from '../../app/WorkspaceModuleState';
+import { DesktopThemePanel } from '../../app/components/DesktopThemePanel';
+import { DesktopWorkspaceTopBar } from '../../app/components/DesktopWorkspaceTopBar';
 import { WorkspaceContent, WorkspaceTaxonomyPage } from '../../app/components/WorkspaceContent';
 import { WorkspaceFrame } from '../../app/components/WorkspaceFrame';
 import { PreservedLogDraft, restoredLogDraft } from './LogDraftPolicy';
@@ -175,7 +176,7 @@ export struct LogsReaderPage {
     }
   });
   private moduleSwitchRevision: number = 0;
-  private moduleRequestedTab: number = -1;
+  @State private moduleRequestedTab: number = -1;
   @State private collapsedModules: boolean[] = [false, false, false, false, false];
   @State private railPopover: string = '';
   @State private moduleFrameHeight: number = 0;
@@ -204,8 +205,6 @@ export struct LogsReaderPage {
   @State private headerWidth: number = 600;
   @State private headerDateWidth: number = 190;
   @State private toolbarDensity: ToolbarDensity = ToolbarDensity.OVERFLOW;
-  @State private desktopTopBarWidth: number = 0;
-  @State private desktopTopBarDensity: ToolbarDensity = ToolbarDensity.OVERFLOW;
   private toolbarMotionWidth: number = -1;
   @State private toolbarActionWidths: number[] = [];
   @State private sourceMode: boolean = false;
@@ -254,6 +253,8 @@ export struct LogsReaderPage {
   @State private linkAlias: string = '';
   @State private moreOpen: boolean = false;
   @State private topMoreOpen: boolean = false;
+  @State private desktopThemeOpen: boolean = false;
+  @State private desktopKeyboardFocus: boolean = false;
   @State private compactSettingsOpen: boolean = false;
   @State private hoveredMoreAction: string = '';
   @State private saveError: string = '';
@@ -484,7 +485,7 @@ export struct LogsReaderPage {
 
   private shortcutBlocked(): boolean {
     return this.backupOpen || this.linkOpen || this.ai.reviewOpen || this.imageBusy || this.exportBusy ||
-      this.documents.saving || this.deleting || this.modules.taxonomyOpen || this.topMoreOpen || this.compactSettingsOpen || this.moreOpen ||
+      this.documents.saving || this.deleting || this.modules.taxonomyOpen || this.desktopThemeOpen || this.topMoreOpen || this.compactSettingsOpen || this.moreOpen ||
       this.exportMenuOpen || this.calendarOpen || !!this.railPopover || this.searchOpen ||
       this.navigationOpen || this.outlineOpen || !!this.qaNavigation.qaRenameId || !!this.qaNavigation.qaMenuId;
   }
@@ -499,8 +500,10 @@ export struct LogsReaderPage {
   }
 
   private handleWorkspaceKey(event: KeyEvent): boolean {
+    if (event.type === KeyType.Down) this.desktopKeyboardFocus = true;
     if (workspaceKey(event, KeyCode.KEYCODE_ESCAPE)) {
-      if (this.topMoreOpen) this.topMoreOpen = false;
+      if (this.desktopThemeOpen) this.desktopThemeOpen = false;
+      else if (this.topMoreOpen) this.topMoreOpen = false;
       else if (this.compactSettingsOpen) this.compactSettingsOpen = false;
       else if (this.moreOpen) this.moreOpen = false;
       else if (this.exportMenuOpen) this.exportMenuOpen = false;
@@ -615,6 +618,7 @@ export struct LogsReaderPage {
     this.readingProgress = 0;
     this.readingOutlineOpen = false;
     this.topMoreOpen = false;
+    this.desktopThemeOpen = false;
   }
 
   private readingViewportChanged(area: Area): void {
@@ -2704,11 +2708,7 @@ export struct LogsReaderPage {
         () => { this.topMoreOpen = false; this.onOpenSettings(); })
       this.desktopMoreItem($r('app.media.info'), '关于', true,
         () => { this.topMoreOpen = false; this.onOpenAbout(); })
-      this.desktopMoreItem($r('app.media.circle_help'), '使用帮助', true,
-        () => { this.topMoreOpen = false; this.onOpenHelp(); })
-      this.desktopMoreItem($r('app.media.log_out'), '更换服务器', !this.backupOpen && !this.linkOpen,
-        () => { this.topMoreOpen = false;
-          this.confirmQaLeave(() => this.confirmNotesLeave(() => this.confirmDiscard(() => this.onChangeServer()))); })
+
     }.width(176).padding(6)
   }
 
@@ -3546,91 +3546,41 @@ export struct LogsReaderPage {
     }.layoutWeight(1).height('100%')
   }
 
-  private desktopTopActionsWidth(labels: boolean): number {
-    return labels ? toolbarActionsWidth(['随记', '收藏', '问答', '统计']) + 64 : 5 * 40 + 4 * 12;
-  }
-
-  private desktopTopSearchWidth(): number {
-    return Math.max(260, Math.min(384, this.desktopTopBarWidth * 0.27,
-      this.desktopTopBarWidth - 208 - this.desktopTopActionsWidth(this.desktopTopBarDensity === ToolbarDensity.FULL) - 48));
+  @Builder
+  private desktopSearchContent() {
+    SearchField({ value: this.searchQuery, focusKey: 'global_log_search',
+      focusRevision: this.searchFocusRevision,
+      placeholder: this.searchHeadingsOnly ? '搜索小节标题' : '搜索日志、术语、代码标识',
+      loading: this.searchLoading, showHeadingToggle: true, headingOnly: this.searchHeadingsOnly,
+      showCaseToggle: true, caseSensitive: !this.searchIgnoreCase,
+      onChange: (query: string) => this.changeSearch(query),
+      onSubmit: () => { this.searchOpen = true; this.searchLogs(); },
+      onClear: () => this.changeSearch(''),
+      onHeadingToggle: () => this.searchHeadingsOnly = !this.searchHeadingsOnly,
+      onCaseToggle: () => this.searchIgnoreCase = !this.searchIgnoreCase,
+      onFocusChange: (focused: boolean) => { if (focused) this.searchOpen = true; },
+      onSearchKey: (event: KeyEvent) => {
+        if (!this.searchOpen || this.calendarOpen ||
+          !workspaceKey(event, KeyCode.KEYCODE_ESCAPE)) return false;
+        this.closeSearch(); return true;
+      } })
+    this.desktopSearchResults()
   }
 
   @Builder
   private desktopTopBar() {
-    Row({ space: 12 }) {
-      if (!this.isWide() && !(this.selectedModule === 4) && !(this.selectedModule === 2) && !(this.selectedModule === 1) && !(this.selectedModule === 3)) {
-        Button({ type: ButtonType.Normal }) {
-          SymbolGlyph($r('sys.symbol.line_3_horizontal')).fontSize(20).fontColor([$r('app.color.ink')])
-        }.width(42).height(42).backgroundColor(Color.Transparent).accessibilityText('打开日期导航')
-          .onClick(() => this.openNavigation())
-      }
-      Row({ space: 10 }) {
-        AppLogo({ iconSize: 38, cornerRadius: 8 })
-        Column({ space: 2 }) {
-          Text('学习日志工作台').fontFamily(workspaceSansFamily(this.workspaceBreakpoint))
-            .fontSize(15).fontWeight(FontWeight.Bold).fontColor($r('app.color.ink')).maxLines(1)
-          Text((this.selectedModule === 1) ? '随记' : (this.selectedModule === 3) ? '知识问答' : (this.selectedModule === 4) ? '学习统计' : (this.selectedModule === 2) ? '收藏中心' :
-            (this.session.day?.headings[0] || this.session.selectedDate || '日志'))
-            .fontFamily(workspaceSansFamily(this.workspaceBreakpoint)).fontSize(12)
-            .fontColor($r('app.color.muted')).maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-        }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-      }.layoutWeight(1).constraintSize({ minWidth: 208 })
-      if (this.desktopTopBarDensity !== ToolbarDensity.OVERFLOW) {
-        Stack({ alignContent: Alignment.TopStart }) {
-          SearchField({ value: this.searchQuery, focusKey: 'global_log_search',
-            focusRevision: this.searchFocusRevision,
-            placeholder: this.searchHeadingsOnly ? '搜索小节标题' : '搜索日志、术语、代码标识',
-            loading: this.searchLoading, showHeadingToggle: true, headingOnly: this.searchHeadingsOnly,
-            showCaseToggle: true, caseSensitive: !this.searchIgnoreCase,
-            onChange: (query: string) => this.changeSearch(query),
-            onSubmit: () => { this.searchOpen = true; this.searchLogs(); },
-            onClear: () => this.changeSearch(''),
-            onHeadingToggle: () => this.searchHeadingsOnly = !this.searchHeadingsOnly,
-            onCaseToggle: () => this.searchIgnoreCase = !this.searchIgnoreCase,
-            onFocusChange: (focused: boolean) => { if (focused) this.searchOpen = true; },
-            onSearchKey: (event: KeyEvent) => {
-              if (!this.searchOpen || this.calendarOpen ||
-                !workspaceKey(event, KeyCode.KEYCODE_ESCAPE)) return false;
-              this.closeSearch(); return true;
-            } })
-          this.desktopSearchResults()
-        }.width(this.desktopTopSearchWidth()).height(42).zIndex(40)
-      } else {
-        ToolbarAction({ label: '搜索日志内容', icon: $r('app.media.search'),
-          showLabel: false, onAction: () => {
-            this.searchOpen = true;
-            this.searchFocusRevision++;
-          } })
-      }
-        ToolbarAction({ label: '随记', icon: $r('app.media.tab_lightbulb_active'),
-          showLabel: this.desktopTopBarDensity === ToolbarDensity.FULL, active: (this.selectedModule === 1),
-          onAction: () => this.selectTab((this.selectedModule === 1) ? 0 : 1) })
-        ToolbarAction({ label: '收藏', icon: $r('app.media.tab_star_active'),
-          showLabel: this.desktopTopBarDensity === ToolbarDensity.FULL, active: (this.selectedModule === 2),
-          onAction: () => this.selectTab((this.selectedModule === 2) ? 0 : 2) })
-        ToolbarAction({ label: '问答', icon: $r('app.media.tab_message_square_text_active'),
-          showLabel: this.desktopTopBarDensity === ToolbarDensity.FULL, active: (this.selectedModule === 3),
-          onAction: () => this.selectTab((this.selectedModule === 3) ? 0 : 3) })
-        ToolbarAction({ label: '统计', icon: $r('app.media.tab_chart_column'),
-          showLabel: this.desktopTopBarDensity === ToolbarDensity.FULL, active: (this.selectedModule === 4),
-          onAction: () => this.selectTab((this.selectedModule === 4) ? 0 : 4) })
-      ToolbarAction({ label: '更多设置', icon: $r('app.media.more_horizontal'), showLabel: false,
-        active: this.topMoreOpen, onAction: () => this.topMoreOpen = !this.topMoreOpen })
-        .bindPopup(this.topMoreOpen, { builder: this.topMoreActions(), placement: Placement.BottomRight,
-          enableArrow: false, popupColor: $r('app.color.canvas'), radius: 8,
-          onStateChange: (event) => { if (!event.isVisible) this.topMoreOpen = false; } })
-    }.width('100%').height(64).padding({ left: 12, right: 12 })
-      .onAreaChange((_oldArea: Area, area: Area) => {
-        this.desktopTopBarWidth = Number(area.width);
-        this.desktopTopBarDensity = resolveToolbarDensity(this.desktopTopBarWidth,
-          208 + 260 + this.desktopTopActionsWidth(false) + 48,
-          208 + 260 + this.desktopTopActionsWidth(true) + 48,
-          this.desktopTopBarDensity);
-      })
-      .backgroundColor($r('app.color.canvas'))
-      .zIndex(30)
-      .border({ width: { bottom: 1 }, color: $r('app.color.hairline') })
+    DesktopWorkspaceTopBar({ selectedModule: this.selectedModule, topMoreOpen: $topMoreOpen,
+      logSubtitle: this.session.day?.headings[0] || this.session.selectedDate || '日志',
+      onSelect: (index: number) => this.selectTab(index),
+      themePreference: this.themePreference, desktopKeyboardFocus: this.desktopKeyboardFocus,
+      moduleRequestedTab: this.moduleRequestedTab,
+      onOpenTheme: () => { this.topMoreOpen = false; this.desktopThemeOpen = !this.desktopThemeOpen; },
+      onOpenHelp: () => this.onOpenHelp(),
+      onChangeServer: () => this.confirmQaLeave(() => this.confirmNotesLeave(() =>
+        this.confirmDiscard(() => this.onChangeServer()))),
+      onOpenSearch: () => { this.searchOpen = true; this.searchFocusRevision++; },
+      searchContent: (): void => this.desktopSearchContent(),
+      moreActions: (): void => this.topMoreActions() })
   }
 
   @Builder
@@ -3735,6 +3685,11 @@ export struct LogsReaderPage {
           this.workspaceOriginX = Number(area.globalPosition.x);
           this.workspaceOriginY = Number(area.globalPosition.y);
         } })
+      if (this.isWide() && this.desktopThemeOpen) {
+        DesktopThemePanel({ themePreference: this.themePreference,
+          onSetTheme: (value: string) => this.onSetTheme(value),
+          onClose: () => this.desktopThemeOpen = false })
+      }
       DelayedLoadingHint({ loading: this.selectedTab() === 0 && this.logLoadingHint.loading,
         text: '正在加载日志…' })
         .width(this.logLoadingHint.width).height(this.logLoadingHint.height)
@@ -3895,6 +3850,7 @@ export struct LogsReaderPage {
       }
     }.width('100%').height('100%')
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+      .onTouch(() => this.desktopKeyboardFocus = false)
       .parallelGesture(PanGesture({ direction: PanDirection.All, distance: 6 })
         .onActionStart((event: GestureEvent) => this.handleOutlinePanStart(event))
         .onActionEnd((event: GestureEvent) => this.handleOutlinePanEnd(event))

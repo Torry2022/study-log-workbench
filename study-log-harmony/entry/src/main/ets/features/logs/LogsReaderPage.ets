@@ -11,7 +11,9 @@ import { LengthMetrics } from '@kit.ArkUI';
 import { saveExport } from '../../common/files/DocumentExport';
 import { EditorLinkPicker } from '../../common/editor/EditorLinkPicker';
 import { DayEntry, DaySummary, MonthSummary } from './LogModels';
-import { editableDayBody, matchesDeletedDay, matchesSubmittedDay } from './LogDayBody';
+import { editableDayBody, matchesDeletedDay } from './LogDayBody';
+import { LogSession } from './LogSession';
+import { LogDocumentController } from './LogDocumentController';
 import { LogReadRepository } from './LogReadRepository';
 import { LogWriteRepository } from './LogWriteRepository';
 import { LogNavigation } from './components/LogNavigation';
@@ -93,14 +95,12 @@ export struct LogsReaderPage {
   onCaptureDraft: (capture: () => Promise<PreservedLogDraft | undefined>) => void = () => {};
   onRegisterDesktopCommands: (commands: DesktopLogCommands) => void = () => {};
   initialDraft: PreservedLogDraft | undefined = undefined;
+  @State private session: LogSession = new LogSession();
   @State private months: MonthSummary[] = [];
   @State private days: DaySummary[] = [];
   @State private month: string = '';
-  @State private selectedDate: string = '';
-  @State private day: DayEntry | undefined = undefined;
   @State private monthsLoading: boolean = true;
   @State private daysLoading: boolean = false;
-  @State private dayLoading: boolean = false;
   @State private refreshing: boolean = false;
   @State private readFailed: boolean = false;
   @State private errorMessage: string = '';
@@ -212,7 +212,7 @@ export struct LogsReaderPage {
   @State private workspaceTransition: WorkspaceTransitionCoordinator = new WorkspaceTransitionCoordinator({
     tab: () => this.selectedTab(),
     canCapture: (kind: string) => this.isWide() &&
-      (kind === 'module' || ((kind === 'document' || kind === 'mode') && this.selectedTab() === 0 && !!this.day)),
+      (kind === 'module' || ((kind === 'document' || kind === 'mode') && this.selectedTab() === 0 && !!this.session.day)),
     capture: (kind: string) => this.getUIContext().getComponentSnapshot().get(
       kind === 'module' ? 'module_frame' : 'workspace_frame', { waitUntilRenderFinished: true }),
     fade: (update: () => void, finished: () => void) => {
@@ -258,13 +258,7 @@ export struct LogsReaderPage {
   @State private modeLayoutRevision: number = 0;
   private modeRequestRevision: number = 0;
   @State private editorReady: boolean = false;
-  @State private draftText: string = '';
-  @State private editorInitialText: string = '';
   @State private previewText: string = '';
-  @State private savedText: string = '';
-  private draftBaseVersion: string | null = null;
-  @State private dirty: boolean = false;
-  @State private saving: boolean = false;
   @State private deleting: boolean = false;
   @State private backupOpen: boolean = false;
   @State private backupMaximized: boolean = false;
@@ -317,12 +311,12 @@ export struct LogsReaderPage {
   @State private calendarError: boolean = false;
   private reads: LogReadRepository = new LogReadRepository(apiClient);
   private writes: LogWriteRepository = new LogWriteRepository(apiClient);
+  @State private documents: LogDocumentController = new LogDocumentController(this.session, this.reads, this.writes);
   private searches: LogSearchRepository = new LogSearchRepository(apiClient);
   private searchHistoryStore: SearchHistoryStore = new SearchHistoryStore();
   private editor: SourceEditorSession = new SourceEditorSession();
   private lifecycle: number = 0;
   private listRevision: number = 0;
-  private dayRevision: number = 0;
   private restoredDraftApplied: boolean = false;
   private leaveCheckPending: boolean = false;
   private calendarRevision: number = 0;
@@ -332,7 +326,44 @@ export struct LogsReaderPage {
   private focusRegion: number = -1;
   private logNavigationScroller: Scroller = new Scroller();
 
+  private bindDocuments(): void {
+    this.documents.bind({
+      locked: () => !this.editorReady || this.deleting || this.backupOpen || this.linkOpen || this.imageBusy,
+      lifecycle: () => this.lifecycle,
+      flushEditor: () => this.editor.command('snapshot'),
+      draftChanged: () => this.reportDraft(),
+      saved: (day: DayEntry, text: string, date: string) => this.acceptSavedDay(day, text, date),
+      notice: (message: string) => this.saveError = message,
+      beforeRead: () => {
+        appFeedback.dismissScope('log-read');
+        this.closeFavoriteFeedback();
+        this.favoriteGroupDialogOpen = false;
+      },
+      beforeChange: () => this.coverLogDocument(),
+      readingStarted: () => { this.readFailed = false; this.errorMessage = ''; },
+      installed: (day: DayEntry, date: string, heading: string, headingIndex: number) =>
+        this.installDay(day, date, heading, headingIndex),
+      failed: (date: string, heading: string, headingIndex: number, error: Error) => {
+        this.readFailed = true;
+        this.errorMessage = this.message(error);
+        this.retryRead = async () => this.loadDay(date, heading, headingIndex);
+        this.showReadFailure();
+        this.workspaceTransition.finish('document');
+      },
+      readFinished: (date: string, revision: number, lifecycle: number) => {
+        if ((this.sourceMode || this.splitMode && !this.isWide()) && this.editor.loadedDocumentKey === date) {
+          this.getUIContext().postFrameCallback(new FrameAction(() => {
+            if (lifecycle === this.lifecycle && revision === this.documents.dayLoadRevision) {
+              this.workspaceTransition.finish('document');
+            }
+          }));
+        }
+      }
+    });
+  }
+
   aboutToAppear(): void {
+    this.bindDocuments();
     this.collapsedModules = [0, 1, 2, 3, 4].map((index: number) =>
       AppStorage.get<boolean>(`pref_sidebarCollapsed${index}`) || false);
     this.lifecycle++;
@@ -340,16 +371,16 @@ export struct LogsReaderPage {
     const commands = new DesktopLogCommands();
     commands.entries = (menu: string): DesktopMenuEntry[] => {
       const logActive = this.selectedTab() === 0;
-      const ready = logActive && !!this.day && !this.dayLoading && !this.daysLoading &&
-        !this.saving && !this.deleting && !this.exportBusy && !this.imageBusy && !this.backupOpen && !this.linkOpen;
+      const ready = logActive && !!this.session.day && !this.documents.dayRequestLoading && !this.daysLoading &&
+        !this.documents.saving && !this.deleting && !this.exportBusy && !this.imageBusy && !this.backupOpen && !this.linkOpen;
       const editing = ready && this.editorReady && (this.sourceMode || this.splitMode);
       if (menu === '文件') return [
         new DesktopMenuEntry('newLog', '新建日志…', true, false, 'Ctrl+Alt+N'),
-        new DesktopMenuEntry('save', '保存当前日志', ready && this.dirty, false, 'Ctrl+S'),
-        new DesktopMenuEntry('export-day', '导出当前日块', ready && !!this.day?.exists),
-        new DesktopMenuEntry('export-file', '导出当前源文件', ready && !!this.day?.exists),
+        new DesktopMenuEntry('save', '保存当前日志', ready && this.session.isDirty(), false, 'Ctrl+S'),
+        new DesktopMenuEntry('export-day', '导出当前日块', ready && !!this.session.day?.exists),
+        new DesktopMenuEntry('export-file', '导出当前源文件', ready && !!this.session.day?.exists),
         new DesktopMenuEntry('export-all', '导出全部日志', logActive && !this.exportBusy),
-        new DesktopMenuEntry('backup', '备份与恢复', ready && !!this.day?.exists)
+        new DesktopMenuEntry('backup', '备份与恢复', ready && !!this.session.day?.exists)
       ];
       if (menu === '编辑') return [
         new DesktopMenuEntry('undo', '撤销', editing, false, 'Ctrl+Z'),
@@ -359,7 +390,7 @@ export struct LogsReaderPage {
       if (menu === '视图') return [
         new DesktopMenuEntry('sidebar', '左侧导航', this.isWide() && !this.logsReadingMode,
           !this.isDesktopNavigationCollapsed()),
-        new DesktopMenuEntry('reading', '阅读模式', this.selectedTab() === 0 && !!this.day &&
+        new DesktopMenuEntry('reading', '阅读模式', this.selectedTab() === 0 && !!this.session.day &&
           !this.sourceMode && !this.splitMode, this.logsReadingMode),
         new DesktopMenuEntry('preview', '浏览', ready, !this.sourceMode && !this.splitMode),
         new DesktopMenuEntry('source', '源码', ready, this.sourceMode),
@@ -389,32 +420,32 @@ export struct LogsReaderPage {
     commands.editorFocused = (): boolean => (this.sourceMode || this.splitMode) && this.editor.focused;
     commands.blocked = (): boolean => this.shortcutBlocked();
     commands.navigate = (offset: number): void => {
-      if (!this.sourceMode && !this.splitMode && !this.dayLoading && !this.daysLoading) this.navigateDay(offset);
+      if (!this.sourceMode && !this.splitMode && !this.documents.dayRequestLoading && !this.daysLoading) this.navigateDay(offset);
     };
     this.onRegisterDesktopCommands(commands);
     this.onCaptureDraft(() => this.captureDraft());
     this.editor.onReadyChange = (ready: boolean) =>
-      this.editorReady = ready && this.editor.loadedDocumentKey === this.selectedDate;
+      this.editorReady = ready && this.editor.loadedDocumentKey === this.session.selectedDate;
     this.editor.onDocumentLoaded = (documentKey: string) => {
-      if (documentKey !== this.selectedDate) return;
+      if (documentKey !== this.session.selectedDate) return;
       this.editorReady = true;
       if (!(this.sourceMode || this.splitMode && !this.isWide())) return;
       this.getUIContext().postFrameCallback(new FrameAction(() => {
-        if (documentKey === this.selectedDate && (this.sourceMode || this.splitMode && !this.isWide())) {
+        if (documentKey === this.session.selectedDate && (this.sourceMode || this.splitMode && !this.isWide())) {
           this.workspaceTransition.finish('mode');
           this.workspaceTransition.finish('document');
         }
       }));
     };
     this.editor.onChange = (snapshot: EditorSnapshot) => {
-      if (snapshot.documentKey !== this.selectedDate) return;
-      this.draftText = snapshot.text;
-      this.dirty = snapshot.text !== this.savedText;
+      if (snapshot.documentKey !== this.session.selectedDate) return;
+      this.session.text = snapshot.text;
+      this.session.editorPending = false;
       if (this.splitMode) this.previewText = snapshot.text;
       this.reportDraft();
     };
     this.editor.onDirty = (key: string) => {
-      if (key === this.selectedDate) { this.dirty = true; this.reportDraft(); }
+      if (key === this.session.selectedDate) { this.session.editorPending = true; this.reportDraft(); }
     };
     this.editor.onFailure = (message: string) => {
       this.saveError = message;
@@ -437,6 +468,7 @@ export struct LogsReaderPage {
   }
 
   aboutToDisappear(): void {
+    this.documents.dispose();
     this.navigationRefresh.invalidate();
     this.closeFavoriteFeedback();
     this.onRegisterDesktopCommands(new DesktopLogCommands());
@@ -450,7 +482,6 @@ export struct LogsReaderPage {
     this.favoritesData.dispose();
     this.lifecycle++;
     this.listRevision++;
-    this.dayRevision++;
     this.calendarRevision++;
     this.searchRevision++;
     this.reads.invalidate();
@@ -500,7 +531,7 @@ export struct LogsReaderPage {
 
   private shortcutBlocked(): boolean {
     return this.backupOpen || this.linkOpen || this.ai.reviewOpen || this.imageBusy || this.exportBusy ||
-      this.saving || this.deleting || this.taxonomyOpen || this.topMoreOpen || this.compactSettingsOpen || this.moreOpen ||
+      this.documents.saving || this.deleting || this.taxonomyOpen || this.topMoreOpen || this.compactSettingsOpen || this.moreOpen ||
       this.exportMenuOpen || this.calendarOpen || !!this.railPopover || this.searchOpen ||
       this.navigationOpen || this.outlineOpen || !!this.qaNavigation.qaRenameId || !!this.qaNavigation.qaMenuId;
   }
@@ -578,11 +609,11 @@ export struct LogsReaderPage {
     }
     if (this.selectedTab() === 0 && !this.sourceMode && !this.splitMode) {
       if (workspaceKey(event, KeyCode.KEYCODE_DPAD_LEFT, false, false, true)) {
-        if (!this.dayLoading && !this.daysLoading) this.navigateDay(1);
+        if (!this.documents.dayRequestLoading && !this.daysLoading) this.navigateDay(1);
         return true;
       }
       if (workspaceKey(event, KeyCode.KEYCODE_DPAD_RIGHT, false, false, true)) {
-        if (!this.dayLoading && !this.daysLoading) this.navigateDay(-1);
+        if (!this.documents.dayRequestLoading && !this.daysLoading) this.navigateDay(-1);
         return true;
       }
     }
@@ -590,10 +621,10 @@ export struct LogsReaderPage {
   }
 
   private async setLogsReadingMode(active: boolean): Promise<void> {
-    if (!this.isWide() || this.selectedTab() !== 0 || !this.day || this.sourceMode || this.splitMode ||
+    if (!this.isWide() || this.selectedTab() !== 0 || !this.session.day || this.sourceMode || this.splitMode ||
       active === this.logsReadingMode || this.readingTransition.animating || this.sidebarAnimating ||
       this.workspaceTransition.task || this.workspaceTransition.snapshot ||
-      (active && this.renderedPreviewDate !== this.selectedDate)) return;
+      (active && this.renderedPreviewDate !== this.session.selectedDate)) return;
     this.readingOutlineOpen = false;
     const revision = this.readingTransition.begin();
     if (this.readingViewportWidth > 0) {
@@ -717,7 +748,7 @@ export struct LogsReaderPage {
 
   private handleOutlinePanStart(event: GestureEvent): void {
     if (this.isWide() || this.selectedTab() !== 0 || this.navigationOpen || this.sourceMode ||
-      !this.day || !this.readerReady || this.outlineOpen || this.moreOpen || this.aiOpen ||
+      !this.session.day || !this.readerReady || this.outlineOpen || this.moreOpen || this.aiOpen ||
       this.backupOpen || this.linkOpen || this.searchOpen || this.outlineHeadings().length === 0) {
       this.outlineGestureActive = false;
       return;
@@ -797,9 +828,9 @@ export struct LogsReaderPage {
       this.logsReadingMode = false;
       this.readingProgress = 0;
       this.readingOutlineOpen = false;
-      this.draftText = this.savedText;
-      this.editorInitialText = this.savedText;
-      this.previewText = this.savedText;
+      this.session.text = this.session.baseline;
+      this.session.editorInitialText = this.session.baseline;
+      this.previewText = this.session.baseline;
     }
     this.selectedModule = index;
     this.moduleRequestedTab = -1;
@@ -1010,7 +1041,7 @@ export struct LogsReaderPage {
     const headings: LogOutlineHeading[] = [];
     const used: Map<string, number> = new Map<string, number>();
     let inFence = false;
-    (this.sourceMode ? this.draftText : this.previewText).split('\n').forEach((line: string) => {
+    (this.sourceMode ? this.session.text : this.previewText).split('\n').forEach((line: string) => {
       if (/^\s*(```|~~~)/.test(line)) {
         inFence = !inFence;
         return;
@@ -1047,7 +1078,7 @@ export struct LogsReaderPage {
 
   private outlineFavorite(heading: LogOutlineHeading): FavoriteHeading | undefined {
     return this.favoritesData.favorites.find((item: FavoriteHeading) =>
-      item.date === this.selectedDate && (item.resolvedHeadingId || item.headingId) === heading.id);
+      item.date === this.session.selectedDate && (item.resolvedHeadingId || item.headingId) === heading.id);
   }
 
   private favoriteFeedbackVisible(heading: LogOutlineHeading): boolean {
@@ -1073,16 +1104,16 @@ export struct LogsReaderPage {
   }
 
   private async addOutlineFavorite(heading: LogOutlineHeading): Promise<void> {
-    if (!this.selectedDate || this.favoriteBusy) return;
-    const date = this.selectedDate;
+    if (!this.session.selectedDate || this.favoriteBusy) return;
+    const date = this.session.selectedDate;
     const lifecycle = this.lifecycle;
     this.favoriteBusy = true;
     try {
       const request: AddFavoriteRequest = {
-        date: this.selectedDate, headingText: heading.text, headingId: heading.id, level: heading.level
+        date: this.session.selectedDate, headingText: heading.text, headingId: heading.id, level: heading.level
       };
       const response = await apiClient.post<AddFavoriteResponse>('/favorites', request);
-      if (lifecycle !== this.lifecycle || date !== this.selectedDate) return;
+      if (lifecycle !== this.lifecycle || date !== this.session.selectedDate) return;
       appFeedback.dismissScope('favorite-add');
       this.favoritesData.favorites = [...this.favoritesData.favorites, response.favorite];
       this.favoriteDeleteId = '';
@@ -1091,13 +1122,13 @@ export struct LogsReaderPage {
       if (this.favoriteSuccessTimer >= 0) clearTimeout(this.favoriteSuccessTimer);
       this.favoriteSuccessTimer = setTimeout(() => {
         if (lifecycle === this.lifecycle && revision === this.favoriteSuccessRevision &&
-          date === this.selectedDate && this.favoriteSuccessHeadingId === heading.id) {
+          date === this.session.selectedDate && this.favoriteSuccessHeadingId === heading.id) {
           this.favoriteSuccessTimer = -1;
           this.favoriteSuccessHeadingId = '';
         }
       }, 5200);
     } catch (error) {
-      if (lifecycle === this.lifecycle && date === this.selectedDate)
+      if (lifecycle === this.lifecycle && date === this.session.selectedDate)
         appFeedback.show(error instanceof ApiError ? error.message : '收藏失败', 'error', 3600, 'favorite-add');
     } finally { if (lifecycle === this.lifecycle) this.favoriteBusy = false; }
   }
@@ -1106,10 +1137,10 @@ export struct LogsReaderPage {
     if (this.favoriteBusy) return;
     this.favoriteBusy = true;
     const lifecycle = this.lifecycle;
-    const date = this.selectedDate;
+    const date = this.session.selectedDate;
     const removed = await this.favoritesData.remove(favorite.id);
     if (lifecycle === this.lifecycle) this.favoriteBusy = false;
-    if (lifecycle !== this.lifecycle || date !== this.selectedDate) return;
+    if (lifecycle !== this.lifecycle || date !== this.session.selectedDate) return;
     if (removed) {
       this.closeFavoriteFeedback();
       this.favoriteGroupDialogOpen = false;
@@ -1168,28 +1199,28 @@ export struct LogsReaderPage {
   }
 
   private showReadFailure(): void {
-    if (this.day && this.selectedTab() === 0) appFeedback.show(this.errorMessage, 'error', 0, 'log-read',
+    if (this.session.day && this.selectedTab() === 0) appFeedback.show(this.errorMessage, 'error', 0, 'log-read',
       { label: '重试', onAction: () => this.retryRead() });
   }
 
   private reportDraft(): void {
     const namespace = activeInstance.namespace;
-    this.onDraftChange(namespace, this.dirty && this.selectedDate ? {
-      namespace, date: this.selectedDate, text: this.draftText, baseVersion: this.draftBaseVersion
+    this.onDraftChange(namespace, this.session.isDirty() && this.session.selectedDate ? {
+      namespace, date: this.session.selectedDate, text: this.session.text, baseVersion: this.session.baseVersion
     } : undefined);
   }
 
   private async captureDraft(): Promise<PreservedLogDraft | undefined> {
-    if (!this.selectedDate) return undefined;
-    let text = this.draftText;
+    if (!this.session.selectedDate) return undefined;
+    let text = this.session.text;
     if (this.editorReady) {
       try {
         const snapshot = await this.editor.command('snapshot');
-        if (snapshot.documentKey === this.selectedDate) text = snapshot.text;
+        if (snapshot.documentKey === this.session.selectedDate) text = snapshot.text;
       } catch (_) { /* Keep the last observed draft if the editor is closing. */ }
     }
-    return text !== this.savedText ? { namespace: activeInstance.namespace, date: this.selectedDate,
-      text, baseVersion: this.draftBaseVersion } : undefined;
+    return text !== this.session.baseline ? { namespace: activeInstance.namespace, date: this.session.selectedDate,
+      text, baseVersion: this.session.baseVersion } : undefined;
   }
 
   private bodyFromDay(day: DayEntry): string {
@@ -1204,27 +1235,27 @@ export struct LogsReaderPage {
   }
 
   private async checkBeforeLeaving(next: () => void): Promise<void> {
-    if (this.saving || this.deleting || this.backupOpen || this.linkOpen || this.imageBusy) {
+    if (this.documents.saving || this.deleting || this.backupOpen || this.linkOpen || this.imageBusy) {
       this.saveError = '操作进行中，请稍候'; return;
     }
-    if (this.day && this.editorReady) {
+    if (this.session.day && this.editorReady) {
       try {
         const snapshot = await this.editor.command('snapshot');
-        if (snapshot.documentKey !== this.selectedDate) return;
-        this.draftText = snapshot.text;
-        this.dirty = snapshot.text !== this.savedText;
+        if (snapshot.documentKey !== this.session.selectedDate) return;
+        this.session.text = snapshot.text;
+        this.session.editorPending = false;
         this.reportDraft();
       } catch (error) {
         this.saveError = error instanceof Error ? error.message : '请完成当前输入后重试';
         return;
       }
     }
-    if (!this.dirty) { next(); return; }
+    if (!this.session.isDirty()) { next(); return; }
     if (!this.editorReady) { this.saveError = '编辑器尚未就绪，请稍后重试'; return; }
     AlertDialog.show({ message: '当前日志修改尚未保存，是否放弃修改？', autoCancel: false,
       primaryButton: { value: '继续编辑', action: () => {} },
       secondaryButton: { value: '放弃修改', fontColor: $r('app.color.error'), action: () => {
-        this.discardDraft().then(() => { if (!this.dirty) next(); });
+        this.discardDraft().then(() => { if (!this.session.isDirty()) next(); });
       } }
     });
   }
@@ -1232,12 +1263,12 @@ export struct LogsReaderPage {
   private async switchMode(source: boolean, split: boolean = false): Promise<void> {
     const revision = ++this.modeRequestRevision;
     if (source === this.sourceMode && split === this.splitMode) return;
-    if (this.editorReady && this.day) {
+    if (this.editorReady && this.session.day) {
       try {
         const snapshot = await this.editor.command('snapshot');
-        if (snapshot.documentKey !== this.selectedDate) return;
-        this.draftText = snapshot.text;
-        this.dirty = snapshot.text !== this.savedText;
+        if (snapshot.documentKey !== this.session.selectedDate) return;
+        this.session.text = snapshot.text;
+        this.session.editorPending = false;
         this.reportDraft();
         this.previewText = snapshot.text;
       } catch (error) {
@@ -1250,7 +1281,7 @@ export struct LogsReaderPage {
       try { await this.editor.command('blur'); } catch (_) { return; }
     }
     if (revision !== this.modeRequestRevision) return;
-    if (this.isWide() && this.day && this.selectedTab() === 0) {
+    if (this.isWide() && this.session.day && this.selectedTab() === 0) {
       this.workspaceTransition.clear();
       await this.workspaceTransition.cover('mode');
       if (revision !== this.modeRequestRevision) return;
@@ -1259,8 +1290,8 @@ export struct LogsReaderPage {
     this.splitMode = split;
     this.updateToolbarWidth(this.headerWidth);
     this.modeLayoutRevision++;
-    if (!this.day || this.dayLoading || this.daysLoading ||
-      (source && this.editor.loadedDocumentKey === this.selectedDate)) {
+    if (!this.session.day || this.documents.dayRequestLoading || this.daysLoading ||
+      (source && this.editor.loadedDocumentKey === this.session.selectedDate)) {
       this.getUIContext().postFrameCallback(new FrameAction(() => {
         if (revision === this.modeRequestRevision) this.workspaceTransition.finish('mode');
       }));
@@ -1268,66 +1299,15 @@ export struct LogsReaderPage {
   }
 
   private acceptSavedDay(day: DayEntry, submittedText: string, date: string): void {
-    this.day = day;
-    this.savedText = submittedText;
-    this.draftBaseVersion = day.version;
-    this.dirty = this.draftText !== submittedText;
+    this.session.acceptSaved(day, submittedText);
     this.reportDraft();
-    this.previewText = this.draftText;
+    this.previewText = this.session.text;
     this.reads.invalidate();
     this.refreshNavigation(date);
     appFeedback.show('日志已保存', 'success');
   }
 
-  private async save(): Promise<void> {
-    if (!this.day || !this.editorReady || this.saving || this.deleting || this.backupOpen || this.linkOpen || this.imageBusy) return;
-    const lifecycle = this.lifecycle;
-    const revision = this.dayRevision;
-    const date = this.day.date;
-    this.saving = true;
-    this.saveError = '';
-    let submittedText: string | undefined = undefined;
-    try {
-      const snapshot = await this.editor.command('snapshot');
-      if (snapshot.documentKey !== date || lifecycle !== this.lifecycle || revision !== this.dayRevision) return;
-      this.draftText = snapshot.text;
-      this.dirty = snapshot.text !== this.savedText;
-      this.reportDraft();
-      if (!this.dirty) return;
-      if (this.draftBaseVersion !== this.day.version) {
-        this.saveError = '恢复的草稿基于旧版本，服务器内容已变化。请复制草稿并刷新核对，未覆盖服务器。';
-        return;
-      }
-      submittedText = snapshot.text;
-      const response = await this.writes.save({ date, content: snapshot.text, baseVersion: this.day.version });
-      if (lifecycle !== this.lifecycle || revision !== this.dayRevision || this.day?.date !== date) return;
-      if (!response.day || response.day.date !== date || !response.day.version) throw new Error('保存响应格式异常');
-      this.acceptSavedDay(response.day, snapshot.text, date);
-    } catch (error) {
-      if (lifecycle !== this.lifecycle || revision !== this.dayRevision) return;
-      const uncertain = !(error instanceof ApiError) || error.statusCode === 0 || error.statusCode === 409 ||
-        error.statusCode >= 500 || error.code === 'INVALID_RESPONSE';
-      if (submittedText !== undefined && uncertain) {
-        try {
-          const current = await this.reads.day(date);
-          if (lifecycle !== this.lifecycle || revision !== this.dayRevision || this.day?.date !== date) return;
-          if (matchesSubmittedDay(current.day, submittedText)) {
-            this.acceptSavedDay(current.day, submittedText, date);
-            return;
-          }
-          if (current.day.version !== this.day?.version) {
-            this.saveError = '源文件已变化，未覆盖。当前草稿仍保留，请先复制内容再刷新核对。';
-            return;
-          }
-        } catch (_) { if (lifecycle !== this.lifecycle || revision !== this.dayRevision) return; }
-      }
-      this.saveError = error instanceof ApiError && error.statusCode === 409 ?
-        '源文件已变化，未覆盖。当前草稿仍保留，请先复制内容再刷新核对。' :
-          error instanceof Error ? error.message : '保存失败，请重试';
-    } finally {
-      if (lifecycle === this.lifecycle && revision === this.dayRevision) this.saving = false;
-    }
-  }
+  private async save(): Promise<void> { await this.documents.save(); }
 
   private async refreshNavigation(date: string): Promise<void> {
     const lifecycle = this.lifecycle;
@@ -1336,30 +1316,30 @@ export struct LogsReaderPage {
       const result = await Promise.all([this.reads.months(), this.reads.days(month)]);
       if (lifecycle !== this.lifecycle) return;
       this.months = result[0].months;
-      if (this.month === month && this.selectedDate === date) {
+      if (this.month === month && this.session.selectedDate === date) {
         this.days = result[1].days;
         this.navigationError = '';
       }
     } catch (error) {
-      if (lifecycle === this.lifecycle && this.month === month && this.selectedDate === date) {
+      if (lifecycle === this.lifecycle && this.month === month && this.session.selectedDate === date) {
         this.navigationError = this.message(error as Error);
       }
     }
   }
 
   private async beforeRestore(): Promise<boolean> {
-    if (!this.day || !this.backupOpen) return false;
+    if (!this.session.day || !this.backupOpen) return false;
     if (this.editorReady) {
       const snapshot = await this.editor.command('snapshot');
-      if (snapshot.documentKey !== this.selectedDate) return false;
-      this.draftText = snapshot.text;
-      this.dirty = snapshot.text !== this.savedText;
+      if (snapshot.documentKey !== this.session.selectedDate) return false;
+      this.session.text = snapshot.text;
+      this.session.editorPending = false;
       this.reportDraft();
     }
     return new Promise<boolean>((resolve) => {
       AlertDialog.show({ title: '恢复此版本', autoCancel: false,
-        message: `仅恢复 ${this.selectedDate} 日块，恢复前会再次保留现有文件。` +
-          (this.dirty ? '\n当前编辑器有未保存修改，恢复会放弃这些修改。' : ''),
+        message: `仅恢复 ${this.session.selectedDate} 日块，恢复前会再次保留现有文件。` +
+          (this.session.isDirty() ? '\n当前编辑器有未保存修改，恢复会放弃这些修改。' : ''),
         primaryButton: { value: '取消', action: () => resolve(false) },
         secondaryButton: { value: '恢复', action: () => resolve(true) },
         cancel: () => resolve(false) });
@@ -1367,20 +1347,15 @@ export struct LogsReaderPage {
   }
 
   private async applyRestoredDay(day: DayEntry): Promise<void> {
-    if (day.date !== this.selectedDate) return;
+    if (day.date !== this.session.selectedDate) return;
     this.cancelPendingImages();
     const body = this.bodyFromDay(day);
     if (this.editor.ready && this.editor.documentKey === day.date) {
       await this.editor.replace(body, true);
     }
-    if (day.date !== this.selectedDate) return;
-    this.day = day;
-    this.savedText = body;
-    this.draftBaseVersion = day.version;
-    this.draftText = body;
-    this.editorInitialText = body;
+    if (day.date !== this.session.selectedDate) return;
+    this.session.commitDocument(day, body);
     this.previewText = body;
-    this.dirty = false;
     this.reportDraft();
     this.sourceMode = false;
     this.splitMode = false;
@@ -1392,20 +1367,20 @@ export struct LogsReaderPage {
   }
 
   private async openLink(): Promise<void> {
-    if (!this.day || !this.editorReady || this.linkOpen || this.linkOpening || this.backupOpen) return;
+    if (!this.session.day || !this.editorReady || this.linkOpen || this.linkOpening || this.backupOpen) return;
     this.moreOpen = false;
     this.linkOpening = true;
     const lifecycle = this.lifecycle;
-    const date = this.selectedDate;
+    const date = this.session.selectedDate;
     let target: EditorSnapshot | undefined = undefined;
     try {
       if (!this.sourceMode && !this.splitMode) await this.switchMode(true);
-      if (lifecycle !== this.lifecycle || date !== this.selectedDate ||
+      if (lifecycle !== this.lifecycle || date !== this.session.selectedDate ||
         (!this.sourceMode && !this.splitMode)) return;
       target = await this.editor.command('capture');
       if (lifecycle !== this.lifecycle || target.documentKey !== date) return;
       await this.editor.command('blur');
-      if (lifecycle !== this.lifecycle || date !== this.selectedDate) return;
+      if (lifecycle !== this.lifecycle || date !== this.session.selectedDate) return;
       this.linkTarget = target;
       this.linkAlias = target.text.slice(target.from, target.to);
       this.linkOpen = true;
@@ -1420,7 +1395,7 @@ export struct LogsReaderPage {
 
   private async insertLink(markup: string): Promise<void> {
     const target = this.linkTarget;
-    if (!target || !this.linkOpen || target.documentKey !== this.selectedDate) throw new Error('插入位置已变化，请重新打开');
+    if (!target || !this.linkOpen || target.documentKey !== this.session.selectedDate) throw new Error('插入位置已变化，请重新打开');
     await this.editor.insert(target, markup);
     this.closeLink();
   }
@@ -1431,7 +1406,7 @@ export struct LogsReaderPage {
     this.linkTarget = undefined;
     if (!target) return;
     this.editor.release(target).then(() => {
-      if (refocus && this.editorReady && target.documentKey === this.selectedDate) {
+      if (refocus && this.editorReady && target.documentKey === this.session.selectedDate) {
         this.editor.command('focus').catch(() => {});
       }
     }).catch(() => {});
@@ -1449,17 +1424,17 @@ export struct LogsReaderPage {
   }
 
   private async receivePreviewImages(event: DragEvent): Promise<void> {
-    if (!this.day || this.dayLoading || this.daysLoading || this.saving || this.deleting ||
+    if (!this.session.day || this.documents.dayRequestLoading || this.daysLoading || this.documents.saving || this.deleting ||
       this.imageBusy || this.pendingImageCount || this.backupOpen || this.linkOpen) {
       appFeedback.show('请先完成当前图片或编辑操作', 'warning');
       return;
     }
     const lifecycle = this.lifecycle;
-    const date = this.selectedDate;
+    const date = this.session.selectedDate;
     this.imageBusy = true;
     try {
       const files = this.imageUpload().receiveDrop(event);
-      if (lifecycle !== this.lifecycle || date !== this.selectedDate) {
+      if (lifecycle !== this.lifecycle || date !== this.session.selectedDate) {
         this.imageUpload().clear(files);
         return;
       }
@@ -1467,7 +1442,7 @@ export struct LogsReaderPage {
       this.pendingImageDate = date;
       this.pendingImageCount = files.length;
       await this.switchMode(true);
-      if (lifecycle !== this.lifecycle || date !== this.selectedDate || !this.sourceMode) {
+      if (lifecycle !== this.lifecycle || date !== this.session.selectedDate || !this.sourceMode) {
         this.cancelPendingImages();
         throw new Error('未能进入原日志编辑，请重新拖入图片');
       }
@@ -1482,20 +1457,20 @@ export struct LogsReaderPage {
 
   private async insertPendingImages(): Promise<void> {
     if (!this.pendingImageCount || this.imageBusy) return;
-    if (!this.day || this.pendingImageDate !== this.selectedDate || !this.sourceMode ||
-      !this.editorReady || this.editor.loadedDocumentKey !== this.selectedDate) {
+    if (!this.session.day || this.pendingImageDate !== this.session.selectedDate || !this.sourceMode ||
+      !this.editorReady || this.editor.loadedDocumentKey !== this.session.selectedDate) {
       appFeedback.show('日块或编辑模式已变化，请重新插入图片', 'error');
       return;
     }
     this.imageBusy = true;
     const lifecycle = this.lifecycle;
-    const date = this.selectedDate;
+    const date = this.session.selectedDate;
     let target: EditorSnapshot | undefined = undefined;
     try {
       target = await this.editor.command('capture');
       if (target.documentKey !== date) throw new Error('编辑位置已变化，请重新插入图片');
       const markdown = await this.imageUpload().upload(this.pendingImageFiles);
-      if (lifecycle !== this.lifecycle || date !== this.selectedDate) return;
+      if (lifecycle !== this.lifecycle || date !== this.session.selectedDate) return;
       const before = target.text.slice(0, target.from);
       const after = target.text.slice(target.to);
       const prefix = before ? (before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n') : '';
@@ -1512,28 +1487,28 @@ export struct LogsReaderPage {
   }
 
   private async insertImages(): Promise<void> {
-    if (!this.day || this.imageBusy || this.linkOpen || this.backupOpen) return;
+    if (!this.session.day || this.imageBusy || this.linkOpen || this.backupOpen) return;
     this.moreOpen = false;
     this.imageBusy = true;
     const lifecycle = this.lifecycle;
-    const date = this.selectedDate;
+    const date = this.session.selectedDate;
     const uploader = this.imageUpload();
     let target: EditorSnapshot | undefined = undefined;
     let files: ApiUploadFile[] = [];
     try {
       if (!this.sourceMode && !this.splitMode) await this.switchMode(true);
-      if (lifecycle !== this.lifecycle || date !== this.selectedDate ||
+      if (lifecycle !== this.lifecycle || date !== this.session.selectedDate ||
         (!this.sourceMode && !this.splitMode)) return;
       for (let attempt = 0; attempt < 50 && this.editor.loadedDocumentKey !== date; attempt += 1) {
-        if (lifecycle !== this.lifecycle || date !== this.selectedDate) return;
+        if (lifecycle !== this.lifecycle || date !== this.session.selectedDate) return;
         await new Promise<void>((resolve) => setTimeout(resolve, 100));
       }
       if (this.editor.loadedDocumentKey !== date) throw new Error('编辑器尚未就绪，请稍后重试');
       target = await this.editor.command('capture');
       files = await uploader.pick();
-      if (!files.length || lifecycle !== this.lifecycle || date !== this.selectedDate) return;
+      if (!files.length || lifecycle !== this.lifecycle || date !== this.session.selectedDate) return;
       const markdown = await uploader.upload(files);
-      if (lifecycle !== this.lifecycle || date !== this.selectedDate) return;
+      if (lifecycle !== this.lifecycle || date !== this.session.selectedDate) return;
       const before = target.text.slice(0, target.from);
       const after = target.text.slice(target.to);
       const prefix = before ? (before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n') : '';
@@ -1549,19 +1524,19 @@ export struct LogsReaderPage {
   }
 
   private async receiveImages(target: EditorSnapshot, images: EditorImageData[]): Promise<void> {
-    if (this.imageBusy || this.linkOpen || this.backupOpen || !this.day || target.documentKey !== this.selectedDate) {
+    if (this.imageBusy || this.linkOpen || this.backupOpen || !this.session.day || target.documentKey !== this.session.selectedDate) {
       this.editor.release(target).catch(() => {});
       return;
     }
     this.imageBusy = true;
     const lifecycle = this.lifecycle;
-    const date = this.selectedDate;
+    const date = this.session.selectedDate;
     const uploader = this.imageUpload();
     let files: ApiUploadFile[] = [];
     try {
       files = await uploader.paste(images);
       const markdown = await uploader.upload(files);
-      if (lifecycle !== this.lifecycle || date !== this.selectedDate) return;
+      if (lifecycle !== this.lifecycle || date !== this.session.selectedDate) return;
       const before = target.text.slice(0, target.from);
       const after = target.text.slice(target.to);
       const prefix = before ? (before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n') : '';
@@ -1585,14 +1560,14 @@ export struct LogsReaderPage {
   }
 
   private async confirmSavedExport(): Promise<boolean> {
-    if (this.day && this.editorReady) {
+    if (this.session.day && this.editorReady) {
       const snapshot = await this.editor.command('snapshot');
-      if (snapshot.documentKey !== this.selectedDate) return false;
-      this.draftText = snapshot.text;
-      this.dirty = snapshot.text !== this.savedText;
+      if (snapshot.documentKey !== this.session.selectedDate) return false;
+      this.session.text = snapshot.text;
+      this.session.editorPending = false;
       this.reportDraft();
     }
-    if (!this.dirty) return true;
+    if (!this.session.isDirty()) return true;
     return new Promise<boolean>((resolve) => {
       AlertDialog.show({ title: '导出已保存内容？',
         message: '当前编辑器有未保存修改，导出内容将以已保存的 Markdown 文件为准。',
@@ -1605,21 +1580,21 @@ export struct LogsReaderPage {
   private async exportLogs(scope: string): Promise<void> {
     this.moreOpen = false;
     this.exportMenuOpen = false;
-    if (this.exportBusy || this.imageBusy || this.saving || this.deleting || this.linkOpen ||
-      (scope !== 'all' && !this.selectedDate)) return;
+    if (this.exportBusy || this.imageBusy || this.documents.saving || this.deleting || this.linkOpen ||
+      (scope !== 'all' && !this.session.selectedDate)) return;
     const lifecycle = this.lifecycle;
-    const date = this.selectedDate;
+    const date = this.session.selectedDate;
     this.exportBusy = true;
     this.saveError = '';
     try {
-      if (!await this.confirmSavedExport() || lifecycle !== this.lifecycle || date !== this.selectedDate) return;
+      if (!await this.confirmSavedExport() || lifecycle !== this.lifecycle || date !== this.session.selectedDate) return;
       const query = scope === 'all' ? '' : `&date=${encodeURIComponent(date)}`;
       const data = await apiClient.download(`/export?scope=${scope}${query}`);
-      if (lifecycle !== this.lifecycle || date !== this.selectedDate) return;
+      if (lifecycle !== this.lifecycle || date !== this.session.selectedDate) return;
       const exported = await saveExport(this.getUIContext().getHostContext() as common.UIAbilityContext,
         this.exportName(scope, date), data,
-        () => lifecycle === this.lifecycle && date === this.selectedDate);
-      if (exported && lifecycle === this.lifecycle && date === this.selectedDate) {
+        () => lifecycle === this.lifecycle && date === this.session.selectedDate);
+      if (exported && lifecycle === this.lifecycle && date === this.session.selectedDate) {
         appFeedback.show('日志已导出', 'success');
       }
     } catch (error) {
@@ -1631,19 +1606,19 @@ export struct LogsReaderPage {
 
   private refreshLog(): void {
     this.moreOpen = false;
-    if (!this.selectedDate || this.refreshing) return;
-    const date = this.selectedDate;
+    if (!this.session.selectedDate || this.refreshing) return;
+    const date = this.session.selectedDate;
     this.confirmDiscard(() => this.refreshCurrentDay(date));
   }
 
   private async refreshCurrentDay(date: string): Promise<void> {
     if (this.refreshing) return;
     const lifecycle = this.lifecycle;
-    const revision = this.dayRevision + 1;
+    const revision = this.documents.dayLoadRevision + 1;
     this.refreshing = true;
     try {
       await this.loadDay(date);
-      if (lifecycle !== this.lifecycle || revision !== this.dayRevision || this.selectedDate !== date) return;
+      if (lifecycle !== this.lifecycle || revision !== this.documents.dayLoadRevision || this.session.selectedDate !== date) return;
       appFeedback.show(this.readFailed ? this.errorMessage || '日志刷新失败' : '日志已刷新',
         this.readFailed ? 'error' : 'success');
     } finally {
@@ -1714,7 +1689,7 @@ export struct LogsReaderPage {
       this.closeSearch();
       this.openInternalLink(result.date, result.headings.includes(heading) ? heading : '', 'search', query);
     };
-    if (result.date === this.selectedDate) navigate();
+    if (result.date === this.session.selectedDate) navigate();
     else this.confirmDiscard(navigate);
   }
 
@@ -1773,16 +1748,16 @@ export struct LogsReaderPage {
   }
 
   private async confirmDelete(): Promise<void> {
-    if (!this.day?.exists || !this.day.version || this.saving || this.deleting || this.backupOpen || this.linkOpen || this.imageBusy) return;
+    if (!this.session.day?.exists || !this.session.day.version || this.documents.saving || this.deleting || this.backupOpen || this.linkOpen || this.imageBusy) return;
     this.moreOpen = false;
-    const date = this.day.date;
-    const version = this.day.version;
+    const date = this.session.day.date;
+    const version = this.session.day.version;
     if (this.editorReady) {
       try {
         const snapshot = await this.editor.command('snapshot');
-        if (snapshot.documentKey !== date || this.day?.version !== version) return;
-        this.draftText = snapshot.text;
-        this.dirty = snapshot.text !== this.savedText;
+        if (snapshot.documentKey !== date || this.session.day?.version !== version) return;
+        this.session.text = snapshot.text;
+        this.session.editorPending = false;
         this.reportDraft();
       } catch (error) {
         this.saveError = error instanceof Error ? error.message : '请完成当前输入后重试';
@@ -1790,11 +1765,11 @@ export struct LogsReaderPage {
       }
     }
     AlertDialog.show({
-      message: this.dirty ? `确认删除 ${date} 日块？当前有未保存修改，删除会保留写入前备份。` :
+      message: this.session.isDirty() ? `确认删除 ${date} 日块？当前有未保存修改，删除会保留写入前备份。` :
         `确认删除 ${date} 日块？此操作会保留写入前备份。`,
       primaryButton: { value: '取消', action: () => {} },
       secondaryButton: { value: '删除', fontColor: $r('app.color.error'),
-        action: () => { if (this.day?.date === date && this.day.version === version) this.deleteDay(date, version); } }
+        action: () => { if (this.session.day?.date === date && this.session.day.version === version) this.deleteDay(date, version); } }
     });
   }
 
@@ -1803,14 +1778,9 @@ export struct LogsReaderPage {
     if (this.editor.ready && this.editor.documentKey === date) {
       await this.editor.replace(body, true);
     }
-    if (date !== this.selectedDate) return;
-    this.day = day;
-    this.savedText = body;
-    this.draftBaseVersion = day.version;
-    this.draftText = body;
-    this.editorInitialText = body;
+    if (date !== this.session.selectedDate) return;
+    this.session.commitDocument(day, body);
     this.previewText = body;
-    this.dirty = false;
     this.reportDraft();
     this.sourceMode = false;
     this.splitMode = false;
@@ -1820,34 +1790,34 @@ export struct LogsReaderPage {
   }
 
   private async deleteDay(date: string, version: string): Promise<void> {
-    if (this.deleting || this.saving || this.backupOpen || this.linkOpen) return;
+    if (this.deleting || this.documents.saving || this.backupOpen || this.linkOpen) return;
     const lifecycle = this.lifecycle;
-    const revision = this.dayRevision;
+    const revision = this.documents.dayLoadRevision;
     this.deleting = true;
     this.saveError = '';
     try {
       const response = await this.writes.delete({ date, baseVersion: version });
-      if (lifecycle !== this.lifecycle || revision !== this.dayRevision || this.day?.date !== date) return;
+      if (lifecycle !== this.lifecycle || revision !== this.documents.dayLoadRevision || this.session.day?.date !== date) return;
       if (!response.day || !matchesDeletedDay(response.day, date)) throw new Error('删除响应格式异常');
       await this.acceptDeletedDay(response.day, date);
     } catch (error) {
-      if (lifecycle !== this.lifecycle || revision !== this.dayRevision) return;
+      if (lifecycle !== this.lifecycle || revision !== this.documents.dayLoadRevision) return;
       const uncertain = !(error instanceof ApiError) || error.statusCode === 0 || error.statusCode === 404 ||
         error.statusCode === 409 || error.statusCode >= 500 || error.code === 'INVALID_RESPONSE';
       if (uncertain) {
         try {
           const current = await this.reads.day(date);
-          if (lifecycle !== this.lifecycle || revision !== this.dayRevision || this.day?.date !== date) return;
+          if (lifecycle !== this.lifecycle || revision !== this.documents.dayLoadRevision || this.session.day?.date !== date) return;
           if (current.day && matchesDeletedDay(current.day, date)) {
             await this.acceptDeletedDay(current.day, date);
             return;
           }
-        } catch (_) { if (lifecycle !== this.lifecycle || revision !== this.dayRevision) return; }
+        } catch (_) { if (lifecycle !== this.lifecycle || revision !== this.documents.dayLoadRevision) return; }
       }
       this.saveError = error instanceof ApiError && error.statusCode === 409 ?
         '源文件已变化，未删除。请刷新后核对。' : error instanceof Error ? error.message : '删除失败，请重试';
     } finally {
-      if (lifecycle === this.lifecycle && revision === this.dayRevision) this.deleting = false;
+      if (lifecycle === this.lifecycle && revision === this.documents.dayLoadRevision) this.deleting = false;
     }
   }
 
@@ -1866,7 +1836,7 @@ export struct LogsReaderPage {
       if (restoreDate || response.months.length > 0) {
         await this.loadDays(restoreDate ? restoreDate.slice(0, 7) : response.months[0].id, restoreDate);
       }
-      else { this.month = ''; this.days = []; this.day = undefined; this.selectedDate = ''; }
+      else { this.month = ''; this.days = []; this.session.clearDocument(); }
     } catch (error) {
       if (lifecycle === this.lifecycle) {
         this.readFailed = true;
@@ -1883,7 +1853,7 @@ export struct LogsReaderPage {
     const lifecycle = this.lifecycle;
     appFeedback.dismissScope('log-read');
     const revision = ++this.listRevision;
-    this.dayRevision++;
+    this.documents.dayLoadRevision++;
     await this.coverLogDocument();
     if (lifecycle !== this.lifecycle || revision !== this.listRevision) return;
     const previousMonth = this.month;
@@ -1900,14 +1870,13 @@ export struct LogsReaderPage {
       if (targetDate) await this.loadDay(targetDate);
       else if (response.days.length > 0) await this.loadDay(response.days[0].date);
       else {
-        this.day = undefined;
-        this.selectedDate = '';
+        this.session.clearDocument();
         this.readerReady = false;
         this.renderedPreviewDate = '';
         this.workspaceTransition.finish('document');
       }
       if (lifecycle !== this.lifecycle || revision !== this.listRevision) return;
-      if (this.errorMessage && this.day) {
+      if (this.errorMessage && this.session.day) {
         this.month = previousMonth;
         this.days = previousDays;
         this.retryRead = async () => this.loadDays(month, targetDate);
@@ -1927,80 +1896,45 @@ export struct LogsReaderPage {
     }
   }
 
-  private async loadDay(date: string, heading: string = '', headingIndex: number = -1): Promise<void> {
-    appFeedback.dismissScope('log-read');
-    this.closeFavoriteFeedback();
-    this.favoriteGroupDialogOpen = false;
-    const lifecycle = this.lifecycle;
-    const revision = ++this.dayRevision;
-    await this.coverLogDocument();
-    if (lifecycle !== this.lifecycle || revision !== this.dayRevision) return;
-    this.dayLoading = true;
-    this.readFailed = false;
-    this.errorMessage = '';
-    try {
-      const response = await this.reads.day(date);
-      if (lifecycle !== this.lifecycle || revision !== this.dayRevision) return;
-      if (!response.day || response.day.date !== date || typeof response.day.content !== 'string') {
-        throw new Error('日块响应格式异常');
-      }
-      const body = this.bodyFromDay(response.day);
-      const restore = !this.restoredDraftApplied ? restoredLogDraft(this.initialDraft,
-        activeInstance.namespace, date, body, response.day.version) : undefined;
-      const nextText = restore ? restore.text : body;
-      const changed = this.day?.date !== date || this.previewText !== nextText;
-      if (this.pendingImageDate && this.pendingImageDate !== date) this.cancelPendingImages();
-      this.day = response.day;
-      this.selectedDate = date;
-      if (changed) {
-        this.readerReady = false;
-        this.renderedPreviewDate = '';
-        this.editorReady = false;
-      }
-      this.previewRestoreOffset = this.previewScrollOffsets[date] || 0;
-      this.previewOffset = this.previewRestoreOffset;
-      this.activeOutlineIndex = Math.max(0, headingIndex);
-      if (this.initialDraft?.namespace === activeInstance.namespace && this.initialDraft.date === date) {
-        this.restoredDraftApplied = true;
-      }
-      this.savedText = body;
-      this.draftBaseVersion = restore ? this.initialDraft!.baseVersion : response.day.version;
-      this.draftText = nextText;
-      this.editorInitialText = this.draftText;
-      this.previewText = this.draftText;
-      this.dirty = this.draftText !== body;
-      this.reportDraft();
-      this.saveError = restore?.conflict ?
-        '已恢复本机草稿，但服务器版本已变化。请核对后复制草稿并刷新，保存不会覆盖新版本。' : '';
-      this.targetHeading = heading;
-      this.targetHeadingIndex = headingIndex;
-      this.targetHeadingId = '';
-      this.targetKind = '';
-      this.targetQuery = '';
-      if (heading) this.targetRevision++;
-      this.closeNavigation();
-      if (!changed) this.workspaceTransition.finish('document');
-    } catch (error) {
-      if (lifecycle === this.lifecycle && revision === this.dayRevision) {
-        this.readFailed = true;
-        this.errorMessage = this.message(error as Error);
-        this.retryRead = async () => this.loadDay(date, heading, headingIndex);
-        this.showReadFailure();
-        this.workspaceTransition.finish('document');
-      }
-    } finally {
-      if (lifecycle === this.lifecycle && revision === this.dayRevision) {
-        this.dayLoading = false;
-        if ((this.sourceMode || this.splitMode && !this.isWide()) &&
-          this.editor.loadedDocumentKey === date) {
-          this.getUIContext().postFrameCallback(new FrameAction(() => {
-            if (lifecycle === this.lifecycle && revision === this.dayRevision) {
-              this.workspaceTransition.finish('document');
-            }
-          }));
-        }
-      }
+  private installDay(day: DayEntry, date: string, heading: string, headingIndex: number): void {
+    const body = this.bodyFromDay(day);
+    const restore = !this.restoredDraftApplied ? restoredLogDraft(this.initialDraft,
+      activeInstance.namespace, date, body, day.version) : undefined;
+    const nextText = restore ? restore.text : body;
+    const changed = this.session.day?.date !== date || this.previewText !== nextText;
+    if (this.pendingImageDate && this.pendingImageDate !== date) this.cancelPendingImages();
+    this.session.commitDocument(day, body);
+    if (changed) {
+      this.readerReady = false;
+      this.renderedPreviewDate = '';
+      this.editorReady = false;
     }
+    this.previewRestoreOffset = this.previewScrollOffsets[date] || 0;
+    this.previewOffset = this.previewRestoreOffset;
+    this.activeOutlineIndex = Math.max(0, headingIndex);
+    if (this.initialDraft?.namespace === activeInstance.namespace && this.initialDraft.date === date) {
+      this.restoredDraftApplied = true;
+    }
+    if (restore) {
+      this.session.resetEditor(nextText);
+      this.session.baseVersion = this.initialDraft!.baseVersion;
+    }
+    this.previewText = this.session.text;
+    this.reportDraft();
+    this.saveError = restore?.conflict ?
+      '已恢复本机草稿，但服务器版本已变化。请核对后复制草稿并刷新，保存不会覆盖新版本。' : '';
+    this.targetHeading = heading;
+    this.targetHeadingIndex = headingIndex;
+    this.targetHeadingId = '';
+    this.targetKind = '';
+    this.targetQuery = '';
+    if (heading) this.targetRevision++;
+    this.closeNavigation();
+    if (!changed) this.workspaceTransition.finish('document');
+  }
+
+  private async loadDay(date: string, heading: string = '', headingIndex: number = -1): Promise<void> {
+    await this.documents.loadDay(date, heading, headingIndex);
   }
 
   private async coverLogDocument(): Promise<void> {
@@ -2013,12 +1947,12 @@ export struct LogsReaderPage {
 
   private async loadTargetDate(date: string, apply: () => void): Promise<void> {
     const lifecycle = this.lifecycle;
-    if (this.day?.date !== date) {
+    if (this.session.day?.date !== date) {
       if (date.slice(0, 7) !== this.month) await this.loadDays(date.slice(0, 7), date);
       else await this.loadDay(date);
     }
     if (lifecycle !== this.lifecycle) return;
-    if (this.day?.date !== date) {
+    if (this.session.day?.date !== date) {
       if (this.readFailed) this.retryRead = async () => this.loadTargetDate(date, apply);
       return;
     }
@@ -2065,7 +1999,7 @@ export struct LogsReaderPage {
   private openCalendar(mode: string): void {
     this.calendarMode = mode;
     if (!this.newLogDate) this.newLogDate = this.calendarDate(new Date());
-    this.calendarMonth = (mode === 'jump' ? this.selectedDate || this.newLogDate : this.newLogDate).slice(0, 7);
+    this.calendarMonth = (mode === 'jump' ? this.session.selectedDate || this.newLogDate : this.newLogDate).slice(0, 7);
     this.calendarOpen = true;
     this.loadCalendar();
   }
@@ -2117,7 +2051,7 @@ export struct LogsReaderPage {
   private async openDate(date: string, edit: boolean): Promise<void> {
     if (date.slice(0, 7) === this.month) await this.loadDay(date);
     else await this.loadDays(date.slice(0, 7), date);
-    if (edit && this.day?.date === date) { this.sourceMode = true; this.splitMode = false; }
+    if (edit && this.session.day?.date === date) { this.sourceMode = true; this.splitMode = false; }
   }
 
   private openNewLog(date: string): void {
@@ -2155,7 +2089,7 @@ export struct LogsReaderPage {
             }
           }
           .id(`log_calendar_day_${date || index}`).width('14.2857%').height(36).padding(0)
-          .backgroundColor(date && date === (this.calendarMode === 'jump' ? this.selectedDate : this.newLogDate) ?
+          .backgroundColor(date && date === (this.calendarMode === 'jump' ? this.session.selectedDate : this.newLogDate) ?
             $r('app.color.surface_card') : Color.Transparent)
           .borderRadius(6).enabled(this.canSelectCalendarDate(date))
           .accessibilityText(date).onClick(() => this.selectCalendarDate(date))
@@ -2225,7 +2159,7 @@ export struct LogsReaderPage {
   }
 
   private openHeading(day: DaySummary, heading: string, index: number): void {
-    if (this.day?.date === day.date) {
+    if (this.session.day?.date === day.date) {
       this.targetHeading = heading;
       this.targetHeadingIndex = index;
       this.targetHeadingId = '';
@@ -2237,7 +2171,7 @@ export struct LogsReaderPage {
   }
 
   private adjacentDay(offset: number): string {
-    const index = this.days.findIndex((item: DaySummary) => item.date === this.selectedDate);
+    const index = this.days.findIndex((item: DaySummary) => item.date === this.session.selectedDate);
     if (index < 0) return '';
     return this.days[index + offset]?.date || '';
   }
@@ -2293,7 +2227,7 @@ export struct LogsReaderPage {
           .border({ width: { bottom: 1 }, color: $r('app.color.hairline_soft') })
       }
       LogNavigation({ navigationMonths: this.months, navigationDays: this.days,
-        navigationMonth: this.month, requestedDate: this.selectedDate,
+        navigationMonth: this.month, requestedDate: this.session.selectedDate,
         logNavigationScroller: this.logNavigationScroller,
         navigationMonthsExpanded: this.navigationMonthsExpanded,
         navigationDayQuery: this.navigationDayQuery,
@@ -2303,7 +2237,7 @@ export struct LogsReaderPage {
         jumpDatePicker: (): void => this.jumpDatePicker(),
         onMonth: (month: string) => { if (month !== this.month) this.confirmDiscard(() => this.loadDays(month)); },
         onDay: (date: string) => {
-          if (date !== this.selectedDate || this.dayLoading) this.confirmDiscard(() => this.loadDay(date));
+          if (date !== this.session.selectedDate || this.documents.dayRequestLoading) this.confirmDiscard(() => this.loadDay(date));
         },
         onHeading: (day: DaySummary, heading: string, index: number) => this.openHeading(day, heading, index),
         onQuery: (query: string) => this.navigationDayQuery = query,
@@ -2472,8 +2406,8 @@ export struct LogsReaderPage {
     const tab = this.selectedTab();
     const instance = activeInstance.revision;
     const lifecycle = this.lifecycle;
-    const month = this.month || this.selectedDate.slice(0, 7);
-    const date = this.selectedDate;
+    const month = this.month || this.session.selectedDate.slice(0, 7);
+    const date = this.session.selectedDate;
     const months = this.months;
     const days = this.days;
     const years = this.noteYears;
@@ -2483,7 +2417,7 @@ export struct LogsReaderPage {
     const groups = this.favoritesData.groups;
     await this.navigationRefresh.refresh(tab, month, () => {
       if (instance !== activeInstance.revision || lifecycle !== this.lifecycle || this.selectedTab() !== tab) return false;
-      if (tab === 0) return date === this.selectedDate && month === (this.month || this.selectedDate.slice(0, 7)) &&
+      if (tab === 0) return date === this.session.selectedDate && month === (this.month || this.session.selectedDate.slice(0, 7)) &&
         months === this.months && days === this.days;
       if (tab === 1) return years === this.noteYears;
       if (tab === 2) return favorites === this.favoritesData.favorites && groups === this.favoritesData.groups &&
@@ -2647,33 +2581,33 @@ export struct LogsReaderPage {
           () => this.editor.command('find'))
       }
       if (!this.documentActionsInHeader('refresh')) {
-        this.desktopMoreItem($r('app.media.refresh_cw'), '刷新', !!this.selectedDate && !this.refreshing &&
-          !this.saving && !this.deleting,
+        this.desktopMoreItem($r('app.media.refresh_cw'), '刷新', !!this.session.selectedDate && !this.refreshing &&
+          !this.documents.saving && !this.deleting,
           () => this.refreshLog())
       }
       this.desktopMoreItem($r('app.media.layout_list'), '大纲', this.outlineHeadings().length > 0,
         () => this.pendingOutlineOpen = true)
-      this.desktopMoreItem($r('app.media.panel_right_open'), 'AI 工具', !!this.day,
+      this.desktopMoreItem($r('app.media.panel_right_open'), 'AI 工具', !!this.session.day,
         () => this.openAiTools())
       if (!this.editorActionsInHeader()) {
-        this.desktopMoreItem($r('app.media.upload'), '插入图片', !!this.day && !this.imageBusy,
+        this.desktopMoreItem($r('app.media.upload'), '插入图片', !!this.session.day && !this.imageBusy,
           () => this.insertImages())
-        this.desktopMoreItem($r('app.media.eye'), '放弃修改', this.editorReady && this.dirty,
+        this.desktopMoreItem($r('app.media.eye'), '放弃修改', this.editorReady && this.session.isDirty(),
           () => this.discardDraft())
       }
       if (!this.documentActionsInHeader('backup')) {
-        this.desktopMoreItem($r('app.media.database_backup'), '备份', !!this.day && !this.saving,
+        this.desktopMoreItem($r('app.media.database_backup'), '备份', !!this.session.day && !this.documents.saving,
           () => this.backupOpen = true)
       }
       if (!this.documentActionsInHeader('delete')) {
-        this.desktopMoreItem($r('app.media.trash_2'), '删除日块', !!this.day?.exists && !this.deleting,
+        this.desktopMoreItem($r('app.media.trash_2'), '删除日块', !!this.session.day?.exists && !this.deleting,
           () => this.confirmDelete())
       }
       if (!this.documentActionsInHeader('export')) {
         Divider().color($r('app.color.hairline')).margin({ top: 4, bottom: 4 })
-        this.desktopMoreItem($r('app.media.download'), '导出当前日块', !!this.day && !this.exportBusy,
+        this.desktopMoreItem($r('app.media.download'), '导出当前日块', !!this.session.day && !this.exportBusy,
           () => this.exportLogs('day'))
-        this.desktopMoreItem($r('app.media.download'), '导出当前源文件', !!this.day && !this.exportBusy,
+        this.desktopMoreItem($r('app.media.download'), '导出当前源文件', !!this.session.day && !this.exportBusy,
           () => this.exportLogs('file'))
         this.desktopMoreItem($r('app.media.download'), '导出全部日志', !this.exportBusy,
           () => this.exportLogs('all'))
@@ -2687,12 +2621,12 @@ export struct LogsReaderPage {
   }
 
   private async discardDraft(): Promise<void> {
-    if (!this.day || !this.dirty || !this.editorReady) return;
+    if (!this.session.day || !this.session.isDirty() || !this.editorReady) return;
     try {
-      await this.editor.replace(this.savedText, true);
-      this.draftText = this.savedText;
-      this.previewText = this.savedText;
-      this.dirty = false;
+      await this.editor.replace(this.session.baseline, true);
+      this.session.text = this.session.baseline;
+      this.previewText = this.session.baseline;
+      this.session.editorPending = false;
       this.reportDraft();
     } catch (error) {
       this.saveError = error instanceof Error ? error.message : '放弃修改失败';
@@ -2723,7 +2657,7 @@ export struct LogsReaderPage {
       .backgroundColor($r('app.color.canvas'))
       .border({ width: 1, color: $r('app.color.hairline') })
       .borderRadius(8).clip(true)
-      .enabled(!this.exportBusy && (scope === 'all' || !!this.selectedDate))
+      .enabled(!this.exportBusy && (scope === 'all' || !!this.session.selectedDate))
       .onClick(() => { this.moreOpen = false; this.exportLogs(scope); })
   }
 
@@ -2739,20 +2673,20 @@ export struct LogsReaderPage {
         }.width('100%')
       }
       Row({ space: 8 }) {
-        this.moreAction($r('app.media.refresh_cw'), '刷新', !!this.selectedDate && !this.refreshing &&
-          !this.saving && !this.deleting,
+        this.moreAction($r('app.media.refresh_cw'), '刷新', !!this.session.selectedDate && !this.refreshing &&
+          !this.documents.saving && !this.deleting,
           () => this.refreshLog())
         this.moreAction($r('app.media.layout_list'), '大纲', this.outlineHeadings().length > 0,
           () => this.pendingOutlineOpen = true)
-        this.moreAction($r('app.media.panel_right_open'), 'AI 工具', !!this.day,
+        this.moreAction($r('app.media.panel_right_open'), 'AI 工具', !!this.session.day,
           () => this.openAiTools())
       }.width('100%')
       Row({ space: 8 }) {
-        this.moreAction($r('app.media.upload'), '插入图片', !!this.day && !this.imageBusy,
+        this.moreAction($r('app.media.upload'), '插入图片', !!this.session.day && !this.imageBusy,
           () => this.insertImages())
-        this.moreAction($r('app.media.eye'), '放弃修改', this.editorReady && this.dirty,
+        this.moreAction($r('app.media.eye'), '放弃修改', this.editorReady && this.session.isDirty(),
           () => this.discardDraft())
-        this.moreAction($r('app.media.database_backup'), '备份', !!this.day && !this.saving,
+        this.moreAction($r('app.media.database_backup'), '备份', !!this.session.day && !this.documents.saving,
           () => this.backupOpen = true)
       }.width('100%')
       Button({ type: ButtonType.Normal }) {
@@ -2763,7 +2697,7 @@ export struct LogsReaderPage {
       }.width('100%').height(42).padding(0)
         .backgroundColor($r('app.color.error_surface'))
         .border({ width: 1, color: $r('app.color.hairline') })
-        .borderRadius(8).clip(true).enabled(!!this.day?.exists && !this.deleting)
+        .borderRadius(8).clip(true).enabled(!!this.session.day?.exists && !this.deleting)
         .onClick(() => { this.moreOpen = false; this.confirmDelete(); })
       Divider().strokeWidth(1).color($r('app.color.hairline')).margin({ top: 2 })
       Text('导出').width('100%').fontSize(13).fontWeight(FontWeight.Medium)
@@ -2933,7 +2867,7 @@ export struct LogsReaderPage {
     .width('100%').height(42).padding({ left: 12, right: 12 }).borderRadius(6)
     .attributeModifier(new InteractiveSurface(Color.Transparent, this.hoveredExport === scope))
     .onHover((hover: boolean) => animateHover(this.getUIContext(), () => this.hoveredExport = hover ? scope : ''))
-    .enabled(!this.exportBusy && (scope === 'all' || this.selectedDate.length > 0))
+    .enabled(!this.exportBusy && (scope === 'all' || this.session.selectedDate.length > 0))
     .id(`log_export_${scope}`)
     .onClick(() => this.exportLogs(scope))
   }
@@ -2955,10 +2889,10 @@ export struct LogsReaderPage {
           showLabel: true, available: this.editorReady && !this.linkOpening,
           onAction: () => this.openLink() })
         ToolbarAction({ label: '插入图片', icon: $r('app.media.upload'), iconSize: 15,
-          showLabel: true, busy: this.imageBusy, available: !!this.day && this.editorReady,
+          showLabel: true, busy: this.imageBusy, available: !!this.session.day && this.editorReady,
           onAction: () => this.insertImages() })
         ToolbarAction({ label: '放弃修改', icon: $r('app.media.eye'), iconSize: 15,
-          showLabel: true, available: this.editorReady && this.dirty,
+          showLabel: true, available: this.editorReady && this.session.isDirty(),
           onAction: () => this.discardDraft() })
         ToolbarAction({ label: '查找替换', icon: $r('app.media.search'), iconSize: 15,
           showLabel: true, available: this.editorReady,
@@ -2971,7 +2905,7 @@ export struct LogsReaderPage {
         ToolbarAction({ label: this.refreshing ? '刷新中' : '刷新', reservedLabel: '刷新中',
           icon: $r('app.media.refresh_cw'), iconSize: 15, busy: this.refreshing,
           showLabel: this.showToolbarLabels('refresh'),
-          available: !!this.selectedDate && !this.refreshing && !this.saving && !this.deleting && !this.imageBusy,
+          available: !!this.session.selectedDate && !this.refreshing && !this.documents.saving && !this.deleting && !this.imageBusy,
           onAction: () => this.refreshLog() })
       }.width(this.desktopActionSlotWidth('refresh', '刷新中')).clip(true)
         .margin({ left: (this.headerWidth < 440 ? 4 : 8) *
@@ -2997,7 +2931,7 @@ export struct LogsReaderPage {
       Column() {
         ToolbarAction({ label: '备份', icon: $r('app.media.database_backup'), iconSize: 15,
           showLabel: this.showToolbarLabels('backup'),
-          available: !!this.day && !this.saving && !this.deleting,
+          available: !!this.session.day && !this.documents.saving && !this.deleting,
           onAction: () => this.backupOpen = true })
       }.width(this.desktopActionSlotWidth('backup', '备份')).clip(true)
         .margin({ left: (this.headerWidth < 440 ? 4 : 8) *
@@ -3008,7 +2942,7 @@ export struct LogsReaderPage {
       Column() {
         ToolbarAction({ label: '删除', icon: $r('app.media.trash_2'), iconSize: 15,
           showLabel: this.showToolbarLabels('delete'), danger: true, busy: this.deleting,
-          available: !!this.day?.exists && !this.saving,
+          available: !!this.session.day?.exists && !this.documents.saving,
           onAction: () => this.confirmDelete() })
       }.width(this.desktopActionSlotWidth('delete', '删除')).clip(true)
         .margin({ left: (this.headerWidth < 440 ? 4 : 8) *
@@ -3016,10 +2950,10 @@ export struct LogsReaderPage {
         .opacity(this.desktopActionSlotPresence('delete', '删除'))
         .hitTestBehavior(this.documentActionsInHeader('delete') ? HitTestMode.Default : HitTestMode.None)
         .accessibilityLevel(this.documentActionsInHeader('delete') ? 'auto' : 'no-hide-descendants')
-      ToolbarAction({ label: this.saving ? '保存中' : '保存', reservedLabel: '保存中',
+      ToolbarAction({ label: this.documents.saving ? '保存中' : '保存', reservedLabel: '保存中',
         icon: $r('app.media.save'), iconSize: 15,
-        showLabel: this.showToolbarLabels('save'), primary: true, busy: this.saving,
-        available: this.editorReady && this.dirty, disabledReason: '没有未保存的修改',
+        showLabel: this.showToolbarLabels('save'), primary: true, busy: this.documents.saving,
+        available: this.editorReady && this.session.isDirty(), disabledReason: '没有未保存的修改',
         onAction: () => this.save() })
       ToolbarAction({ label: '更多日志操作', icon: $r('app.media.more_horizontal'),
         showLabel: false, active: this.moreOpen, onAction: () => this.moreOpen = !this.moreOpen })
@@ -3047,7 +2981,7 @@ export struct LogsReaderPage {
     if (this.isWide()) {
       Stack({ alignContent: Alignment.Top }) {
         Column() {
-          DesktopLogHeader({ fileName: this.day?.fileName || '', selectedDate: this.selectedDate,
+          DesktopLogHeader({ fileName: this.session.day?.fileName || '', selectedDate: this.session.selectedDate,
             workspaceBreakpoint: this.workspaceBreakpoint,
             toolbarWidth: this.headerWidth, dateWidth: this.headerDateWidth,
             previousButton: (): void => this.desktopAdjacentButton('上一篇', 1),
@@ -3067,7 +3001,7 @@ export struct LogsReaderPage {
           .hitTestBehavior(this.logsReadingMode ? HitTestMode.None : HitTestMode.Default)
           .accessibilityLevel(this.logsReadingMode ? 'no-hide-descendants' : 'auto')
         Column() {
-          ReadingLogHeader({ selectedDate: this.selectedDate, workspaceBreakpoint: this.workspaceBreakpoint,
+          ReadingLogHeader({ selectedDate: this.session.selectedDate, workspaceBreakpoint: this.workspaceBreakpoint,
             hasOutline: this.outlineHeadings().length > 0,
             previousButton: (): void => this.desktopAdjacentButton('上一篇', 1),
             nextButton: (): void => this.desktopAdjacentButton('下一篇', -1),
@@ -3081,8 +3015,8 @@ export struct LogsReaderPage {
           .accessibilityLevel(this.logsReadingMode ? 'auto' : 'no-hide-descendants')
       }.width('100%').height(64).clip(true).id('log_reader_header')
     } else {
-      CompactLogHeader({ selectedDate: this.selectedDate, workspaceBreakpoint: this.workspaceBreakpoint,
-        sourceMode: this.sourceMode, saving: this.saving, dirty: this.editorReady && this.dirty,
+      CompactLogHeader({ selectedDate: this.session.selectedDate, workspaceBreakpoint: this.workspaceBreakpoint,
+        sourceMode: this.sourceMode, saving: this.documents.saving, dirty: this.editorReady && this.session.isDirty(),
         moreOpen: $moreOpen, moreActionsPanel: (): void => this.compactMoreActionsPanel(),
         onActionsDisappear: () => this.handleActionsDisappear(),
         onMode: (mode: string) => this.switchMode(mode === 'source'),
@@ -3169,20 +3103,20 @@ export struct LogsReaderPage {
   }
 
   private async highlightAiDraft(): Promise<void> {
-    if (!this.day || this.ai.busy) return;
+    if (!this.session.day || this.ai.busy) return;
     try {
-      const date = this.day.date;
-      let body = this.draftText;
+      const date = this.session.day.date;
+      let body = this.session.text;
       if (this.editorReady) {
         const snapshot = await this.editor.command('snapshot');
-        if (snapshot.documentKey !== date || this.day?.date !== date) return;
+        if (snapshot.documentKey !== date || this.session.day?.date !== date) return;
         body = snapshot.text;
       } else if (this.sourceMode || this.splitMode) {
         this.ai.message = '编辑器尚未就绪，请稍后重试';
         return;
       }
-      this.draftText = body;
-      this.dirty = body !== this.savedText;
+      this.session.text = body;
+      this.session.editorPending = false;
       this.reportDraft();
       await this.ai.highlight(date, body);
     } catch (error) { this.ai.message = error instanceof Error ? error.message : '编辑器尚未就绪'; }
@@ -3197,7 +3131,7 @@ export struct LogsReaderPage {
         Column({ space: 1 }) {
           Text('日志大纲').fontFamily(workspaceSansFamily(this.workspaceBreakpoint))
             .fontSize(15).fontWeight(FontWeight.Medium).fontColor($r('app.color.body_strong'))
-          Text(`${this.selectedDate} · ${this.outlineHeadings().length} 个标题`)
+          Text(`${this.session.selectedDate} · ${this.outlineHeadings().length} 个标题`)
             .fontSize(11).fontColor($r('app.color.muted'))
         }.alignItems(HorizontalAlign.Start).layoutWeight(1)
         Button({ type: ButtonType.Normal }) {
@@ -3280,9 +3214,9 @@ export struct LogsReaderPage {
 
   private async prepareEditor(date: string, lifecycle: number): Promise<boolean> {
     if (!this.sourceMode && !this.splitMode) await this.switchMode(true);
-    if (lifecycle !== this.lifecycle || this.day?.date !== date) return false;
+    if (lifecycle !== this.lifecycle || this.session.day?.date !== date) return false;
     for (let attempt = 0; attempt < 50 && this.editor.loadedDocumentKey !== date; attempt += 1) {
-      if (lifecycle !== this.lifecycle || this.day?.date !== date) return false;
+      if (lifecycle !== this.lifecycle || this.session.day?.date !== date) return false;
       await new Promise<void>((resolve) => setTimeout(resolve, 100));
     }
     if (!this.editorReady || this.editor.loadedDocumentKey !== date) {
@@ -3292,8 +3226,8 @@ export struct LogsReaderPage {
   }
 
   private async findInEditor(): Promise<void> {
-    if (!this.day) return;
-    const date = this.day.date;
+    if (!this.session.day) return;
+    const date = this.session.day.date;
     const lifecycle = this.lifecycle;
     try {
       if (!await this.prepareEditor(date, lifecycle)) return;
@@ -3303,12 +3237,12 @@ export struct LogsReaderPage {
   }
 
   private async applyAiOutput(): Promise<void> {
-    if (!this.day || !this.ai.output.trim() || this.ai.busy) return;
+    if (!this.session.day || !this.ai.output.trim() || this.ai.busy) return;
     const lifecycle = this.lifecycle;
-    const date = this.day.date;
+    const date = this.session.day.date;
     const revision = this.ai.requestRevision;
     const output = this.ai.output;
-    const current = (): boolean => lifecycle === this.lifecycle && this.day?.date === date &&
+    const current = (): boolean => lifecycle === this.lifecycle && this.session.day?.date === date &&
       revision === this.ai.requestRevision && this.ai.outputDate === date && this.ai.output === output && !this.ai.busy;
     if (this.ai.outputDate !== date) { this.ai.message = '请切回生成草稿时的日块'; return; }
     try {
@@ -3327,13 +3261,13 @@ export struct LogsReaderPage {
   }
 
   private async applyAiHighlight(): Promise<void> {
-    if (!this.day || this.ai.busy) return;
+    if (!this.session.day || this.ai.busy) return;
     const lifecycle = this.lifecycle;
-    const date = this.day.date;
+    const date = this.session.day.date;
     const revision = this.ai.requestRevision;
     const highlighted = this.ai.highlighted;
     const originalDraft = this.ai.originalDraft;
-    const current = (): boolean => lifecycle === this.lifecycle && this.day?.date === date &&
+    const current = (): boolean => lifecycle === this.lifecycle && this.session.day?.date === date &&
       revision === this.ai.requestRevision && this.ai.highlightDate === date &&
       this.ai.highlighted === highlighted && this.ai.originalDraft === originalDraft && !this.ai.busy;
     try {
@@ -3483,18 +3417,18 @@ export struct LogsReaderPage {
       onInstruction: (value: string) => this.ai.instruction = value,
       onMaterial: (value: string) => this.ai.material = value,
       onOutput: (value: string) => this.ai.output = value,
-      busy: this.ai.busy, importing: this.ai.importing, ready: !!this.day,
+      busy: this.ai.busy, importing: this.ai.importing, ready: !!this.session.day,
       generateConfigured: !!activeInstance.capabilities?.features.aiWriting.configured,
       highlightConfigured: !!activeInstance.capabilities?.features.aiHighlighting.configured,
-      canHighlight: !!this.draftText.trim(),
-      canApply: !!this.ai.output.trim() && this.ai.outputDate === this.selectedDate,
+      canHighlight: !!this.session.text.trim(),
+      canApply: !!this.ai.output.trim() && this.ai.outputDate === this.session.selectedDate,
       message: this.ai.message || (this.aiMode === 'generate' &&
         !activeInstance.capabilities?.features.aiWriting.configured || this.aiMode === 'highlight' &&
         !activeInstance.capabilities?.features.aiHighlighting.configured ?
         '当前实例尚未配置对应模型能力' : ''),
       desktop: this.isWide(), onClose: () => this.closeAiTools(),
       onImport: () => this.importAiMaterial(),
-      onGenerate: () => this.ai.generate(this.selectedDate),
+      onGenerate: () => this.ai.generate(this.session.selectedDate),
       onHighlight: () => this.highlightAiDraft(), onApply: () => this.applyAiOutput() })
     .width(this.isWide() ? this.aiPanelWidth : '100%').height('100%')
     .translate({ x: (this.isWide() ? this.aiPanelWidth : this.aiAvailableWidth) * this.aiOffset / 420 })
@@ -3529,14 +3463,14 @@ export struct LogsReaderPage {
   @Builder
   private reader() {
     Column() {
-      if (this.monthsLoading || !this.day && (this.daysLoading || this.dayLoading)) {
+      if (this.monthsLoading || !this.session.day && (this.daysLoading || this.documents.dayRequestLoading)) {
         Column() {
           LoadingProgress().width(26).height(26).color($r('app.color.primary'))
         }.layoutWeight(1).width('100%').justifyContent(FlexAlign.Center)
-      } else if (this.errorMessage && !this.day) {
+      } else if (this.errorMessage && !this.session.day) {
         LoadFailure({ message: this.errorMessage,
           onRetry: () => this.retryRead() })
-      } else if (this.day) {
+      } else if (this.session.day) {
         this.heading()
         Stack({ alignContent: Alignment.TopEnd }) {
           Row() {
@@ -3555,8 +3489,8 @@ export struct LogsReaderPage {
                 }.width('100%').padding({ top: 8, bottom: 8, left: 16, right: 16 })
                   .backgroundColor($r('app.color.canvas'))
               }
-              SourceEditor({ session: this.editor, documentKey: this.day.date,
-                initialText: this.editorInitialText })
+              SourceEditor({ session: this.editor, documentKey: this.session.day.date,
+                initialText: this.session.editorInitialText })
                 .width('100%').layoutWeight(1)
             }
               .width(this.isWide() && this.splitMode ? '50%' : (this.sourceMode || this.splitMode ? '100%' : 0))
@@ -3566,7 +3500,7 @@ export struct LogsReaderPage {
                 color: $r('app.color.hairline') })
             Row() {
               Stack({ alignContent: Alignment.TopEnd }) {
-              MarkdownReader({ content: this.previewText, contentMode: 'log', documentKey: this.day.date,
+              MarkdownReader({ content: this.previewText, contentMode: 'log', documentKey: this.session.day.date,
                 onImageDrop: (event: DragEvent) => this.receivePreviewImages(event),
                 themePreference: this.themePreference,
                 stableViewport: this.isWide(), fillAvailableWidth: this.splitMode,
@@ -3587,7 +3521,7 @@ export struct LogsReaderPage {
                   }
                 },
                 onContentRendered: (_content: string, date: string) => {
-                  if (date !== this.selectedDate) return;
+                  if (date !== this.session.selectedDate) return;
                   this.renderedPreviewDate = date;
                   this.workspaceTransition.finish('document');
                 },
@@ -3596,7 +3530,7 @@ export struct LogsReaderPage {
                   this.workspaceTransition.finish('document');
                 },
                 onRenderFailed: (date: string) => {
-                  if (date !== this.selectedDate) return;
+                  if (date !== this.session.selectedDate) return;
                   this.readFailed = true;
                   this.retryRead = async () => this.loadDay(date);
                   this.errorMessage = '日志正文渲染失败，请刷新重试';
@@ -3610,9 +3544,9 @@ export struct LogsReaderPage {
                 trackActiveHeading: true,
                 onActiveHeading: (headingId: string) => this.updateActiveOutline(headingId),
                 onInternalLink: (date: string, heading: string) => {
-                  const targetDate = date || this.selectedDate;
+                  const targetDate = date || this.session.selectedDate;
                   if (!targetDate) return;
-                  if (targetDate === this.selectedDate) this.openInternalLink(targetDate, heading);
+                  if (targetDate === this.session.selectedDate) this.openInternalLink(targetDate, heading);
                   else this.confirmDiscard(() => this.openInternalLink(targetDate, heading));
                 } })
                 .width('100%').height('100%').id('log_reading_surface')
@@ -3632,7 +3566,7 @@ export struct LogsReaderPage {
                   .hitTestBehavior(HitTestMode.None)
               }
               if (this.isWide() && !this.logsReadingMode && !this.sourceMode && !this.splitMode &&
-                this.readerReady && this.renderedPreviewDate === this.selectedDate) {
+                this.readerReady && this.renderedPreviewDate === this.session.selectedDate) {
                 Column() { this.readingModeEntryButton() }
                   .width(36).height(36).margin({ top: 16, right: 16 }).zIndex(3)
               }
@@ -3643,7 +3577,7 @@ export struct LogsReaderPage {
               .height('100%').visibility(this.sourceMode || this.splitMode && !this.isWide() ?
                 Visibility.None : Visibility.Visible)
           }.width('100%').height('100%')
-          LoadingHintAnchor({ loading: !this.readFailed && (this.dayLoading || this.daysLoading ||
+          LoadingHintAnchor({ loading: !this.readFailed && (this.documents.dayRequestLoading || this.daysLoading ||
             !this.sourceMode && this.renderedPreviewDate.length > 0 && !this.readerReady),
             onChange: (placement: LoadingHintPlacement) => this.logLoadingHint = placement })
             .hitTestBehavior(HitTestMode.None)
@@ -3683,7 +3617,7 @@ export struct LogsReaderPage {
           Text('学习日志工作台').fontFamily(workspaceSansFamily(this.workspaceBreakpoint))
             .fontSize(15).fontWeight(FontWeight.Bold).fontColor($r('app.color.ink')).maxLines(1)
           Text((this.selectedModule === 1) ? '随记' : (this.selectedModule === 3) ? '知识问答' : (this.selectedModule === 4) ? '学习统计' : (this.selectedModule === 2) ? '收藏中心' :
-            (this.day?.headings[0] || this.selectedDate || '日志'))
+            (this.session.day?.headings[0] || this.session.selectedDate || '日志'))
             .fontFamily(workspaceSansFamily(this.workspaceBreakpoint)).fontSize(12)
             .fontColor($r('app.color.muted')).maxLines(1)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -4020,9 +3954,9 @@ export struct LogsReaderPage {
             .translate({ x: this.navigationOffset })
         }.width('100%').height('100%')
       }
-      if (this.backupOpen && this.day) {
+      if (this.backupOpen && this.session.day) {
         Stack() {
-          BackupPanel({ date: this.day.date, maximized: $backupMaximized, themePreference: this.themePreference,
+          BackupPanel({ date: this.session.day.date, maximized: $backupMaximized, themePreference: this.themePreference,
             onClose: () => { if (!this.backupBusy) { this.backupOpen = false; this.backupMaximized = false; } },
             onBeforeRestore: () => this.beforeRestore(),
             onRestored: (day: DayEntry) => this.applyRestoredDay(day),
@@ -4081,7 +4015,7 @@ export struct LogsReaderPage {
         LogHighlightReview({ original: this.ai.originalDraft, highlighted: this.ai.highlighted,
           themePreference: this.themePreference,
           date: this.ai.highlightDate,
-          available: this.ai.highlightDate === this.selectedDate && this.ai.originalDraft === this.draftText,
+          available: this.ai.highlightDate === this.session.selectedDate && this.ai.originalDraft === this.session.text,
           onClose: () => this.ai.reviewOpen = false, onApply: () => this.applyAiHighlight() })
           .width('100%').height('100%').transition(floatingSurfaceTransition())
       }

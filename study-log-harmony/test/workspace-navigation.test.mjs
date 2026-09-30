@@ -30,7 +30,7 @@ function workspace(tab) {
   const page = new module.exports.Workspace();
   Object.assign(page, {
     selectedModule: tab, moduleRequestedTab: -1, moduleSwitchRevision: 0, noteDiscardRevision: 0, qaDiscardRevision: 0,
-    targetRevision: 0, savedText: 'saved', dirty: false,
+    targetRevision: 0, session: { text: 'saved', baseline: 'saved', isDirty: () => false },
     isWide: () => false, closeNavigation() {}, closeOutline() {}, closeSearch() {},
     readingTransition: { clear() {} }, workspaceTransition: { clear() {}, finish() {} },
     qaNavigation: { loadQaNavigation() {} },

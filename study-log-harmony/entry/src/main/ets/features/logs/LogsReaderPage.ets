@@ -42,27 +42,24 @@ import { iconTint } from '../../common/ui/IconTint';
 import { InteractiveSurface, animateHover } from '../../common/ui/InteractiveSurface';
 import { ToolbarDensity, resolveToolbarDensity, toolbarActionWidth, toolbarActionsWidth } from '../../common/ui/ToolbarLayout';
 import { StatsEntry } from '../stats/StatsModels';
-import { StatsNavigation } from '../stats/components/StatsNavigation';
 import { FavoritesController } from '../favorites/FavoritesController';
-import { FavoritesNavigation } from '../favorites/components/FavoritesNavigation';
 import { FavoriteHeading } from '../favorites/FavoriteModels';
 import { LogFavoriteGroupPanel } from './components/LogFavoriteGroupPanel';
 import { workspacePreferences } from '../../common/storage/WorkspacePreferences';
 import { appFeedback } from '../../common/ui/AppFeedback';
-import { NotesNavigation } from '../notes/components/NotesNavigation';
 import { SearchHistoryStore } from './SearchHistoryStore';
 import { SearchHistoryList } from '../../app/components/SearchHistoryList';
 import { LogAiController } from './LogAiController';
 import { LogAiMaterialImport } from './LogAiMaterialImport';
 import { LogAiPanel } from './components/LogAiPanel';
 import { LogHighlightReview } from './components/LogHighlightReview';
-import { QaNavigation } from '../qa/components/QaNavigation';
 import { QaNavigationController } from '../qa/QaNavigationController';
 import { RagSessionSummary } from '../qa/QaModels';
 import { AppTopBar } from '../../app/components/WorkspaceNavigation';
 import { WorkspaceModuleState } from '../../app/WorkspaceModuleState';
 import { DesktopThemePanel } from '../../app/components/DesktopThemePanel';
 import { DesktopWorkspaceTopBar } from '../../app/components/DesktopWorkspaceTopBar';
+import { WorkspaceModuleNavigation } from '../../app/components/WorkspaceModuleNavigation';
 import { WorkspaceContent, WorkspaceTaxonomyPage } from '../../app/components/WorkspaceContent';
 import { WorkspaceFrame } from '../../app/components/WorkspaceFrame';
 import { PreservedLogDraft, restoredLogDraft } from './LogDraftPolicy';
@@ -2315,48 +2312,14 @@ export struct LogsReaderPage {
 
   @Builder
   private moduleNavigationContent(popover: boolean = false) {
-    if ((this.selectedModule === 3)) {
-      QaNavigation({ qaRailPopover: popover ? this.railPopover : '', moduleFrameHeight: this.moduleFrameHeight,
-                    qaSessions: this.qaNavigation.qaSessions, qaSessionQuery: this.modules.qaQuery,
-                    qaSearchRevision: this.modules.qaSearchRevision,
-                    qaActiveSessionId: this.modules.qaSessionId, qaBusy: this.modules.qaBusy,
-                    qaNavigationLoading: this.qaNavigation.qaNavigationLoading,
-                    qaNavigationError: this.qaNavigation.qaNavigationError,
-                    qaRenameId: this.qaNavigation.qaRenameId,
-                    qaRenameTitle: this.qaNavigation.qaRenameTitle,
-                    qaMenuId: this.qaNavigation.qaMenuId,
-                    onQuery: (query: string) => this.modules.qaQuery = query,
-                    onSession: (id: string) => this.switchQaSession(id),
-                    onMenu: (id: string) => this.qaNavigation.qaMenuId = id,
-                    onStartRename: (session: RagSessionSummary) => {
-                      this.qaNavigation.qaRenameId = session.id;
-                      this.qaNavigation.qaRenameTitle = session.title;
-                    },
-                    onRenameTitle: (title: string) => this.qaNavigation.qaRenameTitle = title,
-                    onCommitRename: () => this.qaNavigation.commitQaRename(),
-                    onCancelRename: () => this.qaNavigation.qaRenameId = '',
-                    onDelete: (session: RagSessionSummary) => this.confirmQaDelete(session),
-                    onRetry: () => this.qaNavigation.loadQaNavigation() })
-    } else if ((this.selectedModule === 1)) {
-      NotesNavigation({ filtersOnly: popover, noteYearFilter: this.modules.noteYearFilter, noteTagFilter: this.modules.noteTagFilter,
-                    noteCount: this.modules.noteCount, noteYears: this.modules.noteYears, noteTags: this.modules.noteTags,
-                    noteEditorBusy: this.modules.notesBusy,
-                    onNew: () => { this.modules.noteNewRevision++; this.railPopover = ''; },
-                    onYear: (year: string) => { this.modules.noteYearFilter = year; this.railPopover = ''; },
-                    onTag: (tag: string) => { this.modules.noteTagFilter = tag; this.railPopover = ''; } })
-    } else if ((this.selectedModule === 2)) {
-      FavoritesNavigation({ data: this.favoritesData, wide: true,
-                    onRetry: () => this.favoritesData.load() })
-    } else if ((this.selectedModule === 4)) {
-      StatsNavigation({ monthsOnly: false, onTaxonomy: () => this.openTaxonomy(), statsMonths: this.modules.statsMonths,
-                    statsMonth: this.modules.statsMonth, statsMonthsLoading: this.modules.statsMonthsLoading,
-                    statsMonthsError: this.modules.statsMonthsError,
-                    onMonth: (month: string) => {
-                      this.modules.statsMonth = month;
-                      this.modules.statsMonthRevision++; this.railPopover = '';
-                    },
-                    onRetry: () => this.modules.statsRefreshRevision++ })
-    } else { this.navigation() }
+    WorkspaceModuleNavigation({ selectedModule: this.selectedModule, modules: this.modules,
+      qaNavigation: this.qaNavigation, favoritesData: this.favoritesData,
+      railPopover: $railPopover, moduleFrameHeight: this.moduleFrameHeight,
+      wide: true, popover: popover,
+      onSession: (id: string) => this.switchQaSession(id),
+      onDelete: (session: RagSessionSummary) => this.confirmQaDelete(session),
+      onTaxonomy: () => this.openTaxonomy(), onCloseNavigation: () => this.closeNavigation(),
+      logContent: (): void => this.navigation() })
   }
 
   private async refreshNavigationLists(): Promise<void> {
@@ -2747,43 +2710,14 @@ export struct LogsReaderPage {
 
   @Builder
   private compactNavigationContent() {
-    if ((this.selectedModule === 1)) {
-      NotesNavigation({ noteYearFilter: this.modules.noteYearFilter, noteTagFilter: this.modules.noteTagFilter,
-        noteCount: this.modules.noteCount, noteYears: this.modules.noteYears, noteTags: this.modules.noteTags,
-        noteEditorBusy: this.modules.notesBusy,
-        onNew: () => { this.modules.noteNewRevision++; this.closeNavigation(); },
-        onYear: (year: string) => { this.modules.noteYearFilter = year; this.closeNavigation(); },
-        onTag: (tag: string) => { this.modules.noteTagFilter = tag; this.closeNavigation(); } })
-    } else if ((this.selectedModule === 2)) {
-      FavoritesNavigation({ data: this.favoritesData, wide: false,
-        onRetry: () => this.favoritesData.load() })
-    } else if ((this.selectedModule === 3)) {
-      QaNavigation({ qaSessions: this.qaNavigation.qaSessions, qaSessionQuery: this.modules.qaQuery,
-        qaSearchRevision: this.modules.qaSearchRevision,
-        qaActiveSessionId: this.modules.qaSessionId, qaBusy: this.modules.qaBusy,
-        qaNavigationLoading: this.qaNavigation.qaNavigationLoading,
-        qaNavigationError: this.qaNavigation.qaNavigationError,
-        qaRenameId: this.qaNavigation.qaRenameId, qaRenameTitle: this.qaNavigation.qaRenameTitle,
-        qaMenuId: this.qaNavigation.qaMenuId,
-        onQuery: (query: string) => this.modules.qaQuery = query,
-        onSession: (id: string) => this.switchQaSession(id),
-        onMenu: (id: string) => this.qaNavigation.qaMenuId = id,
-        onStartRename: (session: RagSessionSummary) => {
-          this.qaNavigation.qaRenameId = session.id;
-          this.qaNavigation.qaRenameTitle = session.title;
-        },
-        onRenameTitle: (title: string) => this.qaNavigation.qaRenameTitle = title,
-        onCommitRename: () => this.qaNavigation.commitQaRename(),
-        onCancelRename: () => this.qaNavigation.qaRenameId = '',
-        onDelete: (session: RagSessionSummary) => this.confirmQaDelete(session),
-        onRetry: () => this.qaNavigation.loadQaNavigation() })
-    } else if ((this.selectedModule === 4)) {
-      StatsNavigation({ monthsOnly: false, onTaxonomy: () => this.openTaxonomy(), statsMonths: this.modules.statsMonths, statsMonth: this.modules.statsMonth,
-        statsMonthsLoading: this.modules.statsMonthsLoading, statsMonthsError: this.modules.statsMonthsError,
-        onMonth: (month: string) => {
-          this.modules.statsMonth = month; this.modules.statsMonthRevision++; this.closeNavigation();
-        }, onRetry: () => this.modules.statsRefreshRevision++ })
-    } else this.navigation()
+    WorkspaceModuleNavigation({ selectedModule: this.selectedModule, modules: this.modules,
+      qaNavigation: this.qaNavigation, favoritesData: this.favoritesData,
+      railPopover: $railPopover, moduleFrameHeight: this.moduleFrameHeight,
+      wide: false, popover: false,
+      onSession: (id: string) => this.switchQaSession(id),
+      onDelete: (session: RagSessionSummary) => this.confirmQaDelete(session),
+      onTaxonomy: () => this.openTaxonomy(), onCloseNavigation: () => this.closeNavigation(),
+      logContent: (): void => this.navigation() })
   }
 
   @Builder

@@ -4,6 +4,9 @@ import { preferences } from '@kit.ArkData';
 import { WorkspaceBreakpoint, THEME_PREFERENCES } from '../common/AppConfig';
 import { InstanceCapabilities, activeInstance } from '../common/network/InstanceConfig';
 import { apiClient } from '../common/network/ApiClient';
+import { WorkspaceModuleState } from '../app/WorkspaceModuleState';
+import { FavoritesController } from '../features/favorites/FavoritesController';
+import { QaNavigationController } from '../features/qa/QaNavigationController';
 import { LoginPage } from '../app/LoginPage';
 import { TokenStore } from '../common/storage/TokenStore';
 import { LogsReaderPage, PreservedLogDraft } from '../features/logs/LogsReaderPage';
@@ -26,6 +29,9 @@ struct Index {
   @Provide('workspaceBreakpoint') private workspaceBreakpoint: WorkspaceBreakpoint = WorkspaceBreakpoint.COMPACT;
   @State private connected: boolean = false;
   @State private selectedModule: number = 0;
+  @State private modules: WorkspaceModuleState = new WorkspaceModuleState();
+  @State private favoritesData: FavoritesController = new FavoritesController(apiClient);
+  @State private qaNavigation: QaNavigationController = this.createQaNavigation();
   @State private restoreOnAppear: boolean = true;
   @StorageLink('desktopWindowChrome') private desktopWindowChrome: boolean = false;
   @StorageLink('themePreference') private themePreference: string = 'system';
@@ -46,6 +52,33 @@ struct Index {
   private draftStoreErrorShown: boolean = false;
   private preferencesReady: Promise<void> = Promise.resolve();
 
+  private createQaNavigation(): QaNavigationController {
+    const modules = this.modules;
+    return new QaNavigationController(apiClient, {
+      active: () => this.connected && this.selectedModule === 3 && this.modules === modules,
+      busy: () => modules.qaBusy,
+      setBusy: (value: boolean) => modules.qaBusy = value,
+      activeSession: () => modules.qaSessionId,
+      clearSession: () => { modules.qaSessionId = ''; modules.qaRequestRevision++; }
+    });
+  }
+
+  private invalidateModules(): void {
+    this.favoritesData.dispose();
+    this.qaNavigation.qaNavigationRevision++;
+    this.qaNavigation.qaMutationRevision++;
+    this.modules.qaBusy = false;
+    this.qaNavigation.qaNavigationLoading = false;
+  }
+
+  private resetModules(): void {
+    this.invalidateModules();
+    this.modules = new WorkspaceModuleState();
+    this.favoritesData = new FavoritesController(apiClient);
+    this.qaNavigation = this.createQaNavigation();
+    this.selectedModule = 0;
+  }
+
   aboutToAppear(): void {
     this.registerFonts();
     appFeedback.attach(this.getUIContext(), () => false);
@@ -53,7 +86,7 @@ struct Index {
     this.removeUnauthorizedHandler = apiClient.setUnauthorizedHandler(() => { this.expireSession(); });
   }
 
-  aboutToDisappear(): void { this.removeUnauthorizedHandler(); appFeedback.detach(); }
+  aboutToDisappear(): void { this.invalidateModules(); this.removeUnauthorizedHandler(); appFeedback.detach(); }
 
   private async expireSession(): Promise<void> {
     if (this.expiring) return;
@@ -65,6 +98,7 @@ struct Index {
     apiClient.setToken('');
     this.restoreOnAppear = false;
     await TokenStore.clear().catch(() => {});
+    this.invalidateModules();
     this.connected = false;
     this.expiring = false;
   }
@@ -128,7 +162,7 @@ struct Index {
       appFeedback.show('本机草稿读取失败，请检查设备存储', 'error');
     }
     if (revision !== activeInstance.revision) return;
-    this.selectedModule = 0;
+    this.resetModules();
     this.connected = true;
   }
 
@@ -136,6 +170,7 @@ struct Index {
     apiClient.setToken('');
     activeInstance.activate('', '');
     this.restoreOnAppear = false;
+    this.invalidateModules();
     this.connected = false;
   }
 
@@ -252,7 +287,8 @@ struct Index {
       }
       Stack() {
       if (this.connected) {
-        LogsReaderPage({ selectedModule: $selectedModule, onChangeServer: () => this.changeServer(), onOpenSettings: () => this.settingsOpen = true,
+        LogsReaderPage({ selectedModule: $selectedModule, modules: this.modules,
+          favoritesData: this.favoritesData, qaNavigation: this.qaNavigation, onChangeServer: () => this.changeServer(), onOpenSettings: () => this.settingsOpen = true,
           onSetTheme: (value: string) => this.setTheme(value),
           onOpenAbout: () => this.aboutOpen = true,
           onOpenHelp: () => this.openHelp(),

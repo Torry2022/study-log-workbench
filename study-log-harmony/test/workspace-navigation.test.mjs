@@ -6,8 +6,9 @@ import ts from 'typescript';
 
 // Execute the component's actual event handlers; native dialogs and frame scheduling are controlled here.
 const source = await readFile(new URL('../entry/src/main/ets/features/logs/LogsReaderPage.ets', import.meta.url), 'utf8');
+const stateSource = (await readFile(new URL('../entry/src/main/ets/app/WorkspaceModuleState.ets', import.meta.url), 'utf8')).replace(/^import .*;\r?\n/gm, '').replace('@Observed', '');
 const names = ['selectedTab', 'selectTab', 'requestModule', 'switchModule', 'confirmNotesLeave', 'confirmQaLeave',
-  'openNoteLink', 'openQaCitation', 'openFavorite', 'openStatsEntry'];
+  'confirmTaxonomyLeave', 'openNoteLink', 'openQaCitation', 'openFavorite', 'openStatsEntry'];
 const methods = names.map(name => {
   const start = source.search(new RegExp(`^  private (?:async )?${name}\\(`, 'm'));
   assert.ok(start >= 0, `Missing handler ${name}`);
@@ -20,16 +21,17 @@ const methods = names.map(name => {
 function workspace(tab) {
   const dialogs = [], frames = [], targets = [];
   const module = { exports: {} };
-  const code = ts.transpileModule(`export class Workspace { ${methods} }`, {
+  const code = ts.transpileModule(`${stateSource}
+export class Workspace { ${methods} }`, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }
   }).outputText;
   runInNewContext(code, { module, exports: module.exports, $r: value => value,
-    AlertDialog: { show: value => dialogs.push(value) },
+    LoadingHintPlacement: class {}, AlertDialog: { show: value => dialogs.push(value) },
     appFeedback: { show() {}, dismissScope() {} }, Curve: { EaseOut: 0 },
     FrameAction: class { constructor(action) { this.action = action; } } });
   const page = new module.exports.Workspace();
   Object.assign(page, {
-    selectedModule: tab, moduleRequestedTab: -1, moduleSwitchRevision: 0, noteDiscardRevision: 0, qaDiscardRevision: 0,
+    selectedModule: tab, moduleRequestedTab: -1, moduleSwitchRevision: 0, modules: new module.exports.WorkspaceModuleState(),
     targetRevision: 0, session: { text: 'saved', baseline: 'saved', isDirty: () => false },
     isWide: () => false, closeNavigation() {}, closeOutline() {}, closeSearch() {},
     readingTransition: { clear() {} }, workspaceTransition: { clear() {}, finish() {} },
@@ -44,37 +46,37 @@ function workspace(tab) {
 
 test('note source navigation preserves its module and draft until leave is accepted', () => {
   const { page, dialogs, targets } = workspace(1);
-  page.notesDirty = true;
+  page.modules.notesDirty = true;
   page.openNoteLink('2026-01-15', 'sample');
   assert.equal(page.selectedModule, 1);
   assert.equal(targets.length, 0);
   dialogs[0].primaryButton.action();
   assert.equal(page.selectedModule, 1);
-  assert.equal(page.notesDirty, true);
+  assert.equal(page.modules.notesDirty, true);
   page.openNoteLink('2026-01-15', 'sample');
   dialogs[1].secondaryButton.action();
   assert.equal(page.selectedModule, 0);
-  assert.equal(page.noteDiscardRevision, 1);
+  assert.equal(page.modules.noteDiscardRevision, 1);
   assert.deepEqual(targets, ['2026-01-15']);
   assert.equal(page.targetHeading, 'sample');
 });
 
 test('citation navigation is blocked while streaming and protects pending answers', () => {
   const { page, dialogs, targets } = workspace(3);
-  page.qaBusy = true;
+  page.modules.qaBusy = true;
   page.openQaCitation('2026-01-15', 'sample', 2);
   assert.equal(page.selectedModule, 3);
   assert.equal(targets.length, 0);
-  page.qaBusy = false;
-  page.qaPending = true;
+  page.modules.qaBusy = false;
+  page.modules.qaPending = true;
   page.openQaCitation('2026-01-15', 'sample', 2);
   dialogs[0].primaryButton.action();
   assert.equal(page.selectedModule, 3);
-  assert.equal(page.qaPending, true);
+  assert.equal(page.modules.qaPending, true);
   page.openQaCitation('2026-01-15', 'sample', 2);
   dialogs[1].secondaryButton.action();
   assert.equal(page.selectedModule, 0);
-  assert.equal(page.qaDiscardRevision, 1);
+  assert.equal(page.modules.qaDiscardRevision, 1);
   assert.equal(page.targetHeadingIndex, 2);
 });
 
@@ -95,7 +97,7 @@ test('favorite and statistics sources use the same module transition as navigati
 
 test('server leave checks do not change modules before the final action', () => {
   const { page, dialogs } = workspace(3);
-  page.notesDirty = true;
+  page.modules.notesDirty = true;
   let changed = false;
   page.confirmQaLeave(() => page.confirmNotesLeave(() => { changed = true; }));
   assert.equal(page.selectedModule, 3);
@@ -132,4 +134,25 @@ test('clicking the current module cancels an in-flight departure through the act
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(page.selectedModule, 0);
   assert.equal(page.moduleRequestedTab, -1);
+});
+
+test('taxonomy leave protects the workspace-owned draft and busy state before switching modules', () => {
+  const { page, dialogs } = workspace(4);
+  page.modules.taxonomyOpen = true;
+  page.modules.taxonomyBusy = true;
+  page.selectTab(1);
+  assert.equal(page.selectedModule, 4);
+  assert.equal(dialogs.length, 0);
+  page.modules.taxonomyBusy = false;
+  page.modules.taxonomyDirty = true;
+  page.selectTab(1);
+  dialogs[0].primaryButton.action();
+  assert.equal(page.modules.taxonomyOpen, true);
+  assert.equal(page.modules.taxonomyDirty, true);
+  assert.equal(page.selectedModule, 4);
+  page.selectTab(1);
+  dialogs[1].secondaryButton.action();
+  assert.equal(page.modules.taxonomyOpen, false);
+  assert.equal(page.modules.taxonomyDirty, false);
+  assert.equal(page.selectedModule, 1);
 });

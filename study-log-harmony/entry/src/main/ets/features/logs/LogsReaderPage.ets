@@ -42,31 +42,27 @@ import { DesktopLogCommands, DesktopMenuEntry } from '../../app/DesktopMenu';
 import { iconTint } from '../../common/ui/IconTint';
 import { InteractiveSurface, animateHover } from '../../common/ui/InteractiveSurface';
 import { ToolbarDensity, resolveToolbarDensity, toolbarActionWidth, toolbarActionsWidth } from '../../common/ui/ToolbarLayout';
-import { TaxonomyManagerPage } from '../stats/TaxonomyManagerPage';
-import { StatsPage } from '../stats/StatsPage';
 import { StatsEntry } from '../stats/StatsModels';
 import { StatsNavigation } from '../stats/components/StatsNavigation';
 import { FavoritesController } from '../favorites/FavoritesController';
-import { FavoritesPage } from '../favorites/FavoritesPage';
 import { FavoritesNavigation } from '../favorites/components/FavoritesNavigation';
 import { FavoriteHeading } from '../favorites/FavoriteModels';
 import { LogFavoriteGroupPanel } from './components/LogFavoriteGroupPanel';
 import { workspacePreferences } from '../../common/storage/WorkspacePreferences';
 import { appFeedback } from '../../common/ui/AppFeedback';
-import { NotesPage } from '../notes/NotesPage';
 import { NotesNavigation } from '../notes/components/NotesNavigation';
-import { StudyNoteFacet } from '../notes/NoteModels';
 import { SearchHistoryStore } from './SearchHistoryStore';
 import { SearchHistoryList } from '../../app/components/SearchHistoryList';
 import { LogAiController } from './LogAiController';
 import { LogAiMaterialImport } from './LogAiMaterialImport';
 import { LogAiPanel } from './components/LogAiPanel';
 import { LogHighlightReview } from './components/LogHighlightReview';
-import { QaPage } from '../qa/QaPage';
 import { QaNavigation } from '../qa/components/QaNavigation';
 import { QaNavigationController } from '../qa/QaNavigationController';
 import { RagSessionSummary } from '../qa/QaModels';
 import { AppTopBar } from '../../app/components/WorkspaceNavigation';
+import { WorkspaceModuleState } from '../../app/WorkspaceModuleState';
+import { WorkspaceContent, WorkspaceTaxonomyPage } from '../../app/components/WorkspaceContent';
 import { WorkspaceFrame } from '../../app/components/WorkspaceFrame';
 import { PreservedLogDraft, restoredLogDraft } from './LogDraftPolicy';
 import { WorkspaceTransitionCoordinator } from '../../app/WorkspaceTransitionCoordinator';
@@ -82,6 +78,7 @@ interface AddFavoriteRequest { date: string; headingText: string; headingId: str
 @Component
 export struct LogsReaderPage {
   @Link @Watch('moduleNavigationChanged') selectedModule: number;
+  @ObjectLink modules: WorkspaceModuleState;
   @Consume('workspaceBreakpoint') @Watch('workspaceBreakpointChanged')
   private workspaceBreakpoint: WorkspaceBreakpoint;
   @StorageProp('softwareKeyboardVisible') private softwareKeyboardVisible: boolean = false;
@@ -118,39 +115,8 @@ export struct LogsReaderPage {
   private outlineMotionRevision: number = 0;
   private pendingOutlineOpen: boolean = false;
   private outlineGestureActive: boolean = false;
-  @State private taxonomyOpen: boolean = false;
-  @State private taxonomyDirty: boolean = false;
-  @State private taxonomyBusy: boolean = false;
-  @State private qaBusy: boolean = false;
-  @State private qaDirty: boolean = false;
-  @State private qaPending: boolean = false;
-  @State private qaSessionId: string = '';
-  @State private qaRequestRevision: number = 0;
-  @State private qaDiscardRevision: number = 0;
-  @State private qaQuestionFocusRevision: number = 0;
-  @State private qaQuery: string = '';
-  @State private qaSearchRevision: number = 0;
-  @State private qaScrolled: boolean = false;
-  @State private qaNavigation: QaNavigationController = new QaNavigationController(apiClient, {
-    active: () => (this.selectedModule === 3), busy: () => this.qaBusy,
-    setBusy: (value: boolean) => this.qaBusy = value,
-    activeSession: () => this.qaSessionId,
-    clearSession: () => { this.qaSessionId = ''; this.qaRequestRevision++; }
-  });
-  @State private notesDirty: boolean = false;
-  @State private notesBusy: boolean = false;
-  @State private notesScrolled: boolean = false;
-  @State private favoritesScrolled: boolean = false;
-  @State private statsScrolled: boolean = false;
-  @State private noteYears: StudyNoteFacet[] = [];
-  @State private noteTags: StudyNoteFacet[] = [];
-  @State private noteCount: number = 0;
-  @State private noteYearFilter: string = 'all';
-  @State private noteTagFilter: string = 'all';
-  @State private noteNewRevision: number = 0;
-  @State private noteDiscardRevision: number = 0;
-  @State private noteSaveRevision: number = 0;
-  @State private favoritesData: FavoritesController = new FavoritesController(apiClient);
+  @ObjectLink qaNavigation: QaNavigationController;
+  @ObjectLink favoritesData: FavoritesController;
   private navigationRefresh: NavigationRefreshController = new NavigationRefreshController(apiClient);
   @State private favoriteBusy: boolean = false;
   @State private favoriteSuccessHeadingId: string = '';
@@ -159,13 +125,6 @@ export struct LogsReaderPage {
   @State private favoriteGroupDialogOpen: boolean = false;
   private favoriteSuccessRevision: number = 0;
   private favoriteSuccessTimer: number = -1;
-  @StorageProp('pref_favoritesView') private favoritesViewMode: string = 'list';
-  @State private statsMonths: MonthSummary[] = [];
-  @State private statsMonth: string = '';
-  @State private statsMonthsLoading: boolean = false;
-  @State private statsMonthsError: string = '';
-  @State private statsMonthRevision: number = 0;
-  @State private statsRefreshRevision: number = 0;
   @State private outgoingTab: number = -1;
   @State private moduleReveal: number = 1;
   @State private readingTransition: ReadingTransitionCoordinator = new ReadingTransitionCoordinator();
@@ -180,18 +139,14 @@ export struct LogsReaderPage {
   private readingImageHeight: number = 0;
   private workspaceOriginX: number = 0;
   private workspaceOriginY: number = 0;
-  @State private qaLoadingHint: LoadingHintPlacement = new LoadingHintPlacement();
   @State private logLoadingHint: LoadingHintPlacement = new LoadingHintPlacement();
-  @State private notesLoadingHint: LoadingHintPlacement = new LoadingHintPlacement();
-  @State private favoritesLoadingHint: LoadingHintPlacement = new LoadingHintPlacement();
-  @State private statsLoadingHint: LoadingHintPlacement = new LoadingHintPlacement();
 
   private preparationHint(): LoadingHintPlacement {
     switch (this.selectedTab()) {
-      case 1: return this.notesLoadingHint;
-      case 2: return this.favoritesLoadingHint;
-      case 3: return this.qaLoadingHint;
-      case 4: return this.statsLoadingHint;
+      case 1: return this.modules.notesLoadingHint;
+      case 2: return this.modules.favoritesLoadingHint;
+      case 3: return this.modules.qaLoadingHint;
+      case 4: return this.modules.statsLoadingHint;
       default: return this.logLoadingHint;
     }
   }
@@ -322,7 +277,6 @@ export struct LogsReaderPage {
   private calendarRevision: number = 0;
   private linkTarget: EditorSnapshot | undefined = undefined;
   private searchRevision: number = 0;
-  @State private topRequests: number[] = [0, 0, 0, 0, 0];
   private focusRegion: number = -1;
   private logNavigationScroller: Scroller = new Scroller();
 
@@ -479,7 +433,6 @@ export struct LogsReaderPage {
     this.workspaceTransition.clear();
     this.sidebarMotionRevision++;
     this.ai.dispose();
-    this.favoritesData.dispose();
     this.lifecycle++;
     this.listRevision++;
     this.calendarRevision++;
@@ -507,10 +460,10 @@ export struct LogsReaderPage {
   }
 
   private showTopBarDivider(): boolean {
-    if ((this.selectedModule === 1)) return this.notesScrolled;
-    if ((this.selectedModule === 2)) return this.favoritesScrolled;
-    if ((this.selectedModule === 3)) return this.qaScrolled;
-    if ((this.selectedModule === 4)) return this.statsScrolled;
+    if ((this.selectedModule === 1)) return this.modules.notesScrolled;
+    if ((this.selectedModule === 2)) return this.modules.favoritesScrolled;
+    if ((this.selectedModule === 3)) return this.modules.qaScrolled;
+    if ((this.selectedModule === 4)) return this.modules.statsScrolled;
     return false;
   }
 
@@ -524,14 +477,14 @@ export struct LogsReaderPage {
     } else if ((this.selectedModule === 3)) {
       this.openNavigation();
       setTimeout(() => {
-        if ((this.selectedModule === 3) && this.navigationOpen && !this.navigationClosing) this.qaSearchRevision++;
+        if ((this.selectedModule === 3) && this.navigationOpen && !this.navigationClosing) this.modules.qaSearchRevision++;
       }, 240);
     }
   }
 
   private shortcutBlocked(): boolean {
     return this.backupOpen || this.linkOpen || this.ai.reviewOpen || this.imageBusy || this.exportBusy ||
-      this.documents.saving || this.deleting || this.taxonomyOpen || this.topMoreOpen || this.compactSettingsOpen || this.moreOpen ||
+      this.documents.saving || this.deleting || this.modules.taxonomyOpen || this.topMoreOpen || this.compactSettingsOpen || this.moreOpen ||
       this.exportMenuOpen || this.calendarOpen || !!this.railPopover || this.searchOpen ||
       this.navigationOpen || this.outlineOpen || !!this.qaNavigation.qaRenameId || !!this.qaNavigation.qaMenuId;
   }
@@ -577,9 +530,9 @@ export struct LogsReaderPage {
     if (workspaceKey(event, KeyCode.KEYCODE_DPAD_UP, false, false, true)) {
       if (this.selectedTab() === 0) this.previewTopRequest++;
       else {
-        const requests = this.topRequests.slice();
+        const requests = this.modules.topRequests.slice();
         requests[this.selectedTab()]++;
-        this.topRequests = requests;
+        this.modules.topRequests = requests;
       }
       return true;
     }
@@ -593,12 +546,12 @@ export struct LogsReaderPage {
       return true;
     }
     if (workspaceKey(event, KeyCode.KEYCODE_Q, true, false, true)) {
-      if (this.qaBusy) return false;
+      if (this.modules.qaBusy) return false;
       this.requestModule(3, false, false, () => this.switchQaSession('', true));
       return true;
     }
     if (workspaceKey(event, KeyCode.KEYCODE_S, true)) {
-      if ((this.selectedModule === 1)) this.noteSaveRevision++;
+      if ((this.selectedModule === 1)) this.modules.noteSaveRevision++;
       else if (this.selectedTab() === 0) this.save();
       return true;
     }
@@ -778,12 +731,12 @@ export struct LogsReaderPage {
   private requestModule(index: number, discardNotes: boolean = false, discardQa: boolean = false,
     afterSwitch: () => void = () => {}): void {
     if (index === this.selectedTab() && this.moduleRequestedTab < 0) { afterSwitch(); return; }
-    if (this.taxonomyOpen) {
+    if (this.modules.taxonomyOpen) {
       this.confirmTaxonomyLeave(() => this.requestModule(index, discardNotes, discardQa, afterSwitch)); return;
     }
     if ((this.selectedModule === 1)) {
-      if (this.notesBusy) return;
-      if (this.notesDirty && !discardNotes) {
+      if (this.modules.notesBusy) return;
+      if (this.modules.notesDirty && !discardNotes) {
         AlertDialog.show({ message: '随记尚未保存，确定放弃修改吗？',
           primaryButton: { value: '继续编辑', action: () => {} },
           secondaryButton: { value: '放弃修改', fontColor: $r('app.color.error'), action: () => {
@@ -793,9 +746,9 @@ export struct LogsReaderPage {
       }
     }
     if ((this.selectedModule === 3)) {
-      if (this.qaBusy) { appFeedback.show('请先停止当前回答', 'error'); return; }
-      if ((this.qaDirty || this.qaPending) && !discardQa) {
-        AlertDialog.show({ message: this.qaPending ? '当前问答尚未保存，确定放弃吗？' :
+      if (this.modules.qaBusy) { appFeedback.show('请先停止当前回答', 'error'); return; }
+      if ((this.modules.qaDirty || this.modules.qaPending) && !discardQa) {
+        AlertDialog.show({ message: this.modules.qaPending ? '当前问答尚未保存，确定放弃吗？' :
           '问答输入尚未提交，确定放弃吗？',
           primaryButton: { value: '继续编辑', action: () => {} },
           secondaryButton: { value: '放弃', fontColor: $r('app.color.error'), action: () => {
@@ -821,8 +774,8 @@ export struct LogsReaderPage {
     const covered = this.workspaceTransition.snapshot && this.workspaceTransition.kind === 'module';
     this.outgoingTab = covered ? -1 : this.selectedTab();
     this.moduleReveal = covered ? 1 : 0;
-    if (discardNotes) { this.notesDirty = false; this.noteDiscardRevision++; }
-    if (discardQa) { this.qaDirty = false; this.qaPending = false; this.qaDiscardRevision++; }
+    if (discardNotes) { this.modules.notesDirty = false; this.modules.noteDiscardRevision++; }
+    if (discardQa) { this.modules.qaDirty = false; this.modules.qaPending = false; this.modules.qaDiscardRevision++; }
     if (index !== 0) {
       this.readingTransition.clear();
       this.logsReadingMode = false;
@@ -856,13 +809,13 @@ export struct LogsReaderPage {
   private openTaxonomy(): void {
     this.closeNavigation();
     this.railPopover = '';
-    this.taxonomyOpen = true;
+    this.modules.taxonomyOpen = true;
   }
 
   private confirmTaxonomyLeave(action: () => void): void {
-    if (this.taxonomyBusy) { appFeedback.show('分类操作正在进行，请稍候'); return; }
-    const leave = (): void => { this.taxonomyDirty = false; this.taxonomyOpen = false; action(); };
-    if (!this.taxonomyDirty) { leave(); return; }
+    if (this.modules.taxonomyBusy) { appFeedback.show('分类操作正在进行，请稍候'); return; }
+    const leave = (): void => { this.modules.taxonomyDirty = false; this.modules.taxonomyOpen = false; action(); };
+    if (!this.modules.taxonomyDirty) { leave(); return; }
     AlertDialog.show({ message: '当前分类修改或建议尚未处理，确定放弃吗？',
       primaryButton: { value: '继续编辑', action: () => {} },
       secondaryButton: { value: '放弃修改', fontColor: $r('app.color.error'), action: leave } });
@@ -882,40 +835,40 @@ export struct LogsReaderPage {
   }
 
   private confirmNotesLeave(action: () => void): void {
-    if (this.notesBusy) return;
-    if (!this.notesDirty) { action(); return; }
+    if (this.modules.notesBusy) return;
+    if (!this.modules.notesDirty) { action(); return; }
     AlertDialog.show({ message: '随记尚未保存，确定放弃修改吗？',
       primaryButton: { value: '继续编辑', action: () => {} },
       secondaryButton: { value: '放弃修改', fontColor: $r('app.color.error'), action: () => {
-        this.notesDirty = false;
-        this.noteDiscardRevision++;
+        this.modules.notesDirty = false;
+        this.modules.noteDiscardRevision++;
         action();
       } } });
   }
 
   private confirmQaLeave(action: () => void): void {
-    if (this.qaBusy) { appFeedback.show('请先停止当前回答', 'error'); return; }
-    if (!this.qaDirty && !this.qaPending) { action(); return; }
-    AlertDialog.show({ message: this.qaPending ? '当前问答尚未保存，确定放弃吗？' : '问答输入尚未提交，确定放弃吗？',
+    if (this.modules.qaBusy) { appFeedback.show('请先停止当前回答', 'error'); return; }
+    if (!this.modules.qaDirty && !this.modules.qaPending) { action(); return; }
+    AlertDialog.show({ message: this.modules.qaPending ? '当前问答尚未保存，确定放弃吗？' : '问答输入尚未提交，确定放弃吗？',
       primaryButton: { value: '继续编辑', action: () => {} },
       secondaryButton: { value: '放弃', fontColor: $r('app.color.error'), action: () => {
-        this.qaDirty = false; this.qaPending = false; this.qaDiscardRevision++; action();
+        this.modules.qaDirty = false; this.modules.qaPending = false; this.modules.qaDiscardRevision++; action();
       } } });
   }
 
   private switchQaSession(id: string, focusQuestion: boolean = false): void {
-    if (this.qaBusy) return;
+    if (this.modules.qaBusy) return;
     const change = (): void => {
-      this.qaDirty = false; this.qaPending = false;
+      this.modules.qaDirty = false; this.modules.qaPending = false;
       this.closeNavigation();
       this.railPopover = '';
-      this.qaSessionId = id; this.qaRequestRevision++;
+      this.modules.qaSessionId = id; this.modules.qaRequestRevision++;
       if (focusQuestion) setTimeout(() => {
-        if ((this.selectedModule === 3) && !this.qaBusy) this.qaQuestionFocusRevision++;
+        if ((this.selectedModule === 3) && !this.modules.qaBusy) this.modules.qaQuestionFocusRevision++;
       }, 40);
     };
-    if (!this.qaDirty && !this.qaPending) { change(); return; }
-    AlertDialog.show({ message: this.qaPending ? '当前问答尚未保存，确定切换会话吗？' : '问答输入尚未提交，确定切换会话吗？',
+    if (!this.modules.qaDirty && !this.modules.qaPending) { change(); return; }
+    AlertDialog.show({ message: this.modules.qaPending ? '当前问答尚未保存，确定切换会话吗？' : '问答输入尚未提交，确定切换会话吗？',
       primaryButton: { value: '继续编辑', action: () => {} },
       secondaryButton: { value: '放弃', fontColor: $r('app.color.error'), action: change } });
   }
@@ -934,8 +887,8 @@ export struct LogsReaderPage {
   }
 
   private confirmQaDelete(session: RagSessionSummary): void {
-    if (this.qaBusy) return;
-    if (session.id === this.qaSessionId && (this.qaDirty || this.qaPending)) {
+    if (this.modules.qaBusy) return;
+    if (session.id === this.modules.qaSessionId && (this.modules.qaDirty || this.modules.qaPending)) {
       appFeedback.show('请先处理当前未保存的问答', 'error'); return;
     }
     AlertDialog.show({ message: `确认删除问答“${session.title}”吗？`,
@@ -1228,7 +1181,7 @@ export struct LogsReaderPage {
   }
 
   private confirmDiscard(next: () => void): void {
-    if (this.taxonomyOpen) { this.confirmTaxonomyLeave(() => this.confirmDiscard(next)); return; }
+    if (this.modules.taxonomyOpen) { this.confirmTaxonomyLeave(() => this.confirmDiscard(next)); return; }
     if (this.leaveCheckPending) return;
     this.leaveCheckPending = true;
     this.checkBeforeLeaving(next).finally(() => this.leaveCheckPending = false);
@@ -2325,15 +2278,15 @@ export struct LogsReaderPage {
         () => { this.railPopover = ''; this.expandNavigation(); })
       if ((this.selectedModule === 3)) {
         this.navigationRailButton('new_question', $r('app.media.rail_square_pen'), '新建问答',
-          () => { this.railPopover = ''; this.switchQaSession(''); }, false, !this.qaBusy)
+          () => { this.railPopover = ''; this.switchQaSession(''); }, false, !this.modules.qaBusy)
         this.navigationRailButton('search', $r('app.media.rail_search'), '搜索历史',
           () => this.railPopover = this.railPopover === 'search' ? '' : 'search', this.railPopover === 'search')
         this.navigationRailButton('recent', $r('app.media.rail_message_square_text'), '最近问答',
-          () => { this.qaQuery = ''; this.railPopover = this.railPopover === 'recent' ? '' : 'recent'; },
+          () => { this.modules.qaQuery = ''; this.railPopover = this.railPopover === 'recent' ? '' : 'recent'; },
           this.railPopover === 'recent')
       } else if ((this.selectedModule === 1)) {
         this.navigationRailButton('new_note', $r('app.media.rail_plus'), '新建随记',
-          () => { this.railPopover = ''; this.noteNewRevision++; }, false, !this.notesBusy)
+          () => { this.railPopover = ''; this.modules.noteNewRevision++; }, false, !this.modules.notesBusy)
         this.navigationRailButton('tags', $r('app.media.rail_tag'), '年份和标签',
           () => this.railPopover = this.railPopover === 'tags' ? '' : 'tags', this.railPopover === 'tags')
       } else if ((this.selectedModule === 2)) {
@@ -2360,15 +2313,15 @@ export struct LogsReaderPage {
   private moduleNavigationContent(popover: boolean = false) {
     if ((this.selectedModule === 3)) {
       QaNavigation({ qaRailPopover: popover ? this.railPopover : '', moduleFrameHeight: this.moduleFrameHeight,
-                    qaSessions: this.qaNavigation.qaSessions, qaSessionQuery: this.qaQuery,
-                    qaSearchRevision: this.qaSearchRevision,
-                    qaActiveSessionId: this.qaSessionId, qaBusy: this.qaBusy,
+                    qaSessions: this.qaNavigation.qaSessions, qaSessionQuery: this.modules.qaQuery,
+                    qaSearchRevision: this.modules.qaSearchRevision,
+                    qaActiveSessionId: this.modules.qaSessionId, qaBusy: this.modules.qaBusy,
                     qaNavigationLoading: this.qaNavigation.qaNavigationLoading,
                     qaNavigationError: this.qaNavigation.qaNavigationError,
                     qaRenameId: this.qaNavigation.qaRenameId,
                     qaRenameTitle: this.qaNavigation.qaRenameTitle,
                     qaMenuId: this.qaNavigation.qaMenuId,
-                    onQuery: (query: string) => this.qaQuery = query,
+                    onQuery: (query: string) => this.modules.qaQuery = query,
                     onSession: (id: string) => this.switchQaSession(id),
                     onMenu: (id: string) => this.qaNavigation.qaMenuId = id,
                     onStartRename: (session: RagSessionSummary) => {
@@ -2381,24 +2334,24 @@ export struct LogsReaderPage {
                     onDelete: (session: RagSessionSummary) => this.confirmQaDelete(session),
                     onRetry: () => this.qaNavigation.loadQaNavigation() })
     } else if ((this.selectedModule === 1)) {
-      NotesNavigation({ filtersOnly: popover, noteYearFilter: this.noteYearFilter, noteTagFilter: this.noteTagFilter,
-                    noteCount: this.noteCount, noteYears: this.noteYears, noteTags: this.noteTags,
-                    noteEditorBusy: this.notesBusy,
-                    onNew: () => { this.noteNewRevision++; this.railPopover = ''; },
-                    onYear: (year: string) => { this.noteYearFilter = year; this.railPopover = ''; },
-                    onTag: (tag: string) => { this.noteTagFilter = tag; this.railPopover = ''; } })
+      NotesNavigation({ filtersOnly: popover, noteYearFilter: this.modules.noteYearFilter, noteTagFilter: this.modules.noteTagFilter,
+                    noteCount: this.modules.noteCount, noteYears: this.modules.noteYears, noteTags: this.modules.noteTags,
+                    noteEditorBusy: this.modules.notesBusy,
+                    onNew: () => { this.modules.noteNewRevision++; this.railPopover = ''; },
+                    onYear: (year: string) => { this.modules.noteYearFilter = year; this.railPopover = ''; },
+                    onTag: (tag: string) => { this.modules.noteTagFilter = tag; this.railPopover = ''; } })
     } else if ((this.selectedModule === 2)) {
       FavoritesNavigation({ data: this.favoritesData, wide: true,
                     onRetry: () => this.favoritesData.load() })
     } else if ((this.selectedModule === 4)) {
-      StatsNavigation({ monthsOnly: false, onTaxonomy: () => this.openTaxonomy(), statsMonths: this.statsMonths,
-                    statsMonth: this.statsMonth, statsMonthsLoading: this.statsMonthsLoading,
-                    statsMonthsError: this.statsMonthsError,
+      StatsNavigation({ monthsOnly: false, onTaxonomy: () => this.openTaxonomy(), statsMonths: this.modules.statsMonths,
+                    statsMonth: this.modules.statsMonth, statsMonthsLoading: this.modules.statsMonthsLoading,
+                    statsMonthsError: this.modules.statsMonthsError,
                     onMonth: (month: string) => {
-                      this.statsMonth = month;
-                      this.statsMonthRevision++; this.railPopover = '';
+                      this.modules.statsMonth = month;
+                      this.modules.statsMonthRevision++; this.railPopover = '';
                     },
-                    onRetry: () => this.statsRefreshRevision++ })
+                    onRetry: () => this.modules.statsRefreshRevision++ })
     } else { this.navigation() }
   }
 
@@ -2410,21 +2363,21 @@ export struct LogsReaderPage {
     const date = this.session.selectedDate;
     const months = this.months;
     const days = this.days;
-    const years = this.noteYears;
+    const years = this.modules.noteYears;
     const qa = this.qaNavigation.qaSessions;
-    const stats = this.statsMonths;
+    const stats = this.modules.statsMonths;
     const favorites = this.favoritesData.favorites;
     const groups = this.favoritesData.groups;
     await this.navigationRefresh.refresh(tab, month, () => {
       if (instance !== activeInstance.revision || lifecycle !== this.lifecycle || this.selectedTab() !== tab) return false;
       if (tab === 0) return date === this.session.selectedDate && month === (this.month || this.session.selectedDate.slice(0, 7)) &&
         months === this.months && days === this.days;
-      if (tab === 1) return years === this.noteYears;
+      if (tab === 1) return years === this.modules.noteYears;
       if (tab === 2) return favorites === this.favoritesData.favorites && groups === this.favoritesData.groups &&
         !this.favoritesData.loading && !this.favoritesData.groupSaving && !this.favoritesData.groupUpdating &&
         !this.favoritesData.groupActionBusy;
       if (tab === 3) return qa === this.qaNavigation.qaSessions && !this.qaNavigation.qaNavigationLoading;
-      return stats === this.statsMonths;
+      return stats === this.modules.statsMonths;
     }, (snapshot: NavigationSnapshot) => {
       if (tab === 0 && snapshot.months) {
         this.months = snapshot.months.months;
@@ -2432,9 +2385,9 @@ export struct LogsReaderPage {
         this.navigationError = '';
       }
       if (snapshot.notes) {
-        this.noteYears = snapshot.notes.years;
-        this.noteTags = snapshot.notes.tags;
-        this.noteCount = snapshot.notes.notes.length;
+        this.modules.noteYears = snapshot.notes.years;
+        this.modules.noteTags = snapshot.notes.tags;
+        this.modules.noteCount = snapshot.notes.notes.length;
       }
       if (snapshot.favorites) {
         this.favoritesData.favorites = snapshot.favorites.favorites;
@@ -2444,8 +2397,8 @@ export struct LogsReaderPage {
       }
       if (snapshot.qa) this.qaNavigation.acceptQaNavigation(snapshot.qa.sessions);
       if (tab === 4 && snapshot.months) {
-        this.statsMonths = snapshot.months.months;
-        this.statsMonthsError = '';
+        this.modules.statsMonths = snapshot.months.months;
+        this.modules.statsMonthsError = '';
       }
     });
   }
@@ -2463,17 +2416,17 @@ export struct LogsReaderPage {
   }
 
   private hasNavigationFilters(): boolean {
-    if ((this.selectedModule === 1)) return this.noteYearFilter !== 'all' || this.noteTagFilter !== 'all';
+    if ((this.selectedModule === 1)) return this.modules.noteYearFilter !== 'all' || this.modules.noteTagFilter !== 'all';
     if ((this.selectedModule === 2)) return this.favoritesData.selectedGroup !== 'all' || this.favoritesData.selectedMonth !== 'all';
-    if ((this.selectedModule === 4)) return this.statsMonths.length > 0 && this.statsMonth !== this.statsMonths[0].id;
+    if ((this.selectedModule === 4)) return this.modules.statsMonths.length > 0 && this.modules.statsMonth !== this.modules.statsMonths[0].id;
     return false;
   }
 
   private resetNavigationFilters(): void {
-    if ((this.selectedModule === 1)) { this.noteYearFilter = 'all'; this.noteTagFilter = 'all'; }
+    if ((this.selectedModule === 1)) { this.modules.noteYearFilter = 'all'; this.modules.noteTagFilter = 'all'; }
     else if ((this.selectedModule === 2)) { this.favoritesData.selectGroup('all'); this.favoritesData.selectMonth('all'); }
-    else if ((this.selectedModule === 4) && this.statsMonths.length > 0) {
-      this.statsMonth = this.statsMonths[0].id; this.statsMonthRevision++;
+    else if ((this.selectedModule === 4) && this.modules.statsMonths.length > 0) {
+      this.modules.statsMonth = this.modules.statsMonths[0].id; this.modules.statsMonthRevision++;
     }
   }
 
@@ -2795,24 +2748,24 @@ export struct LogsReaderPage {
   @Builder
   private compactNavigationContent() {
     if ((this.selectedModule === 1)) {
-      NotesNavigation({ noteYearFilter: this.noteYearFilter, noteTagFilter: this.noteTagFilter,
-        noteCount: this.noteCount, noteYears: this.noteYears, noteTags: this.noteTags,
-        noteEditorBusy: this.notesBusy,
-        onNew: () => { this.noteNewRevision++; this.closeNavigation(); },
-        onYear: (year: string) => { this.noteYearFilter = year; this.closeNavigation(); },
-        onTag: (tag: string) => { this.noteTagFilter = tag; this.closeNavigation(); } })
+      NotesNavigation({ noteYearFilter: this.modules.noteYearFilter, noteTagFilter: this.modules.noteTagFilter,
+        noteCount: this.modules.noteCount, noteYears: this.modules.noteYears, noteTags: this.modules.noteTags,
+        noteEditorBusy: this.modules.notesBusy,
+        onNew: () => { this.modules.noteNewRevision++; this.closeNavigation(); },
+        onYear: (year: string) => { this.modules.noteYearFilter = year; this.closeNavigation(); },
+        onTag: (tag: string) => { this.modules.noteTagFilter = tag; this.closeNavigation(); } })
     } else if ((this.selectedModule === 2)) {
       FavoritesNavigation({ data: this.favoritesData, wide: false,
         onRetry: () => this.favoritesData.load() })
     } else if ((this.selectedModule === 3)) {
-      QaNavigation({ qaSessions: this.qaNavigation.qaSessions, qaSessionQuery: this.qaQuery,
-        qaSearchRevision: this.qaSearchRevision,
-        qaActiveSessionId: this.qaSessionId, qaBusy: this.qaBusy,
+      QaNavigation({ qaSessions: this.qaNavigation.qaSessions, qaSessionQuery: this.modules.qaQuery,
+        qaSearchRevision: this.modules.qaSearchRevision,
+        qaActiveSessionId: this.modules.qaSessionId, qaBusy: this.modules.qaBusy,
         qaNavigationLoading: this.qaNavigation.qaNavigationLoading,
         qaNavigationError: this.qaNavigation.qaNavigationError,
         qaRenameId: this.qaNavigation.qaRenameId, qaRenameTitle: this.qaNavigation.qaRenameTitle,
         qaMenuId: this.qaNavigation.qaMenuId,
-        onQuery: (query: string) => this.qaQuery = query,
+        onQuery: (query: string) => this.modules.qaQuery = query,
         onSession: (id: string) => this.switchQaSession(id),
         onMenu: (id: string) => this.qaNavigation.qaMenuId = id,
         onStartRename: (session: RagSessionSummary) => {
@@ -2825,11 +2778,11 @@ export struct LogsReaderPage {
         onDelete: (session: RagSessionSummary) => this.confirmQaDelete(session),
         onRetry: () => this.qaNavigation.loadQaNavigation() })
     } else if ((this.selectedModule === 4)) {
-      StatsNavigation({ monthsOnly: false, onTaxonomy: () => this.openTaxonomy(), statsMonths: this.statsMonths, statsMonth: this.statsMonth,
-        statsMonthsLoading: this.statsMonthsLoading, statsMonthsError: this.statsMonthsError,
+      StatsNavigation({ monthsOnly: false, onTaxonomy: () => this.openTaxonomy(), statsMonths: this.modules.statsMonths, statsMonth: this.modules.statsMonth,
+        statsMonthsLoading: this.modules.statsMonthsLoading, statsMonthsError: this.modules.statsMonthsError,
         onMonth: (month: string) => {
-          this.statsMonth = month; this.statsMonthRevision++; this.closeNavigation();
-        }, onRetry: () => this.statsRefreshRevision++ })
+          this.modules.statsMonth = month; this.modules.statsMonthRevision++; this.closeNavigation();
+        }, onRetry: () => this.modules.statsRefreshRevision++ })
     } else this.navigation()
   }
 
@@ -3698,94 +3651,21 @@ export struct LogsReaderPage {
 
   @Builder
   private workspaceContent() {
-    Stack() {
-      Row() {
-          QaPage({ workspaceActive: (this.selectedModule === 3), navigationSessionId: this.qaSessionId,
-            themePreference: this.themePreference,
-            navigationRequestRevision: this.qaRequestRevision, discardRevision: this.qaDiscardRevision,
-            questionFocusRevision: this.qaQuestionFocusRevision, topRevision: this.topRequests[3],
-            configured: !!activeInstance.capabilities?.features.rag.configured,
-            onSessionsChange: (sessions: RagSessionSummary[]) => this.qaNavigation.acceptQaNavigation(sessions),
-            onSessionsError: (message: string) => this.qaNavigation.qaNavigationError = message,
-            onActiveSessionChange: (id: string) => this.qaSessionId = id,
-            onBusyChange: (busy: boolean) => this.qaBusy = busy,
-            onDraftChange: (dirty: boolean) => this.qaDirty = dirty,
-            onPendingChange: (pending: boolean) => this.qaPending = pending,
-            onScrollStateChange: (scrolled: boolean) => this.qaScrolled = scrolled,
-            onLoadingHintChange: (placement: LoadingHintPlacement) => this.qaLoadingHint = placement,
-            onOpenLog: () => this.selectTab(0),
-            onCitation: (date: string, heading: string, headingIndex: number) =>
-              this.openQaCitation(date, heading, headingIndex) }).layoutWeight(1)
-      }.width('100%').height('100%')
-        .visibility((this.selectedModule === 3) || this.outgoingTab === 3 ? Visibility.Visible : Visibility.None)
-        .opacity((this.selectedModule === 3) ? this.moduleReveal : 1)
-        .hitTestBehavior((this.selectedModule === 3) ? HitTestMode.Default : HitTestMode.None)
-        .zIndex((this.selectedModule === 3) ? 1 : 0)
-      Row() {
-          NotesPage({ workspaceActive: (this.selectedModule === 1),
-            navigationYear: this.noteYearFilter, navigationTag: this.noteTagFilter,
-            navigationNewRevision: this.noteNewRevision, discardRevision: this.noteDiscardRevision,
-            saveRevision: this.noteSaveRevision, topRevision: this.topRequests[1],
-            onNavigationDataChange: (years: StudyNoteFacet[], tags: StudyNoteFacet[], total: number) => {
-              this.noteYears = years; this.noteTags = tags; this.noteCount = total;
-            },
-            onEditorBusyChange: (busy: boolean) => this.notesBusy = busy,
-            onDirtyChange: (dirty: boolean) => this.notesDirty = dirty,
-            onScrollStateChange: (scrolled: boolean) => this.notesScrolled = scrolled,
-            onLoadingHintChange: (placement: LoadingHintPlacement) => this.notesLoadingHint = placement,
-            onOpenLog: () => this.selectTab(0),
-            onInternalLink: (date: string, heading: string) => this.openNoteLink(date, heading) }).layoutWeight(1)
-      }.width('100%').height('100%')
-        .visibility((this.selectedModule === 1) || this.outgoingTab === 1 ? Visibility.Visible : Visibility.None)
-        .opacity((this.selectedModule === 1) ? this.moduleReveal : 1)
-        .hitTestBehavior((this.selectedModule === 1) ? HitTestMode.Default : HitTestMode.None)
-        .zIndex((this.selectedModule === 1) ? 1 : 0)
-      Row() {
-          FavoritesPage({ data: this.favoritesData, viewMode: this.favoritesViewMode,
-            onScrollStateChange: (scrolled: boolean) => this.favoritesScrolled = scrolled,
-            topRevision: this.topRequests[2],
-            onLoadingHintChange: (placement: LoadingHintPlacement) => this.favoritesLoadingHint = placement,
-            onViewModeChange: (mode: string) => {
-              workspacePreferences.set('favoritesView', mode)
-                .catch(() => appFeedback.show('收藏显示方式保存失败', 'error'));
-            },
-            onOpenLog: () => this.selectTab(0),
-            onOpenFavorite: (favorite: FavoriteHeading) => this.openFavorite(favorite) }).layoutWeight(1)
-      }.width('100%').height('100%')
-        .visibility((this.selectedModule === 2) || this.outgoingTab === 2 ? Visibility.Visible : Visibility.None)
-        .opacity((this.selectedModule === 2) ? this.moduleReveal : 1)
-        .hitTestBehavior((this.selectedModule === 2) ? HitTestMode.Default : HitTestMode.None)
-        .zIndex((this.selectedModule === 2) ? 1 : 0)
-      Row() {
-          Stack() {
-            StatsPage({ showTaxonomyManager: true, onOpenTaxonomyManager: () => this.openTaxonomy(),
-              onScrollStateChange: (scrolled: boolean) => this.statsScrolled = scrolled,
-              topRevision: this.topRequests[4],
-              requestedMonth: this.statsMonth, requestedMonthRevision: this.statsMonthRevision,
-              refreshRevision: this.statsRefreshRevision,
-              onLoadingHintChange: (placement: LoadingHintPlacement) => this.statsLoadingHint = placement,
-              onMonthsChange: (months: MonthSummary[]) => this.statsMonths = months,
-              onMonthsLoadingChange: (loading: boolean) => this.statsMonthsLoading = loading,
-              onMonthsErrorChange: (error: string) => this.statsMonthsError = error,
-              onSelectedMonthChange: (month: string) => this.statsMonth = month,
-              onOpenLog: () => this.selectTab(0),
-              onOpenEntry: (entry: StatsEntry) => this.openStatsEntry(entry) })
-              .width('100%').height('100%')
-            if (this.isWide() && this.taxonomyOpen) {
-              TaxonomyManagerPage({
-                onBack: () => this.confirmTaxonomyLeave(() => {}),
-                onStateChange: (dirty: boolean, busy: boolean) => {
-                  this.taxonomyDirty = dirty; this.taxonomyBusy = busy;
-                },
-                onSaved: () => this.statsRefreshRevision++
-              }).width('100%').height('100%').transition(secondaryPageTransition())
-            }
-          }.layoutWeight(1).height('100%')
-      }.width('100%').height('100%')
-        .visibility((this.selectedModule === 4) || this.outgoingTab === 4 ? Visibility.Visible : Visibility.None)
-        .opacity((this.selectedModule === 4) ? this.moduleReveal : 1)
-        .hitTestBehavior((this.selectedModule === 4) ? HitTestMode.Default : HitTestMode.None)
-        .zIndex((this.selectedModule === 4) ? 1 : 0)
+    WorkspaceContent({ modules: this.modules, favoritesData: this.favoritesData, qaNavigation: this.qaNavigation,
+      selectedModule: this.selectedModule, outgoingTab: this.outgoingTab, moduleReveal: this.moduleReveal,
+      wide: this.isWide(), themePreference: this.themePreference,
+      onSelect: (index: number) => this.selectTab(index),
+      onCitation: (date: string, heading: string, index: number) => this.openQaCitation(date, heading, index),
+      onNoteLink: (date: string, heading: string) => this.openNoteLink(date, heading),
+      onFavorite: (favorite: FavoriteHeading) => this.openFavorite(favorite),
+      onStatsEntry: (entry: StatsEntry) => this.openStatsEntry(entry),
+      onOpenTaxonomy: () => this.openTaxonomy(),
+      onCloseTaxonomy: () => this.confirmTaxonomyLeave(() => {}),
+      logContent: (): void => this.logContent() })
+  }
+
+  @Builder
+  private logContent() {
       Row() {
         if (this.isWide()) {
           Stack({ alignContent: Alignment.BottomEnd }) {
@@ -3832,7 +3712,6 @@ export struct LogsReaderPage {
           this.compactOutlinePanel()
         }.width('100%').height('100%').zIndex(4)
       }
-    }.layoutWeight(1).height('100%')
   }
 
   build() {
@@ -3862,29 +3741,29 @@ export struct LogsReaderPage {
         .position({ x: this.logLoadingHint.x - this.workspaceOriginX,
           y: this.logLoadingHint.y - this.workspaceOriginY })
         .zIndex(20).hitTestBehavior(HitTestMode.None)
-      DelayedLoadingHint({ loading: this.selectedTab() === 3 && this.qaLoadingHint.loading,
+      DelayedLoadingHint({ loading: this.selectedTab() === 3 && this.modules.qaLoadingHint.loading,
         text: '正在读取会话…' })
-        .width(this.qaLoadingHint.width).height(this.qaLoadingHint.height)
-        .position({ x: this.qaLoadingHint.x - this.workspaceOriginX,
-          y: this.qaLoadingHint.y - this.workspaceOriginY })
+        .width(this.modules.qaLoadingHint.width).height(this.modules.qaLoadingHint.height)
+        .position({ x: this.modules.qaLoadingHint.x - this.workspaceOriginX,
+          y: this.modules.qaLoadingHint.y - this.workspaceOriginY })
         .zIndex(20).hitTestBehavior(HitTestMode.None)
-      DelayedLoadingHint({ loading: this.selectedTab() === 1 && this.notesLoadingHint.loading,
+      DelayedLoadingHint({ loading: this.selectedTab() === 1 && this.modules.notesLoadingHint.loading,
         text: '正在加载随记…' })
-        .width(this.notesLoadingHint.width).height(this.notesLoadingHint.height)
-        .position({ x: this.notesLoadingHint.x - this.workspaceOriginX,
-          y: this.notesLoadingHint.y - this.workspaceOriginY })
+        .width(this.modules.notesLoadingHint.width).height(this.modules.notesLoadingHint.height)
+        .position({ x: this.modules.notesLoadingHint.x - this.workspaceOriginX,
+          y: this.modules.notesLoadingHint.y - this.workspaceOriginY })
         .zIndex(20).hitTestBehavior(HitTestMode.None)
-      DelayedLoadingHint({ loading: this.selectedTab() === 2 && this.favoritesLoadingHint.loading,
+      DelayedLoadingHint({ loading: this.selectedTab() === 2 && this.modules.favoritesLoadingHint.loading,
         text: '正在加载收藏…' })
-        .width(this.favoritesLoadingHint.width).height(this.favoritesLoadingHint.height)
-        .position({ x: this.favoritesLoadingHint.x - this.workspaceOriginX,
-          y: this.favoritesLoadingHint.y - this.workspaceOriginY })
+        .width(this.modules.favoritesLoadingHint.width).height(this.modules.favoritesLoadingHint.height)
+        .position({ x: this.modules.favoritesLoadingHint.x - this.workspaceOriginX,
+          y: this.modules.favoritesLoadingHint.y - this.workspaceOriginY })
         .zIndex(20).hitTestBehavior(HitTestMode.None)
-      DelayedLoadingHint({ loading: this.selectedTab() === 4 && !this.taxonomyOpen && this.statsLoadingHint.loading,
+      DelayedLoadingHint({ loading: this.selectedTab() === 4 && !this.modules.taxonomyOpen && this.modules.statsLoadingHint.loading,
         text: '正在加载统计…' })
-        .width(this.statsLoadingHint.width).height(this.statsLoadingHint.height)
-        .position({ x: this.statsLoadingHint.x - this.workspaceOriginX,
-          y: this.statsLoadingHint.y - this.workspaceOriginY })
+        .width(this.modules.statsLoadingHint.width).height(this.modules.statsLoadingHint.height)
+        .position({ x: this.modules.statsLoadingHint.x - this.workspaceOriginX,
+          y: this.modules.statsLoadingHint.y - this.workspaceOriginY })
         .zIndex(20).hitTestBehavior(HitTestMode.None)
       DelayedLoadingHint({ loading: (this.workspaceTransition.waitingKind === 'mode' ||
         this.workspaceTransition.waitingKind === 'module') &&
@@ -3927,14 +3806,9 @@ export struct LogsReaderPage {
         }.width('100%').height('100%').zIndex(6)
           .transition(floatingSurfaceTransition())
       }
-      if (!this.isWide() && this.taxonomyOpen) {
-        TaxonomyManagerPage({
-          onBack: () => this.confirmTaxonomyLeave(() => {}),
-          onStateChange: (dirty: boolean, busy: boolean) => {
-            this.taxonomyDirty = dirty; this.taxonomyBusy = busy;
-          },
-          onSaved: () => this.statsRefreshRevision++
-        }).width('100%').height('100%').zIndex(7).transition(secondaryPageTransition())
+      if (!this.isWide() && this.modules.taxonomyOpen) {
+        WorkspaceTaxonomyPage({ modules: this.modules,
+          onBack: () => this.confirmTaxonomyLeave(() => {}) }).width('100%').height('100%').zIndex(7).transition(secondaryPageTransition())
       }
       if (!this.isWide() && this.navigationOpen) {
         Stack({ alignContent: Alignment.Start }) {

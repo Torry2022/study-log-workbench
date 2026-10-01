@@ -564,7 +564,7 @@ export struct LogsReaderPage {
   }
 
   private handleOutlinePanStart(event: GestureEvent): void {
-    if (this.isWide() || this.selectedTab() !== 0 || this.sidebar.navigationOpen || this.sourceMode ||
+    if (this.selectedTab() !== 0 || this.sidebar.navigationOpen || this.sourceMode ||
       !this.session.day || !this.readerReady || this.outlineOpen || this.moreOpen || this.aiOpen ||
       this.backupOpen || this.linkOpen || this.searchOpen || this.outlineHeadings().length === 0) {
       this.outlineGestureActive = false;

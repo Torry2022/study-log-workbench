@@ -4,7 +4,8 @@ import { readFile } from 'node:fs/promises';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 const source = await readFile(new URL('../entry/src/main/ets/features/logs/LogsReaderPage.ets', import.meta.url), 'utf8');
-const methods = ['locateOutlineHeading','outlineHeadings','showDesktopOutline','updateActiveOutline','openOutline','closeOutline'].map(name => {
+const methods = ['locateOutlineHeading','outlineHeadings','showDesktopOutline','updateActiveOutline','openOutline','closeOutline',
+ 'handleOutlinePanStart','handleOutlinePanEnd'].map(name => {
   const start = source.indexOf(`  private ${name}(`);
   const end = source.slice(start + 1).search(/^  (?:private |@Builder|build\()/m);
   assert.ok(start >= 0 && end >= 0);return source.slice(start, start + 1 + end);
@@ -60,4 +61,14 @@ test('outline reveal and close callbacks from an unmounted view cannot mutate it
  const f=subject();f.page.openOutline();f.page.lifecycle++;f.reveals[0]();assert.equal(f.page.outlineOffset,340);
  const g=subject();g.page.outlineOpen=true;g.page.closeOutline();g.page.lifecycle++;g.finishes[0]();
  assert.equal(g.page.outlineOpen,true);
+});
+
+test('right-edge swipe opens the outline on a wide reader but not outside the log',()=>{
+ const {page}=subject();page.isWide=()=>true;page.selectedTab=()=>0;page.session.day={};
+ const start={fingerList:[{localX:1200}],target:{area:{width:1260}},offsetX:0};
+ page.handleOutlinePanStart(start);assert.equal(page.outlineGestureActive,true);
+ page.handleOutlinePanEnd({offsetX:-80,offsetY:0,velocityX:-200});
+ assert.equal(page.outlineOpen,true);
+ page.outlineOpen=false;page.selectedTab=()=>1;page.handleOutlinePanStart(start);
+ assert.equal(page.outlineGestureActive,false);
 });

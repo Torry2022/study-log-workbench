@@ -17,6 +17,6 @@ node (Join-Path $devEcoStudio 'tools\hvigor\bin\hvigorw.js') --mode module -p pr
 
 将安装目录占位符替换为本机实际路径。签名 Profile、证书、私钥、构建产物及设备调试数据均不入库。
 
-当前 `EntryAbility.ets` 中的 `KEEP_SCREEN_ON_DURING_ACCEPTANCE` 为真机验收临时开启；正式发布或供长期使用的构建须先将其改为 `false` 并重新验证，避免应用在前台时持续阻止息屏。
+当前源码中 `EntryAbility.ets` 的 `KEEP_SCREEN_ON_DURING_ACCEPTANCE` 默认为 `false`。维护者此前安装的真机验收包曾临时开启常亮；准备发行包时须从当前源码重新构建，并在设备上确认前台闲置时按系统设置正常息屏。
 
 当前收尾清单见[工作台恢复记录](../docs/harmony-workspace-recovery.md)，个人版回填核查见[源码对齐审计](../docs/harmony-source-alignment-audit.md)。USB 反向端口测试不能代替外部网络自部署连接；维护者已有调试签名不能代替其他使用者的独立安装。

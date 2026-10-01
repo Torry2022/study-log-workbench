@@ -17,7 +17,7 @@
 
 完成签名构建后，在输出目录确认存在本次生成的 `entry-default-signed.hap`。维护者的调试 HAP 不是公共发行包；不要将绑定维护者设备的包当作其他使用者可直接侧载的 Release 附件。
 
-当前源码为维护者真机验收临时开启 `EntryAbility.ets` 的 `KEEP_SCREEN_ON_DURING_ACCEPTANCE`。正式发行构建前必须关闭该开关并重新构建、安装、验证；验收用的常亮包不作为发行包。
+当前源码中 `EntryAbility.ets` 的 `KEEP_SCREEN_ON_DURING_ACCEPTANCE` 默认为 `false`。正式发行构建须核对该值，并在设备上验证前台闲置时正常息屏；维护者此前安装的常亮验收包不作为发行包。
 
 下面是 PowerShell 安装示例，运行前替换三个占位值：
 

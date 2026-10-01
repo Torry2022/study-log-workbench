@@ -6,7 +6,7 @@ import { DesktopWindow } from '../app/DesktopMenu';
 import { THEME_PREFERENCES } from '../common/AppConfig';
 
 // Temporary device-acceptance setting; turn off before a public release.
-const KEEP_SCREEN_ON_DURING_ACCEPTANCE = true;
+const KEEP_SCREEN_ON_DURING_ACCEPTANCE = false;
 
 export default class EntryAbility extends UIAbility {
   private mainWindow?: window.Window;

@@ -128,6 +128,22 @@ function extractLiteralLookup(value: string): string | null {
 }
 
 function explicitDateRange(value: string): Pick<RagRetrievalPlan, "dateFrom" | "dateTo"> | null {
+  const namedDays = [...value.matchAll(/(20\d{2})[-年/](\d{1,2})[-月/](\d{1,2})日?/g)];
+  for (let start = 0; start < namedDays.length - 2; start++) {
+    const connected = [namedDays[start]];
+    for (let next = start + 1; next < namedDays.length; next++) {
+      const previous = connected[connected.length - 1];
+      const separator = value.slice((previous.index ?? 0) + previous[0].length, namedDays[next].index ?? 0);
+      if (!/^\s*(?:至|到|与|和|及|、|~|—|-)\s*$/.test(separator)) break;
+      connected.push(namedDays[next]);
+    }
+    if (connected.length >= 3) {
+      const dates = connected.map(day => explicitDate(Number(day[1]), Number(day[2]), Number(day[3])));
+      if (dates.some(date => !date)) return {};
+      const ordered = (dates as string[]).sort();
+      return { dateFrom: ordered[0], dateTo: ordered[ordered.length - 1] };
+    }
+  }
   const match = value.match(
     /(20\d{2})[-年/](\d{1,2})[-月/](\d{1,2})日?\s*(?:至|到|与|和|及|、|~|—|-)\s*(?:(20\d{2})[-年/])?(?:(\d{1,2})[-月/])?(\d{1,2})日?/
   );

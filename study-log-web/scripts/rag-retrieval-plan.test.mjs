@@ -83,6 +83,21 @@ test("includes both explicitly named days in a comparison", () => {
   });
 });
 
+test("includes every day in a three-date comparison", () => {
+  assert.deepEqual(planRagRetrieval("比较 2026-01-14、2026-01-15 和 2026-01-16 的备份策略"), {
+    dateFrom: "2026-01-14", dateTo: "2026-01-16", strategy: "comparison", maxChunks: 12, maxChars: 18000
+  });
+  assert.deepEqual(planRagRetrieval("比较 2026-02-01、2026-01-14 与 2026-01-16 的备份策略"), {
+    dateFrom: "2026-01-14", dateTo: "2026-02-01", strategy: "comparison", maxChunks: 12, maxChars: 18000
+  });
+  assert.deepEqual(planRagRetrieval("比较 2026-01-14 至 2026-01-15 和 2026-01-16 的备份策略"), {
+    dateFrom: "2026-01-14", dateTo: "2026-01-16", strategy: "comparison", maxChunks: 12, maxChars: 18000
+  });
+  const invalid = planRagRetrieval("比较 2026-01-14、2026-01-15 和 2026-02-30 的备份策略");
+  assert.equal(invalid.dateFrom, undefined);
+  assert.equal(invalid.dateTo, undefined);
+});
+
 
 test("routes an explicit quoted source lookup to literal raw-log retrieval", () => {
   assert.deepEqual(planRagRetrieval("我哪天写过`retain_graph=True`？"), {

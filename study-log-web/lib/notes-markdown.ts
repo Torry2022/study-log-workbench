@@ -6,6 +6,7 @@ import { NoteFormatError, NoteInputError, type StoredNote, type StudyNote, type 
 const NOTE_HEADING = /^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})(?:\s+·\s+(.+?))?\s*$/;
 const METADATA = /^<!--\s*study-note\s+(\{.*\})\s*-->\s*$/;
 const RESERVED = new Set(["个人理解", "来源", "标签"]);
+const MAX_NOTE_CLOCK_SKEW_MS = 10 * 60 * 1000;
 export interface NoteBlock { note: StoredNote; start: number; end: number }
 
 export function normalizeNoteRecordedAt(value: string, rejectFuture = true): string {
@@ -14,7 +15,9 @@ export function normalizeNoteRecordedAt(value: string, rejectFuture = true): str
     throw new NoteInputError("记录时间格式无效");
   }
   const normalized = `${match[1]}T${match[2]}:${match[3]}:${match[4] || "00"}+08:00`;
-  if (rejectFuture && Date.parse(normalized) > Date.now()) throw new NoteInputError("不能创建未来时间的随记");
+  if (rejectFuture && Date.parse(normalized) > Date.now() + MAX_NOTE_CLOCK_SKEW_MS) {
+    throw new NoteInputError("不能创建未来时间的随记");
+  }
   return normalized;
 }
 

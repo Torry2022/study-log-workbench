@@ -22,6 +22,7 @@ async function fixture(t) {
 }
 const input = (body = "合成随记正文。", recordedAt = "2026-01-15T09:30") => ({ body, recordedAt });
 const patch = (note, changes = {}) => ({ ...note, baseVersion: note.version, ...changes });
+const beijingTimestamp = offsetMs => new Date(Date.now() + offsetMs + 8 * 60 * 60 * 1000).toISOString().slice(0, 16);
 
 test("empty explicit instance is read-only until creation; fields/facets/version survive Markdown roundtrip", async t => {
   const { data, file, backups } = await fixture(t);
@@ -56,6 +57,14 @@ test("invalid dates, future times, field types and reserved root headings never 
     { ...input(), insight: "### 来源\n非法保留标题" }]) await assert.rejects(createStudyNote(value), NoteInputError);
   assert.deepEqual(await fs.readdir(data), []);
   delete process.env.LOG_ROOT; await assert.rejects(listStudyNotes(), /LOG_ROOT/);
+});
+
+test("small device clock skew saves a note while clearly future times remain invalid", async t => {
+  await fixture(t);
+  const note = await createStudyNote(input("设备时间快四分钟。", beijingTimestamp(4 * 60 * 1000)));
+  assert.equal((await listStudyNotes()).notes[0].id, note.id);
+  await assert.rejects(createStudyNote(input("未来时间。", beijingTimestamp(12 * 60 * 1000))), NoteInputError);
+  assert.equal((await listStudyNotes()).notes.length, 1);
 });
 
 test("updates preserve identity/creation and unedited CRLF blocks, and new versions sort by update time", async t => {

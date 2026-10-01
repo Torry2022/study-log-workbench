@@ -90,7 +90,7 @@ test('server future-time rejection preserves new and existing drafts until an ex
       insight: '', sources: [], tags: [], recordedAt: past } : undefined;
     if (existing) editor.startEdit(remote); else editor.startNew(past);
     editor.title = '合成时钟偏差'; editor.body = '时间被拒绝后仍需保留的草稿';
-    editor.recordedAt = beijingNoteTimestamp(Date.now() + 300000);
+    editor.recordedAt = beijingNoteTimestamp(Date.now() + 12 * 60000);
     const snapshot = editor.value(), baseline = editor.baseline, identity = editor.clientId;
     let requests = 0, reads = 0;
     const successes = [];

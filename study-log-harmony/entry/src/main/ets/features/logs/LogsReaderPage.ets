@@ -4,7 +4,7 @@ import { WorkspaceReadingState } from '../../app/WorkspaceReadingState';
 import { WorkspaceBreakpoint, READING_MAX_WIDTH } from '../../common/AppConfig';
 import { apiClient, ApiError, ApiUploadFile } from '../../common/network/ApiClient';
 import { activeInstance } from '../../common/network/InstanceConfig';
-import { EmptyState, LoadFailure } from '../../common/ui/FeedbackStates';
+import { EmptyState, InlineStatus, LoadFailure } from '../../common/ui/FeedbackStates';
 import { MarkdownReader } from '../../common/ui/MarkdownReader';
 import { workspaceSansFamily } from '../../common/ui/Typography';
 import { SourceEditor, SourceEditorSession, EditorSnapshot, EditorImageData } from '../../common/editor/SourceEditor';
@@ -1111,6 +1111,7 @@ export struct LogsReaderPage {
       this.pendingImageFiles = files;
       this.pendingImageDate = date;
       this.pendingImageCount = files.length;
+      this.saveError = '';
       await this.switchMode(true);
       if (lifecycle !== this.lifecycle || date !== this.session.selectedDate || !this.sourceMode) {
         this.cancelPendingImages();
@@ -1146,7 +1147,11 @@ export struct LogsReaderPage {
       const prefix = before ? (before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n') : '';
       const suffix = after ? (after.startsWith('\n\n') ? '' : after.startsWith('\n') ? '\n' : '\n\n') : '';
       await this.editor.insert(target, `${prefix}${markdown}${suffix}`);
+      const insertedCount = this.pendingImageCount;
       this.cancelPendingImages();
+      if (lifecycle === this.lifecycle && date === this.session.selectedDate) {
+        appFeedback.show(`已插入 ${insertedCount} 张图片`, 'success');
+      }
     } catch (error) {
       if (lifecycle === this.lifecycle) appFeedback.show(
         error instanceof Error ? error.message : '图片上传失败，可重试', 'error');
@@ -1184,6 +1189,9 @@ export struct LogsReaderPage {
       const prefix = before ? (before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n') : '';
       const suffix = after ? (after.startsWith('\n\n') ? '' : after.startsWith('\n') ? '\n' : '\n\n') : '';
       await this.editor.insert(target, `${prefix}${markdown}${suffix}`);
+      if (lifecycle === this.lifecycle && date === this.session.selectedDate) {
+        appFeedback.show(`已插入 ${files.length} 张图片`, 'success');
+      }
     } catch (error) {
       if (lifecycle === this.lifecycle) this.saveError = error instanceof Error ? error.message : '图片插入失败';
     } finally {
@@ -1212,6 +1220,9 @@ export struct LogsReaderPage {
       const prefix = before ? (before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n') : '';
       const suffix = after ? (after.startsWith('\n\n') ? '' : after.startsWith('\n') ? '\n' : '\n\n') : '';
       await this.editor.insert(target, `${prefix}${markdown}${suffix}`);
+      if (lifecycle === this.lifecycle && date === this.session.selectedDate) {
+        appFeedback.show(`已插入 ${files.length} 张图片`, 'success');
+      }
     } catch (error) {
       if (lifecycle === this.lifecycle) this.saveError = error instanceof Error ? error.message : '图片粘贴失败';
     } finally {
@@ -2378,6 +2389,7 @@ export struct LogsReaderPage {
   @Builder
   private reader() {
     Column() {
+      InlineStatus({ text: this.saveError, error: true }).id('log_read_status')
       if (this.logNavigation.monthsLoading || !this.session.day && (this.logNavigation.daysLoading || this.documents.dayRequestLoading)) {
         Column() {
           LoadingProgress().width(26).height(26).color($r('app.color.primary'))
@@ -2511,11 +2523,6 @@ export struct LogsReaderPage {
             !this.sourceMode && this.renderedPreviewDate.length > 0 && !this.readerReady),
             onChange: (placement: LoadingHintPlacement) => this.logLoadingHint = placement })
             .hitTestBehavior(HitTestMode.None)
-          if (this.saveError) {
-            Text(this.saveError).fontSize(13).fontColor($r('app.color.error'))
-              .width('100%').padding(12).backgroundColor($r('app.color.surface_soft'))
-              .align(Alignment.Bottom)
-          }
         }.layoutWeight(1).width('100%')
       } else {
         EmptyState({ title: '暂无学习日志', description: '当前实例还没有可阅读的日志。' })

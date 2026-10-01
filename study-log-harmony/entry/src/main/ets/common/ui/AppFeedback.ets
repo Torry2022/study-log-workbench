@@ -35,6 +35,8 @@ class FeedbackOptions {
 @Component
 struct FeedbackView {
   @Prop @Watch('visibilityChanged') options: FeedbackOptions;
+  @StorageProp('softwareKeyboardHeightPx') private softwareKeyboardHeightPx: number = 0;
+  @StorageProp('windowBottomAvoidPx') private windowBottomAvoidPx: number = 0;
   @State private viewportWidth: number = 0;
   @State private revealed: boolean = false;
   @State private actionHovered: boolean = false;
@@ -124,7 +126,9 @@ struct FeedbackView {
     }
     .width('100%').height('100%')
     .padding({ left: this.viewportWidth < 840 ? 14 : 18, right: this.viewportWidth < 840 ? 14 : 18,
-      bottom: this.options.hasBottomNavigation() ? 78 : 18 })
+      bottom: this.softwareKeyboardHeightPx > 0 ?
+        this.getUIContext().px2vp(Math.max(0, this.softwareKeyboardHeightPx - this.windowBottomAvoidPx)) + 18 :
+        this.options.hasBottomNavigation() ? 78 : 18 })
     .hitTestBehavior(HitTestMode.Transparent)
     .onAreaChange((_old: Area, area: Area) => {
       const initialLayout = this.viewportWidth <= 0;

@@ -5,6 +5,9 @@ import { preferences } from '@kit.ArkData';
 import { DesktopWindow } from '../app/DesktopMenu';
 import { THEME_PREFERENCES } from '../common/AppConfig';
 
+// Temporary device-acceptance setting; turn off before a public release.
+const KEEP_SCREEN_ON_DURING_ACCEPTANCE = true;
+
 export default class EntryAbility extends UIAbility {
   private mainWindow?: window.Window;
   private initialThemeReady: Promise<void> = Promise.resolve();
@@ -24,6 +27,7 @@ export default class EntryAbility extends UIAbility {
   }
   private keyboardHeightChanged = (height: number): void => {
     AppStorage.setOrCreate('softwareKeyboardVisible', height > 0);
+    AppStorage.setOrCreate('softwareKeyboardHeightPx', Math.max(0, height));
   };
   private bottomAvoidAreaChanged = (): void => {
     if (!this.mainWindow) return;
@@ -61,7 +65,9 @@ export default class EntryAbility extends UIAbility {
 
   onWindowStageCreate(stage: window.WindowStage): void {
     this.mainWindow = stage.getMainWindowSync();
+    if (KEEP_SCREEN_ON_DURING_ACCEPTANCE) this.mainWindow.setWindowKeepScreenOn(true);
     AppStorage.setOrCreate('softwareKeyboardVisible', false);
+    AppStorage.setOrCreate('softwareKeyboardHeightPx', 0);
     this.mainWindow.on('keyboardHeightChange', this.keyboardHeightChanged);
     this.mainWindow.on('avoidAreaChange', this.bottomAvoidAreaChanged);
     this.updateSystemBars(this.context.config.colorMode);
@@ -86,6 +92,7 @@ export default class EntryAbility extends UIAbility {
     this.mainWindow?.off('avoidAreaChange', this.bottomAvoidAreaChanged);
     AppStorage.setOrCreate('windowBottomAvoidPx', 0);
     AppStorage.setOrCreate('softwareKeyboardVisible', false);
+    AppStorage.setOrCreate('softwareKeyboardHeightPx', 0);
     this.mainWindow = undefined;
     DesktopWindow.mainWindow = undefined;
   }

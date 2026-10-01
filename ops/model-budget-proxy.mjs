@@ -24,6 +24,7 @@ export async function startBudgetProxy({ apiKey, apiUrl, model, budgetCny, ledge
     }
     if (inFlight) { response.writeHead(409).end(); return; }
     inFlight = true;
+    let record = null;
     try {
       const buffers = []; let bytes = 0;
       for await (const chunk of request) { bytes += chunk.length; if (bytes > 64_000) throw new Error("Acceptance request too large"); buffers.push(chunk); }
@@ -36,7 +37,7 @@ export async function startBudgetProxy({ apiKey, apiUrl, model, budgetCny, ledge
       const reservation = ((bytes + 4096) * 5 + maxTokens * 20) / 1_000_000;
       if (reservedCny + reservation > budgetCny) throw new Error("Acceptance budget exhausted before request");
       reservedCny += reservation;
-      const record = { request: records.length + 1, reservedCny: reservation, status: "started", usage: null };
+      record = { request: records.length + 1, reservedCny: reservation, status: "started", usage: null, streamFailure: false };
       records.push(record);
       // Persist the reservation BEFORE issuing a paid request. A process crash
       // or failed request never returns this amount to the available budget.
@@ -56,8 +57,9 @@ export async function startBudgetProxy({ apiKey, apiUrl, model, budgetCny, ledge
         }
       } else { try { record.usage = JSON.parse(collected).usage || null; } catch {} }
     } catch {
-      if (!response.headersSent) response.writeHead(502, { "Content-Type": "application/json" });
-      response.end(JSON.stringify({ error: "Acceptance proxy rejected or failed the bounded request" }));
+      if (record && response.headersSent) record.streamFailure = true;
+      if (response.headersSent) response.destroy();
+      else response.writeHead(502, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "Acceptance proxy rejected or failed the bounded request" }));
     } finally { inFlight = false; }
   });
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));

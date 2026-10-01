@@ -193,10 +193,20 @@ test('an uncertain note update reconciles only the submitted server state', asyn
 
   editor.startEdit(note); editor.body = '新正文'; remote = { ...note, body: '另一客户端正文', version: 'v2' };
   transport.patch = async () => { throw new ApiError('conflict', 409); };
+  let finishOldRead;
+  const oldRead = new Promise(resolve => { finishOldRead = () => resolve({ notes: [note], years: [], tags: [] }); });
+  let reads = 0;
+  transport.get = async () => ++reads === 1 ? oldRead : { notes: [remote], years: [], tags: [] };
+  const pendingLoad = controller.load();
   await controller.save();
+  finishOldRead(); await pendingLoad;
   assert.equal(editor.editing, true);
   assert.equal(editor.baseVersion, 'v0');
   assert.match(controller.errorMessage, /服务器随记已变化/);
+  assert.equal(editor.body, '新正文');
+  assert.equal(controller.notes[0].body, '另一客户端正文');
+  editor.startEdit(controller.notes[0]);
+  assert.equal(editor.body, '另一客户端正文');
   assert.deepEqual(successes, ['随记已更新']);
 });
 

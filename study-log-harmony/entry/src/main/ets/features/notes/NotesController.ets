@@ -149,6 +149,14 @@ export class NotesController {
             if (lifetime === this.lifetime && revision === this.editor.revision) this.view.success('随记已更新');
             return;
           }
+          if (error instanceof ApiError && error.statusCode === 409 && lifetime === this.lifetime &&
+            revision === this.editor.revision) {
+            this.loadRevision += 1;
+            this.loading = false; this.loadFailed = false;
+            this.notes = current.notes; this.availableTags = current.tags;
+            this.view.navigationChanged(current.years, current.tags, current.notes.length);
+            this.view.loaded();
+          }
         } catch (_) { /* Retain the draft and report the original write error. */ }
       }
       if (lifetime !== this.lifetime || revision !== this.editor.revision) return;

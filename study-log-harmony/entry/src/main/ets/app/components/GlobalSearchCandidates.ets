@@ -38,7 +38,10 @@ export struct GlobalSearchCandidates {
       } else if (this.searchError) {
         Row() {
           Text(this.searchError).layoutWeight(1).fontSize(12).fontColor($r('app.color.error'))
-          Button('重试').fontSize(12).onClick(() => this.onRetry())
+          Button('重试', { type: ButtonType.Normal }).height(36).padding({ left: 12, right: 12 })
+            .fontSize(12).fontColor($r('app.color.body')).backgroundColor($r('app.color.surface_soft'))
+            .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8)
+            .onClick(() => this.onRetry())
         }.width('100%').padding(12)
       } else if (this.searchResults.length === 0) {
         Text('未找到匹配内容').width('100%').padding(14).fontSize(12)

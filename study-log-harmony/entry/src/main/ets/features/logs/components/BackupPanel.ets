@@ -121,6 +121,7 @@ export struct BackupPanel {
     const lifecycle = this.lifecycle;
     const revision = ++this.previewRevision;
     this.selected = version;
+    this.webContentReady = false;
     this.previewLoading = true;
     this.previewError = '';
     this.restoreError = '';

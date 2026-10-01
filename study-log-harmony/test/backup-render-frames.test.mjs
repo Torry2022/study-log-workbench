@@ -55,3 +55,20 @@ test('clicking the current successful backup does not request or redraw it', asy
   assert.equal(frames.length, 0);
   assert.equal(renders.length, 0);
 });
+test('switching backup versions keeps the previous preview covered until the next paint', async () => {
+  const { panel, frames, renders } = subject();
+  panel.webContentReady = true;
+  panel.repository = { async preview() { return { preview: {
+    id: 'two', date: '2026-02-05', kind: 'write', backupVersion: 'a'.repeat(64),
+    currentContent: 'current', historicalContent: 'next'
+  } }; } };
+  panel.date = '2026-02-05';
+  await panel.selectVersion({ id: 'two', createdAt: '2026-10-01' });
+  assert.equal(renders.at(-1)[1], 'next');
+  assert.equal(panel.previewLoading, false);
+  assert.equal(panel.webContentReady, false);
+  frames.shift()();
+  assert.equal(panel.webContentReady, false);
+  frames.shift()();
+  assert.equal(panel.webContentReady, true);
+});

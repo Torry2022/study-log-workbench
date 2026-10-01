@@ -129,7 +129,7 @@ function extractLiteralLookup(value: string): string | null {
 
 function explicitDateRange(value: string): Pick<RagRetrievalPlan, "dateFrom" | "dateTo"> | null {
   const match = value.match(
-    /(20\d{2})[-年/](\d{1,2})[-月/](\d{1,2})日?\s*(?:至|到|~|—|-)\s*(?:(20\d{2})[-年/])?(?:(\d{1,2})[-月/])?(\d{1,2})日?/
+    /(20\d{2})[-年/](\d{1,2})[-月/](\d{1,2})日?\s*(?:至|到|与|和|及|、|~|—|-)\s*(?:(20\d{2})[-年/])?(?:(\d{1,2})[-月/])?(\d{1,2})日?/
   );
   if (!match) return null;
   const startYear = Number(match[1]);

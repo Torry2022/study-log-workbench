@@ -74,6 +74,15 @@ test("keeps a fully qualified range", () => {
   assert.equal(plan.strategy, "comparison");
 });
 
+test("includes both explicitly named days in a comparison", () => {
+  assert.deepEqual(planRagRetrieval("对比 2026-01-14 与 2026-01-15 的备份策略记录"), {
+    dateFrom: "2026-01-14", dateTo: "2026-01-15", strategy: "comparison", maxChunks: 12, maxChars: 18000
+  });
+  assert.deepEqual(planRagRetrieval("比较 2026-01-15 和 2026-01-14 的区别"), {
+    dateFrom: "2026-01-14", dateTo: "2026-01-15", strategy: "comparison", maxChunks: 12, maxChars: 18000
+  });
+});
+
 
 test("routes an explicit quoted source lookup to literal raw-log retrieval", () => {
   assert.deepEqual(planRagRetrieval("我哪天写过`retain_graph=True`？"), {

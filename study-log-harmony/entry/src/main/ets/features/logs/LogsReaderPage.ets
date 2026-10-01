@@ -1203,6 +1203,7 @@ export struct LogsReaderPage {
 
   private async receiveImages(target: EditorSnapshot, images: EditorImageData[]): Promise<void> {
     if (this.imageBusy || this.linkOpen || this.backupOpen || !this.session.day || target.documentKey !== this.session.selectedDate) {
+      if (this.imageBusy) this.saveError = '请等待当前图片操作完成';
       this.editor.release(target).catch(() => {});
       return;
     }

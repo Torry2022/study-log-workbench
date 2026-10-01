@@ -68,7 +68,23 @@ try {
   assert.ok(candidates.candidates.length > 0); outputs.extraction = candidates; checks.push("note extraction yields evidence-backed review candidates");
   for (const mode of ["logs_only", "logs_and_general"]) {
     const response = await fetch(`${base}/api/rag/query`, { method: "POST", headers, body: JSON.stringify({ question: mode === "logs_only" ? "请总结2026年1月14日关于队列的日志记录。" : "请总结2026年1月14日关于队列的日志，并补充常见应用场景。", mode }), signal: AbortSignal.timeout(150_000) });
-    assert.equal(response.status, 200); const text = await response.text(); assert.match(text, /event: done/); assert.doesNotMatch(text, /event: error/);
+    assert.equal(response.status, 200); const text = await response.text();
+    const eventTypes = [...text.matchAll(/^event:\s*([a-z_]+)\s*$/gm)].map(match => match[1]);
+    if (!eventTypes.includes("done") || eventTypes.includes("error")) {
+      const errorFrame = text.split(/\r?\n\r?\n/).find(frame => frame.startsWith("event: error"));
+      let failure = null;
+      try { failure = JSON.parse(errorFrame?.match(/^data: (.+)$/m)?.[1] || "null"); } catch {}
+      const eventCounts = {};
+      for (const event of eventTypes) eventCounts[event] = (eventCounts[event] || 0) + 1;
+      outputs[`${mode}_stream_failure`] = {
+        eventCounts,
+        lastEventType: eventTypes.at(-1) || null,
+        responseBytes: Buffer.byteLength(text),
+        failure
+      };
+    }
+    assert.ok(eventTypes.includes("done"), `${mode}: RAG stream did not complete`);
+    assert.ok(!eventTypes.includes("error"), `${mode}: RAG stream reported an error`);
     const done = JSON.parse(text.split("\n\n").find(frame => frame.startsWith("event: done"))?.split("\ndata: ")[1]);
     assert.match(done.answer, /先进先出|FIFO/); assert.ok(done.citations.some(item => item.date === "2026-01-14"));
     if (mode === "logs_and_general") assert.match(done.answer, /通用知识补充/);

@@ -2617,7 +2617,7 @@ export struct LogsReaderPage {
           date: this.ai.highlightDate,
           available: this.ai.highlightDate === this.session.selectedDate && this.ai.originalDraft === this.session.text,
           onClose: () => this.ai.reviewOpen = false, onApply: () => this.applyAiHighlight() })
-          .width('100%').height('100%').transition(floatingSurfaceTransition())
+          .width('100%').height('100%').zIndex(30).transition(floatingSurfaceTransition())
       }
   }
 

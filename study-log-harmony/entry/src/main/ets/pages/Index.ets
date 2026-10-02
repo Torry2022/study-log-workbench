@@ -713,7 +713,8 @@ struct Index {
     // Keyboard avoidance belongs to the window, not individual input focus lifetimes.
     this.getUIContext().setKeyboardAvoidMode(KeyboardAvoidMode.RESIZE);
     this.registerFonts();
-    appFeedback.attach(this.getUIContext(), () => false);
+    appFeedback.attach(this.getUIContext(), () => this.connected && !this.isWide() &&
+      !this.modules.taxonomyOpen && !this.searchOpen);
     this.preferencesReady = workspacePreferences.initialize(this.getUIContext().getHostContext() as common.UIAbilityContext);
     this.removeUnauthorizedHandler = apiClient.setUnauthorizedHandler(() => { this.expireSession(); });
   }

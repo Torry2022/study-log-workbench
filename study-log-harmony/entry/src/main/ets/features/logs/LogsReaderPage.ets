@@ -927,7 +927,12 @@ export struct LogsReaderPage {
 
   private async switchMode(source: boolean, split: boolean = false): Promise<void> {
     const revision = ++this.modeRequestRevision;
-    if (source === this.sourceMode && split === this.splitMode) return;
+    if (source === this.sourceMode && split === this.splitMode) {
+      if (this.workspaceTransition.waitingKind === 'mode' && this.workspaceTransition.task) {
+        this.workspaceTransition.clear();
+      } else this.settleModeOnNextFrame(revision);
+      return;
+    }
     if (this.editorReady && this.session.day) {
       try {
         const snapshot = await this.editor.command('snapshot');
@@ -955,8 +960,12 @@ export struct LogsReaderPage {
     this.splitMode = split;
     this.updateToolbarWidth(this.headerWidth);
     this.modeLayoutRevision++;
+    this.settleModeOnNextFrame(revision);
+  }
+
+  private settleModeOnNextFrame(revision: number): void {
     if (!this.session.day || this.documents.dayRequestLoading || this.logNavigation.daysLoading ||
-      (source && this.editor.loadedDocumentKey === this.session.selectedDate)) {
+      (this.sourceMode && this.editor.loadedDocumentKey === this.session.selectedDate)) {
       this.getUIContext().postFrameCallback(new FrameAction(() => {
         if (revision === this.modeRequestRevision) this.workspaceTransition.finish('mode');
       }));

@@ -123,6 +123,9 @@ export struct LogAiPanel {
               () => this.ready && this.generateConfigured && !this.busy && !this.importing &&
               (this.materialHasText || this.instructionHasText || !!this.material.trim() || !!this.instruction.trim()),
               this.onGenerate)
+            if (this.message) {
+              Text(this.message).fontSize(12).lineHeight(19).fontColor($r('app.color.muted')).width('100%')
+            }
             this.label('生成草稿')
             TextArea({ text: this.output, placeholder: this.busy ? '正在生成，请稍候…' : '生成的草稿将在这里显示' })
               .width('100%').height(260).padding(12).fontFamily('JetBrains Mono')
@@ -145,7 +148,7 @@ export struct LogAiPanel {
             Text('标注结果会先进入差异查看，确认后只替换当前编辑草稿，不会自动保存到 Markdown 文件。')
               .width('100%').fontSize(12).lineHeight(19).fontColor($r('app.color.muted'))
           }
-          if (this.message) {
+          if (this.message && this.mode !== 'generate') {
             Text(this.message).fontSize(12).lineHeight(19).fontColor($r('app.color.muted')).width('100%')
           }
         }.width('100%').padding(16).alignItems(HorizontalAlign.Start)

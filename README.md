@@ -1,6 +1,6 @@
 # 学习日志工作台
 
-面向单个使用者的自部署 Markdown 工作台。日志、随记和附件保存在你指定的实例目录中；网页负责阅读、编辑、检索与整理，不要求把个人资料放进源码仓库。网页核心功能及维护者自部署回归已完成，**独立使用者从零试装尚未完成**，当前不标为正式发行版。验收范围见[实施状态](docs/implementation-status.md)。
+面向单个使用者的自部署 Markdown 工作台。日志、随记和附件保存在你指定的实例目录中；网页负责阅读、编辑、检索与整理，不要求把个人资料放进源码仓库。网页核心功能及维护者自部署回归已完成；维护者又按文档从全新源码副本和合成实例[自行试装](docs/self-install-2026-10-02.md)。第三方独立使用者试装及部分手机专项尚未完成，当前不标为正式发行版。验收范围见[实施状态](docs/implementation-status.md)。
 
 ## 能做什么
 
@@ -34,13 +34,13 @@ node ops/run-web.mjs start "/absolute/path/to/new-instance" 3560
 
 ## 当前验收边界
 
-维护者已用合成资料完成网页生产构建、主要浏览器流程、Linux 容器部署和少量真实模型调用；详细结果在[实施状态](docs/implementation-status.md)、[浏览器回归](docs/web-regression-b28.md)和[模型小样本记录](docs/model-validation.md)。独立使用者安装仍须按[试装清单](docs/independent-install-checklist.md)取得证据，维护者本机测试不能替代。真实向量/重排提供方、复杂材料的模型质量和 Firefox 也未完成相应验收。鸿蒙主要模块已接入，仍在源码对齐和跨端验收中；这不改变网页独立试装的未通过状态。
+维护者已用合成资料完成网页生产构建、主要浏览器流程、Linux 容器部署、全新环境自行试装和少量真实模型调用；详细结果在[实施状态](docs/implementation-status.md)、[自行试装](docs/self-install-2026-10-02.md)、[浏览器回归](docs/web-regression-b28.md)和[模型小样本记录](docs/model-validation.md)。未参与实现的使用者安装仍须按[试装清单](docs/independent-install-checklist.md)单独取得证据。真实向量／重排提供方、复杂材料的模型质量和 Firefox 也未完成相应验收。鸿蒙主要模块已接入，仍在源码对齐和跨端验收中。
 
 源码位于 `study-log-web/`、`study-log-mcp/`、`study-log-harmony/` 和 `ops/`；接口与数据约束见[架构](docs/architecture.md)及[API 契约](docs/api-contract.md)。界面修改遵循 [DESIGN.md](DESIGN.md)。项目代码按 MIT 许可发布；第三方依赖说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 ## 鸿蒙客户端
 
-客户端连接你明确配置的自部署 Web/API，支持手机、平板和 PC（2in1）。构建要求和签名边界见[客户端说明](study-log-harmony/README.md)。本阶段面向源码构建及侧载验证，尚未完成独立签名安装与外部网络连接验收，也未完成完整视觉／动效矩阵，不能视为可直接安装的正式发行版。
+客户端连接你明确配置的自部署 Web/API，支持手机、平板和 PC（2in1）。构建要求和签名边界见[客户端说明](study-log-harmony/README.md)。本阶段面向源码构建及侧载验证。维护者已从干净副本在手机上完成本机签名覆盖安装和局域网合成实例连接；其他使用者自行配置签名、不同网络 HTTPS 和完整视觉／动效矩阵仍缺证据，不能视为可直接安装的正式发行版。
 
 已完成项目与历史证据见[鸿蒙迁移记录](docs/harmony-migration.md)，当前 R1–R6 收尾范围见[工作台恢复与剩余批次](docs/harmony-workspace-recovery.md)。源码对照及需要交给个人版核查的事项集中在[源码对齐审计](docs/harmony-source-alignment-audit.md)；其中源码风险、公开版复现和原版设备复现是不同证据，不应直接整批回填。
 

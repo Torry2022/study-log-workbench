@@ -12,7 +12,9 @@ const project = `public-rebuild-rag-${new Date().toISOString().replace(/\D/g, ""
 const root = path.join(repository, ".local", project), instance = path.join(root, "instance"), port = 3581;
 const base = `http://127.0.0.1:${port}/study-log`, run = promisify(execFile), passed = [];
 const environment = { ...process.env, INSTANCE_PARENT: root, INSTANCE_ROOT: instance, WEB_PORT: String(port),
-  WEB_IMAGE: "study-log-public-rebuild-web:b27", MCP_IMAGE: "study-log-public-rebuild-mcp:b27", TOOLS_IMAGE: "study-log-public-rebuild-tools:b27" };
+  WEB_IMAGE: process.env.WEB_IMAGE || "study-log-public-rebuild-web:b27",
+  MCP_IMAGE: process.env.MCP_IMAGE || "study-log-public-rebuild-mcp:b27",
+  TOOLS_IMAGE: process.env.TOOLS_IMAGE || "study-log-public-rebuild-tools:b27" };
 const docker = async args => (await run("docker", args, { cwd: repository, env: environment, windowsHide: true, maxBuffer: 4 * 1024 * 1024 })).stdout.trim();
 const override = path.join(root, "compose.mock.json");
 const compose = args => docker(["compose", "-p", project, "-f", "compose.yaml", "-f", override, ...args]);

@@ -117,6 +117,8 @@ node ops/docker-rag-smoke.mjs
 
 基础脚本只创建新的 `.local/public-rebuild-b27-*` 合成实例，以 `127.0.0.1:3580` 验证初始化、登录、未配 AI 时写入、PDF/DOCX 提取、重启、MCP 只读检索、离线恢复与字节一致性。RAG 脚本使用 `127.0.0.1:3581`，模型替身仅位于项目内部 Docker 网络，验证关键词与向量两模式的问答引用和 SSE 完成事件，以及收到 delta 后 SIGTERM 停机；不调用外部模型。两个脚本结束后只关闭自己的 Compose 项目，保留报告和合成资料供检查。使用已批准的基础镜像来源时，可给构建命令加 `--build-arg NODE_IMAGE=<镜像引用>`，不必修改全局镜像标签。
 
+若要验收其他标签的当前构建，可在运行脚本前设置 `WEB_IMAGE`、`MCP_IMAGE` 和 `TOOLS_IMAGE`；未设置时仍使用上方的 `b27` 标签。三个变量都应指向同一源码版本构建的镜像，避免把旧标签的测试结果当作当前提交的结果。Windows PowerShell 示例：`$env:WEB_IMAGE='study-log-workbench-web:local'; $env:MCP_IMAGE='study-log-workbench-mcp:local'; $env:TOOLS_IMAGE='study-log-workbench-tools:local'`，然后分别运行 `node ops/docker-smoke.mjs` 和 `node ops/docker-rag-smoke.mjs`。
+
 2026-09-22 维护者在 Docker Desktop 的 Linux amd64 / Node 22 环境运行上述闭环通过：同版本恢复后所覆盖文件字节一致；长问答停机等待约 19 秒，流正常完成、Web 退出码为 0、原日志未变且 Web/MCP 锁释放。MCP 的 Linux 非 root、禁外网合成测试 49/49 通过，包含 Windows 下不能执行的文件符号链接用例。
 
 这些本机测试不替代未参与开发者的独立安装，不证明实际模型质量，也不构成跨版本升级保证。公开环境实装和独立试装状态应单独记录。

@@ -18,7 +18,9 @@ const root = path.join(repository, ".local", project), instance = path.join(root
 const port = 3580, base = `http://127.0.0.1:${port}/study-log`;
 const run = promisify(execFile), passed = [];
 const environment = { ...process.env, INSTANCE_PARENT: root, INSTANCE_ROOT: instance, WEB_PORT: String(port),
-  WEB_IMAGE: "study-log-public-rebuild-web:b27", MCP_IMAGE: "study-log-public-rebuild-mcp:b27", TOOLS_IMAGE: "study-log-public-rebuild-tools:b27" };
+  WEB_IMAGE: process.env.WEB_IMAGE || "study-log-public-rebuild-web:b27",
+  MCP_IMAGE: process.env.MCP_IMAGE || "study-log-public-rebuild-mcp:b27",
+  TOOLS_IMAGE: process.env.TOOLS_IMAGE || "study-log-public-rebuild-tools:b27" };
 const docker = async args => (await run("docker", args, { cwd: repository, env: environment, windowsHide: true, maxBuffer: 4 * 1024 * 1024 })).stdout.trim();
 const compose = args => docker(["compose", "-p", project, "-f", "compose.yaml", ...args]);
 const mark = name => { passed.push(name); console.log(`PASS ${name}`); };

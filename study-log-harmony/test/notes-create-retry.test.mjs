@@ -15,6 +15,25 @@ async function loadClass(path, mock) {
   return module.exports;
 }
 
+test('refreshing remote notes leaves the current editor draft intact', async () => {
+  const { NoteEditorSession } = await loadClass('../entry/src/main/ets/features/notes/NoteEditorSession.ets',
+    () => ({ util: { generateRandomUUID: () => 'draft-id' } }));
+  const editor = new NoteEditorSession();
+  editor.startNew('2026-09-30T10:00:00+08:00');
+  editor.title = '未保存标题'; editor.body = '未保存正文';
+  const remote = { id: 'remote-id', title: '另一设备的随记', body: '合成资料',
+    year: '2026', tags: [], sources: [], insight: '', recordedAt: '2026-09-30T10:00:00+08:00' };
+  const { NotesController } = await loadClass('../entry/src/main/ets/features/notes/NotesController.ets',
+    () => ({ ApiError }));
+  const controller = new NotesController({ get: async () => ({ notes: [remote], years: [], tags: [] }) }, editor,
+    { navigationChanged() {}, loaded() {} });
+  await controller.load();
+  assert.equal(controller.notes[0].id, remote.id);
+  assert.equal(editor.title, '未保存标题');
+  assert.equal(editor.body, '未保存正文');
+  assert.equal(editor.editing, true);
+});
+
 test('leaving a pending new note isolates its outcome without losing a committed record on refresh', async () => {
   for (const leave of ['new-editor', 'dispose']) {
     for (const outcome of ['success', 'lost-response', 'not-written']) {

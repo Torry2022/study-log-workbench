@@ -8,6 +8,8 @@ import ts from 'typescript';
 const source = await readFile(new URL('../entry/src/main/ets/features/logs/LogsReaderPage.ets', import.meta.url), 'utf8');
 const stateSource = (await readFile(new URL('../entry/src/main/ets/app/WorkspaceModuleState.ets', import.meta.url), 'utf8')).replace(/^import .*;\r?\n/gm, '').replace('@Observed', '');
 const rootSource = await readFile(new URL('../entry/src/main/ets/pages/Index.ets', import.meta.url), 'utf8');
+const notesSource = await readFile(new URL('../entry/src/main/ets/features/notes/NotesPage.ets', import.meta.url), 'utf8');
+const contentSource = await readFile(new URL('../entry/src/main/ets/app/components/WorkspaceContent.ets', import.meta.url), 'utf8');
 const bridgeSource = await readFile(new URL('../entry/src/main/ets/app/WorkspaceNavigationBridge.ets', import.meta.url), 'utf8');
 function extract(text, names) {
  return names.map(name => {
@@ -141,6 +143,33 @@ test('late module capture cannot override a newer module selection', async () =>
   releases[0]();
   await old;
   assert.equal(page.selectedModule, 4);
+});
+
+test('revisiting notes requests a list refresh through the mounted page', async () => {
+  const { page } = workspace(0);
+  assert.equal(page.modules.notesRefreshRevision, 0);
+  await page.switchModule(1, false, false);
+  assert.equal(page.modules.notesRefreshRevision, 1);
+  await page.switchModule(0, false, false);
+  await page.switchModule(1, false, false);
+  assert.equal(page.modules.notesRefreshRevision, 2);
+
+  assert.match(contentSource, /refreshRevision:\s*this\.modules\.notesRefreshRevision/);
+  assert.match(notesSource, /@Prop @Watch\('refreshRevisionChanged'\) refreshRevision/);
+  const module = { exports: {} };
+  const code = ts.transpileModule(`export class Notes { ${extract(notesSource, ['refreshRevisionChanged'])} }`, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }
+  }).outputText;
+  runInNewContext(code, { module, exports: module.exports });
+  const notes = new module.exports.Notes();
+  let loads = 0;
+  notes.load = () => { loads += 1; };
+  notes.refreshRevision = 0;
+  notes.refreshRevisionChanged();
+  assert.equal(loads, 0);
+  notes.refreshRevision = page.modules.notesRefreshRevision;
+  notes.refreshRevisionChanged();
+  assert.equal(loads, 1);
 });
 
 test('clicking the current module cancels an in-flight departure through the actual tab entrypoint', async () => {

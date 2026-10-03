@@ -46,6 +46,7 @@ export struct NotesPage {
   @Prop @Watch('discardRequested') discardRevision: number = 0;
   @Prop searchRevision: number = 0;
   @Prop @Watch('saveRequested') saveRevision: number = 0;
+  @Prop @Watch('refreshRevisionChanged') refreshRevision: number = 0;
   onNavigationDataChange: (years: StudyNoteFacet[], tags: StudyNoteFacet[], total: number) => void = () => {};
   onScrollStateChange: (scrolled: boolean) => void = () => {};
   onOpenLog: () => void = () => {};
@@ -138,6 +139,10 @@ export struct NotesPage {
 
 
   private async load(): Promise<void> { await this.data.load(); }
+
+  private refreshRevisionChanged(): void {
+    if (this.refreshRevision > 0) this.load();
+  }
 
   private applyFilter(): void {
     const visible = this.data.filtered(this.navigationYear, this.navigationTag, this.query);

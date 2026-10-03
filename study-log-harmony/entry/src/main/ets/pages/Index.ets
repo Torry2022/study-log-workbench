@@ -563,6 +563,7 @@ struct Index {
     this.selectedModule = index;
     this.modules.moduleRequestedTab = -1;
     view.changed(index);
+    if (index === 1) this.modules.notesRefreshRevision += 1;
     if (index === 2) this.modules.favoritesRefreshRevision += 1;
     if (index === 3) this.qaNavigation.loadQaNavigation();
     afterSwitch();

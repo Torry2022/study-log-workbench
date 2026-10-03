@@ -37,6 +37,7 @@ export class WorkspaceModuleState {
   noteNewRevision: number = 0;
   noteDiscardRevision: number = 0;
   noteSaveRevision: number = 0;
+  notesRefreshRevision: number = 0;
   noteSearchRevision: number = 0;
   favoritesSearchRevision: number = 0;
   statsMonths: MonthSummary[] = [];

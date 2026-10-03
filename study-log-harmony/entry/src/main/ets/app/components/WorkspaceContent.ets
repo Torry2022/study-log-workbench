@@ -69,6 +69,7 @@ export struct WorkspaceContent {
             navigationYear: this.modules.noteYearFilter, navigationTag: this.modules.noteTagFilter,
             navigationNewRevision: this.modules.noteNewRevision, discardRevision: this.modules.noteDiscardRevision,
             saveRevision: this.modules.noteSaveRevision, topRevision: this.modules.topRequests[1],
+            refreshRevision: this.modules.notesRefreshRevision,
             searchRevision: this.modules.noteSearchRevision,
             onNavigationDataChange: (years: StudyNoteFacet[], tags: StudyNoteFacet[], total: number) => {
               this.modules.noteYears = years; this.modules.noteTags = tags; this.modules.noteCount = total;

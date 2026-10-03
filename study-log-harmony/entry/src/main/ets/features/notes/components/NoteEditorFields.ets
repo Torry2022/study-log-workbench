@@ -116,7 +116,7 @@ export struct NoteEditorFields {
         cached.push({ path, name, contentType: 'image/' + (extension === 'jpg' ? 'jpeg' : extension === 'svg' ? 'svg+xml' : extension) });
       }
       if (!cached.length) return;
-      const result = await apiClient.postFiles<NoteUploadResult>('/assets/upload', cached);
+      const result = await apiClient.postFiles<NoteUploadResult>('/assets/upload', cached, this.recordedAt.slice(0, 4));
       this.insert('\n' + result.assets.map((asset: NoteUploadedAsset) => asset.markdown).join('\n') + '\n');
     } catch (error) {
       appFeedback.show(error instanceof Error ? error.message : '图片上传失败', 'error');

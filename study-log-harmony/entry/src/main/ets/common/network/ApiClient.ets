@@ -138,14 +138,15 @@ export class ApiClient {
     } finally { session.close(); }
   }
 
-  async postFiles<T>(path: string, files: ApiUploadFile[]): Promise<T> {
+  async postFiles<T>(path: string, files: ApiUploadFile[], noteYear: string = ''): Promise<T> {
     const instanceRevision = activeInstance.revision;
     const sessionRevision = this.sessionRevision;
     const requestToken = this.token;
     const headers: rcp.RequestHeaders = { accept: 'application/json' };
     if (requestToken) headers['authorization'] = `Bearer ${requestToken}`;
     const uploads: rcp.FormFieldFileValue[] = files.map((file: ApiUploadFile) => new MultipartUploadFile(file));
-    const form = new rcp.MultipartForm({ file: uploads });
+    const form = noteYear ? new rcp.MultipartForm({ file: uploads, scope: 'notes', year: noteYear }) :
+      new rcp.MultipartForm({ file: uploads });
     const session = rcp.createSession({ requestConfiguration: {
       transfer: { autoRedirect: false, timeout: { connectMs: 15000, transferMs: 240000 } }
     } });

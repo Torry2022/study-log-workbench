@@ -167,6 +167,11 @@ test('multipart uploads use only the active instance and reject a late response 
   assert.equal(requests[1].args[2].authorization, 'Bearer two-token');
   pending[1]({ statusCode: 200, toString: () => '{"assets":[{"markdown":"![image](./assets/image.png)"}]}' });
   assert.equal((await next).assets[0].markdown, '![image](./assets/image.png)');
+  const noteUpload = client.postFiles('/assets/upload', [file], '2026');
+  assert.equal(requests[2].args[3].fields.scope, 'notes');
+  assert.equal(requests[2].args[3].fields.year, '2026');
+  pending[2]({ statusCode: 200, toString: () => '{"assets":[{"markdown":"![image](../assets/notes/2026/image.png)"}]}' });
+  assert.equal((await noteUpload).assets[0].markdown, '![image](../assets/notes/2026/image.png)');
 });
 
 test('export ZIP uses the current instance and does not treat binary data as JSON', async () => {

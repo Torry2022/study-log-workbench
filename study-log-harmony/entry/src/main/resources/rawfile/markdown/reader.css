@@ -303,6 +303,7 @@ body { color: var(--body); font-family: "HarmonyOS Sans SC", system-ui, sans-ser
 .qa-answer-body { color: var(--body); line-height: 1.7; }
 .qa-answer-body > :first-child { margin-top: 0; }
 .qa-answer-body > :last-child { margin-bottom: 0; }
+.qa-grounding-warning { margin-top: 12px; padding: 9px 11px; border-left: 2px solid var(--warning); background: color-mix(in srgb, var(--warning) 8%, transparent); color: var(--body); font-size: 12px; }
 .qa-failure { margin-top: 12px; color: var(--error); font-size: 13px; }
 .qa-failure-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .markdown-body .qa-failure-actions a { padding: 6px 12px; border: 1px solid var(--hairline); border-radius: 6px; color: var(--ink); background: var(--canvas); text-decoration: none; }

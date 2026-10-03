@@ -92,7 +92,7 @@ test('completed answers use versioned writes and retry an uncertain save without
   const transport = {
     postStream: async (_path, _request, chunk) => { streams++;
       chunk('event: delta\ndata: {"text":"partial"}\n\n');
-      chunk('event: done\ndata: {"answer":"complete","citations":[]}\n\n');
+      chunk('event: done\ndata: {"answer":"complete","citations":[],"groundingWarning":"合成引用日期需核对"}\n\n');
     },
     post: async (path, body) => { writes.push({ path, body: structuredClone(body) });
       if (failOnce) { failOnce = false; throw new Error('unknown result'); }
@@ -110,6 +110,7 @@ test('completed answers use versioned writes and retry an uncertain save without
   assert.equal(controller.failedAttempt.saveOnly, true);
   assert.equal(writes[0].body.baseVersion, null);
   assert.equal(writes[0].body.messages[1].content, 'complete');
+  assert.equal(writes[0].body.messages[1].groundingWarning, '合成引用日期需核对');
   await controller.runAttempt(controller.failedAttempt);
   assert.equal(streams, 1);
   assert.deepEqual(writes[1], writes[0]);

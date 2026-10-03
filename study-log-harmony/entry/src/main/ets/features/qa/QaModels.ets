@@ -75,6 +75,7 @@ export interface RagSourcesEvent {
 export interface RagDoneEvent {
   answer: string;
   citations?: RagCitation[];
+  groundingWarning?: string;
 }
 
 export interface RagErrorEvent {

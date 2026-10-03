@@ -221,7 +221,7 @@ export class QaSessionController {
     this.sourceCitations = [];
     if (!attempt.saveOnly) {
       const answer = this.messages.find((message: RagChatMessage) => message.id === attempt.answerId);
-      if (answer) { answer.status = undefined; answer.error = undefined; answer.content = ''; answer.citations = []; }
+      if (answer) { answer.status = undefined; answer.error = undefined; answer.content = ''; answer.citations = []; answer.groundingWarning = undefined; }
       this.messages = [...this.messages];
     }
     this.view.showComposer();
@@ -316,6 +316,7 @@ export class QaSessionController {
         this.receivedDone = true;
         answer.content = done.answer;
         answer.citations = done.citations || this.sourceCitations;
+        answer.groundingWarning = done.groundingWarning;
         this.messages = [...this.messages];
       } else if (name === 'error') {
         this.errorMessage = (JSON.parse(data) as RagErrorEvent).message;

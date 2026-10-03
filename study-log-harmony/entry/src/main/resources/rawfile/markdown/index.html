@@ -280,6 +280,13 @@
           answer.className = 'qa-answer-body';
           answer.innerHTML = DOMPurify.sanitize(marked.parse(String(message.content || ''), { gfm: true, breaks: false }));
           article.appendChild(answer);
+          if (message.groundingWarning) {
+            const warning = document.createElement('div');
+            warning.className = 'qa-grounding-warning';
+            warning.setAttribute('role', 'status');
+            warning.textContent = String(message.groundingWarning);
+            article.appendChild(warning);
+          }
           if (message.failure && message.attemptId) {
             const failure = document.createElement('div');
             failure.className = 'qa-failure';

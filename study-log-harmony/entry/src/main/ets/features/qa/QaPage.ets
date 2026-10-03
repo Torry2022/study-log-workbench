@@ -18,6 +18,7 @@ interface QaRenderMessage {
   content: string;
   failure?: string;
   attemptId?: string;
+  groundingWarning?: string;
 }
 
 @Component
@@ -233,7 +234,8 @@ export struct QaPage {
       role: message.role,
       content: message.role === 'user' ? message.content : this.answerMarkdown(message) || this.data.statusText,
       failure: this.data.failedAttempt?.answerId === message.id ? this.data.errorMessage : '',
-      attemptId: this.data.failedAttempt?.answerId === message.id ? message.id : ''
+      attemptId: this.data.failedAttempt?.answerId === message.id ? message.id : '',
+      groundingWarning: message.groundingWarning
     }));
     return JSON.stringify(messages);
   }

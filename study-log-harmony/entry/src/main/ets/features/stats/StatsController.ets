@@ -38,14 +38,14 @@ export class StatsController {
 
   async loadMonths(): Promise<boolean> {
     const revision = ++this.monthsRevision;
-    const statsRevision = this.statsRevision;
+    const statsRevision = ++this.statsRevision;
     this.loading = true;
     this.errorMessage = '';
     this.view.monthsError('');
     this.view.monthsLoading(true);
     try {
       const response = await this.transport.get<MonthsResponse>('/logs/months');
-      if (revision !== this.monthsRevision) return false;
+      if (revision !== this.monthsRevision || statsRevision !== this.statsRevision) return false;
       this.months = response.months;
       this.view.monthsChanged(this.months);
       const requested = this.view.requestedMonth();
@@ -58,7 +58,7 @@ export class StatsController {
       this.view.selectedMonthChanged('');
       return true;
     } catch (error) {
-      if (revision !== this.monthsRevision) return false;
+      if (revision !== this.monthsRevision || statsRevision !== this.statsRevision) return false;
       this.errorMessage = error instanceof ApiError ? error.message : '统计月份读取失败';
       this.view.monthsError(this.errorMessage);
       return false;

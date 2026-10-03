@@ -566,6 +566,12 @@ struct Index {
     if (index === 1) this.modules.notesRefreshRevision += 1;
     if (index === 2) this.modules.favoritesRefreshRevision += 1;
     if (index === 3) this.qaNavigation.loadQaNavigation();
+    if (index === 4) this.modules.statsVisitRevision += 1;
+    if (index === 0) this.refreshNavigationLists().catch(() => {
+      if (this.selectedModule === 0 && this.workspaceNavigationView === view) {
+        appFeedback.show('导航刷新失败，已保留原列表，请下拉重试', 'error', 3600, 'navigation-refresh');
+      }
+    });
     afterSwitch();
     if (!this.modules.pendingLogDate) this.revealModule(revision);
   }

@@ -110,6 +110,7 @@ export struct WorkspaceContent {
               topRevision: this.modules.topRequests[4],
               requestedMonth: this.modules.statsMonth, requestedMonthRevision: this.modules.statsMonthRevision,
               refreshRevision: this.modules.statsRefreshRevision,
+              visitRevision: this.modules.statsVisitRevision,
               onLoadingHintChange: (placement: LoadingHintPlacement) => this.modules.statsLoadingHint = placement,
               onMonthsChange: (months: MonthSummary[]) => this.modules.statsMonths = months,
               onMonthsLoadingChange: (loading: boolean) => this.modules.statsMonthsLoading = loading,

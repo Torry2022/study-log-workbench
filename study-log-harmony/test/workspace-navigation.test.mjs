@@ -9,6 +9,7 @@ const source = await readFile(new URL('../entry/src/main/ets/features/logs/LogsR
 const stateSource = (await readFile(new URL('../entry/src/main/ets/app/WorkspaceModuleState.ets', import.meta.url), 'utf8')).replace(/^import .*;\r?\n/gm, '').replace('@Observed', '');
 const rootSource = await readFile(new URL('../entry/src/main/ets/pages/Index.ets', import.meta.url), 'utf8');
 const notesSource = await readFile(new URL('../entry/src/main/ets/features/notes/NotesPage.ets', import.meta.url), 'utf8');
+const statsSource = await readFile(new URL('../entry/src/main/ets/features/stats/StatsPage.ets', import.meta.url), 'utf8');
 const contentSource = await readFile(new URL('../entry/src/main/ets/app/components/WorkspaceContent.ets', import.meta.url), 'utf8');
 const bridgeSource = await readFile(new URL('../entry/src/main/ets/app/WorkspaceNavigationBridge.ets', import.meta.url), 'utf8');
 function extract(text, names) {
@@ -54,7 +55,7 @@ export class Workspace { ${methods} }`, {
   });
   Object.assign(root, {selectedModule:tab,modules:page.modules,moduleSwitchRevision:0,
     sidebar:page.sidebar,reading:page.reading,readingTransition:page.readingTransition,workspaceTransition:page.workspaceTransition,qaNavigation:page.qaNavigation,
-    isWide:()=>page.isWide(),getUIContext:()=>page.getUIContext()});
+    isWide:()=>page.isWide(),getUIContext:()=>page.getUIContext(),refreshNavigationLists:async()=>{}});
   for (const key of ['selectedModule','moduleSwitchRevision','workspaceTransition']) {
     Object.defineProperty(page,key,{get:()=>root[key],set:value=>root[key]=value,configurable:true});
   }
@@ -170,6 +171,45 @@ test('revisiting notes requests a list refresh through the mounted page', async 
   notes.refreshRevision = page.modules.notesRefreshRevision;
   notes.refreshRevisionChanged();
   assert.equal(loads, 1);
+});
+
+test('revisiting statistics reloads months silently through the mounted page', async () => {
+  const { page } = workspace(0);
+  assert.equal(page.modules.statsVisitRevision, 0);
+  await page.switchModule(4, false, false);
+  assert.equal(page.modules.statsVisitRevision, 1);
+  await page.switchModule(0, false, false);
+  await page.switchModule(4, false, false);
+  assert.equal(page.modules.statsVisitRevision, 2);
+
+  assert.match(contentSource, /visitRevision:\s*this\.modules\.statsVisitRevision/);
+  assert.match(statsSource, /@Prop @Watch\('visitRevisionChanged'\) visitRevision/);
+  const module = { exports: {} };
+  const code = ts.transpileModule(`export class Stats { ${extract(statsSource, ['visitRevisionChanged'])} }`, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }
+  }).outputText;
+  runInNewContext(code, { module, exports: module.exports });
+  const stats = new module.exports.Stats();
+  let loads = 0;
+  stats.loadMonths = () => { loads += 1; };
+  stats.visitRevision = 0;
+  stats.visitRevisionChanged();
+  assert.equal(loads, 0);
+  stats.visitRevision = page.modules.statsVisitRevision;
+  stats.visitRevisionChanged();
+  assert.equal(loads, 1);
+});
+
+test('returning to logs refreshes navigation without replacing the open document', async () => {
+  const { page, root } = workspace(1);
+  page.session.selectedDate = '2026-02-05';
+  let refreshes = 0;
+  root.refreshNavigationLists = async () => { refreshes += 1; };
+  const view = root.workspaceNavigationView;
+  await page.switchModule(0, false, false);
+  assert.equal(refreshes, 1);
+  assert.equal(root.workspaceNavigationView, view);
+  assert.equal(view.currentLogDate(), '2026-02-05');
 });
 
 test('clicking the current module cancels an in-flight departure through the actual tab entrypoint', async () => {

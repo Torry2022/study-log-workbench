@@ -29,6 +29,7 @@ export struct StatsPage {
   @Consume('workspaceBreakpoint') @Watch('calendarLayoutChanged') private workspaceBreakpoint: WorkspaceBreakpoint;
   @StorageProp('desktopWindowChrome') private desktopWindowChrome: boolean = false;
   @Prop @Watch('refreshRevisionChanged') refreshRevision: number = 0;
+  @Prop @Watch('visitRevisionChanged') visitRevision: number = 0;
   @Prop requestedMonth: string = '';
   @Prop @Watch('requestedMonthChanged') requestedMonthRevision: number = 0;
   onOpenEntry: (entry: StatsEntry) => void = () => {};
@@ -81,6 +82,10 @@ export struct StatsPage {
 
   private refreshRevisionChanged(): void {
     if (!this.data.loading) this.refreshStats();
+  }
+
+  private visitRevisionChanged(): void {
+    if (this.visitRevision > 0) this.loadMonths();
   }
 
   private requestedMonthChanged(): void {

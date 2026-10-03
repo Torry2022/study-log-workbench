@@ -49,6 +49,27 @@ test('initial statistics completion cannot clear loading for a newer selected mo
   }
 });
 
+test('revisited month loading cannot replace a newer manual month selection', async () => {
+  for (const failOld of [false, true]) {
+    const months = deferred();
+    const selected = [];
+    const c = await controller({ get: path => path === '/logs/months' ? months.promise :
+      Promise.resolve({ month: path.split('=')[1] }) }, {
+      selectedMonthChanged: month => selected.push(month)
+    });
+    const revisit = c.loadMonths();
+    assert.equal(await c.loadStats('2026-02'), true);
+    if (failOld) months.reject(new Error('stale month list failed'));
+    else months.resolve({ months: [{ id: '2026-01' }, { id: '2026-02' }] });
+    assert.equal(await revisit, false);
+    assert.equal(c.selectedMonth, '2026-02');
+    assert.equal(c.stats.month, '2026-02');
+    assert.equal(selected.at(-1), '2026-02');
+    assert.equal(c.errorMessage, '');
+    assert.equal(c.loading, false);
+  }
+});
+
 test('empty and failed month lists release their loading state', async () => {
   for (const fail of [false, true]) {
     const loading = [];

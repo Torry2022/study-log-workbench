@@ -46,6 +46,7 @@ export class WorkspaceModuleState {
   statsMonthsError: string = '';
   statsMonthRevision: number = 0;
   statsRefreshRevision: number = 0;
+  statsVisitRevision: number = 0;
   qaLoadingHint: LoadingHintPlacement = new LoadingHintPlacement();
   notesLoadingHint: LoadingHintPlacement = new LoadingHintPlacement();
   favoritesLoadingHint: LoadingHintPlacement = new LoadingHintPlacement();

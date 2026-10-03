@@ -267,9 +267,11 @@ export struct QaPage {
       Row() {
         Column() {
           Stack({ alignContent: Alignment.BottomEnd }) {
-            LoadingHintAnchor({ loading: this.data.messages.length > 0 &&
-              (this.data.sessionLoading || this.data.pendingSessionKey.length > 0),
-              onChange: this.onLoadingHintChange }).hitTestBehavior(HitTestMode.None)
+            if (this.data.messages.length > 0 &&
+              (this.data.sessionLoading || this.data.pendingSessionKey.length > 0)) {
+              LoadingHintAnchor({ loading: true, onChange: this.onLoadingHintChange })
+                .hitTestBehavior(HitTestMode.None)
+            }
             if (this.data.sessionLoading && this.data.messages.length === 0) {
               ContentLoadingState({ text: '正在加载会话…' }).padding({ bottom: this.composerHeight })
             } else if (this.data.failedSessionId && this.data.messages.length === 0) {

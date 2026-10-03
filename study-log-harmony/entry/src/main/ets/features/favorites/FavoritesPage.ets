@@ -509,8 +509,9 @@ export struct FavoritesPage {
     }.width('100%').height('100%').justifyContent(FlexAlign.Center)
     ResultSurfaceCover({ controller: this.resultSurface })
     Row() {
-      LoadingHintAnchor({ loading: this.data.loading && this.data.favorites.length > 0,
-        onChange: this.onLoadingHintChange })
+      if (this.data.loading && this.data.favorites.length > 0) {
+        LoadingHintAnchor({ loading: true, onChange: this.onLoadingHintChange })
+      }
     }.width('100%').height('100%').justifyContent(FlexAlign.Center).hitTestBehavior(HitTestMode.None)
     BackToTopControl({
       visible: this.scrollOffset > 8 && !this.groupEditorOpen,

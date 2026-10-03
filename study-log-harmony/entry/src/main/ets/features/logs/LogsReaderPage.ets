@@ -2529,10 +2529,12 @@ export struct LogsReaderPage {
               .height('100%').visibility(this.sourceMode || this.splitMode && !this.isWide() ?
                 Visibility.None : Visibility.Visible)
           }.width('100%').height('100%')
-          LoadingHintAnchor({ loading: !this.readFailed && (this.documents.dayRequestLoading || this.logNavigation.daysLoading ||
-            !this.sourceMode && this.renderedPreviewDate.length > 0 && !this.readerReady),
-            onChange: (placement: LoadingHintPlacement) => this.logLoadingHint = placement })
-            .hitTestBehavior(HitTestMode.None)
+          if (!this.readFailed && (this.documents.dayRequestLoading || this.logNavigation.daysLoading ||
+            !this.sourceMode && this.renderedPreviewDate.length > 0 && !this.readerReady)) {
+            LoadingHintAnchor({ loading: true,
+              onChange: (placement: LoadingHintPlacement) => this.logLoadingHint = placement })
+              .hitTestBehavior(HitTestMode.None)
+          }
         }.layoutWeight(1).width('100%')
       } else {
         EmptyState({ title: '暂无学习日志', description: '当前实例还没有可阅读的日志。' })

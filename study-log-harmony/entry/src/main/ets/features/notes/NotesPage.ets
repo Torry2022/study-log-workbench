@@ -571,8 +571,9 @@ export struct NotesPage {
       Stack() {
         Column() { this.pageBody() }.width('100%').height('100%')
         Row() {
-          LoadingHintAnchor({ loading: this.data.loading && this.data.notes.length > 0 && !this.noteEditor.editing && !this.extracting,
-            onChange: this.onLoadingHintChange })
+          if (this.data.loading && this.data.notes.length > 0 && !this.noteEditor.editing && !this.extracting) {
+            LoadingHintAnchor({ loading: true, onChange: this.onLoadingHintChange })
+          }
         }.width('100%').height('100%').justifyContent(FlexAlign.Center).hitTestBehavior(HitTestMode.None)
       if (this.noteEditor.editing || this.extracting) {
         Row() {

@@ -21,6 +21,7 @@ export struct DesktopWorkspaceNavigation {
   onExpand: (section: number) => void = () => {};
   onCollapse: () => void = () => {};
   onNewQuestion: () => void = () => {};
+  onOpenTaxonomy: () => void = () => {};
   onToday: () => void = () => {};
   onHeight: (height: number) => void = () => {};
 
@@ -76,6 +77,8 @@ export struct DesktopWorkspaceNavigation {
         this.navigationRailButton('stats_months', $r('app.media.rail_calendar_days'), '选择统计月份',
           () => this.railPopover = this.railPopover === 'stats_months' ? '' : 'stats_months',
           this.railPopover === 'stats_months')
+        this.navigationRailButton('taxonomy', $r('app.media.settings_2'), '分类管理',
+          () => { this.railPopover = ''; this.onOpenTaxonomy(); })
       } else {
       this.navigationRailButton('months', $r('app.media.rail_calendar_days'), '展开月份列表',
         () => this.onExpand(0))

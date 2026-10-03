@@ -648,8 +648,9 @@ export struct StatsPage {
     }.width('100%').height('100%').justifyContent(FlexAlign.Center)
     ResultSurfaceCover({ controller: this.resultSurface })
     Row() {
-      LoadingHintAnchor({ loading: this.data.loading && this.data.stats !== null,
-        onChange: this.onLoadingHintChange })
+      if (this.data.loading && this.data.stats !== null) {
+        LoadingHintAnchor({ loading: true, onChange: this.onLoadingHintChange })
+      }
     }.width('100%').height('100%').justifyContent(FlexAlign.Center).hitTestBehavior(HitTestMode.None)
     BackToTopControl({
       visible: this.scrollOffset > 8,

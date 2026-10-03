@@ -188,6 +188,7 @@ export struct WorkspaceSurface {
       railPopover: $railPopover, onExpand: (section: number) => this.navigationCommands.sidebarCollapsed(false, section),
       onCollapse: () => this.navigationCommands.sidebarCollapsed(true, -1),
       onNewQuestion: () => this.navigationCommands.qaSession('', false),
+      onOpenTaxonomy: () => this.navigationCommands.openTaxonomy(),
       onToday: () => this.onToday(),
       onHeight: (height: number) => this.moduleFrameHeight = height,
       navigationContent: (): void => this.refreshableNavigationContent(),
@@ -368,12 +369,14 @@ export struct WorkspaceSurface {
         .position({ x: this.modules.favoritesLoadingHint.x - this.reading.workspaceOriginX,
           y: this.modules.favoritesLoadingHint.y - this.reading.workspaceOriginY })
         .zIndex(20).hitTestBehavior(HitTestMode.None)
-      DelayedLoadingHint({ loading: this.selectedModule === 4 && !this.modules.taxonomyOpen && this.modules.statsLoadingHint.loading,
-        text: '正在加载统计…' })
-        .width(this.modules.statsLoadingHint.width).height(this.modules.statsLoadingHint.height)
-        .position({ x: this.modules.statsLoadingHint.x - this.reading.workspaceOriginX,
-          y: this.modules.statsLoadingHint.y - this.reading.workspaceOriginY })
-        .zIndex(20).hitTestBehavior(HitTestMode.None)
+      if (this.selectedModule === 4 && !this.modules.taxonomyOpen) {
+        DelayedLoadingHint({ loading: this.modules.statsLoadingHint.loading,
+          text: '正在加载统计…' })
+          .width(this.modules.statsLoadingHint.width).height(this.modules.statsLoadingHint.height)
+          .position({ x: this.modules.statsLoadingHint.x - this.reading.workspaceOriginX,
+            y: this.modules.statsLoadingHint.y - this.reading.workspaceOriginY })
+          .zIndex(20).hitTestBehavior(HitTestMode.None)
+      }
       DelayedLoadingHint({ loading: (this.workspaceTransition.waitingKind === 'mode' ||
         this.workspaceTransition.waitingKind === 'module') &&
         !this.preparationHint().loading && this.preparationHint().width > 0,

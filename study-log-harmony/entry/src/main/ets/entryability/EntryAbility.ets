@@ -1,5 +1,5 @@
 import { Configuration, ConfigurationConstant, UIAbility } from '@kit.AbilityKit';
-import { window } from '@kit.ArkUI';
+import { ColorMetrics, window } from '@kit.ArkUI';
 import { deviceInfo } from '@kit.BasicServicesKit';
 import { preferences } from '@kit.ArkData';
 import { DesktopWindow } from '../app/DesktopMenu';
@@ -11,6 +11,14 @@ const KEEP_SCREEN_ON_DURING_ACCEPTANCE = false;
 export default class EntryAbility extends UIAbility {
   private mainWindow?: window.Window;
   private initialThemeReady: Promise<void> = Promise.resolve();
+  private updateStartWindowBackground(mode?: ConfigurationConstant.ColorMode): void {
+    // Keep these values aligned with the base/dark start_window_background resources.
+    const color = mode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK ? 0xFF151412 : 0xFFFAF9F5;
+    try {
+      window.setStartWindowBackgroundColor('entry', 'EntryAbility', ColorMetrics.numeric(color)).catch(() => {});
+    } catch (_) { /* The static start window resource remains available. */ }
+  }
+
   private async initializeTheme(): Promise<void> {
     let value = 'system';
     try {
@@ -22,6 +30,8 @@ export default class EntryAbility extends UIAbility {
     const mode = value === 'light' ? ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT :
       value === 'dark' ? ConfigurationConstant.ColorMode.COLOR_MODE_DARK :
         ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET;
+    this.updateStartWindowBackground(mode === ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET ?
+      this.context.config.colorMode : mode);
     try { this.context.getApplicationContext().setColorMode(mode); }
     catch (_) { /* Keep the current system mode if the window is closing. */ }
   }
@@ -44,6 +54,7 @@ export default class EntryAbility extends UIAbility {
   onConfigurationUpdate(configuration: Configuration): void {
     this.publishSystemTheme(configuration.colorMode);
     this.updateSystemBars(configuration.colorMode);
+    this.updateStartWindowBackground(configuration.colorMode);
   }
 
   private publishSystemTheme(mode?: ConfigurationConstant.ColorMode): void {

@@ -15,6 +15,21 @@ async function controller(transport) {
   return new module.exports.FavoritesController(transport);
 }
 
+async function groupPanel(data) {
+  const source = await readFile(new URL('../entry/src/main/ets/features/logs/components/LogFavoriteGroupPanel.ets', import.meta.url), 'utf8');
+  const start = source.indexOf('  private favorite():');
+  const end = source.indexOf('  build()', start);
+  assert.ok(start >= 0 && end > start);
+  const code = ts.transpileModule(`export class Panel { ${source.slice(start, end)} }`, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }
+  }).outputText;
+  const module = { exports: {} };
+  runInNewContext(code, { module, exports: module.exports });
+  const panel = new module.exports.Panel();
+  Object.assign(panel, { data, favoriteId: 'favorite-1', draftName: '合成分组' });
+  return panel;
+}
+
 test('failed favorite refresh retains results and filters until an explicit successful retry', async () => {
   let fail = false;
   let remote = { favorites: [{ id: 'one', month: '2026-01', groupIds: ['a'] }], groups: [{ id: 'a' }] };
@@ -109,4 +124,41 @@ test('stale Harmony group editors send one membership change without replacing a
   assert.equal(await first.updateGroup(favorite.id, 'a', false), true);
   assert.deepEqual(favorite.groupIds, ['b']);
   assert.equal(requests.length, 3);
+});
+
+test('a disposed group creation cannot reset the next instance filter', async () => {
+  let resolve, generation = 1;
+  const changes = [];
+  const data = {
+    favorites: [{ id: 'favorite-1' }], selectedGroup: 'previous',
+    generation: () => generation,
+    createGroup: () => new Promise(done => { resolve = done; }),
+    selectGroup: value => { changes.push(value); data.selectedGroup = value; },
+    updateGroup: () => { throw Error('stale group must not update'); }
+  };
+  const panel = await groupPanel(data);
+  const pending = panel.createAndJoinGroup();
+  generation = 2;
+  data.selectedGroup = 'next-instance';
+  resolve('');
+  await pending;
+  assert.equal(data.selectedGroup, 'next-instance');
+  assert.deepEqual(changes, []);
+});
+
+test('a current group creation restores the previous filter and joins the favorite', async () => {
+  const changes = [], joins = [];
+  const data = {
+    favorites: [{ id: 'favorite-1' }], selectedGroup: 'previous',
+    generation: () => 1,
+    createGroup: async () => { data.selectedGroup = 'new-group'; return 'new-group'; },
+    selectGroup: value => { changes.push(value); data.selectedGroup = value; },
+    updateGroup: async (...args) => joins.push(args)
+  };
+  const panel = await groupPanel(data);
+  await panel.createAndJoinGroup();
+  assert.equal(data.selectedGroup, 'previous');
+  assert.deepEqual(changes, ['previous']);
+  assert.deepEqual(joins, [['favorite-1', 'new-group', true]]);
+  assert.equal(panel.draftName, '');
 });

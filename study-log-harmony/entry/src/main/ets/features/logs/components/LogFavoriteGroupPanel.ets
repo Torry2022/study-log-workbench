@@ -21,9 +21,11 @@ export struct LogFavoriteGroupPanel {
     const favorite = this.favorite();
     if (!favorite || !this.draftName.trim()) return;
     const previousGroup = this.data.selectedGroup;
+    const generation = this.data.generation();
     const groupId = await this.data.createGroup(this.draftName);
+    if (!groupId || generation !== this.data.generation()) return;
     this.data.selectGroup(previousGroup);
-    if (!groupId || !this.favorite() || this.favoriteId !== favorite.id) return;
+    if (!this.favorite() || this.favoriteId !== favorite.id) return;
     this.draftName = '';
     await this.data.updateGroup(favorite.id, groupId, true);
   }

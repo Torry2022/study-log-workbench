@@ -63,16 +63,37 @@ export function parseRagHistory(value: unknown): RagHistoryMessage[] {
   }).reverse();
 }
 
+function dateCitationWarning(answer: string, citations: RagCitation[]): string | undefined {
+  const dates = new Map(citations.map((citation) => [citation.sourceId, citation.date]));
+  let inCode = false;
+  for (const line of answer.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (/^(`{3,}|~{3,})/.test(trimmed)) { inCode = !inCode; continue; }
+    if (inCode) continue;
+    const tableDate = trimmed.startsWith("|") ? trimmed.split("|").map((cell) => cell.trim())
+      .find((cell) => /^\d{4}-\d{2}-\d{2}$/.test(cell)) : undefined;
+    const leadingDate = trimmed.match(/^(?:[-*+]\s+)?(\d{4}-\d{2}-\d{2})(?=\D|$)/)?.[1];
+    const date = tableDate || leadingDate;
+    if (!date) continue;
+    const cited = [...line.matchAll(/\[(S\d+)\]/g)].map((match) => dates.get(match[1])).filter(Boolean);
+    if (cited.length > 0 && !cited.includes(date)) return "这行日期与引用来源的日块日期不同，请核对是否为事后记录或错引。";
+  }
+  return undefined;
+}
+
 function groundingWarning(answer: string, citations: RagCitation[], mode: RagAnswerMode): string | undefined {
+  const dateWarning = dateCitationWarning(answer, citations);
   const groundedPart = mode === "logs_and_general" ? answer.split(/^#{1,6}\s*通用知识补充\s*$/m, 1)[0] : answer;
   const claims = groundedPart
     .split(/\r?\n/)
     .map((line) => line.replace(/^\s*(?:[-*+] |\d+[.)]\s*)/, "").trim())
     .filter((line) => line.length >= 24 && !/^#{1,6}\s/.test(line) && !/^\|?\s*[-:]+/.test(line));
-  if (claims.length === 0) return undefined;
+  if (claims.length === 0) return dateWarning;
   const citedClaims = claims.filter((line) => /\[S\d+\]/.test(line)).length;
-  if (citations.length === 0 || citedClaims / claims.length < 0.6) return "部分结论缺少明确的知识库引用，请结合来源核对。";
-  return undefined;
+  const missing = citations.length === 0 || citedClaims / claims.length < 0.6;
+  if (dateWarning && missing) return `${dateWarning} 部分结论也缺少明确的知识库引用。`;
+  if (dateWarning) return dateWarning;
+  return missing ? "部分结论缺少明确的知识库引用，请结合来源核对。" : undefined;
 }
 
 function replaceCitationLabels(answer: string, replace: (sourceId: string) => string): string {

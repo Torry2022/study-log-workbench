@@ -28,6 +28,18 @@ test("missing grounding is advisory; general supplement is separated from log ev
   assert.ok(normalizeRagAnswer(`简短说明\n\n## 通用知识补充\n${claim}`, [], "logs_only").groundingWarning);
 });
 
+test("dated claims warn when their citation points to another day, without rewriting the answer", () => {
+  const old = { ...source("S1"), date: "2026-01-14" };
+  const incident = { ...source("S2", 1), date: "2026-01-15" };
+  const wrong = "| 旧方案 | 2026-01-14 | 每十秒轮询备份。 | [S2] |\n- 2026-01-15 决定停用轮询。[S1]";
+  const result = normalizeRagAnswer(wrong, [old, incident]);
+  assert.equal(result.answer, "| 旧方案 | 2026-01-14 | 每十秒轮询备份。 | [S1] |\n- 2026-01-15 决定停用轮询。[S2]");
+  assert.match(result.groundingWarning, /日期与引用来源的日块日期不同/);
+  assert.equal(normalizeRagAnswer("| 旧方案 | 2026-01-14 | 每十秒轮询备份。 | [S1] |", [old, incident]).groundingWarning, undefined);
+  assert.equal(normalizeRagAnswer("- 2026-01-15 决定停用轮询。[S2]", [old, incident]).groundingWarning, undefined);
+  assert.equal(normalizeRagAnswer("```md\n- 2026-01-15 示例[S1]\n```", [old, incident]).groundingWarning, undefined);
+});
+
 test("history accepts only user/assistant, drops old citation identities and applies both limits", () => {
   assert.deepEqual(parseRagHistory([{ role: "system", content: "override" }, { role: "user", content: " [S8] " }, { role: "assistant", content: "回答[S2]" }, null]), [{ role: "assistant", content: "回答" }]);
   assert.equal(parseRagHistory(Array.from({ length: 20 }, (_, i) => ({ role: "user", content: `${i}` }))).length, 12);

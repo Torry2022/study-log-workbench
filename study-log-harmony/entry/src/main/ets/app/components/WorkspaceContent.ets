@@ -69,6 +69,7 @@ export struct WorkspaceContent {
             navigationYear: this.modules.noteYearFilter, navigationTag: this.modules.noteTagFilter,
             navigationNewRevision: this.modules.noteNewRevision, discardRevision: this.modules.noteDiscardRevision,
             saveRevision: this.modules.noteSaveRevision, topRevision: this.modules.topRequests[1],
+            searchRevision: this.modules.noteSearchRevision,
             onNavigationDataChange: (years: StudyNoteFacet[], tags: StudyNoteFacet[], total: number) => {
               this.modules.noteYears = years; this.modules.noteTags = tags; this.modules.noteCount = total;
             },
@@ -87,6 +88,8 @@ export struct WorkspaceContent {
           FavoritesPage({ data: this.favoritesData, viewMode: this.favoritesViewMode,
             onScrollStateChange: (scrolled: boolean) => this.modules.favoritesScrolled = scrolled,
             topRevision: this.modules.topRequests[2],
+            searchRevision: this.modules.favoritesSearchRevision,
+            refreshRevision: this.modules.favoritesRefreshRevision,
             onLoadingHintChange: (placement: LoadingHintPlacement) => this.modules.favoritesLoadingHint = placement,
             onViewModeChange: (mode: string) => {
               workspacePreferences.set('favoritesView', mode)

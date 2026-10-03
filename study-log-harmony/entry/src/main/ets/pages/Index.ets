@@ -382,11 +382,25 @@ struct Index {
       setTimeout(() => {
         if (this.workspaceNavigationView === view && this.selectedModule === 0 && this.searchOpen) this.searchFocusRevision++;
       }, 40);
-    } else if ((this.selectedModule === 3)) {
-      this.openNavigation();
-      setTimeout(() => {
-        if (this.workspaceNavigationView === view && (this.selectedModule === 3) && this.sidebar.navigationOpen && !this.sidebar.navigationClosing) this.modules.qaSearchRevision++;
-      }, 240);
+    } else if (this.selectedModule === 1) {
+      this.modules.noteSearchRevision++;
+    } else if (this.selectedModule === 2) {
+      this.modules.favoritesSearchRevision++;
+    } else if (this.selectedModule === 3) {
+      if (this.isWide()) {
+        const collapsed = this.sidebar.collapsedModules[3];
+        if (collapsed) this.setDesktopNavigationCollapsed(false);
+        setTimeout(() => {
+          if (this.workspaceNavigationView === view && this.selectedModule === 3 &&
+            !this.sidebar.collapsedModules[3] && !this.sidebar.sidebarAnimating) this.modules.qaSearchRevision++;
+        }, collapsed ? 260 : 0);
+      } else {
+        this.openNavigation();
+        setTimeout(() => {
+          if (this.workspaceNavigationView === view && this.selectedModule === 3 &&
+            this.sidebar.navigationOpen && !this.sidebar.navigationClosing) this.modules.qaSearchRevision++;
+        }, 240);
+      }
     }
   }
 
@@ -549,6 +563,7 @@ struct Index {
     this.selectedModule = index;
     this.modules.moduleRequestedTab = -1;
     view.changed(index);
+    if (index === 2) this.modules.favoritesRefreshRevision += 1;
     if (index === 3) this.qaNavigation.loadQaNavigation();
     afterSwitch();
     if (!this.modules.pendingLogDate) this.revealModule(revision);
@@ -982,8 +997,7 @@ struct Index {
       return true;
     }
     if (workspaceKey(event, KeyCode.KEYCODE_F, true, true)) {
-      if (this.isWide()) this.searchFocusRevision++;
-      else this.searchOpen = true;
+      this.openCurrentSearch();
       return true;
     }
     if (workspaceKey(event, KeyCode.KEYCODE_DPAD_UP, false, false, true) && this.selectedModule !== 0) {

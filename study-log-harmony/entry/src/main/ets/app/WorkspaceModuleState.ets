@@ -27,6 +27,7 @@ export class WorkspaceModuleState {
   notesBusy: boolean = false;
   notesScrolled: boolean = false;
   favoritesScrolled: boolean = false;
+  favoritesRefreshRevision: number = 0;
   statsScrolled: boolean = false;
   noteYears: StudyNoteFacet[] = [];
   noteTags: StudyNoteFacet[] = [];
@@ -36,6 +37,8 @@ export class WorkspaceModuleState {
   noteNewRevision: number = 0;
   noteDiscardRevision: number = 0;
   noteSaveRevision: number = 0;
+  noteSearchRevision: number = 0;
+  favoritesSearchRevision: number = 0;
   statsMonths: MonthSummary[] = [];
   statsMonth: string = '';
   statsMonthsLoading: boolean = false;

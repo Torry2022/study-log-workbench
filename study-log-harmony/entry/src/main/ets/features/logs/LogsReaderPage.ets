@@ -4,7 +4,7 @@ import { WorkspaceReadingState } from '../../app/WorkspaceReadingState';
 import { WorkspaceBreakpoint, READING_MAX_WIDTH } from '../../common/AppConfig';
 import { apiClient, ApiError, ApiUploadFile } from '../../common/network/ApiClient';
 import { activeInstance } from '../../common/network/InstanceConfig';
-import { EmptyState, InlineStatus, LoadFailure } from '../../common/ui/FeedbackStates';
+import { EmptyState, LoadFailure } from '../../common/ui/FeedbackStates';
 import { MarkdownReader } from '../../common/ui/MarkdownReader';
 import { workspaceSansFamily } from '../../common/ui/Typography';
 import { SourceEditor, SourceEditorSession, EditorSnapshot, EditorImageData } from '../../common/editor/SourceEditor';
@@ -170,7 +170,7 @@ export struct LogsReaderPage {
   @Link desktopKeyboardFocus: boolean;
   @Link compactSettingsOpen: boolean;
   @State private hoveredMoreAction: string = '';
-  @State private saveError: string = '';
+  @State @Watch('saveErrorChanged') private saveError: string = '';
   @Link newLogDate: string;
   @Link calendarMode: string;
   @Link calendarOpen: boolean;
@@ -183,6 +183,11 @@ export struct LogsReaderPage {
   private leaveCheckPending: boolean = false;
   private linkTarget: EditorSnapshot | undefined = undefined;
   logNavigationScroller: Scroller = new Scroller();
+
+  private saveErrorChanged(): void {
+    if (this.saveError) appFeedback.show(this.saveError, 'error', 0, 'log-action');
+    else appFeedback.dismissScope('log-action');
+  }
 
   private bindWorkspaceNavigation(): void {
     this.navigationCommands = this.onRegisterNavigation({
@@ -229,6 +234,7 @@ export struct LogsReaderPage {
         this.finishToolbarMotion();
         if (index === 0 && this.readFailed) this.showReadFailure();
         else if (index !== 0) appFeedback.dismissScope('log-read');
+        if (index !== 0) this.saveError = '';
         this.closeNavigation();
         if (index !== 0) this.closeOutline();
         this.closeSearch();
@@ -420,6 +426,7 @@ export struct LogsReaderPage {
   }
 
   aboutToDisappear(): void {
+    appFeedback.dismissScope('log-action');
     this.documents.dispose();
     this.closeFavoriteFeedback();
     this.onRegisterDesktopCommands(new DesktopLogCommands());
@@ -2399,7 +2406,6 @@ export struct LogsReaderPage {
   @Builder
   private reader() {
     Column() {
-      InlineStatus({ text: this.saveError, error: true }).id('log_read_status')
       if (this.logNavigation.monthsLoading || !this.session.day && (this.logNavigation.daysLoading || this.documents.dayRequestLoading)) {
         Column() {
           LoadingProgress().width(26).height(26).color($r('app.color.primary'))

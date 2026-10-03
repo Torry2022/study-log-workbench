@@ -2,7 +2,7 @@ import { AiChatError } from "./ai-chat.ts";
 import type { ChatConfig } from "./ai-config.ts";
 import type { RagPromptMessage } from "./rag-types.ts";
 
-export const MAX_RAG_STREAM_BYTES = 1024 * 1024;
+export const MAX_RAG_STREAM_BYTES = 2 * 1024 * 1024;
 export const MAX_RAG_ANSWER_CHARS = 120000;
 
 /** OpenAI-compatible streaming response. Only an explicit completion marker completes an answer. */

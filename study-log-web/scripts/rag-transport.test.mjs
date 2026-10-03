@@ -85,6 +85,14 @@ test("model stream handles chunked UTF-8, comments, CRLF and terminal marker wit
   assert.equal(deltas.join(""), "合成回答[S1]"); assert.equal(sent.stream, true);
 });
 
+test("model stream accepts bounded framing overhead above one MiB", async t => {
+  const url = await server(t, async (req, res) => {
+    await json(req); res.setHeader("content-type", "text/event-stream");
+    res.end(":" + "x".repeat(1024 * 1024) + "\n\n" + event("合成回答") + "data: [DONE]\n\n");
+  });
+  assert.equal(await streamRagAnswer(chat(url), [], () => {}), "合成回答");
+});
+
 test("model never treats truncated, malformed, filtered, empty or excessive streams as complete", async t => {
   let body;
   const url = await server(t, async (req, res) => { await json(req); res.setHeader("content-type", "text/event-stream"); res.end(body); });
@@ -95,7 +103,7 @@ test("model never treats truncated, malformed, filtered, empty or excessive stre
     ['data: {"choices":[{"finish_reason":"content_filter"}]}\n\n', "AI_OUTPUT_INCOMPLETE"],
     ["data: [DONE]\n\n", "AI_EMPTY_RESPONSE"],
     [event("x".repeat(120001)) + "data: [DONE]\n\n", "AI_RESPONSE_TOO_LARGE"],
-    [":" + "x".repeat(1024 * 1024) + "\n", "AI_RESPONSE_TOO_LARGE"]
+    [":" + "x".repeat(2 * 1024 * 1024) + "\n", "AI_RESPONSE_TOO_LARGE"]
   ]) { body = value; await assert.rejects(streamRagAnswer(chat(url), [], () => {}), { code }); }
 });
 

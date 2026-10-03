@@ -36,11 +36,19 @@ test('workspace refresh publishes only navigation for each actual module entrypo
 });
 test('navigation refresh rejects changed binding, instance, module, date, month and newer list',async()=>{
  for(const change of [w=>w.root.workspaceNavigationView=undefined,w=>w.instance.revision++,w=>w.root.selectedModule=1,
-  w=>w.setDate('2026-02-06'),w=>w.root.logNavigation.month='2026-01',w=>w.root.logNavigation.days=['newer']]){
+  w=>w.setDate('2026-02-06'),w=>w.root.logNavigation.month='2026-01']){
   const w=workspace();const old=w.root.logNavigation.months;const task=w.root.refreshNavigationLists();change(w);
   for(const request of w.pending)request.resolve({months:['stale'],days:['stale']});await task;
   assert.equal(w.root.logNavigation.months,old);
  }
+});
+test('a concurrent day reload does not discard the newer month count',async()=>{
+ const {root,pending}=workspace();const task=root.refreshNavigationLists();
+ root.logNavigation.days=['newer day'];
+ for(const request of pending)request.resolve({months:['two days'],days:['stale day']});
+ await task;
+ assert.deepEqual(root.logNavigation.months,['two days']);
+ assert.deepEqual(root.logNavigation.days,['newer day']);
 });
 test('late refresh failure after unbinding is silent and active failures remain visible',async()=>{
  for(const unbound of [false,true]){

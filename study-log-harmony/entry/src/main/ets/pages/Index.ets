@@ -421,7 +421,7 @@ struct Index {
     await this.navigationRefresh.refresh(tab, month, () => {
       if (instance !== activeInstance.revision || this.workspaceNavigationView !== view || this.selectedModule !== tab) return false;
       if (tab === 0) return date === view.currentLogDate() && month === (this.logNavigation.month || view.currentLogDate().slice(0, 7)) &&
-        months === this.logNavigation.months && days === this.logNavigation.days;
+        !this.logNavigation.monthsLoading;
       if (tab === 1) return years === this.modules.noteYears;
       if (tab === 2) return favorites === this.favoritesData.favorites && groups === this.favoritesData.groups &&
         !this.favoritesData.loading && !this.favoritesData.groupSaving && !this.favoritesData.groupUpdating &&
@@ -430,9 +430,13 @@ struct Index {
       return stats === this.modules.statsMonths;
     }, (snapshot: NavigationSnapshot) => {
       if (tab === 0 && snapshot.months) {
-        this.logNavigation.months = snapshot.months.months;
-        if (snapshot.days) this.logNavigation.days = snapshot.days.days;
-        this.logNavigation.navigationError = '';
+        const updateMonths = months === this.logNavigation.months;
+        const updateDays = !!snapshot.days && days === this.logNavigation.days && !this.logNavigation.daysLoading;
+        if (updateMonths) this.logNavigation.months = snapshot.months.months;
+        if (updateDays && snapshot.days) {
+          this.logNavigation.days = snapshot.days.days;
+        }
+        if (updateMonths || updateDays) this.logNavigation.navigationError = '';
       }
       if (snapshot.notes) {
         this.modules.noteYears = snapshot.notes.years;

@@ -24,8 +24,9 @@ async function fixture(t) {
         if (!Object.hasOwn(body, "id")) { res.writeHead(202); res.end(); return; }
         if (body.method === "tools/call") {
           if (state.stall) { state.started?.(); return; }
-          const contexts = state.contexts ? [{ sourceId: "S1", date: "2026-08-01", month: "2026-08", fileName: "2026-08_学习日志.md", heading: null, headingIndex: null, chunkId: "synthetic", contentHash: "a".repeat(64), content: "合成证据", truncated: false, score: 1 }] : [];
-          return reply({ jsonrpc: "2.0", id: body.id, result: { content: [{ type: "text", text: JSON.stringify({ contexts, context: { maxChunks: body.params.arguments.maxChunks, maxChars: body.params.arguments.maxChars, returnedChunks: contexts.length, totalChars: contexts.length * 4, truncated: false }, retrieval: { mode: "lexical_fallback" } }) }] } });
+          const contexts = state.contexts === false ? [] : Array.isArray(state.contexts) ? state.contexts :
+            [{ sourceId: "S1", date: "2026-08-01", month: "2026-08", fileName: "2026-08_学习日志.md", heading: null, headingIndex: null, chunkId: "synthetic", contentHash: "a".repeat(64), content: "合成证据", truncated: false, score: 1 }];
+          return reply({ jsonrpc: "2.0", id: body.id, result: { content: [{ type: "text", text: JSON.stringify({ contexts, context: { maxChunks: body.params.arguments.maxChunks, maxChars: body.params.arguments.maxChars, returnedChunks: contexts.length, totalChars: contexts.reduce((sum, item) => sum + item.content.length, 0), truncated: false }, retrieval: { mode: "lexical_fallback" } }) }] } });
         }
         return reply({ jsonrpc: "2.0", id: body.id, result: { tools: [] } });
       }
@@ -35,7 +36,7 @@ async function fixture(t) {
         return reply({ choices: [{ message: { content: JSON.stringify(contextualizing ? { query: "原文哪里提到合成证据？" } : { strategy: "timeline_summary", dateFrom: null, dateTo: null }) }, finish_reason: "stop" }] });
       }
       res.setHeader("content-type", "text/event-stream");
-      res.end(`data: ${JSON.stringify({ choices: [{ delta: { content: "合成回答[S1]" } }] })}\n\n${state.broken ? "" : "data: [DONE]\n\n"}`);
+      res.end(`data: ${JSON.stringify({ choices: [{ delta: { content: state.answer || "合成回答[S1]" } }] })}\n\n${state.broken ? "" : "data: [DONE]\n\n"}`);
     } catch { res.destroy(); }
   });
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
@@ -123,11 +124,17 @@ test("real route function authenticates before parsing and bounds JSON, mode and
 });
 
 test("actual route streams local MCP and provider calls end to end", async t => {
-  const { config } = await fixture(t), route = await loadRoute(() => null);
+  const { config, state } = await fixture(t), route = await loadRoute(() => null);
+  state.contexts = [1, 2].map(number => ({ sourceId: `S${number}`, date: `2026-08-0${number}`,
+    month: "2026-08", fileName: "2026-08_学习日志.md", heading: `第${number}项`, headingIndex: number - 1,
+    chunkId: `synthetic-${number}`, contentHash: "a".repeat(64), content: `合成证据${number}`, truncated: false, score: 1 }));
+  state.answer = "第二项[S2]，S2 说明第二项[S2]；S1 说明第一项[S1]。";
   const env = { CHAT_API_KEY: config.chat.apiKey, CHAT_API_URL: config.chat.baseUrl, CHAT_MODEL: config.chat.model, CHAT_LIGHT_MODEL: config.lightChat.model, STUDY_LOG_MCP_URL: config.mcp.url, STUDY_LOG_MCP_TOKEN: config.mcp.token };
   const prior = Object.fromEntries(Object.keys(env).map(key => [key, process.env[key]])); Object.assign(process.env, env);
   t.after(() => { for (const [key, value] of Object.entries(prior)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } });
   const response = await route.POST(new Request("http://localhost/api/rag/query", { method: "POST", body: JSON.stringify(input) }));
   assert.equal(response.status, 200); assert.match(response.headers.get("content-type"), /text\/event-stream/); assert.equal(response.headers.get("x-accel-buffering"), "no");
-  const values = await events(response.body); assert.equal(values.at(-1).event, "done");
+  const values = await events(response.body); assert.equal(values.at(-1).event, "done", JSON.stringify(values));
+  assert.equal(values.at(-1).data.answer, "第二项[S1]，S1 说明第二项[S1]；S2 说明第一项[S2]。");
+  assert.deepEqual(values.at(-1).data.citations.map(item => item.heading), ["第2项", "第1项"]);
 });

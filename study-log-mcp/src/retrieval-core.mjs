@@ -51,6 +51,7 @@ function makeSnippet(value, maxLength = 320) {
 function tokenizeOccurrences(value) {
   const normalized = String(value || "").normalize("NFKC").toLowerCase();
   const tokens = [];
+  for (const match of normalized.matchAll(/\d+(?:\.\d+)?%/g)) tokens.push(match[0]);
   for (const match of normalized.matchAll(/[a-z0-9][a-z0-9_+.#-]{1,}/g)) {
     tokens.push(match[0]);
   }

@@ -96,8 +96,8 @@ function groundingWarning(answer: string, citations: RagCitation[], mode: RagAns
   return missing ? "部分结论缺少明确的知识库引用，请结合来源核对。" : undefined;
 }
 
-function replaceCitationLabels(answer: string, replace: (sourceId: string) => string): string {
-  // Literal code and Markdown destinations are not citation labels.
+function excludedSourceLabelRanges(answer: string): Array<[number, number]> {
+  // Literal code and Markdown destinations are not source references.
   const excluded: Array<[number, number]> = [];
   const collect = (node: { type: string; position?: { start: { offset?: number }; end: { offset?: number } }; children?: unknown[] }) => {
     if (["code", "inlineCode", "html", "link", "image", "definition", "linkReference", "imageReference"].includes(node.type)) {
@@ -108,9 +108,23 @@ function replaceCitationLabels(answer: string, replace: (sourceId: string) => st
     }
   };
   collect(unified().use(remarkParse).parse(answer));
+  return excluded;
+}
+
+function replaceCitationLabels(answer: string, replace: (sourceId: string) => string): string {
+  const excluded = excludedSourceLabelRanges(answer);
   return answer.replace(/\[(S\d+)\]/g, (full, sourceId: string, offset: number) => {
     if (excluded.some(([start, end]) => offset >= start && offset < end)) return full;
     return replace(sourceId);
+  });
+}
+
+function remapBareSourceMentions(answer: string, remappedIds: Map<string, string>): string {
+  const excluded = excludedSourceLabelRanges(answer);
+  return answer.replace(/\bS\d+\b/g, (sourceId: string, offset: number) => {
+    if (answer[offset - 1] === "[" || answer[offset + sourceId.length] === "]" ||
+      excluded.some(([start, end]) => offset >= start && offset < end)) return sourceId;
+    return remappedIds.get(sourceId) || sourceId;
   });
 }
 
@@ -130,7 +144,7 @@ export function normalizeRagAnswer(
     if (!remappedIds.has(sourceId)) remappedIds.set(sourceId, `S${remappedIds.size + 1}`);
     return `[${remappedIds.get(sourceId)}]`;
   });
-  const normalizedAnswer = normalized.trim();
+  const normalizedAnswer = remapBareSourceMentions(normalized, remappedIds).trim();
   const citations = [...remappedIds].map(([sourceId, remappedSourceId]) => ({
       ...sourceById.get(sourceId)!,
       sourceId: remappedSourceId

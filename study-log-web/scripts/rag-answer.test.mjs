@@ -13,6 +13,17 @@ test("citation numbering follows first use and preserves exact source identity",
   assert.deepEqual(normalizeRagAnswer("无引用", [first]).citations, []);
 });
 
+test("bare source mentions follow their citations after first-use renumbering", () => {
+  const sources = Array.from({ length: 5 }, (_, i) => source(`S${i + 1}`, i));
+  const answer = "旧事故[S3]；S5 说明正式规则[S5]，S4 说明旧规则[S4]。\n\n" +
+    "`S5` 和 [链接](https://example.test/S4) 应保持原文。\n\n```md\nS5 示例\n```";
+  const result = normalizeRagAnswer(answer, sources);
+  assert.match(result.answer, /旧事故\[S1\]；S2 说明正式规则\[S2\]，S3 说明旧规则\[S3\]/);
+  assert.match(result.answer, /`S5` 和 \[链接\]\(https:\/\/example\.test\/S4\)/);
+  assert.match(result.answer, /```md\nS5 示例\n```/);
+  assert.deepEqual(result.citations.map((item) => item.headingIndex), [2, 4, 3]);
+});
+
 test("citation-like tokens inside code and links remain literal and do not create sources", () => {
   const answer = "`items[S1]`\n\n```js\nitems[S2]\n```\n\n[link](https://example.test/[S1])\n\n事实[S2]";
   const result = normalizeRagAnswer(answer, [source("S1"), source("S2", 1)]);

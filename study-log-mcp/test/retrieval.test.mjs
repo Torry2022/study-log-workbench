@@ -48,6 +48,15 @@ test("BM25F title weighting and document rarity drive keyword ranks; RRF scores 
   assert.deepEqual(filtered.map(match => match.score), [1, 0.7]);
 });
 
+test("a single-digit percentage keeps its candidate above generic rollout notes", async () => {
+  const blocks = [block("2026-01-01", "### 百分之五灰度候选\n5% 灰度仅完成本地演练，未上线。"),
+    ...Array.from({ length: 12 }, (_, index) => block(`2026-02-${String(index + 1).padStart(2, "0")}`,
+      "### 灰度界面旁记\n只调整灰度页面的按钮文案，未修改上线规则。"))];
+  const result = await new KeywordRetriever().retrieveContexts(blocks, "5% 灰度是否上线？", { maxChunks: 8 });
+  assert.ok(result.contexts.some((context) => context.heading === "百分之五灰度候选"));
+  assert.ok(tokenize("５％ 灰度").includes("5%"));
+});
+
 test("literal lookup returns complete matching H3 source, merges overlaps and exposes a named fallback", async () => {
   const retriever = new KeywordRetriever();
   const source = "开始 retain_graph=True。\n\n" + Array.from({ length: 500 }, (_, i) => `Synthetic-${i} context evidence.`).join("\n") + "\n结尾。";

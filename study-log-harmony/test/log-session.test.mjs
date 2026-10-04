@@ -10,7 +10,7 @@ const bodySource = await readFile(new URL('../entry/src/main/ets/features/logs/L
 const sessionSource = await readFile(new URL('../entry/src/main/ets/features/logs/LogSession.ets', import.meta.url), 'utf8');
 const pageSource = await readFile(new URL('../entry/src/main/ets/features/logs/LogsReaderPage.ets', import.meta.url), 'utf8');
 const controllerSource = await readFile(new URL('../entry/src/main/ets/features/logs/LogDocumentController.ets', import.meta.url), 'utf8');
-const handlers = ['bindDocuments', 'save', 'acceptSavedDay', 'applyRestoredDay', 'installDay', 'loadDay'].map(name => {
+const handlers = ['bindDocuments', 'save', 'acceptSavedDay', 'applyRestoredDay', 'installDay', 'loadDay', 'discardDraft'].map(name => {
   const start = pageSource.search(new RegExp(`^  private (?:async )?${name}\\(`, 'm'));
   assert.ok(start >= 0);
   const end = pageSource.slice(start + 1).search(/^  (?:private |@Builder|build\()/m);
@@ -82,6 +82,19 @@ test('restored local draft based on an older version never reaches the write API
   assert.match(page.saveError, /旧版本/);
   assert.equal(session.text, 'draft');
   assert.equal(session.isDirty(), true);
+});
+
+test('discarding a rejected duplicate-heading draft clears the stale save error', async () => {
+  const { session, page } = subject();
+  session.text = '### 1. 并发控制\n### 2. 并发控制';
+  page.saveError = '同一天不能保存两个“并发控制”小节，请修改重复标题后重试';
+  const replacements = [];
+  page.editor = { replace: async (body, reset) => replacements.push([body, reset]) };
+  await page.discardDraft();
+  assert.deepEqual(replacements, [['baseline', true]]);
+  assert.equal(session.text, 'baseline');
+  assert.equal(session.isDirty(), false);
+  assert.equal(page.saveError, '');
 });
 
 test('a save reply for a document left behind cannot overwrite the current session', async () => {

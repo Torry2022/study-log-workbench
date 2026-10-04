@@ -1673,6 +1673,7 @@ export struct LogsReaderPage {
       this.previewText = this.session.baseline;
       this.session.editorPending = false;
       this.reportDraft();
+      this.saveError = '';
     } catch (error) {
       this.saveError = error instanceof Error ? error.message : '放弃修改失败';
     }

@@ -73,5 +73,5 @@ export function useLogDraft(day: DayEntry | null, active: boolean, onSaved: (day
     } finally { saving.current = false; setBusy(false); }
   }
   function replaceBody(body: string) { change(body); setResetRevision(value => value + 1); }
-  return { draft, dirty, busy, error, conflict, saved, resetRevision, change, replaceBody, reset, acceptExternal, save };
+  return { draft, dirty, busy, error, conflict, saved, resetRevision, change, replaceBody, reset, acceptExternal, save, dismissError: () => setError("") };
 }

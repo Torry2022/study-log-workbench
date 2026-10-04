@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { getBackupRoot, getLogRoot, LOG_FILE_PATTERN } from "./config.ts";
 import { findLevelTwoHeadings, findRootAtxHeadings, normalizeDayContent, stripTrailingStructuralSeparator } from "./day-content.ts";
+import { buildMarkdownOutline } from "./markdown-outline.ts";
 import type { DayEntry, DaySummary, MonthSummary, SaveDayInput, DeleteDayInput } from "./types.ts";
 import { assertLogDateIsNotFuture, isValidLogDate } from "./study-date.ts";
 
@@ -240,6 +241,18 @@ export async function getDay(date: string): Promise<DayEntry> {
 }
 
 export class LogWriteInputError extends Error {}
+
+function assertUniqueDaySections(content: string): void {
+  const seen = new Set<string>();
+  for (const heading of buildMarkdownOutline(content)) {
+    if (heading.level !== 3) continue;
+    const title = heading.text.replace(/^\d+\.\s+/, "").trim();
+    const key = title.normalize("NFKC").toLocaleLowerCase().replace(/\s+/g, " ");
+    if (!key) continue;
+    if (seen.has(key)) throw new LogWriteInputError(`同一天不能保存两个“${title}”小节，请修改重复标题后重试`);
+    seen.add(key);
+  }
+}
 export class LogConflictError extends Error {
   constructor() { super("源文件已变化，未覆盖。请保留当前草稿并重新读取后核对。"); }
 }
@@ -369,6 +382,7 @@ async function mutateDay(date: string, baseVersion: string | null, replacement: 
       throw new LogConflictError();
     }
     const normalized = replacement(currentDay);
+    if (normalized !== null) assertUniqueDaySections(normalized);
     const next = normalized === null
       ? source.slice(0, currentDay!.start) + source.slice(currentDay!.end)
       : replaceOrInsert(source, file, date, normalized);

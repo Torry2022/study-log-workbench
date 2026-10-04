@@ -363,15 +363,12 @@
 /* Keep the same editor mounted across source/preview/split mode changes. */
 .editing-workspace { position: relative; min-width: 0; }
 .editing-workspace > .reader-preview-pane { min-width: 0; }
-.editor-save-status { display: flex; align-items: center; gap: 12px; padding: 8px 16px; color: var(--muted); font-size: 13px; border-bottom: 1px solid var(--hairline-soft); }
-.editor-save-status[role="alert"] { color: var(--error); }
 .editor-attachment-status { padding: 8px 16px; color: var(--muted); font-size: 13px; border-bottom: 1px solid var(--hairline-soft); }
 .editor-attachment-status[role="alert"] { color: var(--error); }
 .editor-navigation-status { grid-column: 1 / -1; padding: 8px 16px; color: var(--muted); font-size: 13px; }
 .editor-toolbar-actions { display: flex; gap: 8px; }
 .mode-split > .editor-attachment-status { grid-column: 1 / -1; }
 .mode-split { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr)); }
-.mode-split > .editor-save-status { grid-column: 1 / -1; }
 .mode-split > .reader-preview-pane { max-height: calc(100svh - var(--reader-toolbar-height) - 64px); overflow: auto; }
 .mode-split .preview-reading-mode-entry { display: none; }
 .mode-split .markdown-preview { padding: 28px 34px 80px; }
@@ -389,10 +386,9 @@
   .mobile-sheet-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (min-width: 1024px) {
-  .mode-split { height: calc(100svh - var(--reader-toolbar-height) - 64px); min-height: 420px; grid-template-rows: auto auto minmax(0, 1fr); }
+  .mode-split { height: calc(100svh - var(--reader-toolbar-height) - 64px); min-height: 420px; grid-template-rows: auto minmax(0, 1fr); }
   .mode-split > .editor-attachment-status { grid-row: 1; }
-  .mode-split > .editor-save-status { grid-row: 2; }
-  .mode-split > .reader-preview-pane, .mode-split > .source-workspace { grid-row: 3; height: 100%; min-height: 0; max-height: none; }
+  .mode-split > .reader-preview-pane, .mode-split > .source-workspace { grid-row: 2; height: 100%; min-height: 0; max-height: none; }
 }
 @media (min-width: 1024px) {
   @container split-reader (max-width: 839px) {

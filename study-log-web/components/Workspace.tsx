@@ -262,8 +262,8 @@ export function Workspace() {
       reading={reading} onReading={value => { if (value) setMode("preview"); setReading(value); }} onRetry={logs.retry} onNavigate={selectDate}
       search={searchSelection?.date === logs.selection.date ? searchSelection : null}
       editing={{ mode, onMode: setMode, documentDate: draft.draft?.date || "", body: draft.draft?.body || "", dirty: draft.dirty,
-        busy: draft.busy || deleting, locked: deleting, error: operationError || draft.error || (missingFavorite === logs.selection.date ? "原收藏小节未找到，已打开所属日期。" : ""), conflict: draft.conflict, saved: draft.saved, resetRevision: draft.resetRevision,
-        onChange: draft.change, onSave: () => { if (!deleting && !backupOpen) void draft.save(); }, onReload: () => void reload(),
+        busy: draft.busy || deleting, locked: deleting, error: operationError || draft.error || (missingFavorite === logs.selection.date ? "原收藏小节未找到，已打开所属日期。" : ""), conflict: !operationError && draft.conflict, saved: draft.saved, resetRevision: draft.resetRevision,
+        onChange: draft.change, onSave: () => { if (!deleting && !backupOpen) void draft.save(); }, onReload: () => void reload(), onDismissError: () => { setOperationError(""); setMissingFavorite(null); draft.dismissError(); },
         onDiscard: () => { void discardLog(); }, onDelete: () => void deleteCurrent(), onBackups: () => { if (!draft.busy && !deleting) setBackupOpen(true); } }} /></div>
     <div className="workspace-view" hidden={logs.selection.view !== "favorites"}><FavoritesModule onOpenLog={openLog} favorites={favorites} active={active && logs.selection.view === "favorites"} onOpen={async (date, heading, missing) => { const accepted = await selectDate(date, heading); if (accepted) { setMode("preview"); setReading(false); if (missing) setMissingFavorite(date); } return accepted; }} /></div>
     <div className="workspace-view" hidden={logs.selection.view !== "stats"}><StudyStatsPage onOpenLog={openLog} stats={stats} onOpenEntry={openStatsEntry} /></div>

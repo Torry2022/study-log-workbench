@@ -35,7 +35,7 @@ interface Editing {
   documentDate: string; body: string; dirty: boolean; busy: boolean; saved: boolean; error: string; conflict: boolean;
   resetRevision: number;
   locked: boolean;
-  onChange: (value: string) => void; onSave: () => void; onReload: () => void; onDiscard: () => void;
+  onChange: (value: string) => void; onSave: () => void; onReload: () => void; onDiscard: () => void; onDismissError: () => void;
   onDelete: () => void; onBackups: () => void;
 }
 interface Props {
@@ -305,7 +305,7 @@ export function LogReader({ onOpenAi, onOpenFavorites, navigation, editing, sear
     {missingHeading && <div className="editor-navigation-status" role="status">未找到目标小节，已打开该日日志。<button className="button secondary" type="button" onClick={() => setMissingHeading(false)}>关闭</button></div>}
     <input ref={imageInput} type="file" multiple accept={IMAGE_ACCEPT} hidden aria-label="选择日志图片" onChange={event => { const files = Array.from(event.target.files || []); event.target.value = ""; void attachments.upload(files); }} />
     {attachments.status && <div className="editor-attachment-status" role={attachments.failed ? "alert" : "status"}>{attachments.status}</div>}
-    {editing.error && <div className="editor-save-status" role="alert">{editing.error}{editing.conflict && <button className="button secondary" type="button" onClick={editing.onReload}>重新读取</button>}</div>}
+    {editing.error && <AppFeedback message={editing.error} tone="error" onDismiss={editing.onDismissError} action={editing.conflict ? { label: "重新读取", onClick: editing.onReload } : undefined} />}
     {active && editing.saved && !editing.dirty && !editing.error && <AppFeedback message="已保存" tone="success" onDismiss={() => {}} />}
     <div className="reader-preview-pane" style={{ display: mode === "source" ? "none" : undefined }}>
     {loading || error || !content.trim() ? <div className={`preview-workspace${(loading || error) && mode === "preview" ? " has-outline" : ""}`}><div className="preview-pane">

@@ -46,6 +46,27 @@ test("versioned append preserves the existing body and non-target CRLF bytes", a
   assert.match(fresh.content, /new/);
 });
 
+test("saving a day rejects duplicate section titles before writing source or backup", async t => {
+  const { data, backups } = await fixture(t);
+  const day = await create("2026-01-09", "### 1. 并发控制\n\n第一节");
+  const file = path.join(data, day.fileName);
+  const before = await fs.readFile(file, "utf8");
+  const backupNames = await fs.readdir(backups);
+  const duplicate = /同一天不能保存两个“并发控制”小节/;
+  await assert.rejects(
+    saveDay({ date: day.date, baseVersion: day.version, content: "### 1. **并发控制**\n\n第一节\n\n### 2. 并发控制\n\n第二节" }),
+    error => error instanceof LogWriteInputError && duplicate.test(error.message)
+  );
+  await assert.rejects(
+    saveDay({ date: day.date, baseVersion: day.version, mode: "append", content: "### 2. 并发控制\n\n第二节" }),
+    error => error instanceof LogWriteInputError && duplicate.test(error.message)
+  );
+  assert.equal(await fs.readFile(file, "utf8"), before);
+  assert.deepEqual(await fs.readdir(backups), backupNames);
+  const saved = await saveDay({ date: day.date, baseVersion: day.version, mode: "append", content: "```markdown\n### 2. 并发控制\n```\n\n### 2. 数据一致性" });
+  assert.match(saved.content, /### 2\. 数据一致性/);
+});
+
 test("delete removes exactly one day, retains its old snapshot, and conflicts on stale or missing targets", async t => {
   const { data, backups } = await fixture(t);
   const prefix = "# Header\r\n\r\n## 2026-02-01\r\n\r\nA  \r\n\r\n---\r\n\r\n";

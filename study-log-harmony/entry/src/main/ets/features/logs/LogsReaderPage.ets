@@ -2552,17 +2552,15 @@ export struct LogsReaderPage {
   @Builder
   private logContent() {
       Row() {
-        if (this.isWide()) {
-          Stack({ alignContent: Alignment.BottomEnd }) {
-            Column() { this.reader() }.width('100%').height('100%')
+        Stack({ alignContent: Alignment.BottomEnd }) {
+          Column() { this.reader() }.width('100%').height('100%')
+          if (this.isWide()) {
             BackToTopControl({ visible: !this.sourceMode && this.previewOffset > 8,
               progress: this.previewProgress, scrollOffset: this.previewOffset,
               onBackToTop: () => this.previewTopRequest++ })
               .margin({ right: 14, bottom: 14 }).zIndex(3)
-          }.layoutWeight(1).height('100%')
-        } else {
-          this.reader()
-        }
+          }
+        }.layoutWeight(1).height('100%')
         if (this.isWide()) {
           Stack({ alignContent: Alignment.TopEnd }) {
             this.aiToolsRail()

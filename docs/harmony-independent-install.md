@@ -1,5 +1,8 @@
 # 鸿蒙独立构建与安装验收
 
+当前外部条件：用户在 2026-10-06 明确表示无法提供新的匹配 Profile 和异网络受信 HTTPS 合成实例地址。以下仍为发布前待验清单，未执行项不勾选；不阻止本地迁移、文档和已知问题收尾，也不要求以维护者私有生产实例代替。未来具备条件后从实际缺项继续，不重复已通过的本机专项。
+
+
 当前状态：未全部完成。本文是操作清单，不是通过记录。维护者已按全新副本和合成实例完成手机自行试装的基础读写、导出、A→B→A 切换、候选编辑保存、日志生成与标注的本地替身流程及闲置息屏，范围见[2026-10-02 记录](self-install-2026-10-02.md)；其他使用者自行签名、不同网络 HTTPS 及剩余专项仍缺证据。维护者调试包不能当作可供所有设备侧载的发行包。
 
 ## 准备工程和实例
@@ -13,21 +16,26 @@
 
 先按[客户端 README](../study-log-harmony/README.md)完成依赖准备、协议测试和构建。工程提交的 `signingConfigs` 为空；无签名 HAP 编译成功只证明构建成功。
 
-在 DevEco 中为 `org.studylog.workbench.publicedition` 配置本地调试签名，使用匹配的证书、私钥和 Profile，并覆盖实际测试设备。已有调试证书与私钥可按开发者自己的配置复用，但另一个包名的 Profile 不能直接作为公开版 Profile。不要把私钥、密码、证书、Profile 或本机路径提交到仓库，也不要提交修改后的签名配置。
+仓库默认包名 `org.studylog.workbench.publicedition` 是维护者验收基线，不表示其他使用者已获得该应用的 Profile。自行构建时，先选用自己开发者账号下的应用身份，并让 `AppScope/app.json5` 的 `app.bundleName` 与自己的 Profile 包名一致；若需使用自己的包名，只在本地检出修改该字段。对应 APP ID、调试证书／私钥、Profile 和实际设备应属于这一套签名配置。Profile 中包名由所选应用自动填充，配置要求见[华为调试 Profile 文档](https://developer.huawei.com/consumer/cn/doc/doccenter-getting-started/agc-help-debug-profile-0000002248181278)。
+
+在 DevEco 中配置上述本地调试签名。已有调试证书与私钥可按开发者自己的配置复用，但另一个包名的 Profile 不能直接作为本工程 Profile。不要把私钥、密码、证书、Profile 或本机路径提交到仓库，也不要提交修改后的签名配置。更换包名将形成另一应用身份，不能当作覆盖升级维护者验收包；更新自己的安装须保持原包名及匹配签名。
+
+维护者在 2026-10-06 的全新源码归档中，仅修改本地包名后完成无签名 HAP 构建，并从包内配置读回新包名；产品代码没有额外的固定包名替换要求，SDK／依赖仍复用。证据见[当前收尾清单](harmony-workspace-recovery.md)。这不替代自己的 Profile 签名和目标设备安装。
 
 完成签名构建后，在输出目录确认存在本次生成的 `entry-default-signed.hap`。维护者的调试 HAP 不是公共发行包；不要将绑定维护者设备的包当作其他使用者可直接侧载的 Release 附件。
 
 当前源码中 `EntryAbility.ets` 的 `KEEP_SCREEN_ON_DURING_ACCEPTANCE` 默认为 `false`。维护者签名候选包已在 PC、平板和手机使用临时系统超时验证前台闲置息屏；正式发行构建仍须核对该值并在目标设备复测。维护者此前安装的常亮验收包不作为发行包。
 
-下面是 PowerShell 安装示例，运行前替换三个占位值：
+下面是 PowerShell 安装示例，运行前替换路径、设备及本地包名占位值：
 
 ```powershell
 $hdc = 'D:\你的DevEco安装目录\sdk\default\openharmony\toolchains\hdc.exe'
 $deviceId = '<hdc list targets 中的目标设备标识>'
 $hap = 'D:\你的仓库目录\study-log-harmony\entry\build\default\outputs\default\entry-default-signed.hap'
+$bundleName = '<本地 AppScope/app.json5 的 app.bundleName>'
 & $hdc list targets
 & $hdc -t $deviceId install -r $hap
-& $hdc -t $deviceId shell aa start -a EntryAbility -b org.studylog.workbench.publicedition
+& $hdc -t $deviceId shell aa start -a EntryAbility -b $bundleName
 ```
 
 若签名或安装失败，先核对包名、Profile、设备范围、SDK 兼容版本及证书／私钥是否匹配。不要为了试装直接卸载已有应用；卸载可能丢失本地草稿和连接配置。诊断记录只保留错误码和脱敏信息。

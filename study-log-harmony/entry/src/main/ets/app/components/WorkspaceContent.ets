@@ -38,11 +38,15 @@ export struct WorkspaceContent {
   onOpenTaxonomy: () => void = () => {};
   onCloseTaxonomy: () => void = () => {};
   onWorkspaceKey: (event: KeyEvent) => boolean = () => false;
+  onBeforeQaSessionChange: () => Promise<void> = async () => {};
+  onQaSessionReady: () => void = () => {};
 
   build() {
     Stack() {
       Row() {
           QaPage({ workspaceActive: (this.selectedModule === 3), navigationSessionId: this.modules.qaSessionId,
+            onBeforeSessionChange: () => this.onBeforeQaSessionChange(),
+            onSessionReady: () => this.onQaSessionReady(),
             onWorkspaceKey: (event: KeyEvent) => this.onWorkspaceKey(event),
             themePreference: this.themePreference,
             navigationRequestRevision: this.modules.qaRequestRevision, discardRevision: this.modules.qaDiscardRevision,

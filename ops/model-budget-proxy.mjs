@@ -25,6 +25,9 @@ export async function startBudgetProxy({ apiKey, apiUrl, model, budgetCny, ledge
     if (inFlight) { response.writeHead(409).end(); return; }
     inFlight = true;
     let record = null;
+    const disconnected = new AbortController();
+    const onClose = () => { if (!response.writableFinished) disconnected.abort(); };
+    response.on("close", onClose);
     try {
       const buffers = []; let bytes = 0;
       for await (const chunk of request) { bytes += chunk.length; if (bytes > 64_000) throw new Error("Acceptance request too large"); buffers.push(chunk); }
@@ -44,7 +47,7 @@ export async function startBudgetProxy({ apiKey, apiUrl, model, budgetCny, ledge
       await ledger.write(`${JSON.stringify({ ...record, cumulativeReservedCny: reservedCny })}\n`); await ledger.sync();
       payload.max_tokens = maxTokens;
       if (payload.stream) payload.stream_options = { include_usage: true };
-      const upstream = await fetch(target, { method: "POST", redirect: "error", headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: AbortSignal.timeout(120_000) });
+      const upstream = await fetch(target, { method: "POST", redirect: "error", headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: AbortSignal.any([disconnected.signal, AbortSignal.timeout(120_000)]) });
       record.status = String(upstream.status);
       if (!upstream.ok) { await upstream.body?.cancel(); response.writeHead(upstream.status, { "Content-Type": "application/json" }).end(JSON.stringify({ error: `Upstream HTTP ${upstream.status}` })); return; }
       response.writeHead(200, { "Content-Type": upstream.headers.get("content-type") || "application/json" });
@@ -57,10 +60,11 @@ export async function startBudgetProxy({ apiKey, apiUrl, model, budgetCny, ledge
         }
       } else { try { record.usage = JSON.parse(collected).usage || null; } catch {} }
     } catch {
+      if (disconnected.signal.aborted) { if (record) record.status = "cancelled"; return; }
       if (record && response.headersSent) record.streamFailure = true;
       if (response.headersSent) response.destroy();
       else response.writeHead(502, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "Acceptance proxy rejected or failed the bounded request" }));
-    } finally { inFlight = false; }
+    } finally { response.off("close", onClose); inFlight = false; }
   });
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
   return {

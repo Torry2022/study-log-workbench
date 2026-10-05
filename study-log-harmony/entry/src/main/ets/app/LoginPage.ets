@@ -311,7 +311,7 @@ export struct LoginPage {
       }.width('100%')
     }
     .width(wide ? 400 : '100%')
-    .padding(wide ? 0 : { left: 24, right: 24, top: 28, bottom: 72 })
+    .padding(wide ? 0 : { left: 24, right: 24, top: 28, bottom: 24 })
     .backgroundColor($r('app.color.canvas'))
   }
 
@@ -319,14 +319,20 @@ export struct LoginPage {
     Stack({ alignContent: Alignment.TopStart }) {
       if (this.viewportWidth >= 720) {
         Row() {
+          Stack() { this.textureBackground() }
+            .layoutWeight(11).height('100%')
+          Row() {}.layoutWeight(9).height('100%').backgroundColor($r('app.color.canvas'))
+        }
+        .width('100%').height('100%')
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP])
+        .hitTestBehavior(HitTestMode.None)
+        Row() {
           Stack() {
-            this.textureBackground()
             this.identityContent(true)
           }
           .layoutWeight(11)
           .height('100%')
           .clip(true)
-          .backgroundColor($r('app.color.surface_soft'))
             .border({ width: { right: 1 }, color: $r('app.color.hairline') })
           Column() {
             this.accessContent(true)
@@ -351,12 +357,21 @@ export struct LoginPage {
             Stack() { this.identityContent(false) }
               .width('100%').height('34%').constraintSize({ minHeight: 260, maxHeight: 320 })
             this.accessContent(false)
+            Text('© 2026 学习日志工作台开源版')
+              .width('100%')
+              .fontFamily(workspaceSansFamily(this.workspaceBreakpoint))
+              .fontSize(11)
+              .fontWeight(FontWeight.Regular)
+              .fontColor($r('app.color.muted_soft'))
+              .textAlign(TextAlign.Center)
+              .margin({ bottom: 16 })
+              .visibility(this.softwareKeyboardVisible ? Visibility.None : Visibility.Visible)
           }.width('100%').constraintSize({ minHeight: '100%' })
         }.id('login_scroll').width('100%').height('100%').scrollBar(BarState.Off)
       }
 
-      Stack({ alignContent: Alignment.Bottom }) {
-        if (this.viewportWidth >= 720) {
+      if (this.viewportWidth >= 720) {
+        Stack({ alignContent: Alignment.Bottom }) {
           Row() {
             Blank().layoutWeight(11)
             Text('© 2026 学习日志工作台开源版')
@@ -369,21 +384,12 @@ export struct LoginPage {
           }
           .width('100%')
           .margin({ bottom: 4 })
-        } else {
-          Text('© 2026 学习日志工作台开源版')
-            .width('100%')
-            .fontFamily(workspaceSansFamily(this.workspaceBreakpoint))
-            .fontSize(11)
-            .fontWeight(FontWeight.Regular)
-            .fontColor($r('app.color.muted_soft'))
-            .textAlign(TextAlign.Center)
-            .margin({ bottom: 16 })
         }
+        .width('100%')
+        .height('100%')
+        .hitTestBehavior(HitTestMode.None)
+        .visibility(this.softwareKeyboardVisible ? Visibility.None : Visibility.Visible)
       }
-      .width('100%')
-      .height('100%')
-      .hitTestBehavior(HitTestMode.None)
-      .visibility(this.softwareKeyboardVisible ? Visibility.None : Visibility.Visible)
 
     }
     .width('100%')

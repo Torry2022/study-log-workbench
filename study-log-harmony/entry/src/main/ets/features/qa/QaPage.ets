@@ -223,6 +223,7 @@ export struct QaPage {
     }
     .width(48)
     .height(48)
+    .hitTestBehavior(HitTestMode.Transparent)
     .margin({ right: this.isLargeWorkspace() ? 24 : 14, bottom: this.isLargeWorkspace() ? 24 : 14 })
     .translate({ y: this.isLargeWorkspace() || this.composerHidden ? 0 : -120 })
     .animation({ duration: 140, curve: Curve.Ease })

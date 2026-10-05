@@ -110,7 +110,8 @@ struct Index {
   @State private workspaceTransition: WorkspaceTransitionCoordinator = new WorkspaceTransitionCoordinator({
     tab: () => this.selectedModule,
     canCapture: (kind: string) => this.connected && this.isWide() &&
-      (kind === 'module' || ((kind === 'document' || kind === 'mode') && this.selectedModule === 0 &&
+      (kind === 'module' || (kind === 'detail:3' && this.selectedModule === 3) ||
+        ((kind === 'document' || kind === 'mode') && this.selectedModule === 0 &&
         !!this.workspaceNavigationView?.hasLog())),
     capture: (kind: string) => this.getUIContext().getComponentSnapshot().get(
       kind === 'module' ? 'module_frame' : 'workspace_frame', { waitUntilRenderFinished: true }),
@@ -319,6 +320,12 @@ struct Index {
     this.workspaceTransition.clear();
   }
 
+  private async coverQaSessionTransition(): Promise<void> {
+    if (this.selectedModule !== 3 || this.modules.outgoingTab >= 0 ||
+      this.workspaceTransition.snapshot || this.workspaceTransition.task) return;
+    await this.workspaceTransition.cover('detail:3');
+  }
+
   private registerWorkspaceNavigation(view: WorkspaceNavigationView): WorkspaceNavigationCommands {
     if (this.workspaceNavigationView) this.clearModuleNavigation();
     this.workspaceNavigationView = view;
@@ -353,6 +360,8 @@ struct Index {
     commands.taxonomyLeave = (action: () => void): void => { if (active()) this.confirmTaxonomyLeave(action); };
     commands.openTaxonomy = (): void => { if (active()) this.openTaxonomy(); };
     commands.qaSession = (id: string, focus: boolean): void => { if (active()) this.switchQaSession(id, focus); };
+    commands.beforeQaSessionChange = async (): Promise<void> => { if (active()) await this.coverQaSessionTransition(); };
+    commands.qaSessionReady = (): void => { if (active() && this.selectedModule === 3) this.workspaceTransition.finish('detail:3'); };
     commands.qaDelete = (session: RagSessionSummary): void => { if (active()) this.confirmQaDelete(session); };
     commands.ready = (date: string): void => { if (active()) this.logDocumentReady(date); };
     commands.failed = (date: string): void => { if (active()) this.logNavigationFailed(date); };

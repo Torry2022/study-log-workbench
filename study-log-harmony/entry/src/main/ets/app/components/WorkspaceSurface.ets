@@ -315,6 +315,8 @@ export struct WorkspaceSurface {
   @Builder
   private workspaceContent() {
     WorkspaceContent({ modules: this.modules, favoritesData: this.favoritesData, qaNavigation: this.qaNavigation,
+      onBeforeQaSessionChange: () => this.navigationCommands.beforeQaSessionChange(),
+      onQaSessionReady: () => this.navigationCommands.qaSessionReady(),
       onWorkspaceKey: (event: KeyEvent) => this.onWorkspaceKey(event),
       selectedModule: this.selectedModule, outgoingTab: this.modules.outgoingTab, moduleReveal: this.modules.moduleReveal,
       wide: this.wide, themePreference: this.themePreference,

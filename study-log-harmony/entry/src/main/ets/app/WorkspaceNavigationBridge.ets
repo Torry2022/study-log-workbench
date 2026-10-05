@@ -55,6 +55,8 @@ export class WorkspaceNavigationCommands {
   taxonomyLeave: (action: () => void) => void = () => {};
   openTaxonomy: () => void = () => {};
   qaSession: (id: string, focus: boolean) => void = () => {};
+  beforeQaSessionChange: () => Promise<void> = async () => {};
+  qaSessionReady: () => void = () => {};
   qaDelete: (session: RagSessionSummary) => void = () => {};
   ready: (date: string) => void = () => {};
   failed: (date: string) => void = () => {};

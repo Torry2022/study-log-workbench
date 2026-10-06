@@ -197,7 +197,7 @@ async function verifyOpen(archive, sidecar, handle, stat) {
 }
 
 /** New archives only: the sidecar and archive are never overwritten. */
-export async function backupInstance(instanceRoot, archivePath) {
+export async function backupInstance(instanceRoot, archivePath, { protectFile } = {}) {
   const root = absolute(instanceRoot), archive = absolute(archivePath), sidecar = `${archive}.sha256`;
   if (beneath(root, archive)) outside();
   await noLinks(root); await noLinks(path.dirname(archive));
@@ -218,6 +218,7 @@ export async function backupInstance(instanceRoot, archivePath) {
     const output = await fs.open(partial, "wx", 0o600), digest = crypto.createHash("sha256");
     const write = async chunk => { await writeAll(output, chunk); digest.update(chunk); };
     try {
+      if (protectFile) await protectFile(partial);
       await write(header); await write(bytes);
       for (const entry of manifest.entries) {
         if (entry.type !== "file") continue;
@@ -261,7 +262,7 @@ export async function verifyArchive(archivePath) {
 }
 
 /** Full verification precedes reservation. A failed extraction keeps its target and lock. */
-export async function restoreInstance(archivePath, targetRoot) {
+export async function restoreInstance(archivePath, targetRoot, { onReserved } = {}) {
   const archive = absolute(archivePath), target = absolute(targetRoot);
   await noLinks(target);
   if (await exists(target)) fail("RESTORE_TARGET_EXISTS", "恢复目标必须不存在；不能覆盖或合并已有目录");
@@ -272,6 +273,9 @@ export async function restoreInstance(archivePath, targetRoot) {
     const { manifest, payloadOffset, sha256 } = await verifyOpen(archive, `${archive}.sha256`, handle, stat);
     await noLinks(path.dirname(target));
     await fs.mkdir(target, { mode: 0o700 }); reserved = true;
+    // Desktop Windows callers restrict the new directory before any secret is
+    // extracted. A failed permission step leaves an empty reserved target.
+    if (onReserved) await onReserved(target);
     const marker = path.join(target, ".restore-incomplete.json");
     await fs.writeFile(marker, JSON.stringify({ version: 1, archiveSha256: sha256, startedAt: new Date().toISOString() }), { flag: "wx", mode: 0o600 });
     const data = path.join(target, "data"); await fs.mkdir(data, { mode: 0o700 });

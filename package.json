@@ -7,6 +7,8 @@
   "scripts": {
     "instance": "node ops/instance.mjs",
     "test:ops": "node --test ops/*.test.mjs",
+    "test:desktop": "node --test ops/desktop/*.test.mjs",
+    "package:windows": "node ops/desktop/package-windows.mjs",
     "dev": "npm --prefix study-log-web run dev",
     "typecheck": "npm --prefix study-log-web run typecheck",
     "build": "npm --prefix study-log-web run build"

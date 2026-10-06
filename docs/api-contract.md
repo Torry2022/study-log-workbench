@@ -1,6 +1,6 @@
 # Web/API 契约
 
-所有路径以 `/study-log` 开头。当前客户端契约版本为 1；鸿蒙迁移时以实际路由和协议测试核对本文，发现差异先修正文档或实现，再接入客户端。独立试装尚未完成，不据此宣称发布验收通过。
+所有路径以 `/study-log` 开头。当前客户端契约版本为 1；鸿蒙迁移时以实际路由和协议测试核对本文，发现差异先修正文档或实现，再接入客户端。[独立目录自行试装](self-install-2026-10-06.md)已完成列明流程；第三方鸿蒙签名安装和异网络受信 HTTPS 仍待验，接口测试不能替代这些结果。
 
 ## 认证与身份
 
@@ -15,6 +15,8 @@
 ## 日志生成方案
 
 日志生成的 `POST /api/ai/generate` 另接受可选 `presetId`。省略或传 `legacy` 时继续使用实例 `generation.md`；默认方案只决定新界面的初始选择，不改变旧客户端请求。不存在的方案返回 404 `GENERATION_PRESET_NOT_FOUND`。非 legacy 方案无需有效的 generation.md，但仍需已配置聊天提供方。
+
+`features.aiWriting.configured` 保留原有“提供方与 generation.md 均有效”的含义。选择非 legacy 方案的客户端应检查 `aiConfiguration.provider.configured` 及所选方案是否有效，不因旧模板缺失而禁用有效方案；这仍不表示已验证模型服务连通。
 
 `GET /api/ai/generation-presets` 返回 `{version,defaultPresetId,presets:[{id,name,prompt,readOnly,issue?}]}`，全部操作需认证。内置 ID 为 `builtin:daily`、`builtin:concepts`、`builtin:practice`，与 `legacy` 均只读；个人方案为 `user:<uuid>`。POST 接受 `{version,name,prompt}`；PATCH 接受 `{version,id,name,prompt}` 或独立的 `{version,defaultPresetId}`；DELETE 接受 `{version,id}`。写操作返回完整新快照，旧 version 返回 409 `GENERATION_PRESET_CONFLICT`，不覆盖既有内容；删除默认个人方案时原子回退到 legacy。
 
@@ -91,9 +93,9 @@
 
 ## AI 生成草稿
 
-`POST /api/ai/generate` 先认证，JSON `{date,material?,extractedText?,instruction?}` 中日期必须有效且不在未来，文本字段不得用其他类型代替；材料和提取文本合计最多120,000字符，要求最多4,000字符，实际请求体最多800,000字节。至少一项文本非空。超过60,000字符的材料只发送前60,000字符并返回警告。
+`POST /api/ai/generate` 先认证，JSON `{date,material?,extractedText?,instruction?,presetId?}` 中日期必须有效且不在未来，文本字段不得用其他类型代替；材料和提取文本合计最多120,000字符，要求最多4,000字符，实际请求体最多800,000字节。至少一项文本非空。超过60,000字符的材料只发送前60,000字符并返回警告。
 
-成功返回 `{result:{content,model,warnings}}`，仅提供草稿，不修改日志或备份。模型参考来自同一实例的当日内容（最多12,000字符）及最近最多30个有日志日的限量H3标题，不发送其他日正文。模板从实例 `prompts/generation.md` 读取。结果仅去除无歧义的外层Markdown围栏和顶部同日标题，保留缩进、代码及个人排版选择；多日期、H1/H2、错误结构或未闭合根围栏会失败，不擅自改写成可保存稿。
+成功返回 `{result:{content,model,warnings}}`，仅提供草稿，不修改日志或备份。模型参考来自同一实例的当日内容（最多12,000字符）及最近最多30个有日志日的限量H3标题，不发送其他日正文。提示词按所选生成方案读取；省略 `presetId` 或使用 `legacy` 时从实例 `data/prompts/generation.md` 读取。结果仅去除无歧义的外层Markdown围栏和顶部同日标题，保留缩进、代码及个人排版选择；多日期、H1/H2、错误结构或未闭合根围栏会失败，不擅自改写成可保存稿。
 
 共享聊天传输使用显式配置的完整端点，90秒期限、最多1 MiB响应并禁止HTTP重定向；支持请求取消。错误含安全的 `error` 和 `code`，不返回供应商原始正文、地址或凭据。输入400、请求过大413、限流429、取消499、配置/模板503、超时504，供应商认证/网络/无效输出502。`aiConfiguration` 是本地配置检查，不代表供应商连通或质量验证。
 

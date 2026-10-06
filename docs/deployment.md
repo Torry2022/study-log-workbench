@@ -1,6 +1,6 @@
 # 本地运行与 Docker 自部署
 
-当前产品为单 owner、单 Web 工作进程的自部署工作台，固定入口 `/study-log`。Web、MCP、维护工具默认使用官方 Node 22 镜像；不需要个人域名、Registry 或云账号。以下流程只支持同版本归档恢复；跨版本升级与回退尚未验收。
+当前产品为单使用者、单 Web 工作进程的工作台，固定入口 `/study-log`。Windows 本机使用优先按[本地包说明](windows-portable.md)操作，无需安装 Node 或 Docker。下文面向源码运行和 Docker 自部署；Docker 的 Web、MCP、维护工具默认使用官方 Node 22 镜像，不需要个人域名、Registry 或云账号。以下流程只支持同版本归档恢复；跨版本升级与回退尚未验收。
 
 ## Docker 安装
 
@@ -68,7 +68,7 @@ MCP 不发布任何主机端口，只供 Compose 网络中的 Web 使用。默�
 
 ## 停机、备份与恢复
 
-正式 Web 入口始终是 `node ops/serve.mjs study-log-web/server.js`，在服务整个生命周期持有与维护工具共享的数据锁。不要绕过它直接运行 standalone、叠加多个 Web 副本或做在线归档。MCP 使用独立索引锁；维护前仍须停止 Web、MCP 和外部编辑器。
+Docker 的正式 Web 入口是 `node ops/serve.mjs study-log-web/server.js`，源码运行使用 `ops/run-web.mjs`；两者在服务整个生命周期持有与维护工具共享的数据锁。Windows 包由启动入口管理同一实例锁及 Web／MCP 子进程。不要绕过这些入口直接运行 standalone、叠加多个 Web 副本或做在线归档。MCP 使用独立索引锁；维护前仍须停止 Web、MCP 和外部编辑器。
 
 Compose 启用 init 转发信号，Web 设置 240 秒停止宽限期，MCP 设置 120 秒。Web 的宽限期覆盖完整问答链路：上下文理解最多 20 秒、检索规划 20 秒、MCP 调用总限时 60 秒、回答生成 90 秒，合计约 190 秒，另留收尾空间。不能只按单次模型请求的 90 秒计算。正常子进程退出才释放数据锁；超过宽限期被强杀或异常退出会保留遗留锁，不会自动按时间/PID 删除。遇到遗留锁按 [维护说明](maintenance.md) 核查，不能以重新 init 作为解锁方法。
 
@@ -121,4 +121,6 @@ node ops/docker-rag-smoke.mjs
 
 2026-09-22 维护者在 Docker Desktop 的 Linux amd64 / Node 22 环境运行上述闭环通过：同版本恢复后所覆盖文件字节一致；长问答停机等待约 19 秒，流正常完成、Web 退出码为 0、原日志未变且 Web/MCP 锁释放。MCP 的 Linux 非 root、禁外网合成测试 49/49 通过，包含 Windows 下不能执行的文件符号链接用例。
 
-这些本机测试不替代未参与开发者的独立安装，不证明实际模型质量，也不构成跨版本升级保证。公开环境实装和独立试装状态应单独记录。
+2026-10-06 的[独立目录自行试装](self-install-2026-10-06.md)已覆盖新凭据、浏览器记录与附件、冲突、断网及恢复后读回；操作者为维护者，未要求另一个人执行。Windows 本地包另通过 22 项桌面／归档专项、解压包四流程及 VBS 启动检查，界面一致性调整后已复测解压包流程，见[本轮实施记录](product-iteration-acceptance.md)。这些结果不代表第三方用户反馈、真实模型总体质量或跨版本升级保证；鸿蒙独立签名和异网络受信 HTTPS 仍分别待验。
+
+Windows 检查使用解压包内的 `runtime\node.exe`：`--test ops/desktop/desktop.test.mjs ops/archive.test.mjs` 共 22 项无跳过；`ops/desktop/smoke-package.mjs` 的四流程报告在仓库忽略目录 `.local\windows-package-design-final-smoke\report.json`，`ops/desktop/smoke-vbs.mjs` 的三项入口检查报告在 `.local\windows-vbs-design-final-report.json`。原生目录／保存对话框未实际点击确认；页面自动化仅模拟其取消返回，不能据此宣称系统选择器已验收。

@@ -1,6 +1,6 @@
 # AI 配置与模板
 
-AI 功能按批次接入，当前配置诊断不代表写作流程已经可用。`/api/capabilities` 需要认证，`aiConfiguration` 仅报告本地配置和模板检查结果；不会探测供应商、消耗费用或返回配置值。`features` 的 `supported` 另行表示功能是否实现。
+日志生成、重点标注和随记候选已接入，均需审阅后显式保存。`/api/capabilities` 需要认证，`aiConfiguration` 仅报告本地配置和模板检查结果；不会探测供应商、消耗费用或返回配置值，也不保证供应商当前可用。`features` 的 `supported` 另行表示功能是否实现。
 
 实例 `.env` 中显式填写以下变量，保存后重启该实例：
 

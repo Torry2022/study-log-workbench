@@ -845,9 +845,6 @@
   grid-row: 2;
 }
 
-.favorites-empty-state {
-  min-height: clamp(340px, 48vh, 540px);
-}
 
 .favorite-group-dialog-backdrop {
   position: fixed;

@@ -223,7 +223,7 @@ export function BackupDialog({ date, active = true, onClose, beforeRestore, onRe
               <div className="backup-version-date"><span>恢复目标</span><strong>{date}</strong></div>
               <section className="backup-version-group"><header><strong>保存前版本</strong><span>最近 20 个不同的日块版本</span></header>
                 <div className="backup-version-list">{versions.map(item => <button className={selected?.id === item.id ? "active" : ""} type="button" key={item.id} onClick={() => void selectVersion(item)} disabled={Boolean(busy)} aria-pressed={selected?.id === item.id}><span>{formatDateTime(item.createdAt)}</span><small>{formatSize(item.sizeBytes)}</small></button>)}</div>
-                {loading ? <BackupState kind="loading" title={versions.length ? "正在读取更早版本" : "正在读取备份"} compact /> : listError ? <BackupState kind="error" title={listError} onRetry={() => setListRetry(value => value + 1)} compact /> : !versions.length && <p className="backup-version-empty">没有可用版本</p>}
+                {loading ? <BackupState kind="loading" title={versions.length ? "正在读取更早版本" : "正在读取备份"} compact /> : listError ? <BackupState kind="error" title={listError} onRetry={() => setListRetry(value => value + 1)} compact /> : !versions.length && <p className="backup-version-empty">暂无备份版本</p>}
               </section>
             </aside>
             <section className="backup-preview-panel">
@@ -232,7 +232,7 @@ export function BackupDialog({ date, active = true, onClose, beforeRestore, onRe
                 <footer className="backup-dialog-actions"><p>{conflict ? "内容已变化，请重新预览并确认后再恢复。" : "仅恢复当前日块；恢复前会保留现有文件。"}</p>
                   {conflict ? <button className="button secondary" type="button" onClick={() => selected && void selectVersion(selected)}><RefreshCw size={16} />重新预览</button> : <button className="button primary" type="button" onClick={() => void restoreSelected()} disabled={Boolean(busy)}><ArchiveRestore size={16} />{busy === "confirming" ? "等待确认" : busy === "restoring" ? "恢复中" : "恢复此版本"}</button>}
                 </footer>
-              </> : selected && error ? <BackupState kind="error" title="未能读取历史日块" onRetry={() => void selectVersion(selected)} /> : <BackupState kind="empty" title="选择一个历史版本，确认内容后再恢复" />}
+              </> : selected && error ? <BackupState kind="error" title="未能读取历史日块" onRetry={() => void selectVersion(selected)} /> : <BackupState kind="empty" title="选择一个版本，查看备份内容" />}
             </section>
           </div>
         </div>

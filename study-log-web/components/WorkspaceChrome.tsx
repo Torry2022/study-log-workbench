@@ -6,6 +6,7 @@ import type { WorkspaceView } from "@/hooks/use-log-workspace";
 import type { DaySummary, MonthSummary } from "@/lib/types";
 import { withBasePath } from "@/lib/base-path";
 import { useMobileViewport } from "@/hooks/use-mobile-viewport";
+import { WorkspaceState } from "./WorkspaceState";
 import { DateJump } from "./DateJump";
 import { SidebarFilterPopover } from "./SidebarFilterPopover";
 import { SidebarFilterHeading } from "./SidebarFilterHeading";
@@ -222,13 +223,13 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, module
       </div>
       <div ref={globalSearch} className={`workspace-global-search${panel === "search" ? " mobile-search-active" : ""}`} inert={compact && panel !== "search"} role={compact && panel === "search" ? "dialog" : undefined} aria-modal={compact && panel === "search" ? true : undefined} aria-label={compact && panel === "search" ? "搜索全部日志" : undefined}>
         <div className="mobile-search-header"><button type="button" aria-label="关闭搜索" onClick={() => setPanel(null)}><ChevronLeft size={20} /></button><strong>搜索全部日志</strong></div>
-        <SearchBox active={active && (!compact || panel === "search")} onQueryChange={onSearchChange} onSelect={async result => { const accepted = await onSearchSelect(result); if (accepted && compact) setPanel(null); return accepted; }} />
+        <SearchBox noLogs={!loading && !error && !months.length} active={active && (!compact || panel === "search")} onQueryChange={onSearchChange} onSelect={async result => { const accepted = await onSearchSelect(result); if (accepted && compact) setPanel(null); return accepted; }} />
       </div>
       <div className="topbar-actions">
-        <button className={`button secondary app-nav-link${view === "notes" ? " active" : ""}`} type="button" onClick={() => void switchView("notes")}><Lightbulb size={16} />随记</button>
-        <button className={`button secondary app-nav-link${view === "favorites" ? " active" : ""}`} type="button" onClick={() => void switchView("favorites")}><Star size={16} />收藏</button>
-        <button className={`button secondary app-nav-link${view === "qa" ? " active" : ""}`} type="button" onClick={() => void switchView("qa")}><MessageSquareText size={16} />问答</button>
-        <button className={`button secondary app-nav-link${view === "stats" ? " active" : ""}`} type="button" onClick={() => void switchView("stats")}><BarChart3 size={16} />统计</button>
+        <button className={`button secondary app-nav-link${view === "notes" ? " active" : ""}`} type="button" aria-current={view === "notes" ? "page" : undefined} onClick={() => void switchView("notes")}><Lightbulb size={16} />随记</button>
+        <button className={`button secondary app-nav-link${view === "favorites" ? " active" : ""}`} type="button" aria-current={view === "favorites" ? "page" : undefined} onClick={() => void switchView("favorites")}><Star size={16} />收藏</button>
+        <button className={`button secondary app-nav-link${view === "qa" ? " active" : ""}`} type="button" aria-current={view === "qa" ? "page" : undefined} onClick={() => void switchView("qa")}><MessageSquareText size={16} />问答</button>
+        <button className={`button secondary app-nav-link${view === "stats" ? " active" : ""}`} type="button" aria-current={view === "stats" ? "page" : undefined} onClick={() => void switchView("stats")}><BarChart3 size={16} />统计</button>
         <div className="theme-menu" ref={themeMenu} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setThemeOpen(false); }}>
           <button className="button icon-only" ref={themeButton} type="button" onClick={() => setThemeOpen(value => !value)} aria-label="切换主题模式" aria-expanded={themeOpen} title="切换主题模式">{themePreference === "system" ? <Monitor size={17} /> : theme === "dark" ? <Moon size={17} /> : <Sun size={17} />}</button>
           {themeOpen && <div className="theme-popover" role="group" aria-label="主题模式">{themes.map(({ value, label, Icon }) => <button key={value} className={themePreference === value ? "active" : ""} type="button" aria-pressed={themePreference === value} onClick={() => chooseTheme(value)}><Icon size={15} />{label}{value === "system" && <small>{theme === "dark" ? "夜间" : "日间"}</small>}</button>)}</div>}
@@ -251,6 +252,7 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, module
           <div className="sidebar-section" data-log-section="months">
             <div className="sidebar-heading" ref={monthHeading} tabIndex={-1}><div className="section-title inline"><CalendarDays size={15} /><span>月份</span></div><button className="sidebar-collapse-button" onClick={() => changeCollapsed(true)} aria-label="折叠左侧栏" title="折叠左侧栏"><ChevronLeft size={16} /></button></div>
             <div className="month-list">{(compact && !monthsExpanded ? months.slice(0, 6) : months).map(month => <button key={month.id} type="button" className={`nav-item${month.id === selectedMonth ? " active" : ""}`} aria-current={month.id === selectedMonth ? "true" : undefined} onClick={() => { setQuery(""); onMonth(month.id); }}><span>{month.label}</span><small>{month.dayCount}</small></button>)}</div>
+            {!loading && !error && !months.length && <WorkspaceState kind="empty" title="暂无月份记录" layout="compact" />}
             {compact && months.length > 6 && <button className="button secondary full" type="button" aria-expanded={monthsExpanded} onClick={() => setMonthsExpanded(value => !value)}>{monthsExpanded ? "收起月份" : `展开其余 ${months.length - 6} 个月份`}</button>}
           </div>
           <div className="sidebar-section grow" data-log-section="dates">
@@ -258,9 +260,9 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, module
             {!compact && logDateCreation}
             <div className="sidebar-search"><Search size={14} /><input ref={dateSearch} value={query} onChange={event => setQuery(event.target.value)} placeholder="按标签定位日期" aria-label="按日期标签搜索日期" />{query && <button className="sidebar-search-clear" type="button" onClick={() => { setQuery(""); dateSearch.current?.focus(); }} aria-label="清空日期搜索"><X size={13} /></button>}</div>
             <div className="day-list" aria-busy={loading}>
-              {loading && <div className="day-empty" role="status">正在读取日志目录…</div>}
-              {error && <div className="day-empty" role="alert">{error}<button className="button secondary full" type="button" onClick={onRetry}>重试</button></div>}
-              {!loading && !error && !filteredDays.length && <div className="day-empty">{query ? "未找到匹配标签的日期" : months.length ? "本月暂无日志" : "暂无学习日志"}</div>}
+              {loading && <WorkspaceState kind="loading" title="正在读取日志目录" layout="compact" />}
+              {error && <WorkspaceState kind="error" title="日志目录加载失败" description={error} layout="compact" actions={<button className="button secondary" type="button" onClick={onRetry}>重试</button>} />}
+              {!loading && !error && !filteredDays.length && <WorkspaceState kind="empty" title={query ? "没有符合条件的日志" : months.length ? "本月暂无日志" : "暂无学习日志"} layout="compact" />}
               {!loading && !error && filteredDays.map(day => <div key={day.date} className={`day-item${day.date === selectedDate ? " active" : ""}`} onClick={() => void selectSidebarDate(day.date)}>
                 <button className="day-item-open" type="button" aria-current={day.date === selectedDate ? "date" : undefined} onClick={event => { event.stopPropagation(); void selectSidebarDate(day.date); }}>
                   <span className="day-date">{query.trim() ? day.date : day.date.slice(5)}</span><span className="sr-only">打开该日块</span>
@@ -288,11 +290,11 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, module
       </aside>}
     </section>
     <nav className="mobile-bottom-nav" aria-label="主要功能" inert={drawerOpen}>
-      <button className={view === "log" ? "active" : ""} type="button" onClick={() => void switchView("log")}><FileText size={20} /><span>日志</span></button>
-      <button className={view === "notes" ? "active" : ""} type="button" onClick={() => void switchView("notes")}><Lightbulb size={20} /><span>随记</span></button>
-      <button className={view === "favorites" ? "active" : ""} type="button" onClick={() => void switchView("favorites")}><Star size={20} /><span>收藏</span></button>
-      <button className={view === "qa" ? "active" : ""} type="button" onClick={() => void switchView("qa")}><MessageSquareText size={20} /><span>问答</span></button>
-      <button className={view === "stats" ? "active" : ""} type="button" onClick={() => void switchView("stats")}><BarChart3 size={20} /><span>统计</span></button>
+      <button className={view === "log" ? "active" : ""} type="button" aria-current={view === "log" ? "page" : undefined} onClick={() => void switchView("log")}><FileText size={20} /><span>日志</span></button>
+      <button className={view === "notes" ? "active" : ""} type="button" aria-current={view === "notes" ? "page" : undefined} onClick={() => void switchView("notes")}><Lightbulb size={20} /><span>随记</span></button>
+      <button className={view === "favorites" ? "active" : ""} type="button" aria-current={view === "favorites" ? "page" : undefined} onClick={() => void switchView("favorites")}><Star size={20} /><span>收藏</span></button>
+      <button className={view === "qa" ? "active" : ""} type="button" aria-current={view === "qa" ? "page" : undefined} onClick={() => void switchView("qa")}><MessageSquareText size={20} /><span>问答</span></button>
+      <button className={view === "stats" ? "active" : ""} type="button" aria-current={view === "stats" ? "page" : undefined} onClick={() => void switchView("stats")}><BarChart3 size={20} /><span>统计</span></button>
     </nav>
     {compact && (panel === "navigation" || panel === "writing") && <div className="mobile-overlay-backdrop" aria-hidden="true" onClick={() => setPanel(null)} />}
     {compact && panel === "account" && <div className="mobile-sheet-backdrop" onClick={() => setPanel(null)}><section ref={account} className="mobile-action-sheet mobile-account-sheet" role="dialog" aria-modal="true" aria-label="应用设置" onClick={event => event.stopPropagation()}>

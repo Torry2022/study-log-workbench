@@ -200,3 +200,7 @@ Index 创建每个实例的 LogSession，并通过 ObjectLink 交给日志功能
 登录页窄屏 Scroll 使用 LayoutPolicy.matchParent 与 ignoreLayoutSafeArea(SYSTEM, TOP) 延伸实际布局视口；Scroll 内部内容单独通过 TYPE_SYSTEM.topRect.height（px 转 vp）保持初始顶部避让。登录页监听系统避让变化并在离开时注销，异步窗口获取检查页面代次，不阻断公开实例恢复流程。宽屏布局、纹理、字体、密码保护及根页面 RESIZE 保持原职责；布局坐标、UiTest 命中边界与实际绘制必须分别验收。
 
 Windows 本机入口退出时，先等待串行控制操作及 Web／MCP 自身收尾，再停止 HTTP 监听。入口按连接计数尚未完成的响应；仅在响应完成或连接无请求时排空并关闭控制连接，避免浏览器半关闭连接阻碍启动锁释放。资料锁与启动锁各由其所属生命周期释放，不靠强杀进程或 PID／时间猜测。
+
+### 首次使用状态的展示边界
+
+五模块空内容复用 WorkspaceState 的 module 布局，侧栏与小列表复用 compact；与加载、错误分开。日志是否为空由成功读取的目录决定，不从当前日期是否选中推断。RAG 历史列表失败有独立 historyError 和重试请求，不能复用读取某个会话的入口，也不遮蔽已有会话错误。新实例无内容时禁用内容导出，保留新建、材料整理及筛选复位入口；设计规范和实际视觉证据见 DESIGN.md 与产品实施记录。

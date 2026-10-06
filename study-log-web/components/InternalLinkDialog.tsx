@@ -189,7 +189,7 @@ export function InternalLinkDialog({ initialAlias = "", onClose, onInsert }: Int
           ) : error && results.length === 0 ? (
             <LinkState kind="error" title={error} onRetry={() => setRetry(value => value + 1)} />
           ) : results.length === 0 ? (
-            <LinkState kind="empty" title="没有匹配的日块或小节" />
+            <LinkState kind="empty" title="没有匹配的日志或小节" />
           ) : (
             results.map((candidate, index) => (
               <button

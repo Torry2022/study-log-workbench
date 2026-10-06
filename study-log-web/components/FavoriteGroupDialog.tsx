@@ -23,7 +23,7 @@ export function FavoriteGroupDialog({ favoriteId, favorites, onClose, onOpenCent
       <div className="favorite-group-dialog-list">{favorites.groups.length ? favorites.groups.map(group => <label className="favorite-group-option" key={group.id}>
         <span><strong>{group.name}</strong><small>{favorites.favorites.filter(item => item.groupIds.includes(group.id)).length} 条收藏</small></span>
         <input type="checkbox" checked={favorite.groupIds.includes(group.id)} disabled={favorites.busy} onChange={event => void favorites.setGroup(favorite.id, group.id, event.target.checked)} />
-      </label>) : <div className="favorite-group-empty">还没有自定义分组，可先创建一个。</div>}</div>
+      </label>) : <div className="favorite-group-empty">暂无自定义分组</div>}</div>
       <form className="favorite-group-dialog-create" onSubmit={async event => {
         event.preventDefault(); const group = await favorites.createGroup(name.trim());
         if (group && await favorites.setGroup(favorite.id, group.id, true)) setName("");

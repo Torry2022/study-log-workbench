@@ -89,7 +89,7 @@ function NoteTagPicker({ value, options, onChange }: {
         <span>{tag.create ? `创建标签：${tag.value}` : tag.value}</span>
         {tag.count > 0 && <small>{tag.count}</small>}
       </button>)}
-      {choices.length === 0 && <span className="note-tag-empty">暂无匹配标签</span>}
+      {choices.length === 0 && <span className="note-tag-empty">没有匹配的标签</span>}
     </div>}
   </div>;
 }
@@ -315,7 +315,7 @@ export function NotesModule({ notes, themeMode, onOpenLogTarget, exportAction, e
       {notes.error && <div className="notes-error" role="alert">{notes.error}{notes.conflict && <button className="button secondary" type="button" disabled={notes.busy} onClick={() => void notes.reloadDraft()}>重新读取服务器版本</button>}</div>}
       {notes.message && <div className="notes-feedback" role="status">{notes.message}</div>}
       {notes.insertions.status && <div className={notes.insertions.failed ? "notes-error" : "notes-feedback"} role={notes.insertions.failed ? "alert" : "status"}>{notes.insertions.status}</div>}
-      {extraction || (notes.editorOpen ? <NoteEditor notes={notes} /> : !notes.loaded ? <WorkspaceState kind={notes.loadError ? "error" : "loading"} title={notes.loadError ? "随记加载失败" : "正在加载随记"} description={notes.loadError || undefined} className="notes-state" actions={notes.loadError ? <button className="button secondary" type="button" disabled={notes.loading} onClick={() => void notes.reload()}>重试</button> : undefined} /> : notes.visibleNotes.length ? <div className="notes-feed">{notes.visibleNotes.map(note => <NoteItem key={note.id} note={note} notes={notes} themeMode={themeMode} onOpenLogTarget={onOpenLogTarget} />)}</div> : <WorkspaceState kind="empty" icon={Lightbulb} title={notes.notes.length ? "没有匹配的随记" : "还没有随记"} description={notes.notes.length ? "调整搜索词、年份或标签后重试。" : "记录一个值得长期保留的观点、经验或判断。"} className="notes-state notes-empty-state" />)}
+      {extraction || (notes.editorOpen ? <NoteEditor notes={notes} /> : !notes.loaded ? <WorkspaceState kind={notes.loadError ? "error" : "loading"} title={notes.loadError ? "随记加载失败" : "正在加载随记"} description={notes.loadError || undefined} className="notes-state" actions={notes.loadError ? <button className="button secondary" type="button" disabled={notes.loading} onClick={() => void notes.reload()}>重试</button> : undefined} /> : notes.visibleNotes.length ? <div className="notes-feed">{notes.visibleNotes.map(note => <NoteItem key={note.id} note={note} notes={notes} themeMode={themeMode} onOpenLogTarget={onOpenLogTarget} />)}</div> : <WorkspaceState kind="empty" icon={Lightbulb} title={notes.notes.length ? "没有匹配的随记" : "暂无随记"} description={notes.notes.length ? "试试其他关键词、年份或标签。" : "随手记下学习中的问题、想法或收获。"} layout="module" className="notes-state notes-empty-state" />)}
     </div></div>
     {notes.insertions.link && createPortal(<InternalLinkDialog initialAlias={notes.insertions.link.alias} onClose={notes.insertions.closeLink} onInsert={notes.insertions.insertInternalLink} />, document.body)}
   </>;

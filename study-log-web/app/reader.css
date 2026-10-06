@@ -430,6 +430,9 @@
   order: 2;
 }
 
+.log-empty-state { margin-top: 28px; }
+@media (max-width: 1023px) { .log-empty-state { margin-top: 0; } }
+
 .preview-empty {
   align-self: start;
   min-height: 280px;

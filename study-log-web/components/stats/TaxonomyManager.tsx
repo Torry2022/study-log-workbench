@@ -156,7 +156,7 @@ export function TaxonomyManager({
             ))}
           </tbody>
         </table>
-        {!filteredRows.length && <WorkspaceState kind="empty" title="没有符合筛选条件的小标签" layout="compact" className="stats-empty compact" />}
+        {!filteredRows.length && <WorkspaceState kind="empty" title={catalog.length ? "没有符合条件的标签" : "暂无可分类的小节"} description={catalog.length ? "试试其他关键词，或调整筛选条件。" : "日志中的三级标题会成为小节，可在这里归入不同主题。"} layout="compact" className="stats-empty compact" />}
       </div>
     </div>
   );

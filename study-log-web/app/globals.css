@@ -203,6 +203,10 @@ button:disabled {
   min-height: 260px;
 }
 
+.workspace-state.workspace-state-module {
+  min-height: clamp(340px, 48vh, 540px);
+}
+
 .workspace-state-compact {
   min-height: 72px;
   padding: 12px;
@@ -216,11 +220,17 @@ button:disabled {
 }
 
 .workspace-state-compact .workspace-state-body {
-  grid-template-columns: auto minmax(0, auto);
-  align-items: center;
   gap: 6px;
   max-width: 100%;
 }
+
+.workspace-state-heading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.workspace-state-heading .workspace-state-icon { flex-shrink: 0; }
 
 .workspace-state-icon {
   width: 20px;

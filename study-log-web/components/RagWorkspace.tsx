@@ -11,6 +11,7 @@ import { stripRagCitationLabels } from "@/lib/rag-answer";
 
 interface RagWorkspaceProps {
   availability?: ReactNode;
+  noLogs?: boolean;
   onOpenLog?: () => void;
   active: boolean;
   visible: boolean;
@@ -34,6 +35,7 @@ interface RagWorkspaceProps {
 
 export function RagWorkspace({
   availability,
+  noLogs = false,
   active,
   onOpenLog,
   visible,
@@ -221,8 +223,9 @@ export function RagWorkspace({
           <WorkspaceState
             kind="empty"
             icon={MessageSquareText}
-            title="从学习日志中查找答案"
-            description="回答将引用已有日块中的具体小节。"
+            title={noLogs ? "暂无可参考的日志" : "关于日志，你想了解什么？"}
+            description={noLogs ? "保存学习日志后，可以在这里提问并回看相关内容。" : "输入问题，回答会附上相关日志，方便回看。"}
+            layout="module"
             className="rag-empty"
           />
         ) : (

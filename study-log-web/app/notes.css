@@ -777,9 +777,6 @@
 .note-entry:focus { outline: none; }
 
 /* Empty modules share the question workspace's visual anchor. */
-.notes-empty-state {
-  min-height: clamp(340px, 48vh, 540px);
-}
 .reader-content-notes:has(.notes-empty-state) {
   padding-top: 28px;
 }

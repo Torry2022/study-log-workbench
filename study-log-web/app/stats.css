@@ -542,3 +542,6 @@
   .taxonomy-filter-bar { grid-template-columns: minmax(0, 1fr); }
   .taxonomy-table-wrap { max-width: calc(100vw - 32px); -webkit-overflow-scrolling: touch; }
 }
+
+.stats-workspace-v2:has(> .workspace-state-module) { padding-top: 28px; }
+@media (max-width: 1023px) { .stats-workspace-v2:has(> .workspace-state-module) { padding-top: 0; } }

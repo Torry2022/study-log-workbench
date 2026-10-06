@@ -141,7 +141,7 @@ export function StatsOverview({
             <time>{entry.date}</time><strong>{entry.headingText}</strong><span>{entry.domain}</span>
           </button>
         ))}
-        {!drillEntries.length && <WorkspaceState kind="empty" title="该日期没有可统计的日志小节" layout="compact" className="stats-empty compact" />}
+        {!drillEntries.length && <WorkspaceState kind="empty" title="当天暂无可统计的小节" layout="compact" className="stats-empty compact" />}
       </div>
     </>
   ) : null;
@@ -229,7 +229,7 @@ export function StatsOverview({
                 {activeSegment && <div className="stats-donut-tooltip"><i style={{ background: activeSegment.color }} /><strong>{activeSegment.domain}</strong><span>{activeSegment.count} 个 · {activeSegment.percentage}% · {activeSegment.activeDays} 天</span></div>}
               </figure>
             </div>
-          ) : <WorkspaceState kind="empty" title="这个月份还没有可统计的日志小节" layout="compact" className="stats-empty compact" />}
+          ) : <WorkspaceState kind="empty" title="本月暂无可统计的小节" layout="compact" className="stats-empty compact" />}
         </section>
 
         <section className="stats-section stats-ranking-section">
@@ -242,7 +242,7 @@ export function StatsOverview({
                 <span className="stats-rank-value"><strong>{item.count}</strong><small>{item.delta === 0 ? "—" : `${item.delta > 0 ? "+" : ""}${item.delta}`}</small></span>
               </button>
             ))}
-            {!stats?.topTags.length && <WorkspaceState kind="empty" title="暂无标签排行" layout="compact" className="stats-empty compact" />}
+            {!stats?.topTags.length && <WorkspaceState kind="empty" title="暂无标签数据" layout="compact" className="stats-empty compact" />}
           </div>
         </section>
       </div>

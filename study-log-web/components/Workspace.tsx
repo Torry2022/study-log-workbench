@@ -229,7 +229,7 @@ export function Workspace() {
       : logs.selection.view === "notes" ? { title: <><Lightbulb size={15} /><span>随记</span></>, label: "年份和标签", icon: <Tag size={18} />, filtered: notes.yearFilter !== "all" || notes.tagFilter !== "all", onReset: notes.clearFilters, railActionBefore: <button className="sidebar-rail-button" type="button" title="新建随记" aria-label="新建随记" disabled={notes.saving} onClick={() => void notesWithExtraction.openNew()}><Plus size={18} /></button> }
       : logs.selection.view === "stats" ? { title: "统计导航", label: "统计月份", icon: <CalendarDays size={18} />, filtered: Boolean(stats.months[0] && stats.selectedMonth !== stats.months[0].id), onReset: () => { if (stats.months[0]) void stats.changeMonth(stats.months[0].id); }, railAction: <button className="sidebar-rail-button" type="button" title="分类管理" aria-label="分类管理" onClick={stats.showManager}><Tags size={18} /></button> } : undefined}
     ragNavigation={({ collapsed, visible, onCollapse, onExpand, onNavigate }) => <RagHistorySidebar active={active} visible={logs.selection.view === "qa" && visible} collapsed={collapsed}
-      sessions={rag.sessions} activeSessionId={rag.session?.id || ""} query={rag.query} loading={rag.loading} generating={rag.generating || rag.saving || rag.initializing}
+      sessions={rag.sessions} activeSessionId={rag.session?.id || ""} query={rag.query} loading={rag.loading} error={rag.historyError} onRetry={rag.retryHistory} generating={rag.generating || rag.saving || rag.initializing}
       onCollapse={onCollapse} onExpand={onExpand} onQueryChange={rag.setQuery} onNew={() => { void rag.newSession().then(accepted => { if (accepted) onNavigate(); }); }}
       onOpen={async id => { const accepted = await logs.selectRagSession(id); if (accepted) onNavigate(); return accepted; }} onRename={rag.rename} onDelete={rag.delete} />}
     inspectorTab={inspectorTab} onInspectorTab={setInspectorTab}
@@ -247,12 +247,12 @@ export function Workspace() {
     <div className="workspace-view" hidden={logs.selection.view !== "qa"}>
       {rag.error && <div className="editor-navigation-status" role="alert">{rag.error}<button className="button secondary" onClick={rag.clearError}>关闭</button><button className="button secondary" onClick={() => void rag.reloadSession()}>重新读取</button></div>}
       {(rag.saveError || rag.saving) && <div className="editor-navigation-status" role={rag.saveError ? "alert" : "status"}>{rag.saveError || "正在保存问答历史…"}{rag.saveError && <><button className="button secondary" disabled={rag.saving || !active} onClick={rag.retrySave}>重试保存</button><button className="button secondary" disabled={rag.saving || !active} onClick={() => void rag.reloadSession()}>放弃本地回答并重新读取</button></>}</div>}
-      <RagWorkspace onOpenLog={openLog} active={active} visible={logs.selection.view === "qa"} disabled={!rag.configured || rag.saving || Boolean(rag.saveError)} messages={rag.messages} initializing={rag.initializing}
-        availability={rag.configurationError ? <FeatureAvailability title="问答服务尚未就绪" description="已有问答仍可查看，服务就绪后即可继续提问。" messages={[rag.configurationError]} onCheck={() => void rag.refreshConfiguration()} /> : undefined}
+      <RagWorkspace noLogs={!logs.navigationLoading && !logs.navigationError && !logs.months.length} onOpenLog={openLog} active={active} visible={logs.selection.view === "qa"} disabled={!rag.configured || rag.saving || Boolean(rag.saveError)} messages={rag.messages} initializing={rag.initializing}
+        availability={rag.configurationError ? <FeatureAvailability title="问答服务尚未就绪" description="暂时无法提问，已有的问答记录仍可查看。" messages={[rag.configurationError]} onCheck={() => void rag.refreshConfiguration()} /> : undefined}
         question={rag.question} stage={rag.stage} generating={rag.generating} themeMode={theme} answerMode={rag.answerMode} focusRequestToken={rag.focusToken} sessionNavigationToken={rag.navigationToken}
         onQuestionChange={rag.setQuestion} onAnswerModeChange={rag.setAnswerMode} onSubmit={() => void rag.submit()} onStop={rag.stop} onRegenerate={() => void rag.regenerate()} onCitation={citation => void openRagCitation(citation)} />
     </div>
-    <div className="workspace-view" hidden={!logView}><LogReader active={active && logView} favorites={favorites} exporting={exporting} day={logs.day} date={logs.selection.date} heading={logs.selection.heading}
+    <div className="workspace-view" hidden={!logView}><LogReader hasLogs={logs.months.length > 0} active={active && logView} favorites={favorites} exporting={exporting} day={logs.day} date={logs.selection.date} heading={logs.selection.heading}
       onOpenAi={() => setOpenAiRequest(value => value + 1)}
       onOpenFavorites={() => { void logs.selectView("favorites").then(accepted => { if (accepted) { clearSearch(); setReading(false); void favorites.reload(); } }); }}
       navigation={{ previousDate: dayIndex > 0 ? visibleDays[dayIndex - 1].date : null, nextDate: dayIndex >= 0 ? visibleDays[dayIndex + 1]?.date || null : null, showAdjacent: true,
@@ -270,7 +270,7 @@ export function Workspace() {
     <div className="workspace-view" hidden={logs.selection.view !== "notes"}><NotesModule onOpenLog={openLog} notes={notesWithExtraction} themeMode={theme} onOpenLogTarget={openNotesLogTarget}
       extraction={extraction.open ? <NoteCandidateExtractor extraction={extraction} /> : undefined}
       extractAction={<button type="button" aria-label="AI提取" title="AI提取" className={`button secondary notes-ai-extract${extraction.open ? " active" : ""}`} disabled={!active || notes.busy || extraction.busy === "save"} onClick={async () => { if (extraction.open) await extraction.beforeLeave(); else if (await notes.beforeLeave()) extraction.begin(); }}><WandSparkles size={15} /><span>AI提取</span></button>}
-      exportAction={<ExportMenu scopes={[{ scope: "notes", label: "全部随记" }]} onExport={exporting.run} busy={exporting.busy} disabled={!active} />} /></div>
+      exportAction={<ExportMenu scopes={[{ scope: "notes", label: "全部随记", disabled: !notes.notes.length }]} onExport={exporting.run} busy={exporting.busy} disabled={!active || !notes.notes.length} />} /></div>
   </WorkspaceChrome>{backupOpen && active && <BackupDialog date={logs.selection.date} onClose={() => setBackupOpen(false)} onRestored={acceptExternal}
     beforeRestore={() => confirm({ title: "恢复此版本？", message: draft.dirty ? "恢复将替换当前日块，并放弃未保存修改；写入前会保留现有文件。" : "恢复将替换当前日块，其他日期保持不变；写入前会保留现有文件。", confirmLabel: "恢复", tone: "danger" })} />}
     <HighlightReviewDialog highlighting={highlighting} />

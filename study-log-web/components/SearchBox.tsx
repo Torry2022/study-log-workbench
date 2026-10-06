@@ -4,17 +4,19 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { History, Search, X } from "lucide-react";
 import { requestJson } from "@/lib/client-http";
 import type { SearchResult } from "@/lib/log-search";
+import { WorkspaceState } from "./WorkspaceState";
 import { useSearchHistory } from "@/hooks/use-search-history";
 import "@/app/search.css";
 
 export type SearchSelection = SearchResult & { query: string; ignoreCase: boolean; scope: "all" | "heading" };
 export interface SearchBoxProps {
   active: boolean;
+  noLogs?: boolean;
   onSelect: (result: SearchSelection) => Promise<boolean>;
   onQueryChange?: () => void;
 }
 
-export function SearchBox({ active, onSelect, onQueryChange }: SearchBoxProps) {
+export function SearchBox({ noLogs = false, active, onSelect, onQueryChange }: SearchBoxProps) {
   const [query, setQuery] = useState("");
   const [ignoreCase, setIgnoreCase] = useState(true);
   const [headingsOnly, setHeadingsOnly] = useState(false);
@@ -145,7 +147,7 @@ export function SearchBox({ active, onSelect, onQueryChange }: SearchBoxProps) {
         onClick={() => { changeQuery(""); input.current?.focus(); }} aria-label="清空搜索"><X size={15} /></button>}
     </form>
     {visible && <div className="search-popover" id="global-search-popover" role="listbox" aria-label="日志搜索结果" aria-busy={loading || selecting}>
-      {loading ? <div className="search-empty" role="status">正在搜索日志</div> : showingHistory ? <div className="search-history">
+      {loading ? <WorkspaceState kind="loading" title="正在搜索日志" layout="compact" /> : showingHistory ? <div className="search-history">
         <div className="search-history-header"><span>最近搜索</span><button type="button" onClick={() => { clear(); close(); }}>清除</button></div>
         {history.map((term, candidate) => <div key={term} className={`search-history-item${candidate === index ? " keyboard-active" : ""}`} data-search-candidate-index={candidate}>
           <button id={`search-candidate-${candidate}`} type="button" role="option" aria-selected={candidate === index} onClick={() => selectHistory(term)}><History size={14} aria-hidden="true" /><span>{term}</span></button>
@@ -159,7 +161,7 @@ export function SearchBox({ active, onSelect, onQueryChange }: SearchBoxProps) {
         </button>)}
         {error ? <div className="search-empty search-error" role="alert"><span>{error}</span>
           {!results.length && <button type="button" className="button secondary" onClick={() => void runSearch()}>重试</button>}
-        </div> : !results.length && <div className="search-empty" role="status">{headingsOnly ? "未找到匹配的小节标题" : "未找到匹配内容"}</div>}
+        </div> : !results.length && <WorkspaceState kind="empty" title={noLogs ? "暂无学习日志" : headingsOnly ? "未找到匹配的小节标题" : "未找到匹配内容"} description={noLogs ? "记录的内容会出现在这里，支持搜索标题和正文。" : "试试其他关键词，或调整搜索范围。"} layout="compact" />}
       </>}
     </div>}
   </div>;

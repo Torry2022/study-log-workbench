@@ -26,3 +26,7 @@
   .writing-inspector { position: fixed; inset: 0 0 0 auto; z-index: 92; width: min(420px, 94vw); height: var(--mobile-viewport-height, 100dvh); max-height: var(--mobile-viewport-height, 100dvh); visibility: hidden; pointer-events: none; }
   .writing-inspector.mobile-open { visibility: visible; pointer-events: auto; }
 }
+
+.inspector-empty-state .workspace-state-title { color: var(--on-dark-soft); }
+.inspector-empty-state .workspace-state-icon,
+.inspector-empty-state .workspace-state-description { color: var(--on-dark-soft); }

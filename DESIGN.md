@@ -304,3 +304,17 @@ For the knowledge-work client, this section supersedes the marketing-surface res
 - Form validation states beyond `{component.text-input-focused}` are not extracted — error / success states would need a sign-up or feedback flow to confirm.
 - The actual Claude product surface (claude.ai chat interface) shares some tokens with the marketing site but adds many product-specific components (chat bubbles, message tools, file upload chips, conversation history sidebar) that are out of scope for this marketing-surface document.
 - The "agent" / "computer use" demo cards on certain pages display animated Claude controlling a browser — the static screenshot doesn't fully capture the animation chrome.
+
+## 工作台首次使用与空状态
+
+新实例沿用日常工作台，不另设欢迎页、教学弹窗或营销插画。复用 `WorkspaceState`，图标来自现有线性图标库，颜色取主题变量。
+
+- 侧栏／筛选／搜索列表：`compact`，16px 图标与 14px 中等字重文字同排，72px 最小高度、12px 内边距。空月份、日期、问答历史使用同一密度；“全部 0”等仍有筛选含义的行保留，不叠加重复提示。
+- 模块正文：`module`，20px 图标、14px 标题、13px 说明，间距 8px；内容高度统一为 `clamp(340px, 48vh, 540px)`。桌面正文上方留 28px，窄屏使用原模块容器；不以整个长页面的中心定位空提示。
+- 文案分别表达：尚无资料、已有资料但未选择、筛选无结果。标题说明状态，正文只补充用途或一个可行操作；不使用口号、训导语气和“日块”等实现词，不把加载失败、未配置模型当作无资料。统一口径见 [空状态文案](docs/empty-state-copy.md)。
+- 日志指向“今天”，随记指向“新建随记”，收藏说明目录星标，问答说明日志与回答的关联，统计说明保存后出现日期／数量／主题分布。正文中央不复制侧栏／工具栏已有按钮。
+- 无资料时保留工作台导航与工具栏位置；保存、删除、备份当前日志、内容导出遵从真实可用性。模型可选，缺失配置在既有可折叠说明中解释，不用红色错误制造首次使用告警。
+- AI 面板未选日期时使用同一紧凑状态和深色表面文字变量，保留材料整理能力；配置引导区分 Windows 启动页与服务器维护者。
+- 当前模块的桌面顶栏和移动导航均有选中样式及 `aria-current`；沿用原版珊瑚色混合底色和边框，不另创视觉语义。
+
+首次使用验收从空实例出发，覆盖五模块、侧栏、搜索及 AI 前置状态，并验证创建首篇记录后转入正常工作台；加载失败／重试与筛选无结果单列，不冒充空实例成功。

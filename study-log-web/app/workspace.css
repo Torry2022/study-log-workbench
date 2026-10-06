@@ -2,7 +2,7 @@
 
 .workspace-view:not([hidden]) { display: contents; }
 .mobile-bottom-nav { display: none; }
-.app-nav-link.active {
+.button.app-nav-link.active {
   border-color: color-mix(in srgb, var(--primary) 42%, var(--hairline));
   background: color-mix(in srgb, var(--primary) 10%, var(--canvas));
   color: var(--ink);

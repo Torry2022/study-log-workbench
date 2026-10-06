@@ -17,6 +17,8 @@ interface RagHistorySidebarProps {
   activeSessionId: string;
   query: string;
   loading: boolean;
+  error: string;
+  onRetry: () => void;
   generating: boolean;
   onCollapse: () => void;
   onExpand: () => void;
@@ -37,6 +39,8 @@ export function RagHistorySidebar({
   activeSessionId,
   query,
   loading,
+  error,
+  onRetry,
   generating,
   onCollapse,
   onExpand,
@@ -179,7 +183,8 @@ export function RagHistorySidebar({
 
   function renderSessionList() {
     if (loading) return <WorkspaceState kind="loading" title="正在加载历史记录" layout="compact" className="rag-history-empty" />;
-    if (groups.length === 0) return <WorkspaceState kind="empty" title={query ? "未找到匹配会话" : "暂无历史问答"} layout="compact" className="rag-history-empty" />;
+    if (error) return <WorkspaceState kind="error" title="历史问答加载失败" description={error} layout="compact" className="rag-history-empty" actions={<button className="button secondary" type="button" onClick={onRetry}>重试</button>} />;
+    if (groups.length === 0) return <WorkspaceState kind="empty" title={query ? "没有匹配的历史问答" : "暂无历史问答"} layout="compact" className="rag-history-empty" />;
 
     return (
       <div className="rag-history-groups">

@@ -227,10 +227,6 @@
   font-size: 12px;
 }
 
-.rag-history-empty {
-  min-height: 52px;
-  padding: 10px 8px;
-}
 
 .rag-history-popover {
   position: absolute;

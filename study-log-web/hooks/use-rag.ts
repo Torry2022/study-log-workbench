@@ -29,6 +29,8 @@ export function useRag(options: Options) {
   const [query, setQuery] = useState("");
   const currentQuery = useRef(query); currentQuery.current = query;
   const [loading, setLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+  const [historyRevision, setHistoryRevision] = useState(0);
   const [initializing, setInitializing] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -66,10 +68,10 @@ export function useRag(options: Options) {
   }, []);
   useEffect(() => {
     if (!options.active || !options.visible) return;
-    const controller = new AbortController(); setLoading(true);
-    const timer = setTimeout(() => { void refreshList(controller.signal).catch(failure => { if (!controller.signal.aborted) setError(failure.message); }).finally(() => { if (!controller.signal.aborted) setLoading(false); }); }, query ? 150 : 0);
+    const controller = new AbortController(); setLoading(true); setHistoryError("");
+    const timer = setTimeout(() => { void refreshList(controller.signal).catch(failure => { if (!controller.signal.aborted) setHistoryError(failure.message); }).finally(() => { if (!controller.signal.aborted) setLoading(false); }); }, query ? 150 : 0);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [options.active, options.visible, query, refreshList]);
+  }, [options.active, options.visible, query, refreshList, historyRevision]);
   useEffect(() => { if (options.active && options.visible) void refreshConfiguration(); }, [options.active, options.visible, refreshConfiguration]);
   const install = useCallback((value: RagSession | null) => {
     setSession(value); setMessages(value?.messages || []); setQuestion(""); setAnswerMode(value?.answerMode || "logs_only");
@@ -195,7 +197,7 @@ export function useRag(options: Options) {
     finally { setInitializing(false); }
   }
   return { sessions, session, messages, question, setQuestion,
-    answerMode, setAnswerMode, query, setQuery, loading, initializing, generating, saving, stage, error, saveError, configured, configurationError, focusToken, navigationToken, dirty,
+    answerMode, setAnswerMode, query, setQuery, loading, historyError, retryHistory: () => setHistoryRevision(value => value + 1), initializing, generating, saving, stage, error, saveError, configured, configurationError, focusToken, navigationToken, dirty,
     beforeLeave, refreshConfiguration, refreshList, reloadSession, submit: () => submit(), regenerate: () => submit(true), stop: () => request.current?.abort(),
     retrySave: () => { if (pendingSave.current && live.current.active && !saving) void save(pendingSave.current); },
     newSession: async () => { if (await beforeLeave()) { install(null); loadedRoute.current = ""; live.current.onRoute(""); setFocusToken(value => value + 1); return true; } return false; },

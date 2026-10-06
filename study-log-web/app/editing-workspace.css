@@ -307,11 +307,6 @@
     padding-right: 16px;
   }
 
-  .workspace-state-title {
-    font-family: "Study Log Latin Serif", "Study Log Serif", Georgia, serif;
-    font-weight: 500;
-  }
-
   .source-workspace,
   .split-source {
     min-height: calc(var(--mobile-viewport-height, 100dvh) - var(--mobile-topbar-height) - var(--mobile-bottom-occupied) - 64px);

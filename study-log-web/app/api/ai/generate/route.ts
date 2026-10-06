@@ -3,6 +3,7 @@ import { requireAuth } from "@/lib/auth";
 import { AiChatError } from "@/lib/ai-chat";
 import { ChatConfigurationError } from "@/lib/ai-config";
 import { WritingPromptError } from "@/lib/ai-prompts";
+import { GenerationPresetError } from "@/lib/generation-presets-store";
 import { AiGenerationInputError, generateLogDraft } from "@/lib/ai-generation";
 
 export const runtime = "nodejs";
@@ -30,6 +31,7 @@ export async function POST(request: NextRequest) {
     const result = await generateLogDraft(input, request.signal);
     return Response.json({ result }, { headers });
   } catch (error) {
+    if (error instanceof GenerationPresetError) return Response.json({ error: error.message, code: error.code }, { status: error.status, headers });
     if (error instanceof AiGenerationInputError) return Response.json({ error: error.message, code: error.code }, { status: 400, headers });
     if (error instanceof ChatConfigurationError || error instanceof WritingPromptError) return Response.json({ error: error.message, code: error.code }, { status: 503, headers });
     if (error instanceof AiChatError) return Response.json({ error: error.message, code: error.code }, { status: error.status, headers });

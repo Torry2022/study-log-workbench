@@ -1,0 +1,35 @@
+.generation-preset-picker { display: grid; gap: 8px; }
+.generation-preset-picker-row { display: flex; gap: 8px; min-width: 0; }
+.generation-preset-picker-row select { flex: 1; min-width: 0; height: 36px; padding: 0 8px; border-radius: var(--radius-md); border: 1px solid rgba(250, 249, 245, .16); color: var(--on-dark); background: var(--surface-dark-soft); font: inherit; }
+.generation-preset-error { margin: 0; color: var(--error); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.generation-presets-backdrop { position: fixed; inset: 0; z-index: 110; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(20, 20, 19, .42); animation: generation-presets-in 160ms ease; }
+.generation-presets-dialog { width: min(900px, 100%); max-height: calc(100dvh - 48px); display: flex; flex-direction: column; overflow: hidden; color: var(--body); background: var(--canvas); border: 1px solid var(--hairline); border-radius: 12px; }
+.generation-presets-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 24px; border-bottom: 1px solid var(--hairline); }
+.generation-presets-dialog h2 { margin: 0; font-size: 22px; font-weight: 500; }
+.generation-presets-body { display: grid; grid-template-columns: 208px minmax(0, 1fr); min-height: 0; overflow: auto; }
+.generation-presets-body aside { display: flex; flex-direction: column; gap: 8px; padding: 16px; background: var(--surface-soft); border-right: 1px solid var(--hairline); }
+.generation-preset-item { display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 12px; border: 1px solid transparent; border-radius: var(--radius-md); background: transparent; color: var(--body); overflow-wrap: anywhere; }
+.generation-preset-item.active { background: var(--surface-card); border-color: var(--hairline); }
+.generation-preset-item small, .generation-presets-hint { color: var(--muted); font-size: 13px; line-height: 1.5; }
+.generation-presets-editor { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 24px; }
+.generation-presets-editor label { font-size: 14px; }
+.generation-presets-editor input, .generation-presets-editor textarea { width: 100%; border: 1px solid var(--hairline); border-radius: var(--radius-md); padding: 10px 12px; color: var(--body); background: var(--canvas); font: inherit; }
+.generation-presets-editor textarea { min-height: 240px; resize: vertical; font-family: "JetBrains Mono", Consolas, monospace; font-size: 13px; line-height: 1.65; }
+.generation-presets-editor input:focus, .generation-presets-editor textarea:focus, .generation-preset-picker select:focus { outline: 2px solid var(--primary); outline-offset: 2px; }
+.generation-presets-hint { margin: 0; }
+.generation-presets-comparison { border: 1px solid var(--hairline); border-radius: var(--radius-md); padding: 12px; }
+.generation-presets-comparison summary { cursor: pointer; font-size: 13px; }
+.generation-presets-comparison pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 160px; overflow: auto; font-size: 13px; }
+.generation-presets-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.generation-presets-actions .button { min-height: 36px; padding: 8px 12px; }
+.generation-presets-backdrop.dialog-exiting { opacity: 0; transition: opacity 160ms ease; }
+@keyframes generation-presets-in { from { opacity: 0; } to { opacity: 1; } }
+@media (max-width: 640px) {
+  .generation-presets-backdrop { padding: 12px; }
+  .generation-presets-dialog { max-height: calc(100dvh - 24px); }
+  .generation-presets-dialog header { padding: 16px; }
+  .generation-presets-body { grid-template-columns: minmax(0, 1fr); }
+  .generation-presets-body aside { max-height: 180px; overflow: auto; border-right: 0; border-bottom: 1px solid var(--hairline); }
+  .generation-presets-editor { padding: 16px; }
+}
+@media (prefers-reduced-motion: reduce) { .generation-presets-backdrop { animation: none; transition: none; } }

@@ -1,13 +1,13 @@
 import { unified } from "unified";
 import remarkParse from "remark-parse";
 import { getChatConfig } from "./ai-config.ts";
-import { readWritingPrompt } from "./ai-prompts.ts";
+import { readGenerationPreset } from "./generation-presets-store.ts";
 import { AiChatError, requestChat } from "./ai-chat.ts";
 import { getDay, listSavedDayContents } from "./log-store.ts";
 import { findRootAtxHeadings } from "./day-content.ts";
 import { isValidLogDate, todayInShanghai } from "./study-date.ts";
 
-export interface GenerateInput { date: string; material: string; extractedText?: string; instruction?: string }
+export interface GenerateInput { date: string; material: string; extractedText?: string; instruction?: string; presetId?: string }
 export interface GeneratedLog { content: string; model: string; warnings: string[] }
 export class AiGenerationInputError extends Error { readonly code = "AI_INVALID_INPUT"; }
 export const MAX_GENERATION_INPUT = 120_000;
@@ -19,6 +19,10 @@ export function validateGenerationInput(value: unknown): GenerateInput {
   const input = value as Record<string, unknown>;
   if (typeof input.date !== "string" || !isValidLogDate(input.date)) throw new AiGenerationInputError("请选择有效日期 YYYY-MM-DD");
   if (input.date > todayInShanghai()) throw new AiGenerationInputError("不能为未来日期生成日志");
+  if (input.presetId !== undefined && (typeof input.presetId !== "string" ||
+      !/^(?:legacy|builtin:(?:daily|concepts|practice)|user:[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$/.test(input.presetId))) {
+    throw new AiGenerationInputError("生成方案标识无效");
+  }
   for (const field of ["material", "extractedText", "instruction"] as const) {
     if (input[field] !== undefined && typeof input[field] !== "string") throw new AiGenerationInputError(`${field} 必须是文本`);
   }
@@ -28,7 +32,7 @@ export function validateGenerationInput(value: unknown): GenerateInput {
   if (material.length + extractedText.length > MAX_GENERATION_INPUT) throw new AiGenerationInputError("学习材料不能超过 120,000 字符");
   if (instruction.length > 4000) throw new AiGenerationInputError("补充要求不能超过 4,000 字符");
   if (![material, extractedText, instruction].some(text => text.trim())) throw new AiGenerationInputError("请先填写补充要求或学习材料");
-  return { date: input.date, material, extractedText, instruction };
+  return { date: input.date, material, extractedText, instruction, ...(input.presetId !== undefined ? { presetId: input.presetId as string } : {}) };
 }
 
 function invalidOutput(): never { throw new AiChatError("AI_INVALID_DRAFT", "生成内容不符合单日日志正文结构，请调整要求后重试"); }
@@ -81,7 +85,7 @@ export async function generateLogDraft(value: GenerateInput, signal?: AbortSigna
   const input = validateGenerationInput(value);
   if (signal?.aborted) throw new AiChatError("AI_CANCELLED", "已取消生成", 499);
   const config = getChatConfig();
-  const [template, existing, days] = await Promise.all([readWritingPrompt("generation"), getDay(input.date), listSavedDayContents()]);
+  const [template, existing, days] = await Promise.all([readGenerationPreset(input.presetId), getDay(input.date), listSavedDayContents()]);
   if (signal?.aborted) throw new AiChatError("AI_CANCELLED", "已取消生成", 499);
   const headings = [...new Set(days.filter(day => day.date <= input.date).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 30)
     .flatMap(day => findRootAtxHeadings(day.content, 3).map(heading => heading.text.slice(0, 160))))].slice(0, 30);

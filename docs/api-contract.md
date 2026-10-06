@@ -12,6 +12,12 @@
 
 配置及初始化错误不得包含密码、密钥或资料正文。实例身份不随服务重启改变。
 
+## 日志生成方案
+
+日志生成的 `POST /api/ai/generate` 另接受可选 `presetId`。省略或传 `legacy` 时继续使用实例 `generation.md`；默认方案只决定新界面的初始选择，不改变旧客户端请求。不存在的方案返回 404 `GENERATION_PRESET_NOT_FOUND`。非 legacy 方案无需有效的 generation.md，但仍需已配置聊天提供方。
+
+`GET /api/ai/generation-presets` 返回 `{version,defaultPresetId,presets:[{id,name,prompt,readOnly,issue?}]}`，全部操作需认证。内置 ID 为 `builtin:daily`、`builtin:concepts`、`builtin:practice`，与 `legacy` 均只读；个人方案为 `user:<uuid>`。POST 接受 `{version,name,prompt}`；PATCH 接受 `{version,id,name,prompt}` 或独立的 `{version,defaultPresetId}`；DELETE 接受 `{version,id}`。写操作返回完整新快照，旧 version 返回 409 `GENERATION_PRESET_CONFLICT`，不覆盖既有内容；删除默认个人方案时原子回退到 legacy。
+
 ## 只读日块
 
 - `GET /api/logs/months` 返回 `{months:[{id,label,dayCount,firstDate,lastDate}]}`，按月倒序。

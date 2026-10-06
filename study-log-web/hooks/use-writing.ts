@@ -7,6 +7,7 @@ import type { GeneratedLog } from "@/lib/ai-generation";
 import type { ExtractedDocument } from "@/lib/upload-extract";
 import { todayInShanghai } from "@/lib/study-date";
 import { appendMaterial, writingConfigurationMessages, writingInputProblem, type WritingCapabilities } from "@/lib/writing-view";
+import { useGenerationPresets } from "./use-generation-presets";
 
 interface Options {
   active: boolean; visible: boolean; date: string;
@@ -18,6 +19,8 @@ export type WritingController = ReturnType<typeof useWriting>;
 
 export function useWriting(options: Options) {
   const live = useRef(options); live.current = options;
+  const presets = useGenerationPresets(options.active);
+  const usesLegacyTemplate = presets.selectedId === "legacy";
   const [instruction, setInstruction] = useState("");
   const [material, setMaterial] = useState("");
   const [output, setOutput] = useState("");
@@ -37,7 +40,8 @@ export function useWriting(options: Options) {
   const [configurationLoading, setConfigurationLoading] = useState(false);
   const configurationRequest = useRef<AbortController | null>(null);
   const dirty = Boolean(instruction || material || output);
-  const configured = Boolean(capabilities?.features.aiWriting.supported && capabilities.features.aiWriting.configured);
+  const configured = Boolean(capabilities?.features.aiWriting.supported && (usesLegacyTemplate ? capabilities.features.aiWriting.configured :
+    capabilities.aiConfiguration?.provider.configured ?? capabilities.features.aiWriting.configured));
   const inputProblem = writingInputProblem(options.date, todayInShanghai(), material, instruction);
 
   function feedback(message: string, kind: typeof statusKind = "success") { setStatus(message); setStatusKind(kind); }
@@ -124,7 +128,7 @@ export function useWriting(options: Options) {
     } finally { finish(operation); }
   }
   async function generate() {
-    if (!live.current.active || !live.current.visible || pending.current || confirming.current) return;
+    if (!live.current.active || !live.current.visible || pending.current || confirming.current || presets.loading || presets.saving) return;
     const problem = writingInputProblem(live.current.date, todayInShanghai(), inputs.current.material, inputs.current.instruction);
     if (problem) { feedback(problem, "warning"); return; }
     if (!configured) { feedback("请先完成日志生成配置；现有学习材料已保留。", "warning"); return; }
@@ -139,7 +143,7 @@ export function useWriting(options: Options) {
     const operation = begin("generate");
     try {
       const { result } = await requestJson<{ result: GeneratedLog }>("/api/ai/generate", { method: "POST", signal: operation.controller.signal,
-        body: JSON.stringify({ date: operation.date, material: inputs.current.material, instruction: inputs.current.instruction }) });
+        body: JSON.stringify({ date: operation.date, material: inputs.current.material, instruction: inputs.current.instruction, presetId: presets.selectedId }) });
       if (!current(operation)) return;
       setOutput(result.content); setOutputDate(operation.date); setGenerationWarnings(result.warnings);
       feedback(`已生成草稿，模型：${result.model}`);
@@ -158,7 +162,7 @@ export function useWriting(options: Options) {
   }
   return { active: options.active, visible: options.visible, date: options.date, instruction, material, output, outputDate,
     setInstruction, setMaterial, setOutput: (value: string) => { setOutput(value); if (!inputs.current.outputDate) setOutputDate(live.current.date); },
-    materialWarnings, generationWarnings, status, statusKind, busy, dirty, configured, inputProblem,
-    configurationLoading, configurationError, configurationMessages: capabilities ? writingConfigurationMessages(capabilities) : [],
+    materialWarnings, generationWarnings, status, statusKind, busy, dirty, configured, inputProblem, presets,
+    configurationLoading, configurationError, configurationMessages: capabilities ? writingConfigurationMessages(capabilities, usesLegacyTemplate) : [],
     refreshConfiguration, beforeLeave, discard, cancelOperation, importFiles, generate, apply };
 }

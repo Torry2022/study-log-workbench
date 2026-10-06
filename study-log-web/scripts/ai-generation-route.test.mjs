@@ -12,6 +12,7 @@ import * as generation from '../lib/ai-generation.ts';
 import * as chat from '../lib/ai-chat.ts';
 import * as config from '../lib/ai-config.ts';
 import * as prompts from '../lib/ai-prompts.ts';
+import * as presets from '../lib/generation-presets-store.ts';
 const require = createRequire(import.meta.url), next = require('next/server');
 
 test('actual generation route authenticates first, bounds JSON, propagates cancellation, sanitizes failures and never writes the source', async t => {
@@ -50,7 +51,7 @@ test('actual generation route authenticates first, bounds JSON, propagates cance
   }
   const secret = crypto.randomBytes(48).toString('hex');
   const auth = await load('../lib/auth.ts', { '@/lib/config': { getSessionSecret: () => secret, getAppPassword: () => assert.fail('password read'), getCookieSecure: () => false } });
-  const route = await load('../app/api/ai/generate/route.ts', { '@/lib/auth': auth, '@/lib/ai-chat': chat, '@/lib/ai-config': config, '@/lib/ai-prompts': prompts, '@/lib/ai-generation': generation });
+  const route = await load('../app/api/ai/generate/route.ts', { '@/lib/auth': auth, '@/lib/ai-chat': chat, '@/lib/ai-config': config, '@/lib/ai-prompts': prompts, '@/lib/ai-generation': generation, '@/lib/generation-presets-store': presets });
   assert.equal((await route.POST({ cookies: new Map(), headers: new Headers(), get body() { assert.fail('unauthenticated body read'); } })).status, 401);
   assert.equal(calls, 0);
   const valid = { date: '2026-01-15', material: '合成素材' };

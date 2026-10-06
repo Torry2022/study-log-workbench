@@ -2,6 +2,7 @@
 
 import { Check, Upload, Wand2, X } from "lucide-react";
 import { FeatureAvailability } from "./FeatureAvailability";
+import { GenerationPresetControls } from "./GenerationPresetControls";
 import { useEffect, useRef } from "react";
 import type { WritingController } from "@/hooks/use-writing";
 import "@/app/writing.css";
@@ -16,6 +17,7 @@ export function WritingPanel({ writing }: { writing: WritingController; themeMod
   if (!writing.active) return null;
   return <div className="writing-panel panel-body">
     {(writing.configurationError || writing.configurationMessages.length > 0) && <FeatureAvailability dark title={writing.configurationError ? "暂时无法检查 AI 服务" : "AI 写作尚未启用"} description="仍可导入和整理材料，启用后即可生成草稿。" messages={writing.configurationError ? [writing.configurationError] : writing.configurationMessages} busy={writing.configurationLoading} onCheck={() => void writing.refreshConfiguration()} />}
+    <GenerationPresetControls presets={writing.presets} disabled={Boolean(writing.busy)} />
     <label htmlFor="writing-instruction">补充要求</label>
     <textarea id="writing-instruction" ref={instruction} className="dark-input instruction-textarea" value={writing.instruction} onChange={event => writing.setInstruction(event.target.value)} placeholder="例如：简写、突出项目实践、保留术语" rows={1} />
     <div className="field-row"><label htmlFor="writing-material">学习材料</label><label className={`mini-button file-button${writing.busy ? " disabled" : ""}`}><Upload size={14} />{writing.busy === "import" ? "导入中" : "导入文件"}
@@ -23,7 +25,7 @@ export function WritingPanel({ writing }: { writing: WritingController; themeMod
     </label></div>
     <textarea id="writing-material" className="material-textarea" value={writing.material} onChange={event => writing.setMaterial(event.target.value)} placeholder="粘贴笔记、代码片段、课程内容或项目进展" />
     {writing.inputProblem && (writing.material || writing.instruction) && <p className="status-line warning">{writing.inputProblem}</p>}
-    <button className="button primary full" type="button" onClick={() => void writing.generate()} disabled={Boolean(writing.busy) || !writing.configured || Boolean(writing.inputProblem)}><Wand2 size={15} />{writing.busy === "generate" ? "生成中" : "生成日志草稿"}</button>
+    <button className="button primary full" type="button" onClick={() => void writing.generate()} disabled={Boolean(writing.busy) || writing.presets.loading || writing.presets.saving || !writing.configured || Boolean(writing.inputProblem)}><Wand2 size={15} />{writing.busy === "generate" ? "生成中" : "生成日志草稿"}</button>
     {writing.busy === "generate" && <p className="status-line pending" role="status">正在生成日志草稿…</p>}
     {writing.busy && writing.busy !== "apply" && <button className="mini-button" type="button" onClick={writing.cancelOperation}><X size={13} />取消当前操作</button>}
     {writing.status && <p className={`status-line ${writing.statusKind}`} role={writing.statusKind === "error" ? "alert" : "status"}>{writing.status}</p>}

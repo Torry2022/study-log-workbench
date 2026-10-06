@@ -19,5 +19,7 @@ test("configuration diagnostics distinguish unavailable service, provider and ge
   assert.match(writingConfigurationMessages({ features: { aiWriting: { supported: false, configured: false } } })[0], /仍可导入/);
   const diagnostics = { features: { aiWriting: { supported: true, configured: false } }, aiConfiguration: { provider: { configured: false, issues: [{ message: "请配置模型" }] }, templates: { generation: { configured: false, issue: { message: "生成模板为空" } } } } };
   assert.deepEqual(writingConfigurationMessages(diagnostics), ["请配置模型", "生成模板为空"]);
+  assert.deepEqual(writingConfigurationMessages(diagnostics, false), ["请配置模型"]);
+  assert.deepEqual(writingConfigurationMessages({ ...diagnostics, aiConfiguration: { ...diagnostics.aiConfiguration, provider: { configured: true, issues: [] } } }, false), []);
   assert.deepEqual(writingConfigurationMessages({ features: { aiWriting: { supported: true, configured: true } } }), []);
 });

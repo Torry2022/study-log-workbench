@@ -17,12 +17,14 @@ node (Join-Path $devEcoStudio 'tools\hvigor\bin\hvigorw.js') --mode module -p pr
 
 将安装目录占位符替换为本机实际路径。签名 Profile、证书、私钥、构建产物及设备调试数据均不入库。
 
+登录键盘原生几何专项位于 `entry/src/ohosTest`。先执行 `ohpm install`，再用上述命令将 `module=entry@default` 改为 `module=entry@ohosTest` 构建测试模块。仅向已授权的公开版隔离安装同时安装主包与测试包，在已退出连接的窄屏登录页运行 `aa test -b org.studylog.workbench.publicedition -m entry_test -s unittest OpenHarmonyTestRunner -w 180`。测试不会清令牌、重置实例或提交连接；它核对布局和命中边界，密码保护画面的实际绘制仍需现场观察。
+
 ## 验收与已知限制
 
 `EntryAbility.ets` 的 `KEEP_SCREEN_ON_DURING_ACCEPTANCE` 默认 `false`。最新关闭常亮候选已分别在 PC、平板和 Pura 手机按原有系统超时观察：PC 为 TIMEOUT／INACTIVE，平板和手机为 TIMEOUT／SLEEP；PC 的 INACTIVE 不作为深度睡眠证据。此前失败和活动刷新样本保留在恢复清单，不能用成功结果反推旧失败原因。维护者设备上的临时常亮验收包不是发行包。
 
 最新源码的干净归档通过 214 项协议／实际方法测试及签名构建，当前源码与该归档的产品文件已核对一致。指定 rawfile 和 HAP 条目的限定扫描已有记录；依赖、SDK 与维护者签名复用，不等同于其他使用者的独立安装。
 
-登录页宽屏背景延伸至顶部系统栏，内容保留安全区；窄窗版权随表单滚动，宽窗保留底部位置。问答隐藏返回顶部控件的外壳不再阻挡重试点击，保留原布局及动效。对应设备、主题和候选包证据见[工作台恢复清单](../docs/harmony-workspace-recovery.md)，不把有限采样视为每一显示帧通过。
+登录页宽屏背景延伸至顶部系统栏，内容保留安全区；窄屏滚动视口也延伸至顶部，内部内容用实际状态栏高度避让，滚动后允许介绍区进入透明状态栏后方。窄窗版权随表单滚动，宽窗保留底部位置。问答隐藏返回顶部控件的外壳不再阻挡重试点击，保留原布局及动效。对应设备、主题和候选包证据见[工作台恢复清单](../docs/harmony-workspace-recovery.md)，不把有限采样视为每一显示帧通过。
 
 原版／公开版模拟器的首点键盘异常仍未定位，维护者真机指定首点路径已有正常结果。独立签名安装和异网络受信 HTTPS 仍是发布前待验条件，USB 反向端口与维护者调试签名不能替代；当前不宣称正式发行验收完成。两端个人版待核查事项见[反馈索引](../docs/personal-edition-feedback.md)，不将同源源码风险直接当作个人版设备已复现。

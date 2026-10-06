@@ -186,3 +186,5 @@ Index 创建每个实例的 LogSession，并通过 ObjectLink 交给日志功能
 普通工作台按键由 Index.handleWorkspaceKey 直接分派 F6、全局搜索、非日志模块回顶、随记保存信号、新建问答和应用弹层 Escape；workspaceShortcutBlocked 汇总应用层状态与日志功能报告的忙碌条件。日志页仅提供本地菜单／大纲关闭和日志保存、查找、回顶、前后日等命令，普通非日志快捷键不再依赖日志页分派。Escape 保留原有应用主题／菜单、日志菜单、日历／历史浮层、大纲、搜索、抽屉及阅读模式的处理顺序；新建和日期跳转继续经过离开确认，迟到回调核对当前绑定。主题面板在首帧完成后聚焦原生关闭按钮，使触摸打开后的按键进入应用事件链；卸载或再次发起焦点请求使旧帧失效，不增加可见布局节点。
 
 鸿蒙 `EntryAbility` 负责启动窗口的主题颜色：读取本机偏好后、以及系统／应用明暗配置变化时，按既有浅／深 `start_window_background` 资源的颜色更新同一 UIAbility 的下一次启动窗口。该 API 不参与日志页或工作台的正文绘制；尚未运行过的首次安装启动仍使用 `module.json5` 的静态资源，调用失败也由静态资源兜底。
+
+登录页窄屏 Scroll 使用 LayoutPolicy.matchParent 与 ignoreLayoutSafeArea(SYSTEM, TOP) 延伸实际布局视口；Scroll 内部内容单独通过 TYPE_SYSTEM.topRect.height（px 转 vp）保持初始顶部避让。登录页监听系统避让变化并在离开时注销，异步窗口获取检查页面代次，不阻断公开实例恢复流程。宽屏布局、纹理、字体、密码保护及根页面 RESIZE 保持原职责；布局坐标、UiTest 命中边界与实际绘制必须分别验收。

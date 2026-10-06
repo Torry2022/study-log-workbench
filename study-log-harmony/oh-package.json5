@@ -2,5 +2,7 @@
   "modelVersion": "6.1.1",
   "description": "学习日志工作台 HarmonyOS 公开版客户端",
   "dependencies": {},
-  "devDependencies": {}
+  "devDependencies": {
+    "@ohos/hypium": "1.0.25"
+  }
 }

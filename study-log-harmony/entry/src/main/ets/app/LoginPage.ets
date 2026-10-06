@@ -5,6 +5,7 @@ import { instanceStore } from '../common/storage/InstanceStore';
 import { TokenStore } from '../common/storage/TokenStore';
 import { workspaceSansFamily, workspaceSerifFamily } from '../common/ui/Typography';
 import { common } from '@kit.AbilityKit';
+import { window } from '@kit.ArkUI';
 import { AppLogo } from '../common/ui/AppLogo';
 
 interface AppLoginResponse { ok: boolean; token: string; expiresAt: string; }
@@ -43,12 +44,20 @@ export struct LoginPage {
   @State private passwordFocused: boolean = false;
   @State private textureOffset: number = 0;
   @State private viewportWidth: number = 0;
+  @State private topInset: number = 0;
+  private loginWindow?: window.Window;
+  private onAvoidAreaChange = (event: window.AvoidAreaOptions): void => {
+    if (event.type === window.AvoidAreaType.TYPE_SYSTEM) {
+      this.topInset = this.getUIContext().px2vp(event.area.topRect.height);
+    }
+  };
   @StorageLink('softwareKeyboardVisible') private softwareKeyboardVisible: boolean = false;
   private textureAnimationStarted: boolean = false;
   private generation: number = 0;
 
   async aboutToAppear(): Promise<void> {
     const generation = ++this.generation;
+    void this.observeTopInset(generation);
     let restoredConnection = false;
     try {
       await instanceStore.initialize(this.getUIContext().getHostContext() as common.Context);
@@ -88,7 +97,21 @@ export struct LoginPage {
     }
   }
 
-  aboutToDisappear(): void { this.generation++; }
+  aboutToDisappear(): void {
+    this.generation++;
+    this.loginWindow?.off('avoidAreaChange', this.onAvoidAreaChange);
+    this.loginWindow = undefined;
+  }
+
+  private async observeTopInset(generation: number): Promise<void> {
+    try {
+      const main = await window.getLastWindow(this.getUIContext().getHostContext() as common.Context);
+      if (generation !== this.generation) return;
+      this.loginWindow = main;
+      this.topInset = this.getUIContext().px2vp(main.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM).topRect.height);
+      main.on('avoidAreaChange', this.onAvoidAreaChange);
+    } catch (_) { /* A disappearing window must not interrupt instance restoration. */ }
+  }
 
   private startTextureAnimation(): void {
     if (this.textureAnimationStarted) return;
@@ -366,8 +389,9 @@ export struct LoginPage {
               .textAlign(TextAlign.Center)
               .margin({ bottom: 16 })
               .visibility(this.softwareKeyboardVisible ? Visibility.None : Visibility.Visible)
-          }.width('100%').constraintSize({ minHeight: '100%' })
-        }.id('login_scroll').width('100%').height('100%').scrollBar(BarState.Off)
+          }.width('100%').constraintSize({ minHeight: '100%' }).padding({ top: this.topInset })
+        }.id('login_scroll').width('100%').height(LayoutPolicy.matchParent).scrollBar(BarState.Off)
+          .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.TOP])
       }
 
       if (this.viewportWidth >= 720) {

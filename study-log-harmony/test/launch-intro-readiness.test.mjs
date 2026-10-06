@@ -28,6 +28,7 @@ async function restore(saved, token = '') {
   const login = new module.exports.Login();
   Object.assign(login, {
     generation: 0, ready: false, restoreOnAppear: true,
+    observeTopInset: async () => {},
     getUIContext: () => ({ getHostContext: () => ({}) }),
     onInitialReady: () => calls.push('intro-ready'),
     onConnected: () => calls.push('connected')

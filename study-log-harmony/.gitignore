@@ -3,6 +3,7 @@
 /build/
 /entry/build/
 /local.properties
+/oh_modules/
 *.hap
 *.hsp
 *.p7b

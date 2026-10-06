@@ -143,6 +143,38 @@ test("authenticated loopback control, strict origins, duplicate launcher reuse, 
   await assert.rejects(fs.stat(path.join(stateRoot, "launcher.lock")), { code: "ENOENT" });
 });
 
+test("unused browser preconnection cannot keep the stopped launcher locked", { timeout: 10000 }, async t => {
+  const { manager, packageRoot, stateRoot } = await fixture(t);
+  const launcher = await startLauncher({ manager, packageRoot, stateRoot, openBrowser: false });
+  const socket = net.connect({ port: Number(new URL(launcher.origin).port), host: "127.0.0.1", allowHalfOpen: true });
+  t.after(async () => { socket.destroy(); await launcher.close(); });
+  await new Promise(resolve => socket.once("connect", resolve));
+  socket.resume();
+  await launcher.close();
+  await assert.rejects(fs.stat(path.join(stateRoot, "launcher.lock")), { code: "ENOENT" });
+});
+
+test("launcher waits for an accepted request body and closes its connection after responding", { timeout: 10000 }, async t => {
+  const { manager, packageRoot, stateRoot } = await fixture(t);
+  const launcher = await startLauncher({ manager, packageRoot, stateRoot, openBrowser: false });
+  const address = new URL(launcher.origin);
+  const socket = net.connect(Number(address.port), "127.0.0.1");
+  t.after(async () => { socket.destroy(); await launcher.close(); });
+  await new Promise(resolve => socket.once("connect", resolve));
+  let response = ""; socket.on("data", bytes => response += bytes.toString());
+  socket.write(`POST /api/configuration HTTP/1.1\r\nHost: ${address.host}\r\nOrigin: ${launcher.origin}\r\nAuthorization: Bearer ${launcher.token}\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: keep-alive\r\n\r\n{`);
+  await new Promise(resolve => setTimeout(resolve, 50));
+  let finished = false;
+  const closed = launcher.close().then(() => { finished = true; });
+  await new Promise(resolve => setTimeout(resolve, 50));
+  assert.equal(finished, false, "Do not interrupt an already accepted HTTP request");
+  const disconnected = new Promise(resolve => socket.once("close", resolve));
+  socket.write("}"); await closed; await disconnected;
+  assert.match(response, /HTTP\/1\.1 400/);
+  assert.match(response, /启动入口正在退出/);
+  await assert.rejects(fs.stat(path.join(stateRoot, "launcher.lock")), { code: "ENOENT" });
+});
+
 test("accepted exit rejects queued and new start requests while the active service write drains", async t => {
   const { manager, packageRoot, stateRoot, root } = await fixture(t);
   await manager.select({ root, create: true, password: "synthetic-password" }); await manager.start();

@@ -70,6 +70,8 @@ export async function startLauncher({ packageRoot = path.resolve(here, "../.."),
     "/fonts/NotoSerifSC-Medium.woff2": [path.join(assetsRoot, "fonts", "NotoSerifSC-Medium.woff2"), "font/woff2"]
   };
   let origin, closing = false;
+  const connections = new Map();
+  let listenerClosing = false;
   const reply = (res, status, result) => { res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }); res.end(JSON.stringify(result)); };
   const server = http.createServer({ requestTimeout: 15000, headersTimeout: 10000 }, async (req, res) => {
     res.setHeader("Cache-Control", "no-store"); res.setHeader("Referrer-Policy", "no-referrer"); res.setHeader("X-Content-Type-Options", "nosniff");
@@ -116,11 +118,36 @@ export async function startLauncher({ packageRoot = path.resolve(here, "../.."),
       if (closing) setImmediate(() => void close());
     } catch (error) { reply(res, 400, { error: error.code === "EACCES" || error.code === "EPERM" ? "目录不可写，请选择当前账户可写的资料目录" : error.message }); }
   });
+  server.on("connection", socket => {
+    connections.set(socket, 0);
+    socket.once("close", () => connections.delete(socket));
+  });
+  server.on("request", (req, res) => {
+    const socket = req.socket;
+    connections.set(socket, (connections.get(socket) ?? 0) + 1);
+    let finished = false;
+    const complete = () => {
+      if (finished) return;
+      finished = true;
+      if (!connections.has(socket)) return;
+      const pending = connections.get(socket) - 1;
+      connections.set(socket, pending);
+      if (listenerClosing && pending === 0) socket.destroySoon();
+    };
+    res.once("finish", complete); res.once("close", complete);
+  });
   let closed;
   const close = () => closed ??= (async () => {
     closing = true;
     await manager.operation(() => manager.shutdown());
-    await new Promise(resolve => server.close(resolve));
+    await new Promise(resolve => {
+      listenerClosing = true;
+      server.close(resolve);
+      // Flush completed responses and close both TCP directions, including
+      // speculative connections whose peer does not answer FIN with FIN.
+      // Active responses finish first and close their connection in complete().
+      for (const [socket, pending] of connections) if (pending === 0) socket.destroySoon();
+    });
     const owner = JSON.parse(await fs.readFile(descriptor, "utf8"));
     if (owner.launchId !== launchId) throw new Error("启动锁归属变化，已保留锁");
     await fs.unlink(descriptor); await fs.rmdir(lock);

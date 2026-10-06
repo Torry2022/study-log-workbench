@@ -198,3 +198,5 @@ Index 创建每个实例的 LogSession，并通过 ObjectLink 交给日志功能
 鸿蒙 `EntryAbility` 负责启动窗口的主题颜色：读取本机偏好后、以及系统／应用明暗配置变化时，按既有浅／深 `start_window_background` 资源的颜色更新同一 UIAbility 的下一次启动窗口。该 API 不参与日志页或工作台的正文绘制；尚未运行过的首次安装启动仍使用 `module.json5` 的静态资源，调用失败也由静态资源兜底。
 
 登录页窄屏 Scroll 使用 LayoutPolicy.matchParent 与 ignoreLayoutSafeArea(SYSTEM, TOP) 延伸实际布局视口；Scroll 内部内容单独通过 TYPE_SYSTEM.topRect.height（px 转 vp）保持初始顶部避让。登录页监听系统避让变化并在离开时注销，异步窗口获取检查页面代次，不阻断公开实例恢复流程。宽屏布局、纹理、字体、密码保护及根页面 RESIZE 保持原职责；布局坐标、UiTest 命中边界与实际绘制必须分别验收。
+
+Windows 本机入口退出时，先等待串行控制操作及 Web／MCP 自身收尾，再停止 HTTP 监听。入口按连接计数尚未完成的响应；仅在响应完成或连接无请求时排空并关闭控制连接，避免浏览器半关闭连接阻碍启动锁释放。资料锁与启动锁各由其所属生命周期释放，不靠强杀进程或 PID／时间猜测。

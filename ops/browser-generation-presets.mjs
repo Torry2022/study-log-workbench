@@ -38,6 +38,17 @@ try {
   await page.getByRole('button', { name: '管理生成方案', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '生成方案', exact: true }); await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel('提示词', { exact: true })).toHaveAttribute('readonly', '');
+  await dialog.getByRole('button', { name: '新增方案', exact: true }).click();
+  await expect(dialog.getByLabel('方案名称', { exact: true })).toHaveValue('');
+  await expect(dialog.getByLabel('提示词', { exact: true })).toHaveValue('');
+  await expect(dialog.getByRole('button', { name: '保存方案', exact: true })).toBeDisabled();
+  await dialog.getByLabel('方案名称', { exact: true }).fill(`${prefix}空白新增`);
+  await dialog.getByLabel('提示词', { exact: true }).fill('从空白创建的合成方案，不虚构学习经历。');
+  await dialog.getByRole('button', { name: '保存方案', exact: true }).click();
+  await expect(dialog.getByRole('status')).toHaveText('方案已保存');
+  assert.equal((await read()).presets.find(item => item.name === `${prefix}空白新增`).prompt, '从空白创建的合成方案，不虚构学习经历。');
+  await dialog.getByRole('button', { name: /^实践与排错/ }).click();
+  await expect(dialog.getByLabel('提示词', { exact: true })).toHaveAttribute('readonly', '');
   await dialog.getByRole('button', { name: '复制', exact: true }).click();
   await dialog.getByLabel('方案名称', { exact: true }).fill(prefix);
   await dialog.getByLabel('提示词', { exact: true }).fill('合成自定义方案内容');
@@ -48,8 +59,29 @@ try {
   assert.equal((await read()).defaultPresetId, id);
   await dialog.getByRole('button', { name: '关闭生成方案', exact: true }).click(); await expect(dialog).toHaveCount(0);
   await expect(picker).toHaveValue(id); await expect(page.getByLabel('学习材料', { exact: true })).toHaveValue('SYNTHETIC_PRESET_MATERIAL');
+  const day = async () => {
+    const response = await page.request.get(`${base}/api/logs/day?date=2026-02-05`);
+    assert.equal(response.status(), 200); return (await response.json()).day;
+  };
+  const beforeGeneration = await day();
   await page.getByRole('button', { name: '生成日志草稿', exact: true }).click();
   await expect(page.getByLabel('生成草稿', { exact: true })).toHaveValue(/合成生成片段/); assert.equal(generatedWith, id);
+  assert.equal((await day()).version, beforeGeneration.version, 'Generating a preset draft must not save it');
+  const reviewed = `### 合成生成片段\n\n仅供测试审阅。\n\n${prefix}人工审阅修订。`;
+  await page.getByLabel('生成草稿', { exact: true }).fill(reviewed);
+  await page.getByRole('button', { name: '追加到编辑器', exact: true }).click();
+  await expect(page.locator('.writing-panel')).toContainText('尚未保存');
+  assert.equal((await day()).version, beforeGeneration.version, 'Reviewing and appending must not save implicitly');
+  const editor = page.locator('.cm-content').filter({ visible: true });
+  await expect(editor).toContainText(`${prefix}人工审阅修订。`);
+  await editor.click(); await page.keyboard.press('Control+End'); await page.keyboard.insertText(`\n\n${prefix}编辑器补充。`);
+  assert.equal((await day()).version, beforeGeneration.version, 'Editing the appended draft must not save implicitly');
+  await page.getByRole('button', { name: '保存', exact: true }).filter({ visible: true }).first().click();
+  await expect.poll(async () => (await day()).content).toContain(`${prefix}人工审阅修订。`);
+  const savedDay = await day();
+  assert.ok(savedDay.content.includes(`${prefix}编辑器补充。`));
+  assert.ok(savedDay.content.includes(beforeGeneration.content.trim()), 'Applying a preset draft must preserve existing saved content');
+  assert.notEqual(savedDay.version, beforeGeneration.version);
   await page.getByRole('button', { name: '管理生成方案', exact: true }).click();
   await dialog.getByLabel('提示词', { exact: true }).fill('未保存草稿需要保留');
   await dialog.getByRole('button', { name: '关闭生成方案', exact: true }).click();
@@ -90,7 +122,7 @@ try {
   await dialog.getByRole('button', { name: '关闭生成方案', exact: true }).click(); await expect(dialog).toHaveCount(0);
   await expect(picker).toHaveValue('legacy');
   assert.deepEqual(errors, []);
-  console.log('Passed: real preset CRUD/default/version conflict, unsaved preservation, selected generation, nested confirmation, narrow layout and default fallback');
+  console.log('Passed: blank preset creation, real preset CRUD/default/version conflict, unsaved preservation, selected mock generation, review/append/explicit save/readback, nested confirmation, narrow layout and default fallback; no paid model calls');
 } finally {
   if (page && originalDefault) {
     const api = `${base}/api/ai/generation-presets`;

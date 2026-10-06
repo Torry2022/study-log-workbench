@@ -1,0 +1,103 @@
+import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import path from "node:path";
+import crypto from "node:crypto";
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+// Run using the final extracted package's runtime\node.exe. All writes and
+// login interactions use the browser UI; no test-created log/API fixtures.
+const [packageRoot, evidence, launcherModule] = process.argv.slice(2);
+if (process.platform !== "win32" || !packageRoot || !evidence || !path.isAbsolute(packageRoot) || !path.isAbsolute(evidence)) throw new Error("Provide extracted Windows package and new evidence absolute paths");
+const node = path.join(packageRoot, "runtime", "node.exe");
+assert.equal(path.resolve(process.execPath).toLowerCase(), node.toLowerCase(), "Use the packaged runtime for this test driver and its services");
+await fs.mkdir(evidence);
+const require = createRequire(new URL("../../study-log-web/package.json", import.meta.url));
+const { chromium, expect } = require("@playwright/test");
+if (launcherModule && !path.isAbsolute(launcherModule)) throw new Error("A development launcher override must be an explicit absolute path");
+const { startLauncher } = await import(pathToFileURL(launcherModule || path.join(packageRoot, "ops", "desktop", "launcher.mjs")));
+const execute = promisify(execFile);
+const root = path.join(evidence, "synthetic-instance"), stateRoot = path.join(evidence, "launcher-state");
+const password = crypto.randomBytes(24).toString("base64url");
+const text = "### 1. 本机首次记录\n\n今天整理了 JavaScript 数组的 map 方法。\n\n```js\n[1, 2].map(value => value * 2)\n```\n";
+const date = "2026-02-05", passed = [], runtimes = [];
+const browser = await chromium.launch({ headless: true });
+let launcher;
+const errors = [];
+const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+context.on("page", page => page.on("pageerror", error => errors.push(error.message)));
+const start = async () => {
+  launcher = await startLauncher({ packageRoot, stateRoot, openBrowser: false });
+  const page = await context.newPage();
+  await page.goto(`${launcher.origin}/#${launcher.token}`);
+  await expect(page.locator("#state")).toHaveText("已停止");
+  return page;
+};
+const verifyServices = async () => {
+  const script = "$ownerId=[int]$env:STUDY_LOG_TEST_PARENT; $rows=@(Get-CimInstance Win32_Process | Where-Object {$_.ParentProcessId -eq $ownerId -and $_.CommandLine -like '*desktop*worker.mjs*'} | Select-Object ExecutablePath,CommandLine); ConvertTo-Json -InputObject $rows -Compress";
+  const result = await execute("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], { windowsHide: true, env: { ...process.env, STUDY_LOG_TEST_PARENT: String(process.pid) } });
+  const rows = JSON.parse(result.stdout).filter(row => path.basename(row.ExecutablePath ?? "").toLowerCase() === "node.exe");
+  assert.equal(rows.length, 2, "Actual Web and MCP workers must be running");
+  for (const row of rows) assert.equal(row.ExecutablePath.toLowerCase(), node.toLowerCase());
+  assert.ok(rows.some(row => /worker\.mjs["\s]+web\s/.test(row.CommandLine)));
+  assert.ok(rows.some(row => /worker\.mjs["\s]+mcp\s/.test(row.CommandLine)));
+  runtimes.push({ executable: node, roles: ["web", "mcp"], verifiedBy: "Windows process ExecutablePath and parent PID" });
+};
+const openWorkspace = async page => {
+  await page.getByRole("button", { name: "启动工作台", exact: true }).click();
+  await expect(page.locator("#state")).toHaveText("正在运行", { timeout: 60000 });
+  await verifyServices();
+  const popup = context.waitForEvent("page");
+  await page.getByRole("link", { name: "打开工作台", exact: true }).click();
+  const workspace = await popup;
+  await workspace.waitForLoadState("domcontentloaded");
+  await workspace.getByLabel("访问密码", { exact: true }).fill(password);
+  await workspace.getByRole("button", { name: "登录", exact: true }).click();
+  await workspace.locator(".workspace").waitFor({ timeout: 60000 });
+  return workspace;
+};
+const exit = async page => {
+  await page.getByRole("button", { name: "退出启动入口", exact: true }).click();
+  await expect(page.locator("#notice")).toHaveText("服务已正常退出，可以关闭此页面。", { timeout: 60000 });
+  await expect.poll(async () => Boolean(await fs.stat(path.join(stateRoot, "launcher.lock")).catch(() => null)), { timeout: 10000, message: "Launcher lock must release while the browser remains open" }).toBe(false);
+  await launcher.close(); launcher = undefined;
+  assert.equal(await fs.stat(path.join(root, "data", ".instance-operation.lock")).catch(() => null), null);
+  assert.equal(await fs.stat(path.join(stateRoot, "launcher.lock")).catch(() => null), null);
+};
+try {
+  let entry = await start();
+  await entry.getByLabel("资料目录", { exact: true }).fill(root);
+  await entry.getByLabel("新建实例的访问密码").fill(password);
+  await entry.getByRole("button", { name: "新建实例", exact: true }).click();
+  await expect(entry.locator("#notice")).toHaveText("已创建资料目录", { timeout: 30000 });
+  let workspace = await openWorkspace(entry);
+  await workspace.getByLabel("新建指定日期", { exact: true }).fill(date);
+  await workspace.getByRole("button", { name: "新建", exact: true }).filter({ visible: true }).click();
+  await workspace.getByRole("button", { name: "源码", exact: true }).filter({ visible: true }).click();
+  const editor = workspace.locator(".cm-content");
+  await editor.click(); await workspace.keyboard.press("Control+a"); await workspace.keyboard.insertText(text);
+  await workspace.getByRole("button", { name: "保存", exact: true }).filter({ visible: true }).click();
+  await expect(workspace.locator(".toast.success")).toHaveText("已保存");
+  await expect(editor).toContainText("本机首次记录");
+  await workspace.screenshot({ path: path.join(evidence, "first-record-saved.png") });
+  passed.push("Final package launcher UI creates new directory/password; browser login creates and saves first synthetic record without model configuration");
+  await exit(entry); await workspace.close(); await entry.close();
+  await context.clearCookies();
+  entry = await start();
+  await expect(entry.getByLabel("资料目录", { exact: true })).toHaveValue(root);
+  await entry.getByRole("button", { name: "打开已有实例", exact: true }).click();
+  await expect(entry.locator("#notice")).toHaveText("已打开资料目录");
+  workspace = await openWorkspace(entry);
+  await workspace.getByRole("button", { name: "源码", exact: true }).filter({ visible: true }).click();
+  await expect(workspace.locator(".cm-content")).toContainText("本机首次记录");
+  await expect(workspace.locator(".cm-content")).toContainText("[1, 2].map(value => value * 2)");
+  await workspace.screenshot({ path: path.join(evidence, "record-reopened.png") });
+  await exit(entry);
+  passed.push("Normal exit releases both locks; reopened launcher/instance and fresh browser login read back saved record; final exit releases locks again");
+  assert.deepEqual(errors, []);
+  const report = { passed, packageRoot, developmentLauncher: launcherModule || null, runtime: process.version, serviceRuntimeChecks: runtimes, testedAt: new Date().toISOString(), limitation: "Maintainer-operated independent Playwright browser flow with synthetic data. Paths typed into UI; no native directory picker or external user feedback. Launcher opens a controlled browser instead of the OS default; real VBS/default-browser path is separately covered." };
+  await fs.writeFile(path.join(evidence, "report.json"), JSON.stringify(report, null, 2));
+  console.log(JSON.stringify({ passed: passed.length, report: path.join(evidence, "report.json") }));
+} finally { await browser.close(); if (launcher) await launcher.close(); }

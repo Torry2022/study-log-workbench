@@ -34,6 +34,37 @@ try {
   await expect(editor).toContainText('```'); await page.keyboard.press('Control+z'); await expect(editor).toHaveText('### ' + title);
   await editor.dispatchEvent('compositionstart', {data: ''}); await format('四级标题');
   await expect(editor).toHaveText('### ' + title); await editor.dispatchEvent('compositionend', {data: ''});
+  // Use the visible commands to build a mixed technical note, then verify the
+  // saved source and rendered outline together (not just the transform helper).
+  const appendFormatted = async (text, command) => {
+    await editor.click(); await page.keyboard.press('Control+End');
+    await page.keyboard.insertText('\n\n' + text); await page.keyboard.press('Shift+Home');
+    await format(command);
+  };
+  await appendFormatted('const count = 1;', '代码块');
+  await appendFormatted('检查事务结果', '有序列表');
+  await appendFormatted('字段与含义', '表格');
+  await appendFormatted('x^2 + y^2', '块公式');
+  await appendFormatted('实现细节', '四级标题');
+  await page.keyboard.press('Control+z'); await expect(editor).not.toContainText('#### 实现细节');
+  await page.keyboard.press('Control+y'); await expect(editor).toContainText('#### 实现细节');
+  await page.getByRole('button', {name: '保存', exact: true}).filter({visible: true}).click();
+  await expect(page.locator('.toast.success')).toHaveText('已保存');
+  const stored = await (await page.request.get(base + '/api/logs/day?date=2026-02-05')).json();
+  assert.match(stored.day.content, /```\nconst count = 1;\n```/);
+  assert.match(stored.day.content, /1\. 检查事务结果/);
+  assert.match(stored.day.content, /\| 列一 \| 列二 \|/);
+  assert.match(stored.day.content, /\$\$\nx\^2 \+ y\^2\n\$\$/);
+  assert.match(stored.day.content, /#### 实现细节/);
+  await page.getByRole('button', {name: '浏览', exact: true}).filter({visible: true}).click();
+  await expect(page.locator('.markdown-preview h3')).toHaveText(title);
+  await expect(page.locator('.markdown-preview h4')).toHaveText('实现细节');
+  await expect(page.locator('.markdown-preview table')).toHaveCount(1);
+  await expect(page.locator('.markdown-preview .katex-display')).toHaveCount(1);
+  await expect(page.locator('.markdown-preview ol li')).toHaveText('检查事务结果');
+  await expect(page.locator('.preview-outline')).toContainText(title);
+  await expect(page.locator('.preview-outline')).toContainText('实现细节');
+  await page.getByRole('button', {name: '源码', exact: true}).filter({visible: true}).click();
   await page.getByRole('button', {name: '编辑 Markdown', exact: true}).click();
   await page.screenshot({path: path.join(output, 'desktop-menu.png')});
   await page.keyboard.press('Escape');
@@ -59,5 +90,5 @@ try {
   await body.dispatchEvent('compositionend', {data: ''});
   await page.screenshot({path: path.join(output, 'note-editor.png')});
   assert.deepEqual(errors, []);
-  console.log('Passed: actual log/note Markdown menus, single undo/redo, selection retention, both note fields, IME guards, narrow menu bounds, synthetic save.');
+  console.log('Passed: actual log/note Markdown menus, single undo/redo, selection retention, both note fields, IME guards, narrow menu bounds, mixed code/list/table/formula save and rendered outline.');
 } finally { await browser.close(); }

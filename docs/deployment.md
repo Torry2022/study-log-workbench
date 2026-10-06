@@ -121,6 +121,8 @@ node ops/docker-rag-smoke.mjs
 
 2026-09-22 维护者在 Docker Desktop 的 Linux amd64 / Node 22 环境运行上述闭环通过：同版本恢复后所覆盖文件字节一致；长问答停机等待约 19 秒，流正常完成、Web 退出码为 0、原日志未变且 Web/MCP 锁释放。MCP 的 Linux 非 root、禁外网合成测试 49/49 通过，包含 Windows 下不能执行的文件符号链接用例。
 
-2026-10-06 的[独立目录自行试装](self-install-2026-10-06.md)已覆盖新凭据、浏览器记录与附件、冲突、断网及恢复后读回；操作者为维护者，未要求另一个人执行。Windows 本地包另通过 22 项桌面／归档专项、解压包四流程及 VBS 启动检查，界面一致性调整后已复测解压包流程，见[本轮实施记录](product-iteration-acceptance.md)。这些结果不代表第三方用户反馈、真实模型总体质量或跨版本升级保证；鸿蒙独立签名和异网络受信 HTTPS 仍分别待验。
+2026-10-06 的[独立目录自行试装](self-install-2026-10-06.md)已覆盖新凭据、浏览器记录与附件、冲突、断网及恢复后读回；操作者为维护者，未要求另一个人执行。Windows 本地包另通过 24 项桌面／归档专项、解压包四流程及 VBS 启动检查，界面一致性调整后已复测解压包流程，见[本轮实施记录](product-iteration-acceptance.md)。这些结果不代表第三方用户反馈、真实模型总体质量或跨版本升级保证；鸿蒙独立签名和异网络受信 HTTPS 仍分别待验。
 
-Windows 检查使用解压包内的 `runtime\node.exe`：`--test ops/desktop/desktop.test.mjs ops/archive.test.mjs` 共 22 项无跳过；`ops/desktop/smoke-package.mjs` 的四流程报告在仓库忽略目录 `.local\windows-package-design-final-smoke\report.json`，`ops/desktop/smoke-vbs.mjs` 的三项入口检查报告在 `.local\windows-vbs-design-final-report.json`。原生目录／保存对话框未实际点击确认；页面自动化仅模拟其取消返回，不能据此宣称系统选择器已验收。
+Windows 检查使用解压包内的 `runtime\node.exe`：`--test ops/desktop/desktop.test.mjs ops/archive.test.mjs` 共 24 项无跳过；`ops/desktop/smoke-package.mjs` 的四流程报告在仓库忽略目录 `.local\windows-package-design-final-smoke\report.json`，`ops/desktop/smoke-vbs.mjs` 的三项入口检查报告在 `.local\windows-vbs-complete-final-report.json`。原生目录／保存对话框未实际点击确认；页面自动化仅模拟其取消返回，不能据此宣称系统选择器已验收。
+
+Windows 首次使用还通过 `ops/desktop/browser-first-record.mjs` 的全浏览器串联：设置资料目录／密码、登录、写入、退出、重开读回，包含实际随包子进程及两类锁释放核查。当前包与曾出现控制连接等待的旧候选分别记录，见[本轮实施记录](product-iteration-acceptance.md)。

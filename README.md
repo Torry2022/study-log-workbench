@@ -41,7 +41,7 @@ node ops/run-web.mjs start "/absolute/path/to/new-instance" 3560
 
 ## 当前验收边界
 
-Windows 本地包已通过 22 项桌面／归档专项、解压包四项实际流程和 VBS 启动检查，包含无模型记录、重启、关键词问答及整实例恢复。界面一致性调整后的候选也已完成解压包流程复测，见[本轮实施记录](docs/product-iteration-acceptance.md)；上述检查不是第三方用户反馈。
+Windows 本地包已通过 24 项桌面／归档专项、解压包四项实际流程和 VBS 启动检查，包含无模型记录、重启、关键词问答及整实例恢复。界面一致性调整后的候选也已完成解压包流程复测，见[本轮实施记录](docs/product-iteration-acceptance.md)；上述检查不是第三方用户反馈。
 
 维护者已用合成资料完成网页生产构建、主要浏览器流程、Linux 容器部署、全新环境自行试装和少量真实模型调用；详细结果在[实施状态](docs/implementation-status.md)、[自行试装](docs/self-install-2026-10-02.md)、[浏览器回归](docs/web-regression-b28.md)和[模型小样本记录](docs/model-validation.md)。独立环境试装可按授权自行执行，[当前记录](docs/self-install-2026-10-06.md)已注明操作者与复用边界；[试装清单](docs/independent-install-checklist.md)用于继续记录，不增设强制第三方操作者条件。复杂合成资料的问答、写作和标注具名样本已补验；长期模型质量、真实向量／重排提供方和 Firefox 仍未完成相应验收。鸿蒙主要模块、源码职责恢复及指定跨端专项已完成列明验证；完整范围和未覆盖组合见工作台恢复清单，不保证所有显示帧。
 

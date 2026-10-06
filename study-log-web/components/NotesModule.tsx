@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import { MarkdownPreview, type InternalLinkTarget } from "./MarkdownPreview";
 import { WorkspaceState } from "./WorkspaceState";
 import { InternalLinkDialog } from "./InternalLinkDialog";
+import { MarkdownEditMenu } from "./MarkdownEditMenu";
 import type { NotesController } from "@/hooks/use-notes";
 import type { StudyNote, StudyNoteFacet } from "@/lib/notes-types";
 import { formatNoteTime, localDateTimeInput, parseTags } from "@/lib/notes-view";
@@ -95,7 +96,7 @@ function NoteTagPicker({ value, options, onChange }: {
 
 function NoteEditor({ notes }: { notes: NotesController }) {
   const { tags, busy, draft, updateDraft, saveDraft, closeEditor, insertions, conflict } = notes;
-  const { bodyRef, insightRef, applyInline, insertLink, openInternalLink, uploadFiles, setActiveField } = insertions;
+  const { bodyRef, insightRef, format, openInternalLink, uploadFiles, setActiveField, setComposing } = insertions;
   function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>, field: "body" | "insight") {
     const files = Array.from(event.clipboardData.files).filter(file => imageExtension(file));
     if (files.length) { event.preventDefault(); void uploadFiles(files, field); }
@@ -141,9 +142,10 @@ function NoteEditor({ notes }: { notes: NotesController }) {
       />
 
       <div className="notes-markdown-toolbar" aria-label="随记 Markdown 工具">
-        <button type="button" disabled={busy} onClick={() => applyInline("**", "重点内容")} title="加粗" aria-label="加粗"><Bold size={15} /></button>
-        <button type="button" disabled={busy} onClick={() => applyInline("*", "强调内容")} title="斜体" aria-label="斜体"><Italic size={15} /></button>
-        <button type="button" disabled={busy} onClick={insertLink} title="插入链接" aria-label="插入链接"><Link2 size={15} /></button>
+        <MarkdownEditMenu disabled={busy} onCommand={format} onInternalLink={openInternalLink} onImage={() => fileInputRef.current?.click()} />
+        <button type="button" disabled={busy} onMouseDown={event => event.preventDefault()} onClick={() => format("bold")} title="加粗" aria-label="加粗"><Bold size={15} /></button>
+        <button type="button" disabled={busy} onMouseDown={event => event.preventDefault()} onClick={() => format("italic")} title="斜体" aria-label="斜体"><Italic size={15} /></button>
+        <button type="button" disabled={busy} onMouseDown={event => event.preventDefault()} onClick={() => format("link")} title="插入链接" aria-label="插入链接"><Link2 size={15} /></button>
         <button type="button" disabled={busy} onClick={openInternalLink} title="插入内部链接" aria-label="插入内部链接">
           <span className="notes-internal-link-icon">[[]]</span>
         </button>
@@ -168,6 +170,7 @@ function NoteEditor({ notes }: { notes: NotesController }) {
         value={draft.body}
         onChange={(event) => updateDraft({ body: event.target.value })}
         onFocus={() => setActiveField("body")}
+        onCompositionStart={() => setComposing(true)} onCompositionEnd={() => setComposing(false)}
         onPaste={(event) => handlePaste(event, "body")}
         onDrop={(event) => handleDrop(event, "body")}
         onDragOver={handleDragOver}
@@ -183,6 +186,7 @@ function NoteEditor({ notes }: { notes: NotesController }) {
             value={draft.insight}
             onChange={(event) => updateDraft({ insight: event.target.value })}
             onFocus={() => setActiveField("insight")}
+            onCompositionStart={() => setComposing(true)} onCompositionEnd={() => setComposing(false)}
             onPaste={(event) => handlePaste(event, "insight")}
             onDrop={(event) => handleDrop(event, "insight")}
             onDragOver={handleDragOver}

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { requestJson } from "@/lib/client-http";
 import { imageExtension, MAX_IMAGE_BYTES, MAX_IMAGE_COUNT, type UploadedAsset } from "@/lib/asset-upload-rules";
 import { mapNoteInsertion, type NoteDraft, type NoteInsertion } from "@/lib/notes-view";
+import { markdownChange, type MarkdownEdit } from "@/lib/markdown-edit";
 
 type Field = "body" | "insight";
 interface Options {
@@ -16,6 +17,7 @@ export function useNotesInsertion(options: Options) {
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const insightRef = useRef<HTMLTextAreaElement>(null);
   const activeField = useRef<Field>("body");
+  const composing = useRef(false);
   const pending = useRef<{ range: NoteInsertion; controller: AbortController; revision: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
@@ -51,15 +53,19 @@ export function useNotesInsertion(options: Options) {
     const upload = pending.current;
     if (upload && typeof patch[upload.range.field] === "string") upload.range = mapNoteInsertion(upload.range, live.current.getDraft()[upload.range.field], patch[upload.range.field]!);
   }
-  function applyInline(marker: string, placeholder: string) {
-    const selection = range(); if (!selection) return;
-    const selected = live.current.getDraft()[selection.field].slice(selection.from, selection.to) || placeholder;
-    insert(selection, marker + selected + marker, marker.length, marker.length + selected.length);
-  }
-  function insertLink() {
-    const selection = range(); if (!selection) return;
-    const selected = live.current.getDraft()[selection.field].slice(selection.from, selection.to) || "链接文字";
-    insert(selection, `[${selected}](https://)`, selected.length + 3, selected.length + 11);
+  function format(command: MarkdownEdit) {
+    if (!live.current.active || busy || composing.current) return;
+    const field = activeField.current;
+    const input = textarea(field);
+    if (!input) return;
+    const change = markdownChange(input.value, input.selectionStart, input.selectionEnd, command);
+    input.focus(); input.setSelectionRange(change.from, change.to);
+    // Native insertion keeps textarea undo history; assigning value would erase it.
+    if (!document.execCommand("insertText", false, change.insert)) {
+      setFailed(true); setStatus("当前浏览器未能应用格式，请使用 Markdown 语法输入。"); return;
+    }
+    live.current.updateDraft({ [field]: input.value });
+    input.setSelectionRange(change.anchor, change.head);
   }
   function openInternalLink() {
     const selection = range(); if (!selection || busy) return;
@@ -100,5 +106,5 @@ export function useNotesInsertion(options: Options) {
   }
   return { bodyRef, insightRef, busy, isBusy: () => Boolean(pending.current), status, failed, link,
     cancelUpload, closeLink: () => setLink(null), insertInternalLink, setActiveField: (field: Field) => { activeField.current = field; },
-    applyInline, insertLink, openInternalLink, uploadFiles, track };
+    format, setComposing: (value: boolean) => { composing.current = value; }, openInternalLink, uploadFiles, track };
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { indentLess, indentMore } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
@@ -20,6 +20,7 @@ interface Props {
   onSave: () => void;
   onView?: (view: EditorView | null) => void;
   onUpdate?: (update: ViewUpdate) => void;
+  tools?: ReactNode;
 }
 
 const markdownSyntaxHighlight = HighlightStyle.define([
@@ -85,7 +86,7 @@ const basicSetup = {
   searchKeymap: false
 };
 
-export function LogEditor({ date, value, active, onChange, onSave, onView, onUpdate }: Props) {
+export function LogEditor({ date, value, active, onChange, onSave, onView, onUpdate, tools }: Props) {
   const editorView = useRef<EditorView | null>(null);
   const callbacks = useRef({ active, onChange, onSave, onView });
   callbacks.current = { active, onChange, onSave, onView };
@@ -213,6 +214,7 @@ export function LogEditor({ date, value, active, onChange, onSave, onView, onUpd
   return <div className="editor-shell workspace-editor-shell">
     <div className="editor-date-line" aria-label={`当前日块日期 ${date}，不可编辑`} title="日期由日块创建入口维护">
       <code><span>##</span> {date}</code>
+      {tools}
     </div>
     <CodeMirror
       key={date}

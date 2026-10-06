@@ -1,5 +1,18 @@
 import { EditorSelection } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
+import { isolateHistory } from "@codemirror/commands";
+import { markdownChange, type MarkdownEdit } from "./markdown-edit.ts";
+
+export function applyMarkdownEdit(view: EditorView, command: MarkdownEdit): boolean {
+  if (view.compositionStarted || view.composing || view.state.readOnly) return false;
+  const selection = view.state.selection.main;
+  const change = markdownChange(view.state.doc.toString(), selection.from, selection.to, command);
+  view.dispatch({ changes: { from: change.from, to: change.to, insert: change.insert },
+    selection: EditorSelection.range(change.anchor, change.head), scrollIntoView: true,
+    userEvent: "input", annotations: isolateHistory.of("full") });
+  focusEditor(view);
+  return true;
+}
 
 function focusEditor(view: EditorView) {
   window.requestAnimationFrame(() => view.focus());

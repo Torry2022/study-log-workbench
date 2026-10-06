@@ -9,6 +9,8 @@ import { toEditableDayBody } from "@/lib/day-content";
 import { containModalFocus, lockBodyScroll } from "@/hooks/use-dialog-exit";
 import type { DayEntry } from "@/lib/types";
 import { LogEditor } from "./LogEditor";
+import { MarkdownEditMenu } from "./MarkdownEditMenu";
+import { applyMarkdownEdit } from "@/lib/editor-commands";
 import type { EditorView } from "@codemirror/view";
 import { useReadingPosition } from "@/hooks/use-reading-position";
 import { useEditorAttachments } from "@/hooks/use-editor-attachments";
@@ -320,7 +322,9 @@ export function LogReader({ onOpenAi, onOpenFavorites, navigation, editing, sear
       onPasteCapture={event => { const files = imageFiles(event.clipboardData.files); if (files.length) { event.preventDefault(); void attachments.upload(files); } }}
       onDropCapture={event => { const files = imageFiles(event.dataTransfer.files); if (files.length) { event.preventDefault(); void attachments.upload(files); } }}
       onDragOver={event => { if (Array.from(event.dataTransfer.items).some(item => item.type.startsWith("image/"))) event.preventDefault(); }}>
-      {editorReady ? <LogEditor date={date} value={editing.body} active={active && !editing.locked && mode !== "preview"} onChange={editing.onChange} onSave={editing.onSave} onUpdate={attachments.update} onView={view => { editorView.current = view; }} /> : <WorkspaceState kind={error ? "error" : loading ? "loading" : "empty"} title={error ? "日志加载失败" : loading ? `正在加载 ${date}` : "选择左侧日期，或新建今天的学习日志"} description={error || undefined} className="source-empty" actions={error ? <button className="button secondary" type="button" onClick={onRetry}><RefreshCw size={15} />重新加载</button> : undefined} />}
+      {editorReady ? <LogEditor date={date} value={editing.body} active={active && !editing.locked && mode !== "preview"} onChange={editing.onChange} onSave={editing.onSave} onUpdate={attachments.update} onView={view => { editorView.current = view; }}
+        tools={<MarkdownEditMenu disabled={!active || editing.locked || attachments.busy} onCommand={command => { if (editorView.current) applyMarkdownEdit(editorView.current, command); }} onInternalLink={openLink} onImage={() => imageInput.current?.click()} />}
+      /> : <WorkspaceState kind={error ? "error" : loading ? "loading" : "empty"} title={error ? "日志加载失败" : loading ? `正在加载 ${date}` : "选择左侧日期，或新建今天的学习日志"} description={error || undefined} className="source-empty" actions={error ? <button className="button secondary" type="button" onClick={onRetry}><RefreshCw size={15} />重新加载</button> : undefined} />}
     </div></div>
     {active && favoriteFeedback?.kind === "added" && <FavoriteSuccessNotice {...favoriteFeedback} onClose={() => setFavoriteFeedback(null)} onGroup={() => { setOutlineOpen(false); setFavoriteGroup(favoriteFeedback.id); }} />}
     {active && favoriteFeedback?.kind === "remove" && <FavoriteRemovePopover {...favoriteFeedback} busy={favorites.busy} error={favorites.error} onClose={() => setFavoriteFeedback(null)} onConfirm={() => favorites.remove(favoriteFeedback.id)} />}

@@ -23,6 +23,7 @@ function fixture(getLastWindow) {
 
 test('top viewport extends while initial content keeps its dynamic status-bar inset and full identity', () => {
   const build = source.slice(source.indexOf('  build()'));
+  assert.equal((build.match(/expandSafeArea/g) || []).length, 2);
   assert.match(build, /id\('login_scroll'\).*height\(LayoutPolicy.matchParent\).*\r?\n\s*\.ignoreLayoutSafeArea\(\[LayoutSafeAreaType.SYSTEM\], \[LayoutSafeAreaEdge.TOP\]\)/);
   assert.match(build, /constraintSize\(\{ minHeight: '100%' \}\)\.padding\(\{ top: this.topInset \}\)/);
   const identity = source.slice(source.indexOf('  private identityContent('), source.indexOf('  private accessContent('));
@@ -31,6 +32,13 @@ test('top viewport extends while initial content keeps its dynamic status-bar in
   assert.match(build, /height\('34%'\)\.constraintSize\(\{ minHeight: 260, maxHeight: 320 \}\)/);
   assert.match(source, /id\('login_origin_input'\)/);
   assert.match(source, /type\(InputType.Password\)/);
+  assert.match(build, /\.clip\(true\)\s*\.expandSafeArea\(\[SafeAreaType.SYSTEM\], \[SafeAreaEdge.TOP\]\)/);
+  assert.match(build, /\.margin\(\{ bottom: 16 \}\)/);
+  assert.match(build, /hitTestBehavior\(HitTestMode.None\)/);
+  assert.doesNotMatch(build, /setKeyboardAvoidMode|previousKeyboardAvoidMode/);
+  const narrowScroll = build.slice(build.indexOf('Scroll()'), build.indexOf(".id('login_scroll')"));
+  assert.match(narrowScroll, /this.accessContent\(false\)[\s\S]*Text\('© 2026 学习日志工作台开源版'\)/);
+  assert.match(build, /if \(this.viewportWidth >= 720\) \{\s*Stack\(\{ alignContent: Alignment.Bottom \}\)/);
 });
 
 test('status-bar inset updates in vp, ignores keyboard avoid events and removes the exact listener', async () => {

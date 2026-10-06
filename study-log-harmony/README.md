@@ -17,7 +17,7 @@ node (Join-Path $devEcoStudio 'tools\hvigor\bin\hvigorw.js') --mode module -p pr
 
 将安装目录占位符替换为本机实际路径。签名 Profile、证书、私钥、构建产物及设备调试数据均不入库。
 
-登录键盘原生几何专项位于 `entry/src/ohosTest`。先执行 `ohpm install`，再用上述命令将 `module=entry@default` 改为 `module=entry@ohosTest` 构建测试模块。仅向已授权的公开版隔离安装同时安装主包与测试包，在已退出连接的窄屏登录页运行 `aa test -b org.studylog.workbench.publicedition -m entry_test -s unittest OpenHarmonyTestRunner -w 180`。测试不会清令牌、重置实例或提交连接；它核对布局和命中边界，密码保护画面的实际绘制仍需现场观察。
+登录键盘原生几何专项位于 `entry/src/ohosTest`。先执行 `ohpm install`，再用上述命令将 `module=entry@default` 改为 `module=entry@ohosTest` 构建测试模块。仅向已授权的公开版隔离安装同时安装主包与测试包，手机窄屏专项在已退出连接的登录页运行 `aa test -b org.studylog.workbench.publicedition -m entry_test -s unittest OpenHarmonyTestRunner -s class LoginKeyboardGeometry#keepsPublicConnectionFormInOneTopExtendedViewport -s timeout 240000 -w 300`；PC 宽窄窗口专项使用相同命令，将 class 改为 `LoginKeyboardGeometry#restoresNarrowLoginAfterEnteringTheWideLayout`。按设备分别运行，手机旋转不作为宽屏窗口验收。测试不会清令牌、重置实例或提交连接；它核对布局和命中边界，密码保护画面的实际绘制仍需现场观察。
 
 ## 验收与已知限制
 

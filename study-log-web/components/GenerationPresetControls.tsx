@@ -94,7 +94,7 @@ function GenerationPresetManager({ presets, onClose }: { presets: GenerationPres
     setSaved(value => ({ ...value, version: result.version }));
     const latest = result.presets.find(item => item.id === editingId);
     setServerCopy(latest || null);
-    setNotice(editingId && !latest ? "原方案已被删除；当前输入已保留，可复制为新方案。" : "已刷新版本，当前输入已保留。核对服务器内容后可再次保存。");
+    setNotice(editingId && !latest ? "原方案已被删除；当前输入已保留，可复制为新方案。" : "你的修改已保留。请对照最新内容，确认后再保存。");
   }
   async function setDefault() {
     if (!selected || dirty || busy || selected.issue) return;
@@ -114,11 +114,11 @@ function GenerationPresetManager({ presets, onClose }: { presets: GenerationPres
           <div className="generation-presets-editor">
             <label htmlFor="preset-name">方案名称</label><input id="preset-name" value={name} readOnly={readOnly} disabled={busy} maxLength={80} onChange={event => setName(event.target.value)} />
             <label htmlFor="preset-prompt">提示词</label><textarea id="preset-prompt" value={prompt} readOnly={readOnly} disabled={busy} onChange={event => setPrompt(event.target.value)} />
-            {readOnly && <p className="generation-presets-hint">{editingId === "legacy" ? "来自实例现有模板，保留原有行为。可复制后编辑。" : "内置方案只读，可复制后编辑。"}</p>}
+            {readOnly && <p className="generation-presets-hint">{editingId === "legacy" ? "沿用原有写作提示词，可复制后修改。" : "内置方案只读，可复制后编辑。"}</p>}
             {selected?.issue && <p className="generation-preset-error" role="alert">{selected.issue}</p>}
             {presets.error && <p className="generation-preset-error" role="alert">{presets.error}</p>}
-            {presets.conflict && <button type="button" className="button secondary" disabled={busy} onClick={() => void refreshVersion()}>刷新版本并保留输入</button>}
-            {serverCopy && <details className="generation-presets-comparison"><summary>服务器当前内容</summary><p>{serverCopy.name}</p><pre>{serverCopy.prompt}</pre></details>}
+            {presets.conflict && <button type="button" className="button secondary" disabled={busy} onClick={() => void refreshVersion()}>查看最新内容</button>}
+            {serverCopy && <details className="generation-presets-comparison"><summary>最新保存内容</summary><p>{serverCopy.name}</p><pre>{serverCopy.prompt}</pre></details>}
             {notice && <p className="generation-presets-hint" role="status">{notice}</p>}
             <div className="generation-presets-actions">
               <button type="button" className="button secondary" disabled={busy} onClick={reload}>重新载入</button>

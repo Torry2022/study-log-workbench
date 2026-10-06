@@ -62,9 +62,9 @@ try {
   await expect(dialog.getByRole('alert')).toContainText('其他页面修改');
   await expect(dialog.getByLabel('提示词', { exact: true })).toHaveValue('未保存草稿需要保留');
   assert.equal((await read()).presets.find(item => item.id === id).prompt, '来自另一页面的修订');
-  await dialog.getByRole('button', { name: '刷新版本并保留输入', exact: true }).click();
+  await dialog.getByRole('button', { name: '查看最新内容', exact: true }).click();
   await expect(dialog.getByLabel('提示词', { exact: true })).toHaveValue('未保存草稿需要保留');
-  await dialog.locator('summary').filter({ hasText: '服务器当前内容' }).click();
+  await dialog.locator('summary').filter({ hasText: '最新保存内容' }).click();
   await expect(dialog.locator('.generation-presets-comparison')).toContainText('来自另一页面的修订');
   await dialog.getByRole('button', { name: '保存方案', exact: true }).click();
   await expect(dialog.getByRole('status')).toHaveText('方案已保存');

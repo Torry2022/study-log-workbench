@@ -103,7 +103,7 @@ export struct LogAiPanel {
         Column({ space: 12 }) {
           if (this.mode === 'generate') {
             Row({ space: 8 }) {
-              Text('写作方案').layoutWeight(1).fontSize(13).fontColor($r('app.color.muted'))
+              Text('生成方案').layoutWeight(1).fontSize(13).fontColor($r('app.color.muted'))
               ToolbarAction({ label: this.presetsLoading ? '读取中' : '刷新方案', icon: $r('app.media.refresh_cw'),
                 controlHeight: 30, available: !this.presetsLoading && !this.busy,
                 onAction: this.onReloadPresets })
@@ -117,7 +117,7 @@ export struct LogAiPanel {
                 .enabled(!this.busy && !this.presetsLoading)
                 .onSelect((index: number) => this.onPreset(this.presets[index].id)).id('log_ai_preset')
             } else {
-              Text(this.presetsLoading ? '正在读取写作方案…' : '现有默认方案')
+              Text(this.presetsLoading ? '正在读取生成方案…' : '现有默认方案')
                 .fontSize(13).fontColor($r('app.color.muted')).width('100%')
             }
             if (this.presetError) {

@@ -59,7 +59,7 @@ export class LogAiController {
       if (!response || !Array.isArray(response.presets) || !response.presets.length ||
         !response.presets.every((item: GenerationPreset) => typeof item.id === 'string' && typeof item.name === 'string') ||
         !response.presets.some((item: GenerationPreset) => item.id === response.defaultPresetId)) {
-        throw new Error('写作方案响应格式异常');
+        throw new Error('生成方案响应格式异常');
       }
       const selected = this.presetsLoaded ? this.presetId : response.defaultPresetId;
       this.presets = response.presets;
@@ -71,7 +71,7 @@ export class LogAiController {
         // Older servers retain their existing generation.md contract.
         this.presets = []; this.presetId = 'legacy'; this.presetsLoaded = true;
       } else {
-        this.presetError = error instanceof Error ? error.message : '写作方案读取失败，请重试';
+        this.presetError = error instanceof Error ? error.message : '生成方案读取失败，请重试';
       }
     } finally { if (revision === this.presetsRevision) this.presetsLoading = false; }
   }

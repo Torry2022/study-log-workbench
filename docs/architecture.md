@@ -86,6 +86,8 @@ RAG 的检索规划、MCP 边界校验、回答流解析和历史存储分别独
 
 ## 鸿蒙客户端当前边界
 
+鸿蒙格式入口复用现有更多操作弹层／窄屏操作面板。宿主经 `SourceEditorSession.command` 将 `format:` 命令交给保留的 CodeMirror 实例，运行时直接编译同一份 Web `markdownChange`，不复制 Markdown 变换。运行时源码来自具名个人版基线并保留公开版图片选区修正。方案选择只管理本次 ID、读取代次及默认初选，完整方案编辑仍在 Web；非 legacy 方案根据提供方配置判断能力，缺旧模板不误禁用，旧服务器缺少新字段时回退原能力标志。
+
 工作台当前模块由 `Index.selectedModule` 唯一持有，日志工作区通过 `@Link` 接收，不再以四个模块布尔值拼接选择状态。顶栏、底部导航、收藏／统计来源、随记链接及问答引用都经过同一离开确认和模块过渡入口；更换服务器的离开检查不预先改变当前模块。后续职责恢复清单见 `harmony-workspace-recovery.md`，当前工作台宿主直接装配应用层外壳及常驻日志模块。
 
 `app/components/WorkspaceFrame` 承接原版 `Index.workspace` 的顶栏／导航布局、模块区域、底部导航及模块截图覆盖层；通过构建器参数接收现有内容。`Index` 持有 `WorkspaceModuleState`、收藏控制器和问答导航控制器；`app/components/WorkspaceContent` 持有五模块常驻容器，日志正文和日志侧层通过构建器接入。顶栏和导航由应用层装配；日志内容及日志内层由 LogsReaderPage 管理。文档与阅读模式截图继续挂在工作台根层，不能移入模块覆盖层。迁移保留原版顶栏父层级、模块焦点入口及阅读模式隐藏控件处理。

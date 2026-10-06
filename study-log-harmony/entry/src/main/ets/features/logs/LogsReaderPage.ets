@@ -165,6 +165,7 @@ export struct LogsReaderPage {
   @State private ai: LogAiController = new LogAiController(apiClient);
   @State private linkAlias: string = '';
   @State private moreOpen: boolean = false;
+  @State private formatMenuOpen: boolean = false;
   @Link topMoreOpen: boolean;
   @Link desktopThemeOpen: boolean;
   @Link desktopKeyboardFocus: boolean;
@@ -565,6 +566,7 @@ export struct LogsReaderPage {
   }
 
   private handleActionsDisappear(): void {
+    this.formatMenuOpen = false;
     if (!this.pendingOutlineOpen) return;
     this.pendingOutlineOpen = false;
     this.openOutline();
@@ -1602,7 +1604,7 @@ export struct LogsReaderPage {
 
 
   @Builder
-  private desktopMoreItem(icon: Resource, label: string, enabled: boolean, action: () => void) {
+  private desktopMoreItem(icon: Resource, label: string, enabled: boolean, action: () => void, keepOpen: boolean = false) {
     Button({ type: ButtonType.Normal }) {
       Row({ space: 8 }) {
         Image(icon).width(16).height(16).colorFilter(iconTint($r('app.color.body')))
@@ -1613,49 +1615,55 @@ export struct LogsReaderPage {
       .attributeModifier(new InteractiveSurface(Color.Transparent, this.hoveredMoreAction === label))
       .enabled(enabled).opacity(enabled ? 1 : 0.45)
       .onHover((hover: boolean) => animateHover(this.getUIContext(), () => this.hoveredMoreAction = hover ? label : ''))
-      .onClick(() => { this.moreOpen = false; action(); })
+      .onClick(() => { if (!keepOpen) this.moreOpen = false; action(); })
   }
 
   @Builder
   private moreActions() {
     Column() {
-      if ((this.sourceMode || this.splitMode) && !this.editorActionsInHeader()) {
-        this.desktopMoreItem($r('app.media.link_2'), '内部链接', this.editorReady && !this.linkOpening,
-          () => this.openLink())
-        this.desktopMoreItem($r('app.media.search'), '查找替换', this.editorReady,
-          () => this.editor.command('find'))
-      }
-      if (!this.documentActionsInHeader('refresh')) {
-        this.desktopMoreItem($r('app.media.refresh_cw'), '刷新', !!this.session.selectedDate && !this.refreshing &&
-          !this.documents.saving && !this.deleting,
-          () => this.refreshLog())
-      }
-      this.desktopMoreItem($r('app.media.layout_list'), '大纲', this.outlineHeadings().length > 0,
-        () => this.pendingOutlineOpen = true)
-      this.desktopMoreItem($r('app.media.panel_right_open'), 'AI 工具', !!this.session.day,
-        () => this.openAiTools())
-      if (!this.editorActionsInHeader()) {
-        this.desktopMoreItem($r('app.media.upload'), '插入图片', !!this.session.day && !this.imageBusy,
-          () => this.insertImages())
-        this.desktopMoreItem($r('app.media.eye'), '放弃修改', this.editorReady && this.session.isDirty(),
-          () => this.discardDraft())
-      }
-      if (!this.documentActionsInHeader('backup')) {
-        this.desktopMoreItem($r('app.media.database_backup'), '备份', !!this.session.day && !this.documents.saving,
-          () => this.backupOpen = true)
-      }
-      if (!this.documentActionsInHeader('delete')) {
-        this.desktopMoreItem($r('app.media.trash_2'), '删除日块', !!this.session.day?.exists && !this.deleting,
-          () => this.confirmDelete())
-      }
-      if (!this.documentActionsInHeader('export')) {
-        Divider().color($r('app.color.hairline')).margin({ top: 4, bottom: 4 })
-        this.desktopMoreItem($r('app.media.download'), '导出当前日块', !!this.session.day && !this.exportBusy,
-          () => this.exportLogs('day'))
-        this.desktopMoreItem($r('app.media.download'), '导出当前源文件', !!this.session.day && !this.exportBusy,
-          () => this.exportLogs('file'))
-        this.desktopMoreItem($r('app.media.download'), '导出全部日志', !this.exportBusy,
-          () => this.exportLogs('all'))
+      if (this.formatMenuOpen) {
+        this.formatActions()
+      } else {
+        this.desktopMoreItem($r('app.media.edit_3'), '编辑', this.editorReady && (this.sourceMode || this.splitMode),
+          () => this.formatMenuOpen = true, true)
+        if ((this.sourceMode || this.splitMode) && !this.editorActionsInHeader()) {
+          this.desktopMoreItem($r('app.media.link_2'), '内部链接', this.editorReady && !this.linkOpening,
+            () => this.openLink())
+          this.desktopMoreItem($r('app.media.search'), '查找替换', this.editorReady,
+            () => this.editor.command('find'))
+        }
+        if (!this.documentActionsInHeader('refresh')) {
+          this.desktopMoreItem($r('app.media.refresh_cw'), '刷新', !!this.session.selectedDate && !this.refreshing &&
+            !this.documents.saving && !this.deleting,
+            () => this.refreshLog())
+        }
+        this.desktopMoreItem($r('app.media.layout_list'), '大纲', this.outlineHeadings().length > 0,
+          () => this.pendingOutlineOpen = true)
+        this.desktopMoreItem($r('app.media.panel_right_open'), 'AI 工具', !!this.session.day,
+          () => this.openAiTools())
+        if (!this.editorActionsInHeader()) {
+          this.desktopMoreItem($r('app.media.upload'), '插入图片', !!this.session.day && !this.imageBusy,
+            () => this.insertImages())
+          this.desktopMoreItem($r('app.media.eye'), '放弃修改', this.editorReady && this.session.isDirty(),
+            () => this.discardDraft())
+        }
+        if (!this.documentActionsInHeader('backup')) {
+          this.desktopMoreItem($r('app.media.database_backup'), '备份', !!this.session.day && !this.documents.saving,
+            () => this.backupOpen = true)
+        }
+        if (!this.documentActionsInHeader('delete')) {
+          this.desktopMoreItem($r('app.media.trash_2'), '删除日块', !!this.session.day?.exists && !this.deleting,
+            () => this.confirmDelete())
+        }
+        if (!this.documentActionsInHeader('export')) {
+          Divider().color($r('app.color.hairline')).margin({ top: 4, bottom: 4 })
+          this.desktopMoreItem($r('app.media.download'), '导出当前日块', !!this.session.day && !this.exportBusy,
+            () => this.exportLogs('day'))
+          this.desktopMoreItem($r('app.media.download'), '导出当前源文件', !!this.session.day && !this.exportBusy,
+            () => this.exportLogs('file'))
+          this.desktopMoreItem($r('app.media.download'), '导出全部日志', !this.exportBusy,
+            () => this.exportLogs('all'))
+        }
       }
     }.width(220).padding(8)
       .onKeyEvent((event: KeyEvent) => {
@@ -1663,6 +1671,32 @@ export struct LogsReaderPage {
         this.moreOpen = false;
         return true;
       })
+  }
+
+  private async applyFormat(command: string): Promise<void> {
+    this.moreOpen = false;
+    this.formatMenuOpen = false;
+    if (!this.editorReady || !(this.sourceMode || this.splitMode) || this.shortcutBlocked()) return;
+    if (command === 'internalLink') { this.openLink(); return; }
+    if (command === 'image') { this.insertImages(); return; }
+    try { await this.editor.command(`format:${command}`); }
+    catch (error) { appFeedback.show(error instanceof Error ? error.message : '编辑操作失败', 'error', 3600, 'log-action'); }
+  }
+
+  @Builder
+  private formatActions() {
+    Scroll() {
+      Column() {
+        this.desktopMoreItem($r('app.media.layout_list'), '返回日志操作', true,
+          () => this.formatMenuOpen = false, true)
+        ForEach(['正文', '三级标题', '四级标题', '五级标题', '六级标题', '加粗', '斜体', '行内代码', '代码块',
+          '无序列表', '有序列表', '引用', '表格', '行内公式', '块公式', '链接', '内部链接', '图片'], (label: string, index: number) => {
+          this.desktopMoreItem($r('app.media.edit_3'), label, this.editorReady && (this.sourceMode || this.splitMode),
+            () => this.applyFormat(['paragraph', 'h3', 'h4', 'h5', 'h6', 'bold', 'italic', 'code', 'codeBlock',
+              'unordered', 'ordered', 'quote', 'table', 'math', 'mathBlock', 'link', 'internalLink', 'image'][index]))
+        }, (label: string) => label)
+      }.width('100%')
+    }.width('100%').height(320).scrollBar(BarState.Auto)
   }
 
   private async discardDraft(): Promise<void> {
@@ -1680,7 +1714,7 @@ export struct LogsReaderPage {
   }
 
   @Builder
-  private moreAction(icon: Resource, label: string, enabled: boolean, action: () => void) {
+  private moreAction(icon: Resource, label: string, enabled: boolean, action: () => void, keepOpen: boolean = false) {
     Button({ type: ButtonType.Normal }) {
       Column({ space: 4 }) {
         Image(icon).width(18).height(18).objectFit(ImageFit.Contain)
@@ -1692,7 +1726,7 @@ export struct LogsReaderPage {
       .backgroundColor($r('app.color.surface_soft'))
       .border({ width: 1, color: $r('app.color.hairline') })
       .borderRadius(8).clip(true).enabled(enabled)
-      .onClick(() => { this.moreOpen = false; action(); })
+      .onClick(() => { if (!keepOpen) this.moreOpen = false; action(); })
   }
 
   @Builder
@@ -1712,6 +1746,8 @@ export struct LogsReaderPage {
     Column({ space: 10 }) {
       if (this.sourceMode || this.splitMode) {
         Row({ space: 8 }) {
+          this.moreAction($r('app.media.edit_3'), '编辑', this.editorReady,
+            () => this.formatMenuOpen = true, true)
           this.moreAction($r('app.media.link_2'), '内部链接', this.editorReady && !this.linkOpening,
             () => this.openLink())
           this.moreAction($r('app.media.search'), '查找替换', this.editorReady,
@@ -1762,7 +1798,8 @@ export struct LogsReaderPage {
       ActionPanelHeader({ title: '日志操作', showDragBar: true,
         closeLabel: '关闭日志操作', onClose: () => this.moreOpen = false })
         .margin({ bottom: 12 })
-      this.compactMoreActionContent()
+      if (this.formatMenuOpen) { this.formatActions() }
+      else { this.compactMoreActionContent() }
     }.width('100%').padding({ left: 16, right: 16, top: 8, bottom: 18 })
       .alignItems(HorizontalAlign.Center)
       .backgroundColor($r('app.color.canvas'))
@@ -1991,7 +2028,8 @@ export struct LogsReaderPage {
                     .fontWeight(this.activeOutlineId === heading.id ? FontWeight.Medium : FontWeight.Regular)
                     .fontColor(this.activeOutlineId === heading.id ? $r('app.color.ink') : $r('app.color.muted'))
                 }
-                .layoutWeight(1).constraintSize({ minHeight: 30 }).padding({ left: 8, right: 4, top: 4, bottom: 4 })
+                .layoutWeight(1).constraintSize({ minHeight: 30 })
+                .padding({ left: 8 + Math.max(0, heading.level - 3) * 12, right: 4, top: 4, bottom: 4 })
                 .backgroundColor(Color.Transparent).borderRadius(6).onClick(() => this.locateOutlineHeading(heading))
                 if (heading.level === 3) {
                   Button({ type: ButtonType.Normal }) {
@@ -2235,6 +2273,7 @@ export struct LogsReaderPage {
   private openAiTools(mode: string = 'generate'): void {
     if (this.sidebar.sidebarAnimating) return;
     this.aiMode = mode;
+    if (!this.ai.presetsLoaded && !this.ai.presetsLoading) this.ai.loadPresets();
     if (this.aiOpen && !this.aiClosing) return;
     this.aiClosing = false;
     this.aiOpen = true;
@@ -2358,16 +2397,20 @@ export struct LogsReaderPage {
   private aiToolsPanel() {
     LogAiPanel({ mode: $aiMode, instruction: this.ai.instruction,
       material: this.ai.material, output: this.ai.output,
+      presets: this.ai.presets, presetId: this.ai.presetId,
+      presetsLoading: this.ai.presetsLoading, presetError: this.ai.presetError,
+      onPreset: (id: string) => this.ai.presetId = id,
+      onReloadPresets: () => this.ai.loadPresets(),
       onInstruction: (value: string) => this.ai.instruction = value,
       onMaterial: (value: string) => this.ai.material = value,
       onOutput: (value: string) => this.ai.output = value,
       busy: this.ai.busy, importing: this.ai.importing, ready: !!this.session.day,
-      generateConfigured: !!activeInstance.capabilities?.features.aiWriting.configured,
+      generateConfigured: this.ai.generationConfigured(activeInstance.capabilities),
       highlightConfigured: !!activeInstance.capabilities?.features.aiHighlighting.configured,
       canHighlight: !!this.session.text.trim(),
       canApply: !!this.ai.output.trim() && this.ai.outputDate === this.session.selectedDate,
       message: this.ai.message || (this.aiMode === 'generate' &&
-        !activeInstance.capabilities?.features.aiWriting.configured || this.aiMode === 'highlight' &&
+        !this.ai.generationConfigured(activeInstance.capabilities) || this.aiMode === 'highlight' &&
         !activeInstance.capabilities?.features.aiHighlighting.configured ?
         (this.aiMode === 'generate' ? '当前实例尚未配置日志生成模型' : '当前实例尚未配置重点标注模型') : ''),
       desktop: this.isWide(), onClose: () => this.closeAiTools(),

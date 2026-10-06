@@ -3,6 +3,7 @@ import { SegmentIndicator } from '../../../common/ui/SegmentIndicator';
 import { InteractiveSurface, animateHover } from '../../../common/ui/InteractiveSurface';
 import { iconTint } from '../../../common/ui/IconTint';
 import { KeyCode } from '@kit.InputKit';
+import { GenerationPreset } from '../LogAiController';
 
 @Component
 export struct LogAiPanel {
@@ -10,6 +11,12 @@ export struct LogAiPanel {
   @Prop instruction: string = '';
   @Prop material: string = '';
   @Prop output: string = '';
+  @Prop presets: GenerationPreset[] = [];
+  @Prop presetId: string = 'legacy';
+  @Prop presetsLoading: boolean = false;
+  @Prop presetError: string = '';
+  onPreset: (id: string) => void = () => {};
+  onReloadPresets: () => void = () => {};
   onInstruction: (value: string) => void = () => {};
   onMaterial: (value: string) => void = () => {};
   onOutput: (value: string) => void = () => {};
@@ -95,6 +102,27 @@ export struct LogAiPanel {
       Scroll() {
         Column({ space: 12 }) {
           if (this.mode === 'generate') {
+            Row({ space: 8 }) {
+              Text('写作方案').layoutWeight(1).fontSize(13).fontColor($r('app.color.muted'))
+              ToolbarAction({ label: this.presetsLoading ? '读取中' : '刷新方案', icon: $r('app.media.refresh_cw'),
+                controlHeight: 30, available: !this.presetsLoading && !this.busy,
+                onAction: this.onReloadPresets })
+            }.width('100%')
+            if (this.presets.length > 0) {
+              Select(this.presets.map((item: GenerationPreset): SelectOption => ({ value: item.name })))
+                .selected(this.presets.findIndex((item: GenerationPreset) => item.id === this.presetId))
+                .value(this.presets.find((item: GenerationPreset) => item.id === this.presetId)?.name || '现有默认方案')
+                .width('100%').height(40).font({ size: 14 }).fontColor($r('app.color.body'))
+                .backgroundColor($r('app.color.surface_soft')).borderRadius(8)
+                .enabled(!this.busy && !this.presetsLoading)
+                .onSelect((index: number) => this.onPreset(this.presets[index].id)).id('log_ai_preset')
+            } else {
+              Text(this.presetsLoading ? '正在读取写作方案…' : '现有默认方案')
+                .fontSize(13).fontColor($r('app.color.muted')).width('100%')
+            }
+            if (this.presetError) {
+              Text(this.presetError).fontSize(12).fontColor($r('app.color.muted')).width('100%')
+            }
             this.label('补充要求')
             TextArea({ text: this.instruction, placeholder: '例如：简写、突出项目实践、保留术语' })
               .width('100%').height(64).padding({ left: 12, right: 12, top: 10, bottom: 10 })
@@ -120,7 +148,7 @@ export struct LogAiPanel {
                 this.onMaterial(value);
               }).id('log_ai_material')
             this.action(() => this.busy ? '生成中' : '生成日志草稿', $r('app.media.wand_sparkles'),
-              () => this.ready && this.generateConfigured && !this.busy && !this.importing &&
+              () => this.ready && this.generateConfigured && !this.busy && !this.importing && !this.presetsLoading && !this.presetError &&
               (this.materialHasText || this.instructionHasText || !!this.material.trim() || !!this.instruction.trim()),
               this.onGenerate)
             if (this.message) {

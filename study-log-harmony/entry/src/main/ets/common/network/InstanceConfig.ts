@@ -1,4 +1,6 @@
 export interface FeatureCapability { supported: boolean; configured: boolean; }
+export interface AiProviderConfiguration { configured: boolean; }
+export interface AiConfiguration { provider: AiProviderConfiguration; }
 export interface InstanceFeatures {
   aiWriting: FeatureCapability;
   aiHighlighting: FeatureCapability;
@@ -10,6 +12,7 @@ export interface InstanceCapabilities {
   instanceId: string;
   apiContractVersion: number;
   features: InstanceFeatures;
+  aiConfiguration?: AiConfiguration;
 }
 
 // The setting is an origin. The application owns the fixed /study-log/api prefix.
@@ -39,7 +42,9 @@ export function validCapabilities(value: InstanceCapabilities): boolean {
     /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(value.instanceId) &&
     !!value.features && validFeature(value.features.aiWriting) && validFeature(value.features.aiHighlighting) &&
     validFeature(value.features.aiNoteExtraction) && validFeature(value.features.aiTaxonomy) &&
-    validFeature(value.features.rag);
+    validFeature(value.features.rag) && (value.aiConfiguration === undefined ||
+      (!!value.aiConfiguration && !!value.aiConfiguration.provider &&
+        typeof value.aiConfiguration.provider.configured === 'boolean'));
 }
 
 class ActiveInstance {

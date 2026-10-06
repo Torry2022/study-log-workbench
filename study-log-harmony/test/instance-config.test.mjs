@@ -42,3 +42,13 @@ test('build API URLs only under the selected server and fixed prefix', () => {
   assert.equal(activeInstance.apiUrl('/capabilities'), 'https://two.example/study-log/api/capabilities');
   assert.equal(activeInstance.capabilities, undefined);
 });
+
+test('provider configuration remains optional for older servers and validates when present', () => {
+  assert.equal(validCapabilities(capabilities), true);
+  for (const configured of [true, false]) {
+    assert.equal(validCapabilities({ ...capabilities, aiConfiguration: { provider: { configured } } }), true);
+  }
+  for (const aiConfiguration of [null, {}, { provider: null }, { provider: { configured: 'false' } }]) {
+    assert.equal(validCapabilities({ ...capabilities, aiConfiguration }), false);
+  }
+});

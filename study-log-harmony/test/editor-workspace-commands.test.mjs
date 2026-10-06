@@ -9,6 +9,28 @@ const callback = pageSource.match(/this\.editor\.onCommand = \(command: string\)
 assert.ok(callback);
 const dispatch = runInNewContext(`(function(command) { ${callback} })`);
 
+const formatStart = pageSource.indexOf('  private async applyFormat(');
+const formatEnd = pageSource.indexOf('\n  @Builder', formatStart);
+const formatModule = { exports: {} }, formatFailures = [];
+runInNewContext(ts.transpileModule(`export class FormatHost { ${pageSource.slice(formatStart, formatEnd)} }`,
+  { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText,
+  { module: formatModule, exports: formatModule.exports, appFeedback: { show: message => formatFailures.push(message) } });
+
+test('native format menu uses the actual editor command bridge and keeps links/images in host actions', async () => {
+  const host = new formatModule.exports.FormatHost(), calls = [];
+  Object.assign(host, { moreOpen: true, formatMenuOpen: true, editorReady: true, sourceMode: true, splitMode: false,
+    shortcutBlocked: () => false, openLink: () => calls.push('internalLink'), insertImages: () => calls.push('image'),
+    editor: { command: async command => calls.push(command) } });
+  await host.applyFormat('h3'); await host.applyFormat('internalLink'); await host.applyFormat('image');
+  assert.deepEqual(calls, ['format:h3', 'internalLink', 'image']);
+  assert.equal(host.moreOpen, false); assert.equal(host.formatMenuOpen, false);
+  host.sourceMode = false; await host.applyFormat('bold'); assert.equal(calls.length, 3);
+  host.splitMode = true; await host.applyFormat('table'); assert.equal(calls.at(-1), 'format:table');
+  host.shortcutBlocked = () => true; await host.applyFormat('h4'); assert.equal(calls.length, 4);
+  host.shortcutBlocked = () => false; host.editorReady = false;
+  await host.applyFormat('image'); assert.equal(calls.length, 4);
+});
+
 test('the actual editor callback forwards workspace commands and preserves local save/link/search actions', () => {
   const calls = [];
   const page = { save: () => calls.push('save'), openLink: () => calls.push('internalLink'),
@@ -19,6 +41,9 @@ test('the actual editor callback forwards workspace commands and preserves local
   dispatch.call(page, 'globalSearch');
   assert.equal(page.searchOpen, true);
   assert.equal(page.searchFocusRevision, 1);
+  page.shortcutBlocked = () => true;
+  dispatch.call(page, 'internalLink');
+  assert.equal(calls.length, 8);
 });
 
 const rootSource = await readFile(new URL('../entry/src/main/ets/pages/Index.ets', import.meta.url), 'utf8');

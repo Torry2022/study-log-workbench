@@ -64,3 +64,67 @@ test('disposed generation cannot overwrite a replacement request or clear its bu
     assert.equal(c.busy, false);
   }
 });
+
+test('presets use server default and generation preserves legacy omission', async () => {
+  const calls = [];
+  const c = await controller({ get: async () => ({ version: 'v1', defaultPresetId: 'builtin:practice',
+    presets: [{ id: 'legacy', name: '现有默认方案' }, { id: 'builtin:practice', name: '实践与排错' }] }),
+    post: async (_path, body) => { calls.push(body); return { result: { content: 'synthetic', warnings: [] } }; } });
+  await c.loadPresets();
+  assert.equal(c.presetId, 'builtin:practice');
+  c.material = 'synthetic';
+  await c.generate('2026-02-05');
+  assert.equal(calls[0].presetId, 'builtin:practice');
+  c.presetId = 'legacy';
+  await c.loadPresets();
+  assert.equal(c.presetId, 'legacy');
+  await c.generate('2026-02-05');
+  assert.equal(Object.hasOwn(calls[1], 'presetId'), false);
+});
+
+test('late preset responses cannot leak across disposed instances', async () => {
+  const pending = deferred();
+  const c = await controller({ get: () => pending.promise });
+  const task = c.loadPresets();
+  c.dispose();
+  pending.resolve({ version: 'old', defaultPresetId: 'user:old', presets: [{ id: 'user:old', name: 'old private scheme' }] });
+  await task;
+  assert.equal(c.presets.length, 0);
+  assert.equal(c.presetId, 'legacy');
+  assert.equal(c.presetsLoaded, false);
+  assert.equal(c.presetsLoading, false);
+});
+
+test('preset failure blocks generation but a legacy server 404 keeps the old API usable', async () => {
+  let status = 500, calls = 0;
+  const c = await controller({ get: async () => { const error = new Error('failed'); error.statusCode = status; throw error; },
+    post: async () => { calls++; return { result: { content: 'synthetic', warnings: [] } }; } });
+  c.material = 'synthetic';
+  await c.loadPresets();
+  await c.generate('2026-02-05');
+  assert.equal(calls, 0);
+  status = 404;
+  await c.loadPresets();
+  assert.equal(c.presetError, '');
+  await c.generate('2026-02-05');
+  assert.equal(calls, 1);
+});
+
+test('generation readiness uses provider configuration only for explicit presets, with legacy compatibility', async () => {
+  const c = await controller({});
+  const capabilities = { features: { aiWriting: { supported: true, configured: false } },
+    aiConfiguration: { provider: { configured: true } } };
+  assert.equal(c.generationConfigured(capabilities), false);
+  for (const id of ['builtin:practice', 'user:synthetic']) {
+    c.presetId = id;
+    assert.equal(c.generationConfigured(capabilities), true);
+    assert.equal(c.generationConfigured({ ...capabilities, aiConfiguration: { provider: { configured: false } } }), false);
+    assert.equal(c.generationConfigured({ ...capabilities, features: { aiWriting: { supported: false, configured: true } } }), false);
+  }
+  for (const id of ['legacy', 'builtin:daily']) {
+    c.presetId = id;
+    assert.equal(c.generationConfigured({ features: { aiWriting: { supported: true, configured: true } } }), true);
+    assert.equal(c.generationConfigured({ features: { aiWriting: { supported: true, configured: false } } }), false);
+    assert.equal(c.generationConfigured(undefined), false);
+  }
+});

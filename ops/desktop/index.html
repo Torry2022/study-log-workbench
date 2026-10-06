@@ -3,7 +3,7 @@
 <body><main><header><div class="brand"><span class="brand-mark theme-logo" aria-hidden="true"><img class="theme-logo-light" src="/app-logo-light.svg" alt=""><img class="theme-logo-dark" src="/app-logo-dark.svg" alt=""></span><div><strong>学习日志工作台</strong><span>本机运行</span></div></div><span id="state">读取状态…</span></header>
 <h1>本地工作台</h1><p class="intro">选择资料目录并启动工作台。没有配置模型，也可以记录和查找日志。</p>
 <p id="notice" role="status" aria-live="polite"></p>
-<section><h2>资料目录</h2><div class="path"><input id="root" aria-label="资料目录" placeholder="选择专用资料目录，或填写绝对路径"><button data-pick="folder" data-for="root">选择目录</button></div>
+<section><h2>资料目录</h2><p id="root-help" class="hint">用于保存学习日志、随记、图片和工作台配置。首次使用请选择新的空文件夹；更新程序后，仍可打开这里的资料。</p><div class="path"><input id="root" aria-label="资料目录" aria-describedby="root-help" placeholder="选择专用资料目录，或填写绝对路径"><button data-pick="folder" data-for="root">选择目录</button></div>
 <label>新建实例的访问密码<input id="password" type="password" autocomplete="new-password" minlength="12" placeholder="至少 12 个字符；打开已有实例无需填写"></label>
 <div class="actions"><button id="create">新建实例</button><button id="select">打开已有实例</button></div><p id="current" class="hint"></p></section>
 <section><h2>运行</h2><p class="hint">仅在这台电脑访问。关闭浏览器不会停止服务；备份和退出会等待正在进行的操作完成。</p><div class="actions"><button id="start" class="primary">启动工作台</button><a id="open" class="button" target="_blank" rel="noopener" hidden>打开工作台</a><button id="stop">停止服务</button><button id="exit">退出启动入口</button></div></section>

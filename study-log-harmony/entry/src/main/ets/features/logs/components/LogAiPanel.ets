@@ -114,6 +114,12 @@ export struct LogAiPanel {
                 .value(this.presets.find((item: GenerationPreset) => item.id === this.presetId)?.name || '现有默认方案')
                 .width('100%').height(40).font({ size: 14 }).fontColor($r('app.color.body'))
                 .backgroundColor($r('app.color.surface_soft')).borderRadius(8)
+                .optionFont({ size: 13 }).optionFontColor($r('app.color.body'))
+                .optionBgColor($r('app.color.canvas'))
+                .selectedOptionFont({ size: 13, weight: FontWeight.Medium })
+                .selectedOptionFontColor($r('app.color.primary'))
+                .selectedOptionBgColor($r('app.color.primary_tint'))
+                .menuBackgroundColor($r('app.color.canvas')).menuBackgroundBlurStyle(BlurStyle.NONE)
                 .enabled(!this.busy && !this.presetsLoading)
                 .onSelect((index: number) => this.onPreset(this.presets[index].id)).id('log_ai_preset')
             } else {

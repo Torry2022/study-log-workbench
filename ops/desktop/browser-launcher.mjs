@@ -21,7 +21,14 @@ try {
   await page.goto(`${launcher.origin}/#${launcher.token}`);
   await page.getByText("已停止", { exact: true }).waitFor();
   assert.equal(new URL(page.url()).hash, "");
-  await page.getByLabel("资料目录", { exact: true }).fill(path.join(synthetic, "instance"));
+  const selectedRoot = path.join(synthetic, "instance");
+  await page.route("**/api/pick", route => route.fulfill({ contentType: "application/json", body: JSON.stringify({ path: selectedRoot }) }));
+  await page.getByRole("button", { name: "选择目录", exact: true }).click();
+  await page.getByText("已选择位置", { exact: true }).waitFor();
+  assert.equal(await page.getByLabel("资料目录", { exact: true }).inputValue(), selectedRoot);
+  assert.equal(await page.locator("#current").textContent(), "新目录请设置密码后点击“新建实例”；已有资料请点击“打开已有实例”。");
+  assert.equal((await page.request.get(`${launcher.origin}/api/status`, { headers: { Authorization: `Bearer ${launcher.token}` } })).ok(), true);
+  await page.unroute("**/api/pick");
   await page.getByLabel("新建实例的访问密码").fill("synthetic-browser-password");
   await page.getByRole("button", { name: "新建实例", exact: true }).click();
   await page.getByText("已创建资料目录", { exact: true }).waitFor();

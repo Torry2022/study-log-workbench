@@ -14,7 +14,7 @@ async function status() {
   const response = await fetch("/api/status", { headers: { Authorization: `Bearer ${token}` } });
   const state = await response.json(); if (!response.ok) throw new Error(state.error);
   element("state").textContent = ({ stopped: "已停止", starting: "正在启动", running: "正在运行", stopping: "等待操作完成后停止", failed: "需要检查" })[state.state];
-  element("current").textContent = state.root ? `当前资料：${state.root}` : "尚未选择资料目录";
+  element("current").textContent = state.root ? `当前资料：${state.root}` : "新目录请设置密码后点击“新建实例”；已有资料请点击“打开已有实例”。";
   if (!value("root") && state.root) element("root").value = state.root;
   element("open").hidden = !state.url; if (state.url) element("open").href = state.url;
   if (state.issue) notice(state.issue, true);

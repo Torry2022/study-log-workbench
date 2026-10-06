@@ -23,7 +23,7 @@ node (Join-Path $devEcoStudio 'tools\hvigor\bin\hvigorw.js') --mode module -p pr
 
 本轮新增：日志源码／分屏模式在原生“更多日志操作 → 编辑”中提供正文、三级至六级标题、列表、代码、表格和公式等操作；编辑器仍是同一个 CodeMirror，一次格式变更可独立撤销。宽屏目录按 H3–H6 层级缩进。日志 AI 可选择网页管理的生成方案，个人方案完整管理留在网页；连接旧实例时保留 generation.md 行为。Windows 本机包默认仅监听本机，不能直接作为手机可访问的服务器。
 
-源码编辑器的可维护来源与构建流程已恢复至 [editor-runtime](editor-runtime/README.md)，不手改压缩产物。本轮当前源码通过 224 项协议／实际方法测试、运行时测试和宽窄 WebView bundle 浏览器烟测，以及无签名 HAP 构建。此次新增原生菜单、方案 Select 和宽屏目录尚未安装到设备做视觉确认；以前的设备证据不替代这些新界面的验证。
+源码编辑器的可维护来源与构建流程已恢复至 [editor-runtime](editor-runtime/README.md)，不手改压缩产物。本轮当前源码通过 224 项协议／实际方法测试、运行时测试和宽窄 WebView bundle 浏览器烟测，以及无签名 HAP 构建。后续相关 10 项测试和签名 HAP 构建通过，已在获授权的平板公开隔离包验证原生菜单、方案 Select 和宽屏目录，覆盖全屏与窄浮窗；Select 展开样式复用既有颜色资源。具体证据与范围见[本轮记录](../docs/product-iteration-acceptance.md)，不外推为全部设备及输入法组合通过。
 
 `EntryAbility.ets` 的 `KEEP_SCREEN_ON_DURING_ACCEPTANCE` 默认 `false`。最新关闭常亮候选已分别在 PC、平板和 Pura 手机按原有系统超时观察：PC 为 TIMEOUT／INACTIVE，平板和手机为 TIMEOUT／SLEEP；PC 的 INACTIVE 不作为深度睡眠证据。此前失败和活动刷新样本保留在恢复清单，不能用成功结果反推旧失败原因。维护者设备上的临时常亮验收包不是发行包。
 

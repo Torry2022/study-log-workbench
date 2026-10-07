@@ -186,7 +186,7 @@ export struct QaNavigation {
         }
         if (this.filteredQaSessions().length === 0 && !this.qaNavigationLoading && !this.qaNavigationError) {
           ListItem() {
-            Text(this.qaSessionQuery ? '未找到匹配会话' : '暂无历史问答')
+            Text(this.qaSessionQuery ? '没有匹配的历史问答' : '暂无历史问答')
               .fontSize(12).fontColor($r('app.color.muted')).width('100%').padding(10)
           }
         } else if (this.filteredQaSessions().length > 0) {
@@ -234,7 +234,7 @@ export struct QaNavigation {
         }
         if (this.filteredQaSessions().length === 0 && !this.qaNavigationLoading && !this.qaNavigationError) {
           ListItem() {
-            Text(this.qaSessionQuery ? '未找到匹配会话' : '暂无历史问答')
+            Text(this.qaSessionQuery ? '没有匹配的历史问答' : '暂无历史问答')
               .fontSize(12).fontColor($r('app.color.muted')).width('100%').padding(10)
           }
         } else if (this.filteredQaSessions().length > 0) {

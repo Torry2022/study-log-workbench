@@ -451,8 +451,8 @@ export struct FavoritesPage {
             EmptyState({ embedded: true,
               symbol: $r('sys.symbol.star'),
               title: this.emptyGroup() ? '此分组暂无收藏' : this.data.favorites.length > 0 ? '没有符合条件的收藏' : '暂无收藏',
-              description: this.emptyGroup() ? '可在全部收藏中，通过“分组”将已有收藏加入这里' :
-                this.data.favorites.length > 0 ? '换一个关键词或筛选条件再试试' : '在日志大纲中收藏重要小节'
+              description: this.emptyGroup() ? '在全部收藏中选择“分组”，将收藏加入这里。' :
+                this.data.favorites.length > 0 ? '试试其他关键词，或调整筛选条件。' : '在日志大纲中点亮小节旁的星标，方便以后回看。'
             })
             if (this.emptyGroup()) {
               Button('查看全部收藏', { type: ButtonType.Normal }).height(36).padding({ left: 20, right: 20 })

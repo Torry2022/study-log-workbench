@@ -638,7 +638,7 @@ export struct StatsPage {
           }.width('100%').height(360)
         } else {
           Column() {
-            EmptyState({ symbol: $r('sys.symbol.histogram'), title: '暂无统计', description: '当前月份没有可统计的日志小节' })
+            EmptyState({ symbol: $r('sys.symbol.histogram'), title: '暂无统计数据', description: '本月暂无可统计的小节。' })
           }.width('100%').height(360)
         }
       }.width('100%')

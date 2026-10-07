@@ -252,7 +252,7 @@ export struct NoteEditorFields {
           Button('创建标签：' + this.tagQuery.trim()).width('100%').height(36).fontSize(13)
             .fontColor($r('app.color.primary_active')).backgroundColor(Color.Transparent).onClick(() => this.addTag(this.tagQuery))
         } else if (this.tagChoices().length === 0) {
-          Text('暂无匹配标签').fontSize(12).fontColor($r('app.color.muted')).padding(12)
+          Text('没有匹配的标签').fontSize(12).fontColor($r('app.color.muted')).padding(12)
         }
       }.width('100%')
     }.constraintSize({ maxHeight: 220 }).width('100%')

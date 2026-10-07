@@ -2587,7 +2587,9 @@ export struct LogsReaderPage {
           }
         }.layoutWeight(1).width('100%')
       } else {
-        EmptyState({ title: '暂无学习日志', description: '当前实例还没有可阅读的日志。' })
+        EmptyState({ title: this.logNavigation.months.length === 0 ? '暂无学习日志' : '未选择日志',
+          description: this.logNavigation.months.length === 0 ? '点击“今天”，记下今天学到的内容。' :
+            '选择一个日期，查看当天的学习内容。' })
       }
     }.layoutWeight(1).height('100%')
   }

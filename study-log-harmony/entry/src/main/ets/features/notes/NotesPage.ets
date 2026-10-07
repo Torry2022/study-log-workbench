@@ -515,8 +515,8 @@ export struct NotesPage {
               LoadFailure({ title: '随记读取失败', message: this.data.errorMessage, onRetry: () => this.load() })
             } else {
               EmptyState({ symbol: $r('sys.symbol.lightbulb'),
-                title: this.query ? '未找到匹配随记' : '暂无随记',
-                description: this.query ? '换一个关键词再试试' : '记录一个值得长期保留的观点' })
+                title: this.query ? '没有匹配的随记' : '暂无随记',
+                description: this.query ? '试试其他关键词。' : '随手记下学习中的问题、想法或收获。' })
             }
           }.width('100%').height(Math.max(0, this.noteViewportHeight - this.listHeaderHeight))
         }

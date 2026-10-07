@@ -282,7 +282,7 @@ export struct QaPage {
               }.width('100%').height('100%').padding({ bottom: this.composerHeight })
             } else if (this.data.messages.length === 0) {
               Column() {
-                EmptyState({ symbol: $r('sys.symbol.message'), title: '从日志中提问', description: '例如：最近一个月主要学习了哪些方向？' })
+                EmptyState({ symbol: $r('sys.symbol.message'), title: '关于日志，你想了解什么？', description: '输入问题，回答会附上相关日志，方便回看。' })
               }
               .width('100%')
               .height('100%')

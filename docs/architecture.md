@@ -237,3 +237,6 @@ NSIS 使用当前用户安装，不请求管理员提权；程序目录与默认
 桌面 PNG／ICO 直接从 Web 页面现用的 `public/app-logo-light.svg` 生成，不再把历史标签图标当成品牌资源来源；Web 标签图标同步同一新版图形。
 
 桌面标题栏使用本地沙盒页面承载 Logo、名称和文件／编辑／视图／帮助菜单，保留 Windows 原生窗口控制按钮。独立 WebContentsView 承载原工作台，实际视口从标题栏下方开始，不向网页注入补位 CSS。两者分别校验 IPC 来源；主题由已认证工作台同步到标题栏。关闭先请求工作台执行 beforeunload，确认后再关闭外壳及停止服务，取消时清除待执行操作。菜单继续调用原生 Menu 和既有资料操作，不移除工作区模块按钮。
+
+
+Electron 使用方式与本机服务管理分离：旧 `desktop.json` 的 root/webPort 仍兼容，新偏好增加 mode 与远端 origin/instanceId/localHttp，不保存远端密码。只有本地模式调用 DesktopManager.start；远端使用独立持久会话，以现有 `/api/auth/login` 与 `/api/capabilities` 校验认证及身份。切换先预检远端，再经过工作台 beforeunload，确认后停止当前本机服务，打开目标；取消保留当前页面。远端不具有模型设置、目录及整实例归档 IPC 入口，原生设置窗口仍校验本地文件和主框架来源。顶栏只显示资料归属，不新增同步存储。

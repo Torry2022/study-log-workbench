@@ -16,3 +16,5 @@ window.addEventListener('keydown',event=>{
  if(event.key==='Escape'){event.preventDefault();window.titlebar.workspace();}
  if(event.key==='F10'||event.key==='Alt'){event.preventDefault();focus(0);}
 });
+
+window.titlebar.onLocation(label=>{const location=document.querySelector('#location');location.textContent=label;location.title=label;});

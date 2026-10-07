@@ -1,8 +1,10 @@
-import { app, BrowserWindow, WebContentsView, Menu, dialog, ipcMain, nativeTheme, shell } from 'electron';
+import { app, BrowserWindow, WebContentsView, Menu, dialog, ipcMain, nativeTheme, shell, session } from 'electron';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+
+import { normalizeOrigin, checkCapabilities, connectServer } from './server-connection.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repository = path.resolve(here, '../..');
@@ -20,13 +22,18 @@ const manager = new DesktopManager({ packageRoot: payload,
     node: path.join(repository, '.local/windows-runtime/node-v22.23.3-win-x64/node.exe')
   }) });
 const preferences = path.join(app.getPath('userData'), 'desktop.json');
-let workspaceView, titleMenu;
+let workspaceView, titleMenu, connectionWindow, nextConnection;
+let closeAfterTransition = false;
+let savedPreferences = {}, active = { mode: 'local' };
+const workspaceUrl = () => active.mode === 'remote' ? active.origin + '/study-log' : manager.url;
+const remotePartition = target => 'persist:remote-' + crypto.createHash('sha256').update(target.origin + ':' + target.instanceId).digest('hex').slice(0, 24);
+async function savePreferences() { await atomicPrivateFile(preferences, JSON.stringify(savedPreferences, null, 2)); }
 let win, quitting = false, finishing = false, nextRoot = null, pendingAction = null, settingsWindow = null;
 
 function trusted(event) {
   try {
     return win && event.sender === workspaceView?.webContents && event.senderFrame === workspaceView.webContents.mainFrame
-      && manager.url && new URL(event.senderFrame.url).origin === new URL(manager.url).origin;
+      && workspaceUrl() && new URL(event.senderFrame.url).origin === new URL(workspaceUrl()).origin;
   } catch { return false; }
 }
 ipcMain.on('workbench:close', event => { if (trusted(event)) win.close(); });
@@ -37,7 +44,7 @@ function titlebarTrusted(event) {
 }
 ipcMain.on('titlebar:menu', (event, id, x) => {
   if (!titlebarTrusted(event) || !Number.isInteger(id) || id < 0 || id > 3 || !Number.isFinite(x)) return;
-  if (settingsWindow || finishing) return;
+  if (settingsWindow || connectionWindow || finishing) return;
   workspaceView.webContents.focus();
   titleMenu.items[id].submenu.popup({ window: win, x: Math.max(0, Math.min(win.getContentSize()[0] - 1, Math.round(x))), y: 36 });
 });
@@ -47,6 +54,63 @@ ipcMain.on('workbench:theme', (event, theme) => {
   win.setTitleBarOverlay({ color: theme === 'dark' ? '#151412' : '#faf9f5', symbolColor: theme === 'dark' ? '#f5f0e8' : '#141413' });
   win.webContents.send('titlebar:theme', theme);
 });
+
+
+function connectionTrusted(event) {
+  return connectionWindow && event.sender === connectionWindow.webContents && event.senderFrame === connectionWindow.webContents.mainFrame
+    && event.senderFrame.url === pathToFileURL(path.join(here, 'connection.html')).href;
+}
+ipcMain.handle('connection:read', event => {
+  if (!connectionTrusted(event)) throw Error('无效窗口');
+  return { mode: win ? active.mode : savedPreferences.mode || 'local', origin: savedPreferences.remote?.origin || '', localHttp: savedPreferences.remote?.localHttp || false, root: savedPreferences.root || path.join(app.getPath('userData'), 'instance') };
+});
+ipcMain.handle('connection:select', async (event, value) => {
+  if (!connectionTrusted(event) || finishing || pendingAction || nextConnection) return { error: '请等待当前操作完成。' };
+  try {
+    let target;
+    if (value?.mode === 'local') target = { mode: 'local' };
+    else {
+      if (value?.mode !== 'remote') throw Error('请选择使用方式');
+      const result = await connectServer(value);
+      target = { mode: 'remote', origin: result.origin, instanceId: result.instanceId, localHttp: value.localHttp === true };
+      await session.fromPartition(remotePartition(target)).cookies.set({ url: result.origin, name: 'study_log_session', value: result.cookie,
+        path: '/', expirationDate: result.expirationDate, httpOnly: true, secure: result.origin.startsWith('https:'), sameSite: 'lax' });
+    }
+    connectionWindow.submitted = true; connectionWindow.close();
+    if (win) { nextConnection = target; win.close(); }
+    else { try { await openConnection(target); } catch (error) { await connection(error.message); } }
+    return { ok: true };
+  } catch (error) { return { error: error.message }; }
+});
+async function connection(message = '') {
+  if (connectionWindow) { connectionWindow.focus(); return; }
+  connectionWindow = new BrowserWindow({ ...(win ? { parent: win, modal: true } : {}), title: '使用方式', width: 640, height: 660, minWidth: 420, minHeight: 560,
+    autoHideMenuBar: true, backgroundColor: nativeTheme.shouldUseDarkColors ? '#151412' : '#faf9f5',
+    webPreferences: { preload: path.join(here, 'connection-preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false } });
+  const current = connectionWindow;
+  current.webContents.on('will-navigate', e => e.preventDefault()); current.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  current.on('closed', () => { connectionWindow = null; if (!current.submitted && !win) { quitting = true; app.quit(); } });
+  await current.loadFile(path.join(here, 'connection.html'));
+  if (message) current.webContents.send('connection:notice', message);
+}
+async function openConnection(target) {
+  if (target?.mode === 'remote') {
+    const origin = normalizeOrigin(target.origin, target.localHttp);
+    const remote = { ...target, origin };
+    const response = await session.fromPartition(remotePartition(remote)).fetch(origin + '/study-log/api/capabilities', { redirect: 'error', signal: AbortSignal.timeout(10000) });
+    const caps = response.ok ? await response.json() : null;
+    if (!checkCapabilities(caps) || caps.instanceId !== remote.instanceId) throw Error('服务器连接已失效或实例已变化，请重新输入密码连接。');
+    await openWorkspace(null, false, remote);
+  } else {
+    if (Number.isInteger(savedPreferences.webPort) && savedPreferences.webPort >= 1024 && savedPreferences.webPort <= 65535) manager.ports.web = await availablePort(savedPreferences.webPort).catch(() => 0);
+    await openWorkspace(savedPreferences.root || path.join(app.getPath('userData'), 'instance'), !savedPreferences.root);
+  }
+}
+async function migration() {
+  const result = await dialog.showMessageBox(win, { title: '迁移到服务器', message: '将本地资料转到服务器继续使用',
+    detail: '先备份全部资料，在服务器恢复到新目录并核对内容，再通过“使用方式”连接服务器。迁移后以服务器为日常记录位置；本地资料保留，不会自动同步。备份包含实例配置，请妥善保管。', buttons: ['备份全部资料…', '取消'], cancelId: 1 });
+  if (result.response === 0) await backup();
+}
 
 async function authenticate(session) {
   const env = await manager.readEnvironment();
@@ -128,11 +192,14 @@ const reportError = error => dialog.showMessageBox(win && !win.isDestroyed() ? w
 function menu() {
   titleMenu = Menu.buildFromTemplate([
     { label: '文件', submenu: [
-      { label: '打开已有资料…', click: () => void selectExisting().catch(reportError) },
-      { label: '打开资料所在文件夹', click: () => { if (manager.root) void shell.openPath(manager.root); } },
-      { label: '模型设置…', click: () => void settings().catch(reportError) },
-      { label: '备份全部资料…', click: () => void backup().catch(reportError) },
-      { label: '从备份恢复…', click: () => void restore().catch(reportError) },
+      { label: '打开已有资料…', enabled: active.mode === 'local', click: () => void selectExisting().catch(reportError) },
+      { label: '打开资料所在文件夹', enabled: active.mode === 'local', click: () => { if (manager.root) void shell.openPath(manager.root); } },
+      { label: '模型设置…', enabled: active.mode === 'local', click: () => void settings().catch(reportError) },
+      { label: '备份全部资料…', enabled: active.mode === 'local', click: () => void backup().catch(reportError) },
+      { label: '从备份恢复…', enabled: active.mode === 'local', click: () => void restore().catch(reportError) },
+      { type: 'separator' },
+      { label: '使用方式…', click: () => void connection().catch(reportError) },
+      { label: '迁移到服务器…', enabled: active.mode === 'local', click: () => void migration().catch(reportError) },
       { type: 'separator' }, { label: '退出', accelerator: 'Alt+F4', click: () => win?.close() }
     ] },
     { label: '编辑', submenu: [{ role: 'undo', label: '撤销' }, { role: 'redo', label: '重做' }, { type: 'separator' },
@@ -145,11 +212,16 @@ function menu() {
 }
 
 async function finishWindow() {
-  if (finishing) return;
+  if (finishing) { closeAfterTransition = true; return; }
   finishing = true;
   await manager.operation(() => manager.shutdown());
   win = null;
+  const target = nextConnection; nextConnection = null;
   const selected = nextRoot, action = pendingAction, previous = manager.root;
+  if (target) {
+    try { await openConnection(target); finishing = false; if (closeAfterTransition) { closeAfterTransition = false; await finishWindow(); } return; }
+    catch (error) { await reportError(error); finishing = false; await connection(); return; }
+  }
   nextRoot = null; pendingAction = null;
   if ((selected || action) && manager.state === 'stopped') {
     try {
@@ -158,20 +230,23 @@ async function finishWindow() {
     try {
       await openWorkspace(selected || manager.root);
       finishing = false;
+      if (closeAfterTransition) { closeAfterTransition = false; await finishWindow(); }
       return;
     } catch (error) { await reportError(error); await manager.shutdown(); }
   }
   quitting = true; app.quit();
 }
 
-async function openWorkspace(root, createDefault = false) {
-  await manager.operation(async () => {
+async function openWorkspace(root, createDefault = false, remote = null) {
+  active = remote || { mode: 'local' };
+  if (!remote) await manager.operation(async () => {
     const inspected = await manager.inspect(root);
     if (inspected.kind === 'new' && !createDefault) throw Error('没有找到上次使用的资料，请检查文件夹是否被移动或删除。');
     await manager.select({ root, create: createDefault && inspected.kind === 'new', password: crypto.randomBytes(24).toString('base64url') });
     await manager.start();
     manager.ports.web = Number(new URL(manager.url).port);
-    await atomicPrivateFile(preferences, JSON.stringify({ root: manager.root, webPort: manager.ports.web }, null, 2));
+    savedPreferences = { ...savedPreferences, mode: 'local', root: manager.root, webPort: manager.ports.web };
+    await savePreferences();
   });
   const dark = nativeTheme.shouldUseDarkColors;
   win = new BrowserWindow({ title: '学习日志工作台', width: 1440, height: 960, minWidth: 420, minHeight: 560, show: false,
@@ -184,7 +259,7 @@ async function openWorkspace(root, createDefault = false) {
   current.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   workspaceView = new WebContentsView({ webPreferences: {
     preload: path.join(here, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true,
-    partition: `persist:workbench-${crypto.createHash('sha256').update(manager.root).digest('hex').slice(0, 24)}`
+    partition: remote ? remotePartition(remote) : `persist:workbench-${crypto.createHash('sha256').update(manager.root).digest('hex').slice(0, 24)}`
   } });
   const content = workspaceView.webContents;
   current.contentView.addChildView(workspaceView);
@@ -207,13 +282,13 @@ async function openWorkspace(root, createDefault = false) {
     }
   });
   const clipboardAllowed = (contents, permission, origin) => contents === content
-    && ['clipboard-read', 'clipboard-sanitized-write'].includes(permission) && origin === new URL(manager.url).origin;
+    && ['clipboard-read', 'clipboard-sanitized-write'].includes(permission) && origin === new URL(workspaceUrl()).origin;
   content.session.setPermissionRequestHandler((contents, permission, callback, details) => {
     let origin = ''; try { origin = new URL(details.requestingUrl).origin; } catch {}
     callback(clipboardAllowed(contents, permission, origin));
   });
   content.session.setPermissionCheckHandler((contents, permission, origin) => clipboardAllowed(contents, permission, origin));
-  const outside = url => { try { return new URL(url).origin !== new URL(manager.url).origin; } catch { return true; } };
+  const outside = url => { try { return new URL(url).origin !== new URL(workspaceUrl()).origin; } catch { return true; } };
   content.on('will-navigate', (event, url) => { if (outside(url)) event.preventDefault(); });
   content.on('will-redirect', (event, url) => { if (outside(url)) event.preventDefault(); });
   content.setWindowOpenHandler(({ url }) => {
@@ -223,21 +298,23 @@ async function openWorkspace(root, createDefault = false) {
   content.on('will-prevent-unload', event => {
     const choice = dialog.showMessageBoxSync(current, { type: 'question', title: '离开工作台',
       message: '当前内容尚未保存，是否离开？', buttons: ['继续编辑', '放弃修改并离开'], defaultId: 0, cancelId: 0 });
-    if (choice === 1) event.preventDefault(); else { nextRoot = null; pendingAction = null; closeRequested = false; }
+    if (choice === 1) event.preventDefault(); else { nextRoot = null; pendingAction = null; nextConnection = null; closeRequested = false; }
   });
   content.on('render-process-gone', () => { void reportError(new Error('页面意外退出，请关闭后重新打开。已保存的资料仍保留。')); });
   current.on('closed', () => { void finishWindow(); });
 
-  await authenticate(content.session);
+  if (!remote) await authenticate(content.session);
   // Renew only the current local session, without reloading or losing editor state.
-  const renewal = setInterval(() => { void authenticate(content.session).catch(reportError); }, 24 * 60 * 60 * 1000);
+  const renewal = remote ? null : setInterval(() => { void authenticate(content.session).catch(reportError); }, 24 * 60 * 60 * 1000);
   current.once('closed', () => clearInterval(renewal));
   for (const service of manager.processes) service.ended.then(() => {
     if (manager.state === 'failed' && !finishing) void reportError(new Error(manager.issue));
   });
   menu();
   await current.loadFile(path.join(here, 'titlebar.html'), { query: { icon: pathToFileURL(app.isPackaged ? path.join(process.resourcesPath, 'icon.png') : path.join(repository, '.local/electron-icon.png')).href } });
-  await content.loadURL(manager.url);
+  await content.loadURL(workspaceUrl());
+  current.webContents.send('titlebar:location', remote ? remote.origin : '本地资料');
+  if (remote) { savedPreferences = { ...savedPreferences, mode: 'remote', remote }; await savePreferences(); }
   current.show(); content.focus();
 }
 
@@ -247,18 +324,16 @@ app.on('before-quit', event => {
 app.on('window-all-closed', () => {});
 if (!app.requestSingleInstanceLock()) { quitting = true; app.quit(); }
 else {
-  app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } });
+  app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } else connectionWindow?.focus(); });
   void app.whenReady().then(async () => { try {
     await privateDirectory(app.getPath('userData'));
-    let root = path.join(app.getPath('userData'), 'instance'), createDefault = false;
-    try {
-      const saved = JSON.parse(await fs.readFile(preferences, 'utf8')); root = saved.root;
-      if (Number.isInteger(saved.webPort) && saved.webPort >= 1024 && saved.webPort <= 65535) {
-        manager.ports.web = await availablePort(saved.webPort).catch(() => 0);
-      }
-    }
-    catch (error) { if (error.code !== 'ENOENT') throw Error('无法读取上次使用的资料位置，请检查本地配置。'); createDefault = true; }
-    await openWorkspace(root, createDefault);
+    try { savedPreferences = JSON.parse(await fs.readFile(preferences, 'utf8')); }
+    catch (error) { if (error.code !== 'ENOENT') throw Error('无法读取上次使用的资料位置，请检查本地配置。'); }
+    if (!savedPreferences.root && !savedPreferences.remote) { await connection(); return; }
+    if (savedPreferences.mode === 'remote') {
+      try { await openConnection(savedPreferences.remote); }
+      catch { await connection('请重新连接服务器。原有本地资料仍保留。'); }
+    } else await openConnection({ mode: 'local' });
   } catch (error) {
     await reportError(error); await manager.shutdown(); quitting = true; app.quit();
   } });

@@ -1,6 +1,6 @@
 .generation-preset-picker { display: grid; gap: 8px; }
 .generation-preset-picker-row { display: flex; gap: 8px; min-width: 0; }
-.generation-preset-picker-row select { flex: 1; min-width: 0; height: 36px; padding: 0 8px; border-radius: var(--radius-md); border: 1px solid rgba(250, 249, 245, .16); color: var(--on-dark); background: var(--surface-dark-soft); font: inherit; }
+.generation-preset-picker-row select { flex: 1; min-width: 0; height: 36px; padding: 0 8px; border-radius: var(--radius-md); border: 1px solid var(--hairline); color: var(--body); background: var(--surface-soft); font: inherit; }
 .generation-preset-error { margin: 0; color: var(--error); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
 .generation-presets-backdrop { position: fixed; inset: 0; z-index: 110; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(17, 16, 15, .42); animation: generation-presets-in 160ms ease; }
 .generation-presets-dialog { width: min(900px, 100%); max-height: calc(100dvh - 48px); display: flex; flex-direction: column; overflow: hidden; color: var(--body); background: var(--canvas); border: 1px solid var(--hairline); border-radius: var(--radius-lg); box-shadow: var(--popover-shadow); }

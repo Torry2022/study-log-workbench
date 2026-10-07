@@ -1,4 +1,4 @@
-import { app, BrowserWindow, WebContentsView, Menu, dialog, ipcMain, nativeTheme, shell, session } from 'electron';
+import { app, BrowserWindow, WebContentsView, Menu, dialog, ipcMain, nativeTheme, shell, session, screen } from 'electron';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -22,7 +22,7 @@ const manager = new DesktopManager({ packageRoot: payload,
     node: path.join(repository, '.local/windows-runtime/node-v22.23.3-win-x64/node.exe')
   }) });
 const preferences = path.join(app.getPath('userData'), 'desktop.json');
-let workspaceView, titleMenu, connectionWindow, nextConnection;
+let workspaceView, titleMenu, connectionWindow, nextConnection, connectionLocal;
 let closeAfterTransition = false;
 let savedPreferences = {}, active = { mode: 'local' };
 const workspaceUrl = () => active.mode === 'remote' ? active.origin + '/study-log' : manager.url;
@@ -60,15 +60,35 @@ function connectionTrusted(event) {
   return connectionWindow && event.sender === connectionWindow.webContents && event.senderFrame === connectionWindow.webContents.mainFrame
     && event.senderFrame.url === pathToFileURL(path.join(here, 'connection.html')).href;
 }
-ipcMain.handle('connection:read', event => {
+ipcMain.handle('connection:pick-directory', async event => {
+  if (!connectionTrusted(event) || finishing || pendingAction || nextConnection) return { error: '请等待当前操作完成。' };
+  const current = connectionWindow;
+  const selected = await dialog.showOpenDialog(current, { title: '选择资料文件夹', defaultPath: connectionLocal.root, properties: ['openDirectory', 'createDirectory'] });
+  if (selected.canceled || current !== connectionWindow) return { canceled: true };
+  try {
+    const inspected = await manager.inspect(selected.filePaths[0]);
+    if (inspected.kind === 'invalid') return { error: inspected.message };
+    connectionLocal = { root: inspected.root, create: inspected.kind === 'new' };
+    return { root: connectionLocal.root, kind: inspected.kind };
+  } catch (error) { return { error: error.message }; }
+});
+ipcMain.handle('connection:read', async event => {
   if (!connectionTrusted(event)) throw Error('无效窗口');
-  return { mode: win ? active.mode : savedPreferences.mode || 'local', origin: savedPreferences.remote?.origin || '', localHttp: savedPreferences.remote?.localHttp || false, root: savedPreferences.root || path.join(app.getPath('userData'), 'instance') };
+  const inspected = await manager.inspect(connectionLocal.root);
+  if (inspected.kind === 'new' && !connectionLocal.create) { inspected.kind = 'invalid'; inspected.message = '没有找到原有资料，请重新选择文件夹。'; }
+  const assets = app.isPackaged ? path.join(payload, 'web/public') : path.join(repository, 'study-log-web/public');
+  return { kind: inspected.kind, error: inspected.message, logos: { light: pathToFileURL(path.join(assets, 'app-logo-light.svg')).href, dark: pathToFileURL(path.join(assets, 'app-logo-dark.svg')).href }, mode: win ? active.mode : savedPreferences.mode || 'local', origin: savedPreferences.remote?.origin || '', localHttp: savedPreferences.remote?.localHttp || false, root: connectionLocal.root };
 });
 ipcMain.handle('connection:select', async (event, value) => {
   if (!connectionTrusted(event) || finishing || pendingAction || nextConnection) return { error: '请等待当前操作完成。' };
   try {
     let target;
-    if (value?.mode === 'local') target = { mode: 'local' };
+    if (value?.mode === 'local') {
+      const inspected = await manager.inspect(connectionLocal.root);
+      if (inspected.kind === 'invalid') throw Error(inspected.message);
+      if (inspected.kind === 'new' && !connectionLocal.create) throw Error('没有找到原有资料，请重新选择文件夹。');
+      target = { mode: 'local', ...connectionLocal };
+    }
     else {
       if (value?.mode !== 'remote') throw Error('请选择使用方式');
       const result = await connectServer(value);
@@ -76,6 +96,7 @@ ipcMain.handle('connection:select', async (event, value) => {
       await session.fromPartition(remotePartition(target)).cookies.set({ url: result.origin, name: 'study_log_session', value: result.cookie,
         path: '/', expirationDate: result.expirationDate, httpOnly: true, secure: result.origin.startsWith('https:'), sameSite: 'lax' });
     }
+    savedPreferences.usageConfirmed = true;
     connectionWindow.submitted = true; connectionWindow.close();
     if (win) { nextConnection = target; win.close(); }
     else { try { await openConnection(target); } catch (error) { await connection(error.message); } }
@@ -84,10 +105,15 @@ ipcMain.handle('connection:select', async (event, value) => {
 });
 async function connection(message = '') {
   if (connectionWindow) { connectionWindow.focus(); return; }
-  connectionWindow = new BrowserWindow({ ...(win ? { parent: win, modal: true } : {}), title: '使用方式', width: 640, height: 660, minWidth: 420, minHeight: 560,
+  connectionLocal = { root: savedPreferences.root || path.join(app.getPath('userData'), 'instance'), create: !savedPreferences.root };
+  connectionWindow = new BrowserWindow({ ...(win ? { parent: win, modal: true } : {}), title: '使用方式', useContentSize: true, width: 640, height: Math.min(520, screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea.height - 80), minWidth: 420, minHeight: 320, show: false,
     autoHideMenuBar: true, backgroundColor: nativeTheme.shouldUseDarkColors ? '#151412' : '#faf9f5',
     webPreferences: { preload: path.join(here, 'connection-preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false } });
   const current = connectionWindow;
+  const updateBackground = () => current.setBackgroundColor(nativeTheme.shouldUseDarkColors ? '#151412' : '#faf9f5');
+  nativeTheme.on('updated', updateBackground);
+  current.once('closed', () => nativeTheme.removeListener('updated', updateBackground));
+  current.once('ready-to-show', () => current.show());
   current.webContents.on('will-navigate', e => e.preventDefault()); current.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   current.on('closed', () => { connectionWindow = null; if (!current.submitted && !win) { quitting = true; app.quit(); } });
   await current.loadFile(path.join(here, 'connection.html'));
@@ -103,7 +129,7 @@ async function openConnection(target) {
     await openWorkspace(null, false, remote);
   } else {
     if (Number.isInteger(savedPreferences.webPort) && savedPreferences.webPort >= 1024 && savedPreferences.webPort <= 65535) manager.ports.web = await availablePort(savedPreferences.webPort).catch(() => 0);
-    await openWorkspace(savedPreferences.root || path.join(app.getPath('userData'), 'instance'), !savedPreferences.root);
+    await openWorkspace(target.root || savedPreferences.root || path.join(app.getPath('userData'), 'instance'), target.root ? target.create === true : !savedPreferences.root);
   }
 }
 async function migration() {
@@ -329,7 +355,7 @@ else {
     await privateDirectory(app.getPath('userData'));
     try { savedPreferences = JSON.parse(await fs.readFile(preferences, 'utf8')); }
     catch (error) { if (error.code !== 'ENOENT') throw Error('无法读取上次使用的资料位置，请检查本地配置。'); }
-    if (!savedPreferences.root && !savedPreferences.remote) { await connection(); return; }
+    if (savedPreferences.usageConfirmed !== true || (!savedPreferences.root && !savedPreferences.remote)) { await connection(); return; }
     if (savedPreferences.mode === 'remote') {
       try { await openConnection(savedPreferences.remote); }
       catch { await connection('请重新连接服务器。原有本地资料仍保留。'); }

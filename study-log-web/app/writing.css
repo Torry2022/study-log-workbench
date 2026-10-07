@@ -14,9 +14,9 @@
 }
 
 .writing-panel .button.secondary-on-dark {
-  background: var(--surface-dark-elevated);
-  color: var(--on-dark);
-  border: 1px solid rgba(250, 249, 245, 0.12);
+  background: var(--surface-soft);
+  color: var(--body);
+  border: 1px solid var(--hairline);
 }
 
 .writing-panel .mini-button {
@@ -45,14 +45,14 @@
 }
 
 .writing-panel label {
-  color: var(--on-dark-soft);
+  color: var(--muted);
 }
 
 .writing-panel .dark-input,
 .writing-panel textarea {
-  border-color: rgba(250, 249, 245, 0.12);
-  background: var(--surface-dark-soft);
-  color: var(--on-dark);
+  border-color: var(--hairline);
+  background: var(--surface-soft);
+  color: var(--body);
 }
 
 .writing-panel .material-textarea,
@@ -69,6 +69,7 @@
 }
 
 .writing-panel .instruction-textarea {
+  flex-shrink: 0;
   min-height: 40px;
   max-height: 140px;
   padding: 10px 12px;
@@ -82,8 +83,8 @@
 
 .writing-panel .file-button {
   position: relative;
-  color: var(--on-dark);
-  border-color: rgba(250, 249, 245, 0.16);
+  color: var(--body);
+  border-color: var(--hairline);
 }
 
 .writing-panel .file-button input {
@@ -117,6 +118,6 @@
 }
 
 
-.writing-panel { background: var(--surface-dark); color: var(--on-dark); }
-.writing-panel .mini-button { color: var(--on-dark-soft); border-color: rgba(250, 249, 245, 0.16); }
+.writing-panel { background: var(--canvas); color: var(--body); }
+.writing-panel .mini-button { color: var(--muted); border-color: var(--hairline); }
 .writing-panel .status-line { overflow-wrap: anywhere; }

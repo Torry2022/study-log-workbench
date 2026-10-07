@@ -11,13 +11,25 @@ import "@/app/writing.css";
 export function WritingPanel({ writing }: { writing: WritingController; themeMode: "light" | "dark" }) {
   const instruction = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
-    if (!instruction.current || !writing.active || !writing.visible) return;
-    instruction.current.style.height = "auto";
-    instruction.current.style.height = `${Math.min(Math.max(instruction.current.scrollHeight, 40), 140)}px`;
+    const field = instruction.current;
+    if (!field || !writing.active || !writing.visible) return;
+    const resize = () => {
+      field.style.height = "auto";
+      field.style.height = `${Math.min(Math.max(field.scrollHeight + field.offsetHeight - field.clientHeight, 40), 140)}px`;
+    };
+    resize();
+    let width = field.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (field.clientWidth === width) return;
+      width = field.clientWidth;
+      resize();
+    });
+    observer.observe(field);
+    return () => observer.disconnect();
   }, [writing.instruction, writing.active, writing.visible]);
   if (!writing.active) return null;
   return <div className="writing-panel panel-body">
-    {(writing.configurationError || writing.configurationMessages.length > 0) && <FeatureAvailability dark title={writing.configurationError ? "暂时无法检查 AI 服务" : "AI 写作尚未启用"} description="可以先整理学习材料，配置模型后再生成草稿。" messages={writing.configurationError ? [writing.configurationError] : writing.configurationMessages} busy={writing.configurationLoading} onCheck={() => void writing.refreshConfiguration()} />}
+    {(writing.configurationError || writing.configurationMessages.length > 0) && <FeatureAvailability title={writing.configurationError ? "暂时无法检查 AI 服务" : "AI 写作尚未启用"} description="可以先整理学习材料，配置模型后再生成草稿。" messages={writing.configurationError ? [writing.configurationError] : writing.configurationMessages} busy={writing.configurationLoading} onCheck={() => void writing.refreshConfiguration()} />}
     {!writing.date && <WorkspaceState kind="empty" title="未选择日志" description="选择记录日期后，可将学习材料整理成日志草稿。" layout="compact" className="inspector-empty-state" />}
     <GenerationPresetControls presets={writing.presets} disabled={Boolean(writing.busy)} />
     <label htmlFor="writing-instruction">补充要求</label>

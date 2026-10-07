@@ -83,3 +83,13 @@
 六组基础流程证据：`.local\public-rebuild-b27-20261007091505707\report.json`；该次运行使用 `.local\docker-heading-smoke.mjs`，在现有 smoke 流程中追加已认证日期列表的 `DockerAlpha` 未编号 H3 断言，实际通过。三组问答协议证据：`.local\public-rebuild-rag-20261007091505689\report.json`；使用本地模型替身，停止约 18.6 秒，响应完整结束，没有付费调用。两组测试正常关闭所属容器，未操作 ECS；本机缓存匿名拉取不代表空白主机下载。
 
 配套部署 ZIP 已生成并逐项核对五个文件：`.local\server-release-0.1.0-rc.2\study-log-server-0.1.0-rc.2.zip`，SHA-256 `db2883ea5ce1f1f306018864d3ede5a385a7db60b0b6653b3617e46b0badf189`。只包含 Compose、配置示例、部署说明、版本说明及校验清单；未对外托管该 ZIP。
+
+### rc.2 ECS 隔离更新验证（2026-10-07）
+
+沿用获授权的 `/opt/study-log-public-acceptance-20261007` 与同名 Compose 项目，将已停止的 rc.1 合成恢复实例更新到 rc.2。开始时可用内存约 902 MiB；先使用原工具创建并校验 `instances/pre-rc2.slwb`，随后使用独立空 Docker 配置从 VPC 地址拉取三个镜像并核对公开摘要。没有在 ECS 构建，也没有修改生产配置。
+
+通过结果：旧日块、随记和实例身份可读；旧未编号 H3 在日期列表及顶栏正确显示；另一个合成日期混合未编号／编号 H3，保存、搜索、重启读回一致，旧日块内容未变。独立 Playwright 经 SSH 转发访问真实云端服务，断言侧栏与顶栏标题并检查日志／代码预览及随记，已核看日志截图。
+
+结束时测试容器正常退出，未 OOM，实例锁释放；最低可用内存 761 MiB。个人版容器 ID、启动时间和重启次数未变，生产网页 HTTP 200，未认证 MCP HTTP 401。保留预更新归档、合成资料及证据；不清其他容器／镜像。
+
+证据：`.local\ecs-rc2-report-20261007.json`、`.local\ecs-browser-rc2-20261007\report.json` 和截图；服务器隔离目录内 `rc2-report.json`。此为维护者执行的一次 rc.1→rc.2 合成实例更新验证，不代表任意版本迁移／回退。没有模型费用、公开 HTTPS、新域名或鸿蒙远程连接验证。随 rc.2 ZIP 保留的版本说明记录发布时状态，以本段后续验证补充。

@@ -59,7 +59,6 @@ function getPreview(markdown: string): string {
 
 function getHeadings(markdown: string): string[] {
   return findRootAtxHeadings(markdown, 3)
-    .filter(heading => /^\d+\.\s+/.test(heading.text))
     .map(heading => heading.text.replace(/^\d+\.\s+/, "").trim());
 }
 

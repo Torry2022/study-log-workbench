@@ -5,6 +5,34 @@ import path from "node:path";
 import os from "node:os";
 import crypto from "node:crypto";
 import { getDay, listMonths, listDays } from "../lib/log-store.ts";
+import { buildMarkdownOutline } from "../lib/markdown-outline.ts";
+import { searchDayContents } from "../lib/log-search.ts";
+import { parseStatsDays } from "../lib/stats-store.ts";
+
+test("day summaries retain unnumbered H3 headings and share section order with navigation, search and statistics", async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "workbench-read-test-"));
+  const old = process.env.LOG_ROOT; process.env.LOG_ROOT = root;
+  t.after(async () => {
+    if (old === undefined) delete process.env.LOG_ROOT; else process.env.LOG_ROOT = old;
+    assert.equal(path.dirname(root), path.resolve(os.tmpdir()));
+    assert.ok(path.basename(root).startsWith("workbench-read-test-"));
+    await fs.rm(root, { recursive: true, force: true });
+  });
+  const content = ["## 2026-01-15", "", "### 未编号小节", "合成资料", "#### 内部标题", "",
+    "```md", "### 代码中的标题", "```", "", "> ### 引用标题", "", "- 列表", "  ### 嵌套标题", "",
+    "### 2. 编号小节", "合成资料", "", "### 3D 与 HTTP/2", "合成资料", ""].join("\n");
+  const fileName = "2026-01_学习日志.md", file = path.join(root, fileName);
+  await fs.writeFile(file, content);
+  const [summary] = await listDays("2026-01");
+  const expected = ["未编号小节", "编号小节", "3D 与 HTTP/2"];
+  assert.deepEqual(summary.headings, expected);
+  const sections = buildMarkdownOutline(content).filter(heading => heading.level === 3);
+  assert.deepEqual(sections.map(heading => heading.text.replace(/^\d+\.\s+/, "")), summary.headings);
+  const blocks = [{ date: summary.date, content, fileName }];
+  assert.deepEqual(searchDayContents(blocks, "合成资料")[0].headings, summary.headings);
+  assert.deepEqual(parseStatsDays(blocks)[0].headings.map(heading => [heading.headingIndex, heading.headingText]), expected.map((text, index) => [index, text]));
+  assert.equal(await fs.readFile(file, "utf8"), content);
+});
 
 test("reads mixed yearly/monthly sources without changing bytes or extracting fenced headings", async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "workbench-read-test-"));

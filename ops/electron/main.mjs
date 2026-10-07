@@ -20,7 +20,7 @@ const manager = new DesktopManager({ packageRoot: payload,
     node: path.join(repository, '.local/windows-runtime/node-v22.23.3-win-x64/node.exe')
   }) });
 const preferences = path.join(app.getPath('userData'), 'desktop.json');
-let win, quitting = false, finishing = false, nextRoot = null;
+let win, quitting = false, finishing = false, nextRoot = null, pendingAction = null, settingsWindow = null;
 
 function trusted(event) {
   try {
@@ -51,6 +51,60 @@ async function selectExisting() {
   nextRoot = selected; win.close();
 }
 
+async function backup() {
+  if (finishing || pendingAction || manager.state !== 'running') return;
+  const result = await dialog.showSaveDialog(win, { title: '备份全部资料', defaultPath: `学习日志备份-${new Date().toISOString().slice(0, 10)}.slarchive`, filters: [{ name: '备份归档', extensions: ['slarchive'] }] });
+  if (result.canceled) return;
+  pendingAction = async () => { await manager.backup(result.filePath); };
+  win.close();
+}
+async function restore() {
+  if (finishing || pendingAction || manager.state !== 'running') return;
+  const archive = await dialog.showOpenDialog(win, { title: '选择备份', properties: ['openFile'] });
+  if (archive.canceled) return;
+  await manager.verify(archive.filePaths[0]);
+  const destination = await dialog.showOpenDialog(win, { title: '选择恢复位置（将在其中新建文件夹）', properties: ['openDirectory', 'createDirectory'] });
+  if (destination.canceled) return;
+  const root = path.join(destination.filePaths[0], `学习日志恢复-${Date.now()}`);
+  const inspected = await manager.inspect(root);
+  if (inspected.kind !== 'new') throw Error('请选择空文件夹，原有资料不会被覆盖。');
+  pendingAction = async () => { await manager.restore(archive.filePaths[0], root); };
+  win.close();
+}
+function settingsTrusted(event) {
+  return settingsWindow && event.sender === settingsWindow.webContents
+    && event.senderFrame === settingsWindow.webContents.mainFrame
+    && event.senderFrame.url === pathToFileURL(path.join(here, 'settings.html')).href;
+}
+ipcMain.handle('settings:read', event => {
+  if (!settingsTrusted(event)) throw Error('无效窗口');
+  return manager.configuration();
+});
+ipcMain.handle('settings:save', (event, value) => {
+  if (!settingsTrusted(event) || finishing || pendingAction) throw Error('当前无法保存');
+  if (!value || typeof value.apiUrl !== 'string' || typeof value.model !== 'string'
+    || typeof value.apiKey !== 'string' || typeof value.clearKey !== 'boolean') throw Error('模型配置格式无效');
+  if (value.apiUrl) {
+    const url = new URL(value.apiUrl);
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.hash || /[\s\\]/.test(value.apiUrl)) throw Error('模型接口地址无效');
+  }
+  if (/[\u0000-\u001f\u007f]/.test(value.model) || value.apiKey && /[^\x21-\x7e]/.test(value.apiKey)) throw Error('模型配置含无效字符');
+  const config = { apiUrl: value.apiUrl, model: value.model, apiKey: value.apiKey, clearKey: value.clearKey };
+  pendingAction = async () => { await manager.configure(config); };
+  settingsWindow.close(); win.close();
+});
+async function settings() {
+  if (finishing || pendingAction || manager.state !== 'running') return;
+  if (settingsWindow) { settingsWindow.focus(); return; }
+  settingsWindow = new BrowserWindow({ parent: win, modal: true, width: 600, height: 640, minWidth: 420, minHeight: 520,
+    title: '模型设置', autoHideMenuBar: true, backgroundColor: nativeTheme.shouldUseDarkColors ? '#151412' : '#faf9f5',
+    webPreferences: { preload: path.join(here, 'settings-preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false } });
+  settingsWindow.webContents.on('will-navigate', event => event.preventDefault());
+  settingsWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  settingsWindow.on('closed', () => { settingsWindow = null; });
+  await settingsWindow.loadFile(path.join(here, 'settings.html'));
+}
+
 const reportError = error => dialog.showMessageBox(win && !win.isDestroyed() ? win : undefined,
   { type: 'error', title: '学习日志工作台', message: '操作未完成', detail: error.message, buttons: ['知道了'] });
 function menu() {
@@ -58,6 +112,9 @@ function menu() {
     { label: '文件', submenu: [
       { label: '打开已有资料…', click: () => void selectExisting().catch(reportError) },
       { label: '打开资料所在文件夹', click: () => { if (manager.root) void shell.openPath(manager.root); } },
+      { label: '模型设置…', click: () => void settings().catch(reportError) },
+      { label: '备份全部资料…', click: () => void backup().catch(reportError) },
+      { label: '从备份恢复…', click: () => void restore().catch(reportError) },
       { type: 'separator' }, { label: '退出', accelerator: 'Alt+F4', click: () => win?.close() }
     ] },
     { label: '编辑', submenu: [{ role: 'undo', label: '撤销' }, { role: 'redo', label: '重做' }, { type: 'separator' },
@@ -71,11 +128,17 @@ async function finishWindow() {
   finishing = true;
   await manager.operation(() => manager.shutdown());
   win = null;
-  const selected = nextRoot; nextRoot = null;
-  if (selected && manager.state === 'stopped') {
-    finishing = false;
-    try { await openWorkspace(selected); return; }
-    catch (error) { await reportError(error); }
+  const selected = nextRoot, action = pendingAction, previous = manager.root;
+  nextRoot = null; pendingAction = null;
+  if ((selected || action) && manager.state === 'stopped') {
+    try {
+      if (action) await manager.operation(action);
+    } catch (error) { await reportError(error); manager.root = previous; }
+    try {
+      await openWorkspace(selected || manager.root);
+      finishing = false;
+      return;
+    } catch (error) { await reportError(error); await manager.shutdown(); }
   }
   quitting = true; app.quit();
 }
@@ -112,7 +175,7 @@ async function openWorkspace(root, createDefault = false) {
   current.webContents.on('will-prevent-unload', event => {
     const choice = dialog.showMessageBoxSync(current, { type: 'question', title: '离开工作台',
       message: '当前内容尚未保存，是否离开？', buttons: ['继续编辑', '放弃修改并离开'], defaultId: 0, cancelId: 0 });
-    if (choice === 1) event.preventDefault(); else nextRoot = null;
+    if (choice === 1) event.preventDefault(); else { nextRoot = null; pendingAction = null; }
   });
   current.webContents.on('render-process-gone', () => { void reportError(new Error('页面意外退出，请关闭后重新打开。已保存的资料仍保留。')); });
   current.on('closed', () => { void finishWindow(); });

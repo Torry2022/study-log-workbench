@@ -71,3 +71,11 @@ node ops/electron/install-smoke.mjs OLD_INSTALLER_PATH NEW_INSTALLER_PATH
 - 候选包未更改：`.local\electron-settings-final-dist\study-log-desktop-0.1.0-x64-setup.exe`，SHA-256 仍为 `f240f84877b08d63c7501e1829fd444665535b123714502f4e2c6f051a64030d`。当前支持本机试用；未签名、未发布、未推送。
 
 正常卸载移除程序，保留资料；重装会继续打开原资料。需要另存或搬迁时使用“文件 → 备份全部资料…／从备份恢复…”，不要把卸载当作清空资料的操作。未来发生真正的数据格式升级时，再针对该版本补充迁移验证。
+
+## 图标来源修正（2026-10-07）
+
+桌面打包此前误用仍为旧图形的 Web 标签图标。现改为直接读取页面既有新版 `public/app-logo-light.svg`；背景沿用已有新版分层图标的 `#F7F3ED`，未重新设计 Logo。Web `app/icon.svg` 同步相同新版图形。
+
+类型检查、最终生产构建与新包独立 Playwright 验证通过：实际窗口可打开，浏览器请求的标签 SVG 与源文件逐字一致，包内窗口 PNG 与生成资源一致；另从应用 EXE 和安装包提取系统图标核看。证据在 `.local\electron-logo-evidence`。仅更新资源与打包来源，未重复系统安装／卸载，未覆盖已安装应用。
+
+当前试用候选为 `.local\electron-logo-dist\study-log-desktop-0.1.0-x64-setup.exe`，SHA-256 `c45a894b80784deaf3db4816a6de61238810af9bddfed4cd75149c6ddd2871f8`。早先安装包仍含旧图标，不会随源码自动更新。新包未签名、未对外发布。

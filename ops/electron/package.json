@@ -1,0 +1,22 @@
+{
+  "name": "study-log-desktop",
+  "productName": "学习日志工作台",
+  "version": "0.1.0",
+  "private": true,
+  "description": "本地学习日志工作台",
+  "author": "Study Log Workbench contributors",
+  "license": "MIT",
+  "type": "module",
+  "main": "main.mjs",
+  "devDependencies": { "electron": "44.6.0", "electron-builder": "26.15.3" },
+  "build": {
+    "appId": "org.studylog.workbench.desktop",
+    "asar": true,
+    "directories": { "output": "../../.local/electron-dist" },
+    "files": ["main.mjs", "preload.cjs", "package.json"],
+    "extraResources": [{ "from": "../../.local/electron-payload", "to": "payload", "filter": ["**/*", "!启动学习日志.vbs", "!使用说明.txt", "!docs/windows-portable.md", "!ops/desktop/launcher.mjs", "!ops/desktop/index.html", "!ops/desktop/ui.*"] }, { "from": "../../.local/electron-icon.png", "to": "icon.png" }, { "from": "../../docs/windows-desktop.md", "to": "使用说明.md" }],
+    "win": { "target": [{ "target": "nsis", "arch": ["x64"] }], "icon": "../../.local/electron-icon.ico" },
+    "nsis": { "oneClick": false, "perMachine": false, "allowElevation": false, "allowToChangeInstallationDirectory": true, "deleteAppDataOnUninstall": false },
+    "artifactName": "study-log-desktop-${version}-${arch}-setup.${ext}"
+  }
+}

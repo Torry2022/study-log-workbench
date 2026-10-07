@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSession } from "./AuthGate";
+import { closeDesktopWindow } from "@/lib/desktop-client";
 import { WorkspaceChrome } from "./WorkspaceChrome";
 import { LogReader } from "./LogReader";
 import { FeatureAvailability } from "./FeatureAvailability";
@@ -154,6 +155,7 @@ export function Workspace() {
   }, [active, logView, draft.dirty, draft.save, logs.day, backupOpen, deleting]);
   const reload = async () => { if (await discardLog()) { draft.reset(); logs.retry(); } };
   const exit = async () => {
+    if (closeDesktopWindow()) return;
     if (!(await beforeLeave.current())) return;
     setSessionError("");
     try { await logout(); clearSearchSessionHistory(); } catch { setSessionError("退出失败，请重试"); }

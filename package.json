@@ -9,6 +9,9 @@
     "test:ops": "node --test ops/*.test.mjs",
     "test:desktop": "node --test ops/desktop/*.test.mjs",
     "package:windows": "node ops/desktop/package-windows.mjs",
+    "desktop": "npm exec --prefix ops/electron -- electron ops/electron",
+    "package:electron": "node ops/electron/package.mjs",
+    "test:electron": "node ops/electron/smoke.mjs",
     "dev": "npm --prefix study-log-web run dev",
     "typecheck": "npm --prefix study-log-web run typecheck",
     "build": "npm --prefix study-log-web run build"

@@ -17,7 +17,7 @@ export const runtime = Object.freeze({ version: "22.23.3", archive: "node-v22.23
 const sha256 = bytes => crypto.createHash("sha256").update(bytes).digest("hex");
 const safeCopy = source => !/^\.env(?:\.|$)/i.test(path.basename(source)) && ![".local", ".git"].includes(path.basename(source));
 
-export async function packageWindows(output, { cache = path.join(repository, ".local", "windows-runtime") } = {}) {
+export async function packageWindows(output, { cache = path.join(repository, ".local", "windows-runtime"), archive: createArchive = true } = {}) {
   if (process.platform !== "win32" || process.arch !== "x64") throw new Error("请在 Windows x64 上构建此安装包");
   if (!output || !path.isAbsolute(output)) throw new Error("请指定新的输出绝对路径");
   await assertNoLinks(output);
@@ -80,6 +80,7 @@ export async function packageWindows(output, { cache = path.join(repository, ".l
   const version = JSON.parse(await fs.readFile(path.join(repository, "study-log-web", "package.json"), "utf8"));
   await fs.writeFile(path.join(output, "package-manifest.json"), JSON.stringify({ format: "study-log-windows", version: version.version, platform: "win32-x64", node: runtime,
     nodeSource: `https://nodejs.org/dist/v${runtime.version}/`, builtAt: new Date().toISOString(), webBuild: (await fs.readFile(path.join(standalone, ".next-build-cache", "BUILD_ID"), "utf8")).trim() }, null, 2));
+  if (!createArchive) return { output, node: runtime.version };
   const zip = `${output}.zip`;
   if (await fs.lstat(zip).catch(() => null)) throw new Error("同名 zip 已存在，不覆盖；已生成目录包");
   await execute("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::CreateFromDirectory($env:STUDY_LOG_PACKAGE_ROOT,$env:STUDY_LOG_PACKAGE_ZIP,[System.IO.Compression.CompressionLevel]::Optimal,$true)"], { windowsHide: true, env: { ...process.env, STUDY_LOG_PACKAGE_ROOT: output, STUDY_LOG_PACKAGE_ZIP: zip }, maxBuffer: 1024 * 1024 });

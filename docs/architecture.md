@@ -216,3 +216,5 @@ Windows 本机入口退出时，先等待串行控制操作及 Web／MCP 自身�
 服务器使用者入口 `deploy/compose.yaml` 只引用预构建镜像，三个镜像共享 `IMAGE_PREFIX` 与 `RELEASE_VERSION`，实例路径必须显式填写。源码构建入口仍为根 `compose.yaml`；`ops/server-compose-check.mjs` 通过 Docker 实际解析，对照两者除镜像／构建配置之外的运行参数，防止维护分叉。两者复用同一服务锁、归档工具和只读 MCP 边界，不操作云账号或宿主服务。
 
 服务器首个候选 `0.1.0-rc.1` 的默认镜像来源为维护者指定的 ACR `study-log-public` 命名空间，客户端可匿名拉取；默认地址只存在部署示例配置中，服务代码不依赖阿里云。摘要与平台边界见 [候选说明](../deploy/RELEASE-NOTES.md)。
+
+已确认待修（2026-10-07）：日志摘要 `getHeadings` 限制编号 H3，而正文大纲识别普通 H3，导致未编号小节在侧栏／顶栏退化为“未命名”。云端合成实例已复现，后续需统一识别及跳转位置语义；本次服务器验收未修改解析规则。见 [缺陷记录](server-deployment-acceptance.md#本次发现的已有界面缺陷未修复)。

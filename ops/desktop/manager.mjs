@@ -67,15 +67,35 @@ export class DesktopManager {
     if (inside(this.packageRoot, root) || inside(root, this.packageRoot)) throw new Error("资料目录必须与程序目录分开，不能使用程序目录或其父目录");
     await assertNoLinks(root); return root;
   }
-  async readEnvironment() {
-    if (!this.root) throw new Error("请先创建或打开资料目录");
-    await assertNoLinks(path.join(this.root, ".env"));
-    const env = parseEnv(await fs.readFile(path.join(this.root, ".env"), "utf8"));
-    await validateServiceEnvironment({ ...env, LOG_ROOT: path.join(this.root, "data") }); return env;
+  async inspect(value) {
+    const root = await this.rootPath(value);
+    const stat = await fs.stat(root).catch(error => { if (error.code === "ENOENT") return null; throw error; });
+    if (!stat) return { root, kind: "new" };
+    if (!stat.isDirectory()) return { root, kind: "invalid", message: "请选择文件夹，不能使用文件作为资料目录。" };
+    const entries = await fs.readdir(root);
+    if (!entries.length) return { root, kind: "new" };
+    try {
+      const identityFile = path.join(root, "data", ".instance.json");
+      await assertNoLinks(identityFile);
+      const identity = JSON.parse(await fs.readFile(identityFile, "utf8"));
+      if (identity.schemaVersion !== 1 || !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(identity.id)) throw new Error();
+      await this.readEnvironment(root);
+    } catch { return { root, kind: "invalid", message: "此目录已有文件，但不是可用的工作台实例。请选择空目录或已有实例目录。" }; }
+    const lock = await fs.lstat(path.join(root, "data", ".instance-operation.lock")).catch(error => { if (error.code === "ENOENT") return null; throw error; });
+    if (lock && !(root === this.root && this.state === "running")) return { root, kind: "invalid", message: "此实例正在使用，或有待检查的运行锁。请先检查，勿删除资料或锁文件。" };
+    return { root, kind: "existing" };
+  }
+  async readEnvironment(root = this.root) {
+    if (!root) throw new Error("请先创建或打开资料目录");
+    await assertNoLinks(path.join(root, ".env"));
+    const env = parseEnv(await fs.readFile(path.join(root, ".env"), "utf8"));
+    await validateServiceEnvironment({ ...env, LOG_ROOT: path.join(root, "data") }); return env;
   }
   async select({ root, create = false, password }) {
     if (this.state !== "stopped") throw new Error("请先停止当前工作台");
-    root = await this.rootPath(root);
+    const inspected = await this.inspect(root);
+    root = inspected.root;
+    if (inspected.kind !== (create ? "new" : "existing")) throw new Error(inspected.message || (create ? "新实例需要空目录；此目录已有实例，请打开已有实例。" : "此目录尚未创建实例，请先新建。"));
     if (create) {
       if (typeof password !== "string" || password.trim().length < 12 || /[\r\n\0]/.test(password) || /^(?:change-me|replace-|dev-session-secret)/i.test(password)) throw new Error("访问密码至少 12 个字符，不能包含换行或使用占位密码");
       serializeEnvironment({ APP_PASSWORD: password });

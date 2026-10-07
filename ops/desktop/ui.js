@@ -2,42 +2,95 @@ const element = id => document.getElementById(id);
 const incoming = location.hash.slice(1);
 if (incoming) { sessionStorage.setItem("launcher-token", incoming); history.replaceState(null, "", "/"); }
 const token = sessionStorage.getItem("launcher-token") || "";
-let busy = false, exited = false;
-const value = id => element(id).value;
-function notice(message, error = false) { element("notice").textContent = message; element("notice").classList.toggle("error", error); }
+let clientId = crypto.randomUUID();
+const value = id => element(id).value.trim();
+let busy = false, connected = false, state = {}, candidate = null, revision = 0, timer, runAction = "";
+function feedback(scope, message = "", error = false) {
+  const node = element(scope); node.textContent = message; node.hidden = !message; node.classList.toggle("error", error);
+}
 async function api(action, input = {}) {
   const response = await fetch(`/api/${action}`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(input) });
   const result = await response.json(); if (!response.ok) throw new Error(result.error); return result;
 }
+function render() {
+  const stopped = state.state === "stopped", running = state.state === "running";
+  const ready = candidate?.kind === "existing" && candidate.root === state.root;
+  const locked = busy || !connected;
+  element("state").textContent = !connected ? "未连接" : ({ stopped: "未运行", starting: "正在启动", running: "正在运行", stopping: "正在停止", failed: "运行异常" })[state.state];
+  element("state").dataset.running = String(running);
+  element("current").textContent = !value("root") ? "请选择资料目录。" : !candidate ? "正在检查目录…" : candidate.kind === "new" ? "此目录可用于新建实例。设置访问密码后创建，资料将保存在这里。" : candidate.kind === "existing" ? ready ? "资料目录已就绪。" : "已找到工作台实例，可直接打开，无需重新设置密码。" : candidate.message;
+  element("current").classList.toggle("error", candidate?.kind === "invalid");
+  element("create-fields").hidden = candidate?.kind !== "new";
+  element("select").hidden = candidate?.kind !== "existing" || ready;
+  element("create").disabled = locked || !stopped || candidate?.kind !== "new" || element("password").value.trim().length < 12;
+  element("select").disabled = locked || !stopped || candidate?.kind !== "existing" || ready;
+  element("root").disabled = locked || !stopped;
+  element("password").disabled = locked || !stopped;
+  element("start").textContent = runAction === "start" ? "正在启动…" : runAction === "stop" ? "正在停止…" : running ? "停止工作台" : "启动工作台";
+  element("start").disabled = locked || !(running || stopped && ready);
+  element("start").classList.toggle("primary", !running);
+  element("open").hidden = !running || !state.url;
+  if (state.url) element("open").href = state.url;
+  element("run-help").textContent = running ? `访问地址：${state.url}` : ready ? "资料已准备好，可以启动工作台。" : "创建或打开资料目录后，即可启动。";
+  element("configure").disabled = locked || !stopped || !ready;
+  element("model-help").hidden = ready && stopped;
+  element("model-help").textContent = !stopped ? "停止工作台后可修改模型配置。" : "请先创建或打开资料目录。";
+  for (const id of ["apiUrl", "model", "apiKey", "clearKey"]) element(id).disabled = locked || !stopped || !ready;
+  element("backup").disabled = locked || !ready || !["stopped", "running"].includes(state.state);
+  element("verify").disabled = locked || !value("archive");
+  element("restore").disabled = locked || !stopped || !value("archive") || !value("restoreRoot");
+  for (const button of document.querySelectorAll("[data-pick]")) button.disabled = locked || button.dataset.for === "root" && !stopped;
+  for (const id of ["archive", "restoreRoot"]) element(id).disabled = locked;
+}
+async function inspect() {
+  const request = ++revision, root = value("root"); candidate = null; render();
+  if (!root) return;
+  try { const result = await api("inspect", { root }); if (request === revision) candidate = result; }
+  catch (error) { if (request === revision) candidate = { kind: "invalid", message: error.message }; }
+  if (request === revision) render();
+}
 async function status() {
-  if (exited) return;
-  const response = await fetch("/api/status", { headers: { Authorization: `Bearer ${token}` } });
-  const state = await response.json(); if (!response.ok) throw new Error(state.error);
-  element("state").textContent = ({ stopped: "已停止", starting: "正在启动", running: "正在运行", stopping: "等待操作完成后停止", failed: "需要检查" })[state.state];
-  element("current").textContent = state.root ? `当前资料：${state.root}` : "新目录请设置密码后点击“新建实例”；已有资料请点击“打开已有实例”。";
-  if (!value("root") && state.root) element("root").value = state.root;
-  element("open").hidden = !state.url; if (state.url) element("open").href = state.url;
-  if (state.issue) notice(state.issue, true);
-  return state;
+  const response = await fetch("/api/status", { headers: { Authorization: `Bearer ${token}`, "X-Launcher-Client": clientId } });
+  const result = await response.json(); if (!response.ok) throw new Error(result.error);
+  state = result; connected = true; feedback("notice");
+  if (state.issue) feedback("run-notice", state.issue, true);
+  render();
 }
 async function configuration() { const config = await api("configuration"); element("apiUrl").value = config.apiUrl; element("model").value = config.model; element("keyStatus").textContent = config.hasKey ? "已保存 API Key" : "未配置 API Key"; }
-async function run(pending, completed, work) {
-  if (busy) return; busy = true;
-  document.querySelectorAll("button").forEach(button => button.disabled = true);
-  notice(pending);
-  try { const result = await work(); if (!exited) { const current = await status(); if (!current.issue) notice(result === false ? "已取消" : completed); } }
-  catch (error) { notice(error.message || "无法连接启动入口，请重新打开", true); }
-  finally { busy = false; document.querySelectorAll("button").forEach(button => button.disabled = exited); }
+async function run(scope, work, completed = "") {
+  if (busy) return;
+  const trigger = document.activeElement?.tagName === "BUTTON" ? document.activeElement : null;
+  const label = trigger?.textContent;
+  if (trigger) trigger.textContent = ({ create: "正在创建…", select: "正在打开…", configure: "正在保存…", backup: "正在备份…", verify: "正在校验…", restore: "正在恢复…" })[trigger.id] || "请选择…";
+  busy = true; feedback(scope); render();
+  try { const result = await work(); await status(); if (result !== false && !state.issue) feedback(scope, completed); }
+  catch (error) {
+    try { await status(); } catch { connected = false; }
+    feedback(scope, error.message || "无法连接本地工作台，请重新打开。", true);
+  }
+  finally { if (trigger) trigger.textContent = label; busy = false; render(); }
 }
-element("create").onclick = () => run("正在创建…", "已创建资料目录", async () => { await api("select", { root: value("root"), create: true, password: value("password") }); element("password").value = ""; await configuration(); });
-element("select").onclick = () => run("正在打开…", "已打开资料目录", async () => { await api("select", { root: value("root") }); await configuration(); });
-element("start").onclick = () => run("正在启动…", "已启动", async () => { const result = await api("start"); element("open").href = result.url; element("open").hidden = false; });
-element("stop").onclick = () => run("正在停止…", "已停止", () => api("stop"));
-element("exit").onclick = () => run("正在退出…", "已退出", async () => { const result = await api("exit"); exited = true; element("open").hidden = true; element("state").textContent = "已退出"; notice(result.issue || "服务已正常退出，可以关闭此页面。", Boolean(result.issue)); });
-element("configure").onclick = () => run("正在保存…", "已保存模型配置", async () => { await api("configure", { apiUrl: value("apiUrl"), model: value("model"), apiKey: value("apiKey"), clearKey: element("clearKey").checked }); element("apiKey").value = ""; element("clearKey").checked = false; await configuration(); });
-for (const button of document.querySelectorAll("[data-pick]")) button.onclick = () => run("请选择位置…", "已选择位置", async () => { const selected = await api("pick", { mode: button.dataset.pick }); if (!selected.path) return false; element(button.dataset.for).value = selected.path; });
-element("backup").onclick = () => run("请选择备份位置…", "备份已保存", async () => { const selected = await api("pick", { mode: "save" }); if (!selected.path) return false; notice("正在备份…"); await api("backup", { archive: selected.path }); element("archive").value = selected.path; });
-element("verify").onclick = () => run("正在校验…", "备份校验通过", () => api("verify", { archive: value("archive") }));
-element("restore").onclick = () => run("正在恢复…", "已恢复到新目录", async () => { await api("restore", { archive: value("archive"), root: value("restoreRoot") }); element("root").value = value("restoreRoot"); await configuration(); });
-status().then(state => { if (state?.root) return configuration(); }).catch(error => notice(error.message, true));
-setInterval(() => { if (!exited) void status().catch(() => { if (!busy) notice("启动入口已断开，请重新打开。若上次运行未正常结束，请先按维护说明检查。", true); }); }, 2500);
+element("root").oninput = () => { ++revision; candidate = null; clearTimeout(timer); feedback("directory-notice"); render(); timer = setTimeout(inspect, 250); };
+for (const id of ["password", "archive", "restoreRoot"]) element(id).oninput = render;
+element("create").onclick = () => run("directory-notice", async () => { await api("select", { root: value("root"), create: true, password: element("password").value }); element("password").value = ""; await status(); await inspect(); await configuration(); });
+element("select").onclick = () => run("directory-notice", async () => { await api("select", { root: value("root") }); await status(); await inspect(); await configuration(); });
+element("start").onclick = async () => {
+  if (busy || element("start").disabled) return;
+  runAction = state.state === "running" ? "stop" : "start";
+  try { await run("run-notice", () => api(runAction)); }
+  finally { runAction = ""; render(); }
+};
+element("configure").onclick = () => run("model-notice", async () => { await api("configure", { apiUrl: value("apiUrl"), model: value("model"), apiKey: element("apiKey").value, clearKey: element("clearKey").checked }); element("apiKey").value = ""; element("clearKey").checked = false; await configuration(); }, "模型配置已保存。");
+for (const button of document.querySelectorAll("[data-pick]")) button.onclick = () => run(button.dataset.for === "root" ? "directory-notice" : "backup-notice", async () => { const selected = await api("pick", { mode: button.dataset.pick }); if (!selected.path) return false; element(button.dataset.for).value = selected.path; if (button.dataset.for === "root") await inspect(); });
+element("backup").onclick = () => run("backup-notice", async () => { const selected = await api("pick", { mode: "save" }); if (!selected.path) return false; await api("backup", { archive: selected.path }); element("archive").value = selected.path; }, "备份已保存，工作台已停止。");
+element("verify").onclick = () => run("backup-notice", () => api("verify", { archive: value("archive") }), "备份校验通过。");
+element("restore").onclick = () => run("backup-notice", async () => { await api("restore", { archive: value("archive"), root: value("restoreRoot") }); element("root").value = value("restoreRoot"); await status(); await inspect(); await configuration(); }, "已恢复到新目录，原资料保持不变。");
+status().then(async () => { if (state.root) { element("root").value = state.root; await inspect(); await configuration(); } }).catch(error => { feedback("notice", error.message, true); render(); });
+setInterval(() => { if (!busy) void status().catch(() => { connected = false; feedback("notice", "本地工作台已断开，请通过启动文件重新打开。", true); render(); }); }, 2500);
+
+// Closing a stopped launcher page releases its manager; reload and other tabs
+// retain it. Running services are stopped only through the explicit toggle.
+addEventListener("pagehide", () => {
+  void fetch("/api/leave", { method: "POST", keepalive: true, headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ clientId }) }).catch(() => {});
+});
+addEventListener("pageshow", event => { if (event.persisted) { clientId = crypto.randomUUID(); void status().catch(() => { connected = false; render(); }); } });

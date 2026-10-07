@@ -199,3 +199,50 @@ test("accepted exit rejects queued and new start requests while the active servi
   assert.equal((await exiting).status, 200); assert.equal(await write, "ok");
   await launcher.close(); assert.equal(manager.state, "stopped");
 });
+
+test("directory inspection is read-only and distinguishes new, existing, unrelated and locked directories", async t => {
+  const { manager, root, base, packageRoot } = await fixture(t);
+  assert.equal((await manager.inspect(root)).kind, "new");
+  assert.equal(await fs.stat(root).catch(() => null), null);
+  await fs.mkdir(root);
+  assert.equal((await manager.inspect(root)).kind, "new");
+  assert.deepEqual(await fs.readdir(root), []);
+  const unrelated = path.join(base, "unrelated"); await fs.mkdir(unrelated);
+  await fs.writeFile(path.join(unrelated, "keep.txt"), "untouched");
+  assert.equal((await manager.inspect(unrelated)).kind, "invalid");
+  await assert.rejects(manager.select({ root: unrelated, create: true, password: "synthetic-password" }), /已有文件/);
+  await assert.rejects(manager.select({ root: unrelated }), /已有文件/);
+  assert.equal(await fs.readFile(path.join(unrelated, "keep.txt"), "utf8"), "untouched");
+  await assert.rejects(manager.inspect(packageRoot), /程序目录/);
+  await manager.select({ root, create: true, password: "synthetic-password" });
+  assert.equal((await manager.inspect(root)).kind, "existing");
+  await fs.mkdir(path.join(root, "data", ".instance-operation.lock"));
+  assert.equal((await manager.inspect(root)).kind, "invalid");
+  await assert.rejects(manager.select({ root }), /运行锁/);
+  assert.equal((await fs.stat(path.join(root, "data", ".instance-operation.lock"))).isDirectory(), true);
+});
+
+test("closing the last stopped launcher page exits automatically; refresh, other tabs and running work are preserved", async t => {
+  const { manager, packageRoot, stateRoot, root } = await fixture(t);
+  const launcher = await startLauncher({ packageRoot, stateRoot, manager, openBrowser: false });
+  t.after(() => launcher.close());
+  const headers = { Authorization: `Bearer ${launcher.token}`, Origin: launcher.origin, "Content-Type": "application/json" };
+  const a = "11111111-1111-4111-8111-111111111111", b = "22222222-2222-4222-8222-222222222222", c = "33333333-3333-4333-8333-333333333333";
+  const visit = id => fetch(`${launcher.origin}/api/status`, { headers: { ...headers, "X-Launcher-Client": id } });
+  const leave = id => fetch(`${launcher.origin}/api/leave`, { method: "POST", headers, body: JSON.stringify({ clientId: id }) });
+  await visit(a); await visit(b); await leave(a);
+  await new Promise(resolve => setTimeout(resolve, 3200));
+  assert.equal((await visit(b)).status, 200, "another open tab keeps the launcher alive");
+  await leave(b); await visit(c);
+  await new Promise(resolve => setTimeout(resolve, 3200));
+  assert.equal((await visit(c)).status, 200, "reload connects during grace period");
+  await manager.select({ root, create: true, password: "synthetic-password" }); await manager.start();
+  await leave(c); await new Promise(resolve => setTimeout(resolve, 3200));
+  assert.equal(manager.state, "running", "closing the launcher must not interrupt workspace writes");
+  const d = "44444444-4444-4444-8444-444444444444";
+  await visit(d); await manager.stop(); await leave(d);
+  await visit(d); // late request from the departed page must not resurrect it
+  await new Promise(resolve => setTimeout(resolve, 3500));
+  assert.equal(await fs.stat(path.join(stateRoot, "launcher.lock")).catch(() => null), null);
+  assert.equal(await fs.stat(path.join(root, "data", ".instance-operation.lock")).catch(() => null), null);
+});

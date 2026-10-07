@@ -70,6 +70,8 @@ export async function startLauncher({ packageRoot = path.resolve(here, "../.."),
     "/fonts/NotoSerifSC-Medium.woff2": [path.join(assetsRoot, "fonts", "NotoSerifSC-Medium.woff2"), "font/woff2"]
   };
   let origin, closing = false;
+  const clients = new Set(), departedClients = new Set();
+  let idleClose;
   const connections = new Map();
   let listenerClosing = false;
   const reply = (res, status, result) => { res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }); res.end(JSON.stringify(result)); };
@@ -84,11 +86,31 @@ export async function startLauncher({ packageRoot = path.resolve(here, "../.."),
       return;
     }
     if (!safeEqual(req.headers.authorization || "", `Bearer ${token}`)) return reply(res, 401, { error: "请通过桌面启动入口重新打开此页面" });
-    if (req.method === "GET" && req.url === "/api/status") return reply(res, 200, { ...manager.status(), launchId, closing });
+    if (req.method === "GET" && req.url === "/api/status") {
+      const client = req.headers["x-launcher-client"];
+      if (typeof client === "string" && /^[a-f0-9-]{36}$/i.test(client) && !departedClients.has(client)) { clients.add(client); clearTimeout(idleClose); }
+      return reply(res, 200, { ...manager.status(), launchId, closing });
+    }
     if (closing) return reply(res, 503, { error: "正在等待保存和服务退出" });
     if (req.method !== "POST" || req.headers.origin !== origin || !/^application\/json(?:;|$)/.test(req.headers["content-type"] || "")) return reply(res, 403, { error: "请求来源或格式无效" });
     try {
       const input = await body(req);
+      if (req.url === "/api/leave") {
+        const wasPresent = clients.delete(input.clientId);
+        if (wasPresent) departedClients.add(input.clientId);
+        if (wasPresent && clients.size === 0) {
+          clearTimeout(idleClose);
+          idleClose = setTimeout(() => {
+            // A reload or another tab can reconnect during the grace period.
+            // Never terminate running services just because a page was closed.
+            void manager.queue.then(() => {
+              if (!clients.size && manager.state === "stopped") return close();
+            }).catch(() => { process.exitCode = 1; });
+          }, 3000);
+          idleClose.unref();
+        }
+        return reply(res, 200, { left: true });
+      }
       // Reject newly arriving and already queued work as soon as exit is
       // accepted, while keeping status readable during the service drain.
       if (req.url === "/api/exit") closing = true;
@@ -99,6 +121,7 @@ export async function startLauncher({ packageRoot = path.resolve(here, "../.."),
             const value = await manager.select(input);
             await atomicPrivateFile(settings, JSON.stringify({ root: manager.root })); return value;
           }
+          case "/api/inspect": return manager.inspect(input.root);
           case "/api/configuration": return manager.configuration();
           case "/api/configure": return manager.configure(input);
           case "/api/start": { const started = await manager.start(); if (openBrowser) browser(started.url); return started; }
@@ -138,7 +161,7 @@ export async function startLauncher({ packageRoot = path.resolve(here, "../.."),
   });
   let closed;
   const close = () => closed ??= (async () => {
-    closing = true;
+    closing = true; clearTimeout(idleClose);
     await manager.operation(() => manager.shutdown());
     await new Promise(resolve => {
       listenerClosing = true;

@@ -165,7 +165,7 @@ export function Workspace() {
     if (!active || draft.busy || deleting || !logs.day?.exists || !draft.draft) return;
     const date = logs.day.date;
     const version = draft.draft.version;
-    if (!(await confirm({ title: "删除当前日块？", message: draft.dirty ? "当前有未保存修改。删除会移除这一天的日志，并保留写入前备份。" : "删除会移除这一天的日志，并保留写入前备份。", confirmLabel: "删除", tone: "danger" }))) return;
+    if (!(await confirm({ title: "删除当前日块？", message: draft.dirty ? "当前有未保存修改。删除会移除这一天的日志，如需留存，请先导出当前内容。" : "删除会移除这一天的日志，如需留存，请先导出当前内容。", confirmLabel: "删除", tone: "danger" }))) return;
     setDeleting(true); setOperationError("");
     try {
       const { day } = await requestJson<{ day: DayEntry }>("/api/logs/day", { method: "DELETE", body: JSON.stringify({ date, baseVersion: version }) });
@@ -274,7 +274,7 @@ export function Workspace() {
       extractAction={<button type="button" aria-label="AI提取" title="AI提取" className={`button secondary notes-ai-extract${extraction.open ? " active" : ""}`} disabled={!active || notes.busy || extraction.busy === "save"} onClick={async () => { if (extraction.open) await extraction.beforeLeave(); else if (await notes.beforeLeave()) extraction.begin(); }}><WandSparkles size={15} /><span>AI提取</span></button>}
       exportAction={<ExportMenu scopes={[{ scope: "notes", label: "全部随记", disabled: !notes.notes.length }]} onExport={exporting.run} busy={exporting.busy} disabled={!active || !notes.notes.length} />} /></div>
   </WorkspaceChrome>{backupOpen && active && <BackupDialog date={logs.selection.date} onClose={() => setBackupOpen(false)} onRestored={acceptExternal}
-    beforeRestore={() => confirm({ title: "恢复此版本？", message: draft.dirty ? "恢复将替换当前日块，并放弃未保存修改；写入前会保留现有文件。" : "恢复将替换当前日块，其他日期保持不变；写入前会保留现有文件。", confirmLabel: "恢复", tone: "danger" })} />}
+    beforeRestore={() => confirm({ title: "恢复此版本？", message: draft.dirty ? "恢复将替换所选日期的内容，并放弃未保存修改。" : "恢复将替换所选日期的内容，其他日期保持不变。", confirmLabel: "恢复", tone: "danger" })} />}
     <HighlightReviewDialog highlighting={highlighting} />
     {confirmation && active && <ConfirmDialog {...confirmation} onConfirm={() => resolveConfirmation(true)} onCancel={() => resolveConfirmation(false)} />}</>;
 }

@@ -1,0 +1,21 @@
+import {parseEnv} from 'node:util';
+import fs from 'node:fs/promises';import path from 'node:path';import os from 'node:os';import assert from 'node:assert/strict';import {createRequire} from 'node:module';import {workspacePage} from './workspace-test.mjs';
+const require=createRequire(new URL('../../study-log-web/package.json',import.meta.url)),er=createRequire(new URL('./package.json',import.meta.url));const {_electron:electron,expect}=require('@playwright/test');
+const profile=await fs.mkdtemp(path.join(os.tmpdir(),'history-ui-')),evidence=path.resolve('.local',`history-ui-${Date.now()}`);await fs.mkdir(evidence);const env={...process.env,STUDY_LOG_DESKTOP_PROFILE:profile};delete env.ELECTRON_RUN_AS_NODE;
+const app=await electron.launch({executablePath:process.argv[2]||er('electron'),args:process.argv[2]?[]:[path.resolve('ops/electron')],env});
+const menu=label=>app.evaluate(({Menu},label)=>Menu.getApplicationMenu().items[0].submenu.items.find(i=>i.label===label).click(),label);
+const settings=async()=>{await menu('日志历史版本…');await expect.poll(()=>app.context().pages().some(p=>p.url().includes('history.html'))).toBe(true);return app.context().pages().find(p=>p.url().includes('history.html'));};
+let page;
+const request=async(method,url,data)=>{const result=await page.evaluate(async({method,url,data})=>{const r=await fetch(url,{method,headers:{'Content-Type':'application/json'},...(data?{body:JSON.stringify(data)}:{})});return {status:r.status,body:await r.json()};},{method,url,data});return {status:()=>result.status,json:async()=>result.body};};
+const requestPut=(url,options)=>request('PUT',url,options.data),requestGet=url=>request('GET',url);
+try{page=await workspacePage(app);let s=await settings();await expect(s.locator('[name=enabled]')).toBeChecked();await expect(s.locator('[name=days]')).toHaveValue('0');
+for(const theme of ['light','dark']){await s.emulateMedia({colorScheme:theme});await s.screenshot({path:path.join(evidence,`${theme}.png`)});}
+await s.locator('[name=enabled]').uncheck();await expect(s.locator('[name=days]')).toBeDisabled();await s.getByRole('button',{name:'保存设置'}).click();await expect.poll(()=>page.isClosed(),{timeout:60000}).toBe(true);page=await workspacePage(app);
+const root=JSON.parse(await fs.readFile(path.join(profile,'desktop.json'),'utf8')).root;assert.equal(parseEnv(await fs.readFile(path.join(root,'.env'),'utf8')).LOG_HISTORY_ENABLED,'false');
+// Exercise the real local service using the authenticated browser session.
+let response=await requestPut(new URL('/study-log/api/logs/day',page.url()).href,{data:{date:'2026-01-01',content:'### 合成标题\n\n版本一',baseVersion:null}});assert.equal(response.status(),200);let result=await response.json();
+const get=async()=>{const r=await requestGet(new URL('/study-log/api/logs/day?date=2026-01-01',page.url()).href);return r.json();};
+result=await get();const day=result.day||result;response=await requestPut(new URL('/study-log/api/logs/day',page.url()).href,{data:{date:'2026-01-01',content:'### 合成标题\n\n版本二',baseVersion:day.version}});assert.equal(response.status(),200);assert.equal((await fs.readdir(path.join(root,'backups'))).filter(n=>n.includes('学习日志.md.')).length,0);
+s=await settings();await expect(s.locator('[name=enabled]')).not.toBeChecked();await s.locator('[name=enabled]').check();await s.locator('[name=days]').selectOption('30');await s.getByRole('button',{name:'保存设置'}).click();await expect.poll(()=>page.isClosed(),{timeout:60000}).toBe(true);page=await workspacePage(app);result=await get();response=await requestPut(new URL('/study-log/api/logs/day',page.url()).href,{data:{date:'2026-01-01',content:'### 合成标题\n\n版本三',baseVersion:(result.day||result).version}});assert.equal(response.status(),200);assert.equal((await fs.readdir(path.join(root,'backups'))).filter(n=>n.includes('学习日志.md.')).length,1);
+await fs.writeFile(path.join(evidence,'report.json'),JSON.stringify({passed:true}));console.log(evidence);
+}catch(error){console.error('History verification failed:',error.message);throw error;}finally{if(app.process().exitCode===null){const closed=app.waitForEvent('close',{timeout:60000});await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().reverse().forEach(w=>w.close()));await closed;}}

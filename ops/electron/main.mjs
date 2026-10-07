@@ -179,10 +179,10 @@ async function restore() {
   pendingAction = async () => { await manager.restore(archive.filePaths[0], root); };
   win.close();
 }
-function settingsTrusted(event) {
+function settingsTrusted(event, page = 'settings.html') {
   return settingsWindow && event.sender === settingsWindow.webContents
     && event.senderFrame === settingsWindow.webContents.mainFrame
-    && event.senderFrame.url === pathToFileURL(path.join(here, 'settings.html')).href;
+    && event.senderFrame.url === pathToFileURL(path.join(here, page)).href;
 }
 ipcMain.handle('settings:read', event => {
   if (!settingsTrusted(event)) throw Error('无效窗口');
@@ -201,16 +201,26 @@ ipcMain.handle('settings:save', (event, value) => {
   pendingAction = async () => { await manager.configure(config); };
   settingsWindow.close(); win.close();
 });
-async function settings() {
+ipcMain.handle('history:read', event => {
+  if (!settingsTrusted(event, 'history.html')) throw Error('无效窗口');
+  return manager.historyConfiguration();
+});
+ipcMain.handle('history:save', (event, value) => {
+  if (!settingsTrusted(event, 'history.html') || finishing || pendingAction) throw Error('当前无法保存');
+  if (typeof value?.enabled !== 'boolean' || ![0, 30, 90, 180, 365].includes(value.days)) throw Error('历史版本设置无效');
+  pendingAction = async () => { await manager.configureHistory(value); };
+  settingsWindow.close(); win.close();
+});
+async function settings(kind = 'model') {
   if (finishing || pendingAction || manager.state !== 'running') return;
   if (settingsWindow) { settingsWindow.focus(); return; }
   settingsWindow = new BrowserWindow({ parent: win, modal: true, width: 600, height: 640, minWidth: 420, minHeight: 520,
-    title: '模型设置', autoHideMenuBar: true, backgroundColor: nativeTheme.shouldUseDarkColors ? '#151412' : '#faf9f5',
-    webPreferences: { preload: path.join(here, 'settings-preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false } });
+    title: kind === 'history' ? '日志历史版本' : '模型设置', autoHideMenuBar: true, backgroundColor: nativeTheme.shouldUseDarkColors ? '#151412' : '#faf9f5',
+    webPreferences: { preload: path.join(here, kind === 'history' ? 'history-preload.cjs' : 'settings-preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false } });
   settingsWindow.webContents.on('will-navigate', event => event.preventDefault());
   settingsWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   settingsWindow.on('closed', () => { settingsWindow = null; });
-  await settingsWindow.loadFile(path.join(here, 'settings.html'));
+  await settingsWindow.loadFile(path.join(here, kind === 'history' ? 'history.html' : 'settings.html'));
 }
 
 const reportError = error => dialog.showMessageBox(win && !win.isDestroyed() ? win : undefined,
@@ -218,13 +228,15 @@ const reportError = error => dialog.showMessageBox(win && !win.isDestroyed() ? w
 function menu() {
   titleMenu = Menu.buildFromTemplate([
     { label: '文件', submenu: [
+      { label: '使用方式…', click: () => void connection().catch(reportError) },
       { label: '打开已有资料…', enabled: active.mode === 'local', click: () => void selectExisting().catch(reportError) },
       { label: '打开资料所在文件夹', enabled: active.mode === 'local', click: () => { if (manager.root) void shell.openPath(manager.root); } },
+      { type: 'separator' },
       { label: '模型设置…', enabled: active.mode === 'local', click: () => void settings().catch(reportError) },
+      { label: '日志历史版本…', enabled: active.mode === 'local', click: () => void settings('history').catch(reportError) },
+      { type: 'separator' },
       { label: '备份全部资料…', enabled: active.mode === 'local', click: () => void backup().catch(reportError) },
       { label: '从备份恢复…', enabled: active.mode === 'local', click: () => void restore().catch(reportError) },
-      { type: 'separator' },
-      { label: '使用方式…', click: () => void connection().catch(reportError) },
       { label: '迁移到服务器…', enabled: active.mode === 'local', click: () => void migration().catch(reportError) },
       { type: 'separator' }, { label: '退出', accelerator: 'Alt+F4', click: () => win?.close() }
     ] },

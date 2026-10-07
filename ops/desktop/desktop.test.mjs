@@ -246,3 +246,10 @@ test("closing the last stopped launcher page exits automatically; refresh, other
   assert.equal(await fs.stat(path.join(stateRoot, "launcher.lock")).catch(() => null), null);
   assert.equal(await fs.stat(path.join(root, "data", ".instance-operation.lock")).catch(() => null), null);
 });
+
+test('history settings preserve model configuration and do not clean existing files',async t=>{
+ const {manager,root}=await fixture(t);await manager.select({root,create:true,password:'synthetic-password'});
+ assert.deepEqual(await manager.historyConfiguration(),{enabled:true,days:0});await manager.configure({apiUrl:'https://example.test/v1/chat/completions',model:'synthetic',apiKey:'synthetic-key'});
+ await manager.configureHistory({enabled:false,days:30});assert.deepEqual(await manager.historyConfiguration(),{enabled:false,days:30});assert.equal((await manager.configuration()).model,'synthetic');
+ await assert.rejects(manager.configureHistory({enabled:true,days:-1}),/无效/);assert.deepEqual(await manager.historyConfiguration(),{enabled:false,days:30});
+});

@@ -14,7 +14,9 @@ const evidence=path.resolve('.local',`desktop-settings-${Date.now()}`);await fs.
 const menu=label=>app.evaluate(({Menu},label)=>Menu.getApplicationMenu().items[0].submenu.items.find(x=>x.label===label).click(),label);
 const workspace=()=>workspacePage(app);
 try{
- await app.firstWindow({timeout:60000});let page=await workspace();
+ await app.firstWindow({timeout:60000});
+ await app.evaluate(({dialog})=>{globalThis.desktopErrors=[];dialog.showMessageBox=async(...args)=>{const options=args.at(-1);globalThis.desktopErrors.push(options.message);return {response:0};};});
+ let page=await workspace();
  await menu('模型设置…');
  await expect.poll(()=>app.windows().filter(p=>p.url().includes('settings.html')).length).toBe(1);
  const settings=app.windows().find(p=>p.url().includes('settings.html'));await settings.waitForLoadState();
@@ -41,12 +43,30 @@ try{
  await expect(editor).toContainText('取消备份后保留');await assert.rejects(fs.stat(archive),{code:'ENOENT'});
  const saved=page.waitForResponse(r=>r.url().endsWith('/api/logs/day')&&r.request().method()==='PUT');
  await page.getByRole('button',{name:'保存',exact:true}).filter({visible:true}).click();assert.equal((await saved).status(),200);await expect(page.getByRole('button',{name:'保存',exact:true}).filter({visible:true})).toBeDisabled();
+ // Update the saved day, then restore its previous content through the actual history dialog.
+ await editor.click();await page.keyboard.press('Control+End');await page.keyboard.insertText('\n\n第二版合成内容。');
+ let response=page.waitForResponse(r=>r.url().endsWith('/api/logs/day')&&r.request().method()==='PUT');
+ await page.getByRole('button',{name:'保存',exact:true}).filter({visible:true}).click();assert.equal((await response).status(),200);
+ await expect(page.getByRole('button',{name:'保存',exact:true}).filter({visible:true})).toBeDisabled();
+ await page.getByRole('button',{name:'日志历史版本',exact:true}).click();
+ const history=page.getByRole('dialog',{name:'日志历史版本'});await expect(history).toBeVisible();
+ await history.locator('.backup-version-list button').first().click();
+ await expect(history.getByRole('button',{name:'恢复此版本'})).toBeEnabled();
+ await history.screenshot({path:path.join(evidence,'history-preview.png')});
+ response=page.waitForResponse(r=>r.url().endsWith('/api/backups/restore')&&r.request().method()==='POST');
+ await history.getByRole('button',{name:'恢复此版本'}).click();await page.getByRole('button',{name:'恢复',exact:true}).click();assert.equal((await response).status(),200);
+ await expect(history).not.toBeVisible();await expect(editor).toContainText('取消备份后保留');await expect(editor).not.toContainText('第二版合成内容');
  await menu('备份全部资料…');await expect.poll(()=>page.isClosed(),{timeout:60000}).toBe(true);page=await workspace();
  assert.ok((await fs.stat(archive)).size>0);
  await app.evaluate(({dialog},paths)=>{let i=0;dialog.showOpenDialog=async()=>({canceled:false,filePaths:[paths[i++]]});},[archive,profile]);
  await menu('从备份恢复…');await expect.poll(()=>page.isClosed(),{timeout:60000}).toBe(true);page=await workspace();
  const restored=JSON.parse(await fs.readFile(path.join(profile,'desktop.json'),'utf8')).root;
+ await page.getByRole('button',{name:'今天',exact:true}).click();
+ await page.getByRole('button',{name:'源码',exact:true}).click();
+ await expect(page.locator('.cm-content')).toContainText('取消备份后保留');await expect(page.locator('.cm-content')).not.toContainText('第二版合成内容');
+ await page.screenshot({path:path.join(evidence,'restored-workspace.png')});
  assert.notEqual(root,restored);assert.ok(await fs.stat(root));assert.match(await fs.readFile(path.join(restored,'.env'),'utf8'),/synthetic-model/);
- await fs.writeFile(path.join(evidence,'report.json'),JSON.stringify({profile,passed:['settings persistence','key redaction','canceled backup retains draft','sandbox','backup menu','restore into new directory','original preserved']},null,2));
+ assert.deepEqual(await app.evaluate(()=>globalThis.desktopErrors),[],'no application errors during the journey');
+ await fs.writeFile(path.join(evidence,'report.json'),JSON.stringify({profile,passed:['settings persistence','key redaction','canceled backup retains draft','sandbox','history preview and restore','backup menu','restored log readback','restore into new directory','original preserved']},null,2));
  console.log(evidence);
-}finally{await app.evaluate(({dialog,BrowserWindow})=>{dialog.showMessageBoxSync=()=>1;for(const w of BrowserWindow.getAllWindows())w.close();});await app.waitForEvent('close',{timeout:60000});}
+}finally{if(app.process().exitCode===null){const closed=app.waitForEvent('close',{timeout:60000});await app.evaluate(({dialog,BrowserWindow})=>{dialog.showMessageBoxSync=()=>1;for(const w of BrowserWindow.getAllWindows().reverse())w.close();});await closed;}}

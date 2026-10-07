@@ -279,7 +279,7 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
         <div className="toolbar-actions day-toolbar-actions">
           <button className="button secondary log-action-refresh" type="button" title="刷新" aria-label="刷新" disabled={!date || editing.busy} onClick={editing.onReload}><RefreshCw size={15} />刷新</button>
           <ExportMenu scopes={exportScopes} onExport={exporting.run} busy={exporting.busy} disabled={!active || !hasLogs} />
-          <button className="button secondary log-action-backup" type="button" aria-label="备份与恢复" title="备份" disabled={!date || editing.busy} onClick={editing.onBackups}><DatabaseBackup size={15} />备份</button>
+          <button className="button secondary log-action-backup" type="button" aria-label="日志历史版本" title="历史版本" disabled={!date || editing.busy} onClick={editing.onBackups}><DatabaseBackup size={15} />历史版本</button>
           <button className="button danger toolbar-danger-action log-action-delete" type="button" aria-label="删除当前日块" title="删除" disabled={!day?.exists || editing.busy} onClick={editing.onDelete}><Trash2 size={15} />删除</button>
           <div className="log-toolbar-more export-menu" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setToolbarMenuOpen(false); }} onKeyDown={event => { if (event.key === "Escape" && toolbarMenuOpen) { event.preventDefault(); event.stopPropagation(); setToolbarMenuOpen(false); toolbarMenuTrigger.current?.focus(); } }}>
             <button ref={toolbarMenuTrigger} className="button secondary" type="button" title="更多日志操作" aria-label="更多操作" aria-expanded={toolbarMenuOpen} aria-controls="log-toolbar-popover" onClick={() => setToolbarMenuOpen(value => !value)}><MoreHorizontal size={18} /></button>
@@ -293,7 +293,7 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
               </>}
               <button className="log-overflow-refresh" type="button" disabled={!date || editing.busy} onClick={editing.onReload}>刷新</button>
               <div className="log-overflow-export"><ExportMenu variant="items" scopes={exportScopes.map(item => ({ ...item, label: `导出${item.label}` }))} onExport={exporting.run} busy={exporting.busy} disabled={!active || !hasLogs} /></div>
-              <button className="log-overflow-backup" type="button" aria-label="备份与恢复" disabled={!date || editing.busy} onClick={editing.onBackups}>备份</button>
+              <button className="log-overflow-backup" type="button" aria-label="日志历史版本" disabled={!date || editing.busy} onClick={editing.onBackups}>历史版本</button>
               <button className="log-overflow-delete danger" type="button" aria-label="删除当前日块" disabled={!day?.exists || editing.busy} onClick={editing.onDelete}>删除</button>
             </div>}
           </div>
@@ -345,7 +345,7 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
         {onOpenAi && <button type="button" onClick={() => { setActionsOpen(false); onOpenAi(); }}><PanelRightOpen size={18} />AI 工具</button>}
         <button type="button" disabled={!editorReady || mode === "preview" || attachments.busy || editing.busy} onClick={() => { setActionsOpen(false); imageInput.current?.click(); }}><Upload size={18} />插入图片</button>
         <button type="button" disabled={!editing.dirty || editing.busy} onClick={() => { setActionsOpen(false); editing.onDiscard(); }}><Eye size={18} />放弃修改</button>
-        <button type="button" aria-label="备份与恢复" disabled={!date || editing.busy} onClick={() => { setActionsOpen(false); editing.onBackups(); }}><DatabaseBackup size={18} />备份</button>
+        <button type="button" aria-label="日志历史版本" disabled={!date || editing.busy} onClick={() => { setActionsOpen(false); editing.onBackups(); }}><DatabaseBackup size={18} />历史版本</button>
         <button className="danger" type="button" aria-label="删除当前日块" disabled={!day?.exists || editing.busy} onClick={() => { setActionsOpen(false); editing.onDelete(); }}><Trash2 size={18} />删除日块</button>
       </div>
       <div className="mobile-sheet-section"><span>导出</span><div>

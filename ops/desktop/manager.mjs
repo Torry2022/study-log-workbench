@@ -113,6 +113,22 @@ export class DesktopManager {
     } catch (error) { this.root = old; throw error; }
     this.issue = ""; return this.status();
   }
+  async historyConfiguration() {
+    const env = await this.readEnvironment();
+    const days = Number(env.LOG_HISTORY_DAYS || 0);
+    return { enabled: env.LOG_HISTORY_ENABLED !== "false", days: [0, 30, 90, 180, 365].includes(days) ? days : 0 };
+  }
+  async configureHistory({ enabled, days }) {
+    if (this.state !== "stopped") throw new Error("请先停止工作台再修改历史版本设置");
+    if (typeof enabled !== "boolean" || ![0, 30, 90, 180, 365].includes(days)) throw new Error("历史版本设置无效");
+    const release = await acquireInstanceLock(path.join(this.root, "data"), "desktop-config");
+    try {
+      const env = await this.readEnvironment();
+      env.LOG_HISTORY_ENABLED = String(enabled); env.LOG_HISTORY_DAYS = String(days);
+      await atomicPrivateFile(path.join(this.root, ".env"), serializeEnvironment(env));
+    } finally { await release(); }
+    return this.historyConfiguration();
+  }
   async configuration() {
     const env = await this.readEnvironment();
     return { apiUrl: env.CHAT_API_URL ?? "", model: env.CHAT_MODEL ?? "", hasKey: Boolean(env.CHAT_API_KEY) };

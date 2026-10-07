@@ -1,3 +1,4 @@
+import { logHistoryPolicy, expireLogHistory } from "./log-history-policy.ts";
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -390,7 +391,7 @@ async function mutateDay(date: string, baseVersion: string | null, replacement: 
     if ((normalized === null ? Boolean(updated) : !updated) || new Set(nextBlocks.map(block => block.date)).size !== nextBlocks.length) {
       throw new LogWriteInputError("日块结构无效，未写入源文件");
     }
-    if (present) {
+    if (present && logHistoryPolicy().enabled) {
       await assertUnlinkedPath(backupRoot);
       await fs.mkdir(backupRoot, { recursive: true, mode: 0o700 });
       const backup = path.join(backupRoot, `${fileName}.${new Date().toISOString().replace(/[:.]/g, "-")}.${crypto.randomUUID()}.bak`);
@@ -412,6 +413,8 @@ async function mutateDay(date: string, baseVersion: string | null, replacement: 
     } finally {
       if (!committed) await fs.unlink(temporary).catch(error => { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; });
     }
+    // Retention failure must not report an already committed save as failed.
+    await assertUnlinkedPath(backupRoot).then(() => expireLogHistory(fileName)).catch(() => {});
     if (!updated) return {
       date, month: toMonth(date), fileName: `${toMonth(date)}_学习日志.md`, headings: [], preview: "",
       exists: false, content: `## ${date}\n\n`, version: null, updatedAt: null

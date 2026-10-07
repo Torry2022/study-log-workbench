@@ -17,7 +17,7 @@ const environment = { ...process.env, INSTANCE_PARENT: root, INSTANCE_ROOT: inst
   TOOLS_IMAGE: process.env.TOOLS_IMAGE || "study-log-public-rebuild-tools:b27" };
 const docker = async args => (await run("docker", args, { cwd: repository, env: environment, windowsHide: true, maxBuffer: 4 * 1024 * 1024 })).stdout.trim();
 const override = path.join(root, "compose.mock.json");
-const compose = args => docker(["compose", "-p", project, "-f", "compose.yaml", "-f", override, ...args]);
+const compose = args => docker(["compose", "-p", project, "-f", process.env.TEST_COMPOSE_FILE || "compose.yaml", "-f", override, ...args]);
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const mark = name => { passed.push(name); console.log(`PASS ${name}`); };
 let cookie;
@@ -95,6 +95,6 @@ try {
   mark(`SIGTERM during RAG delta: clean exit and source unchanged (${elapsedMs}ms, ${disconnected ? "stream disconnected" : stream.includes("event: done") ? "stream completed" : "stream ended"})`);
   await compose(["--profile", "retrieval", "stop", "study-log-mcp"]);
   await assert.rejects(fs.stat(path.join(instance, "index", ".mcp-index.lock")), { code: "ENOENT" });
-  await fs.writeFile(path.join(root, "report.json"), JSON.stringify({ project, passed, elapsedMs, disconnected, streamCompleted: stream.includes("event: done"), testedAt: new Date().toISOString(), limitation: "Local synthetic model protocol only; no real model quality or independent installation validation." }, null, 2));
+  await fs.writeFile(path.join(root, "report.json"), JSON.stringify({ composeFile: process.env.TEST_COMPOSE_FILE || "compose.yaml", imageIds: JSON.parse(await docker(["image", "inspect", environment.WEB_IMAGE, environment.MCP_IMAGE, environment.TOOLS_IMAGE, "--format", "{{json .Id}}"] ).then(value => "[" + value.split(/\r?\n/).join(",") + "]")), project, passed, elapsedMs, disconnected, streamCompleted: stream.includes("event: done"), testedAt: new Date().toISOString(), limitation: "Local synthetic model protocol only; no real model quality or independent installation validation." }, null, 2));
   console.log(JSON.stringify({ passed, report: path.join(root, "report.json") }));
 } finally { await compose(["--profile", "retrieval", "down"]).catch(() => {}); }

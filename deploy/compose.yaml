@@ -1,0 +1,79 @@
+# Prebuilt images only. Keep runtime settings aligned with root compose.yaml.
+services:
+  web:
+    image: ${IMAGE_PREFIX:?Set IMAGE_PREFIX}/web:${RELEASE_VERSION:?Set RELEASE_VERSION}
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 240s
+    env_file:
+      - path: ${INSTANCE_ROOT:?Set absolute INSTANCE_ROOT}/.env
+        required: false
+    environment:
+      LOG_ROOT: /instance/data
+      BACKUP_ROOT: /instance/backups
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: "3000"
+    ports:
+      - "127.0.0.1:${WEB_PORT:-3560}:3000"
+    volumes:
+      - type: bind
+        source: ${INSTANCE_ROOT:?Set absolute INSTANCE_ROOT}/data
+        target: /instance/data
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${INSTANCE_ROOT:?Set absolute INSTANCE_ROOT}/backups
+        target: /instance/backups
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/study-log').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  study-log-mcp:
+    profiles: [retrieval]
+    image: ${IMAGE_PREFIX:?Set IMAGE_PREFIX}/mcp:${RELEASE_VERSION:?Set RELEASE_VERSION}
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 120s
+    env_file:
+      - path: ${INSTANCE_ROOT:?Set absolute INSTANCE_ROOT}/.env.mcp
+        required: false
+    environment:
+      LOG_ROOT: /instance/data
+      INDEX_ROOT: /instance/index
+      MCP_HTTP_HOST: 0.0.0.0
+      MCP_HTTP_PORT: "3020"
+    volumes:
+      - type: bind
+        source: ${INSTANCE_ROOT:?Set absolute INSTANCE_ROOT}/data
+        target: /instance/data
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${INSTANCE_ROOT:?Set absolute INSTANCE_ROOT}/index
+        target: /instance/index
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3020/health',{headers:{Authorization:'Bearer '+process.env.MCP_HTTP_TOKEN}}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+  tools:
+    profiles: [tools]
+    image: ${IMAGE_PREFIX:?Set IMAGE_PREFIX}/tools:${RELEASE_VERSION:?Set RELEASE_VERSION}
+    init: true
+    volumes:
+      - type: bind
+        source: ${INSTANCE_PARENT:?Set absolute INSTANCE_PARENT}
+        target: /instances
+        bind:
+          create_host_path: false

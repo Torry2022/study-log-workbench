@@ -4,6 +4,8 @@
 
 ## Docker 安装
 
+服务器使用者优先选择 [预构建镜像部署入口](../deploy/README.md)，只需部署文件，不在服务器执行源码构建；当前镜像尚未公开发布，示例地址不可直接使用。下文保留维护者／源码使用者的构建方式。两套 Compose 共享同样的运行边界，并通过实际解析后的配置对照检查。
+
 需要 Docker Engine/Desktop 与支持可选 `env_file` 的 Docker Compose 2.24 或以上。当前构建验收目标是 Linux amd64。首次构建需要能访问 npm 官方 Registry 和 Node 基础镜像；本地缓存成功不能证明所有地区的网络可安装性。
 
 在仓库根目录操作。默认实例位于 `.local/instance`，父目录为 `.local`。可复制根 `.env.example` 为根 `.env`，设置 `INSTANCE_PARENT`、`INSTANCE_ROOT`、`WEB_PORT`；根 `.env` 只配置 Compose，不放应用密钥。实例根必须位于供 tools 挂载的父目录内。

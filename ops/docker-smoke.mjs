@@ -22,7 +22,7 @@ const environment = { ...process.env, INSTANCE_PARENT: root, INSTANCE_ROOT: inst
   MCP_IMAGE: process.env.MCP_IMAGE || "study-log-public-rebuild-mcp:b27",
   TOOLS_IMAGE: process.env.TOOLS_IMAGE || "study-log-public-rebuild-tools:b27" };
 const docker = async args => (await run("docker", args, { cwd: repository, env: environment, windowsHide: true, maxBuffer: 4 * 1024 * 1024 })).stdout.trim();
-const compose = args => docker(["compose", "-p", project, "-f", "compose.yaml", ...args]);
+const compose = args => docker(["compose", "-p", project, "-f", process.env.TEST_COMPOSE_FILE || "compose.yaml", ...args]);
 const mark = name => { passed.push(name); console.log(`PASS ${name}`); };
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const sha = bytes => crypto.createHash("sha256").update(bytes).digest("hex");
@@ -114,7 +114,7 @@ try {
   assert.equal((await (await request("/api/logs/day?date=2026-01-01")).json()).day.content, saved.content);
   assert.equal((await (await request("/api/notes")).json()).notes.length, 1);
   mark("same-version archive/restore byte equality, no overwrite, identity/auth/data usable after restore");
-  await fs.writeFile(path.join(root, "report.json"), JSON.stringify({ project, root, passed, testedAt: new Date().toISOString(), limitation: "Synthetic maintainer-run acceptance; independent installation, real models and cross-version upgrade remain unverified." }, null, 2));
+  await fs.writeFile(path.join(root, "report.json"), JSON.stringify({ composeFile: process.env.TEST_COMPOSE_FILE || "compose.yaml", imageIds: JSON.parse(await docker(["image", "inspect", environment.WEB_IMAGE, environment.MCP_IMAGE, environment.TOOLS_IMAGE, "--format", "{{json .Id}}"] ).then(value => "[" + value.split(/\r?\n/).join(",") + "]")), project, root, passed, testedAt: new Date().toISOString(), limitation: "Synthetic maintainer-run acceptance; independent installation, real models and cross-version upgrade remain unverified." }, null, 2));
   console.log(JSON.stringify({ passed, report: path.join(root, "report.json") }));
 } finally {
   await compose(["--profile", "retrieval", "down"]).catch(() => {});

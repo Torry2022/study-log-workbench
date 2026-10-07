@@ -81,3 +81,5 @@
 三个 `0.1.0-rc.2` 镜像由 `0173f6b` 构建并发布到相同公开版 ACR 仓库，rc.1 未覆盖。空登录配置匿名拉取后 ID 与已测镜像一致，均为 Linux amd64；摘要见 `deploy/RELEASE-NOTES.md`。
 
 六组基础流程证据：`.local\public-rebuild-b27-20261007091505707\report.json`；该次运行使用 `.local\docker-heading-smoke.mjs`，在现有 smoke 流程中追加已认证日期列表的 `DockerAlpha` 未编号 H3 断言，实际通过。三组问答协议证据：`.local\public-rebuild-rag-20261007091505689\report.json`；使用本地模型替身，停止约 18.6 秒，响应完整结束，没有付费调用。两组测试正常关闭所属容器，未操作 ECS；本机缓存匿名拉取不代表空白主机下载。
+
+配套部署 ZIP 已生成并逐项核对五个文件：`.local\server-release-0.1.0-rc.2\study-log-server-0.1.0-rc.2.zip`，SHA-256 `db2883ea5ce1f1f306018864d3ede5a385a7db60b0b6653b3617e46b0badf189`。只包含 Compose、配置示例、部署说明、版本说明及校验清单；未对外托管该 ZIP。

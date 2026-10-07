@@ -31,7 +31,7 @@ node ops/run-web.mjs start "/absolute/path/to/new-instance" 3560
 
 将示例路径换成尚不存在的实例目录绝对路径；Windows 路径可写为 `"D:\workbench-instance"`。随后从实例根目录的 `.env` 中读取 `APP_PASSWORD`，打开 `http://127.0.0.1:3560/study-log` 登录。首次使用可在页面新建日期并编辑日志；如需导入现有资料，先阅读[实例目录及数据边界](docs/deployment.md#实例目录和挂载)，保留原始文件副本，并使用自己的实例路径。更多 Node 启动细节见[部署文档](docs/deployment.md#不使用-docker)。开发时可运行 `npm run dev -- "/absolute/path/to/new-instance" 3560`；这不是正式服务或维护操作的入口。
 
-服务器部署优先使用[预构建镜像与 Compose](deploy/README.md)（当前公开候选 `0.1.0-rc.1`，Linux amd64）；需要自行构建时按[Docker 源码部署步骤](docs/deployment.md#docker-安装)操作，需要 Docker Engine/Desktop、Docker Compose 2.24 或更新版本；当前容器目标为 Linux amd64。初始化生成独立实例的访问密码和会话密钥。**不要将实例目录、归档或环境文件提交到 Git**。
+服务器部署优先使用[预构建镜像与 Compose](deploy/README.md)（当前公开候选 `0.1.0-rc.2`，Linux amd64）；需要自行构建时按[Docker 源码部署步骤](docs/deployment.md#docker-安装)操作，需要 Docker Engine/Desktop、Docker Compose 2.24 或更新版本；当前容器目标为 Linux amd64。初始化生成独立实例的访问密码和会话密钥。**不要将实例目录、归档或环境文件提交到 Git**。
 
 ## 可选服务与备份
 

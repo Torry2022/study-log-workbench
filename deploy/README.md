@@ -2,13 +2,13 @@
 
 此目录是服务器使用者的部署入口，只需 `compose.yaml`、`.env.example` 和本说明，不需要源码、Node 或 npm。需要 Docker Engine 与 Docker Compose 2.24 或以上；当前支持 Linux amd64。三个镜像共用同一发布版本。
 
-**镜像尚未公开发布。** `.env.example` 是占位地址，不能直接拉取；待维护者公布真实镜像前缀及配套版本后使用。当前本地验证结果见仓库的 `docs/server-deployment-acceptance.md`。ACR、其他兼容镜像仓库均可使用，不要求使用者创建阿里云账号。
+当前公开候选为 **`0.1.0-rc.1`（Linux amd64）**，`.env.example` 已填写配套 ACR 公网地址及版本，可以匿名拉取，无需阿里云账号。版本摘要及验收边界见随包 [版本说明](RELEASE-NOTES.md)。镜像前缀也可换成自己的兼容镜像仓库。
 
 ## 首次使用
 
 将本目录三个文件放入一个专用部署目录，在该目录执行后续 Compose 命令。不同实例使用不同目录和 Compose 项目名，不在其他应用目录运行。
 
-1. 复制 `.env.example` 为 `.env`。将 `IMAGE_PREFIX` 改为维护者提供的镜像前缀，例如 `registry.example.com/team/study-log`；将 `RELEASE_VERSION` 改为明确的配套版本，不能保留占位值，也不建议使用 `latest`。填写专用资料父目录和实例目录的绝对路径，实例目录须位于父目录内。该文件不放应用密码或 API Key。
+1. 复制 `.env.example` 为 `.env`。首次使用保留已填写的 `IMAGE_PREFIX` 和 `RELEASE_VERSION`；以后更新时使用发布说明指定的配套版本，不建议使用 `latest`。填写专用资料父目录和实例目录的绝对路径，实例目录须位于父目录内。该文件不放应用密码或 API Key。
 2. 准备新的资料父目录。以下 `/srv/study-log` 必须是本项目新建的专用目录；若已存在，先核对用途及权限，不直接更改原有资料的所有权：
 
 ```sh

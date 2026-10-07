@@ -214,3 +214,5 @@ Windows 本机入口退出时，先等待串行控制操作及 Web／MCP 自身�
 鸿蒙空状态继续由既有 `EmptyState` 承载，文案口径见 [空状态说明](empty-state-copy.md)。日志页在没有选中日块时，以现有月份列表区分空实例与未选择；问答页不为区分空库引入额外日志查询。
 
 服务器使用者入口 `deploy/compose.yaml` 只引用预构建镜像，三个镜像共享 `IMAGE_PREFIX` 与 `RELEASE_VERSION`，实例路径必须显式填写。源码构建入口仍为根 `compose.yaml`；`ops/server-compose-check.mjs` 通过 Docker 实际解析，对照两者除镜像／构建配置之外的运行参数，防止维护分叉。两者复用同一服务锁、归档工具和只读 MCP 边界，不操作云账号或宿主服务。
+
+服务器首个候选 `0.1.0-rc.1` 的默认镜像来源为维护者指定的 ACR `study-log-public` 命名空间，客户端可匿名拉取；默认地址只存在部署示例配置中，服务代码不依赖阿里云。摘要与平台边界见 [候选说明](../deploy/RELEASE-NOTES.md)。

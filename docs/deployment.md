@@ -1,10 +1,10 @@
 # 本地运行与 Docker 自部署
 
-当前产品为单使用者、单 Web 工作进程的工作台，固定入口 `/study-log`。Windows 本机使用优先按[本地包说明](windows-portable.md)操作，无需安装 Node 或 Docker。下文面向源码运行和 Docker 自部署；Docker 的 Web、MCP、维护工具默认使用官方 Node 22 镜像，不需要个人域名、Registry 或云账号。以下流程只支持同版本归档恢复；跨版本升级与回退尚未验收。
+当前产品为单使用者、单 Web 工作进程的工作台，固定入口 `/study-log`。Windows 本机使用优先按[桌面端说明](windows-desktop.md)操作，无需安装 Node 或 Docker。下文面向源码运行和 Docker 自部署；Docker 的 Web、MCP、维护工具默认使用官方 Node 22 镜像，不需要个人域名、Registry 或云账号。以下流程只支持同版本归档恢复；跨版本升级与回退尚未验收。
 
 ## Docker 安装
 
-服务器使用者优先选择 [预构建镜像部署入口](../deploy/README.md)，只需部署文件，不在服务器执行源码构建；当前公开候选 `0.1.0-rc.1` 已提供匿名拉取，默认地址见部署目录 `.env.example`，版本限制见随包说明。下文保留维护者／源码使用者的构建方式。两套 Compose 共享同样的运行边界，并通过实际解析后的配置对照检查。
+服务器使用者优先选择 [预构建镜像部署入口](../deploy/README.md)，只需部署文件，不在服务器执行源码构建；当前候选版本由部署目录的版本说明维护，镜像提供匿名拉取，默认地址见部署目录 `.env.example`，版本限制见随包说明。下文保留维护者／源码使用者的构建方式。两套 Compose 共享同样的运行边界，并通过实际解析后的配置对照检查。
 
 需要 Docker Engine/Desktop 与支持可选 `env_file` 的 Docker Compose 2.24 或以上。当前构建验收目标是 Linux amd64。首次构建需要能访问 npm 官方 Registry 和 Node 基础镜像；本地缓存成功不能证明所有地区的网络可安装性。
 

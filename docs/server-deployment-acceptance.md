@@ -93,3 +93,16 @@
 结束时测试容器正常退出，未 OOM，实例锁释放；最低可用内存 761 MiB。个人版容器 ID、启动时间和重启次数未变，生产网页 HTTP 200，未认证 MCP HTTP 401。保留预更新归档、合成资料及证据；不清其他容器／镜像。
 
 证据：`.local\ecs-rc2-report-20261007.json`、`.local\ecs-browser-rc2-20261007\report.json` 和截图；服务器隔离目录内 `rc2-report.json`。此为维护者执行的一次 rc.1→rc.2 合成实例更新验证，不代表任意版本迁移／回退。没有模型费用、公开 HTTPS、新域名或鸿蒙远程连接验证。随 rc.2 ZIP 保留的版本说明记录发布时状态，以本段后续验证补充。
+
+
+## 2026-10-07 rc.3 配套发布
+
+镜像产品基线 `3f6a9f7`，Linux amd64 三镜像已推送公开版 ACR 固定标签 `0.1.0-rc.3`，旧标签未覆盖。空 Docker 配置匿名拉取并核对本地已验镜像 ID，通过；复用当前引擎缓存。
+
+- Compose 参数一致性检查通过。
+- 六组基础部署证据：`.local/public-rebuild-b27-20261007154857607/report.json`。
+- 三组模拟模型问答及停止证据：`.local/public-rebuild-rag-20261007154921569/report.json`。
+- Registry 摘要及匿名拉取证据：`.local/server-release-0.1.0-rc.3/images.json`；公开摘要见 `deploy/RELEASE-NOTES.md`。
+- 部署附件只含四份说明/配置文件，不包含实例、凭据或源码依赖；GitHub 地址未确定，因此暂不提供虚构的 Release 下载链接。
+
+本次未操作 ECS、未调用真实模型，外部 HTTPS 和跨版本升级仍不在通过范围。README 改为首次使用入口，历史验收记录继续保留。

@@ -1,12 +1,18 @@
 # 服务器部署：预构建镜像
 
-此目录是服务器使用者的部署入口，只需 `compose.yaml`、`.env.example` 和本说明，不需要源码、Node 或 npm。需要 Docker Engine 与 Docker Compose 2.24 或以上；当前支持 Linux amd64。三个镜像共用同一发布版本。
+此目录是服务器使用者的部署入口，部署附件包含 `compose.yaml`、`.env.example`、本说明和 `RELEASE-NOTES.md`，不需要源码、Node 或 npm。需要 Docker Engine 与 Docker Compose 2.24 或以上；当前支持 Linux amd64。三个镜像共用同一发布版本。
 
-当前公开候选为 **`0.1.0-rc.2`（Linux amd64）**，`.env.example` 已填写配套 ACR 公网地址及版本，可以匿名拉取，无需阿里云账号。版本摘要及验收边界见随包 [版本说明](RELEASE-NOTES.md)。镜像前缀也可换成自己的兼容镜像仓库。
+当前公开候选为 **`0.1.0-rc.3`（Linux amd64）**，`.env.example` 已填写配套 ACR 公网地址及版本，可以匿名拉取，无需阿里云账号。版本摘要及验收边界见随包 [版本说明](RELEASE-NOTES.md)。镜像前缀也可换成自己的兼容镜像仓库。
+
+## 获取部署文件
+
+GitHub Release 的服务器部署附件与同版本 ACR 镜像配套；发布下载地址尚未配置时，可从源码仓 `deploy/` 目录取得上述四个文件。无需下载 Windows 安装包、鸿蒙调试包或源码依赖，也无需创建自己的 ACR 仓库。
+
+本文命令在你自己的 Linux 服务器上执行。准备 Docker Engine、Docker Compose 2.24 或以上及一个专用资料目录；使用已有服务器即可，无需为本项目另买服务器。先完成下面的本机检查，再配置公网访问，不接管其他网站或服务。
 
 ## 首次使用
 
-将本目录三个文件放入一个专用部署目录，在该目录执行后续 Compose 命令。不同实例使用不同目录和 Compose 项目名，不在其他应用目录运行。
+将本目录四个文件放入一个专用部署目录，在该目录执行后续 Compose 命令。不同实例使用不同目录和 Compose 项目名，不在其他应用目录运行。
 
 1. 复制 `.env.example` 为 `.env`。首次使用保留已填写的 `IMAGE_PREFIX` 和 `RELEASE_VERSION`；以后更新时使用发布说明指定的配套版本，不建议使用 `latest`。填写专用资料父目录和实例目录的绝对路径，实例目录须位于父目录内。该文件不放应用密码或 API Key。
 2. 准备新的资料父目录。以下 `/srv/study-log` 必须是本项目新建的专用目录；若已存在，先核对用途及权限，不直接更改原有资料的所有权：
@@ -21,7 +27,7 @@ cp .env.example .env
 
 服务和维护容器使用 UID/GID 1000。工具只挂载指定的资料父目录，Web 只读写实例内的 `data` 和 `backups`，检索只读日志。若有权限错误，应修正这个专用目录的授权，不用 root 运行应用，不递归改动其他目录。
 
-3. 私有仓库先使用自己的只读拉取凭据登录对应 Registry；公开镜像按发布说明操作。不要使用维护者的个人凭据。检查配置后拉取镜像：
+3. 默认 ACR 镜像公开，可直接拉取，无需登录。仅当你主动换成自己的私有镜像仓库时才需要相应只读凭据。检查配置后拉取镜像：
 
 ```sh
 docker compose config --quiet
@@ -77,12 +83,24 @@ location /study-log {
 
 不要整体覆盖已有站点配置。此片段不负责申请证书，也不替代站点其他安全配置；代理若运行在容器内，其 `127.0.0.1` 不是宿主机，应按自己的网络部署调整。外部 HTTPS 和各家云网络不在本轮本机 Docker 验收范围内。
 
+## 连接 Windows 和鸿蒙
+
+浏览器使用完整地址 `https://你的域名/study-log`。Windows 在“文件 → 使用方式…”选择“连接服务器”；鸿蒙在登录页填写服务器地址和实例访问密码。地址填写规则以客户端提示为准，通常填写 `https://你的域名`，客户端使用固定的 `/study-log` 路径。
+
+三个入口连接同一实例时共用资料；Windows 的“本地使用”仍是另一份资料，切换不会上传或同步。`127.0.0.1` 在手机上表示手机本身，不能用服务器的回环地址连接。没有域名时可先通过 SSH 转发试用浏览器，不因此开放明文公网服务；局域网 HTTP 仅用于明确启用的测试连接。
+
+## 日志历史版本
+
+日志历史版本默认开启、不限制保留期限。在实例 `.env` 中可设置 `LOG_HISTORY_ENABLED=false` 停止后续记录，或设置 `LOG_HISTORY_DAYS=30`；期限仅支持 `0`（不限）、`30`、`90`、`180`、`365`。修改后重建 Web 容器以加载配置。
+
+关闭不会删除已有版本；设置期限后，仅在成功保存对应日志时清理其过期历史版本。随记事务恢复文件不受此开关影响。历史版本与原资料在同一实例内，不代替下面的独立归档。
+
 ## 停止、备份和恢复
 
 ```sh
 docker compose --profile retrieval stop
-docker compose run --rm --no-deps tools ops/archive-cli.mjs backup /instances/instance /instances/backup-20261007.slwb
-docker compose run --rm --no-deps tools ops/archive-cli.mjs verify /instances/backup-20261007.slwb
+docker compose run --rm --no-deps tools ops/archive-cli.mjs backup /instances/instance /instances/backup-20261007.slarchive
+docker compose run --rm --no-deps tools ops/archive-cli.mjs verify /instances/backup-20261007.slarchive
 ```
 
 先关闭外部资料编辑器。每次备份使用新文件名；归档须位于实例目录之外。归档和同名 `.sha256` 文件包含密码、模型密钥及资料，未加密，须私密保存并另存到其他磁盘。版本记录保留，派生索引不归档。命令失败时不删除实例锁，保留现场排查。
@@ -90,7 +108,7 @@ docker compose run --rm --no-deps tools ops/archive-cli.mjs verify /instances/ba
 恢复到**尚不存在**的新目录，不覆盖旧实例：
 
 ```sh
-docker compose run --rm --no-deps tools ops/archive-cli.mjs restore /instances/backup-20261007.slwb /instances/restored
+docker compose run --rm --no-deps tools ops/archive-cli.mjs restore /instances/backup-20261007.slarchive /instances/restored
 ```
 
 将部署 `.env` 的 `INSTANCE_ROOT` 改为 `/srv/study-log/restored`，保持使用与归档匹配的镜像版本，再启动。已有密码、资料和模板保持不变，外部服务地址需按目标环境核对。Windows 本地包使用相同归档格式；两边搬迁不会自动同步。

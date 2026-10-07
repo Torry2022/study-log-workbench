@@ -1,3 +1,4 @@
+import { workspacePage } from './workspace-test.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -11,12 +12,12 @@ const env={...process.env,STUDY_LOG_DESKTOP_PROFILE:profile};delete env.ELECTRON
 const app=await electron.launch({executablePath:process.argv[2]||er('electron'),args:process.argv[2]?[]:[path.resolve('ops/electron')],env,timeout:60000});
 const evidence=path.resolve('.local',`desktop-settings-${Date.now()}`);await fs.mkdir(evidence);
 const menu=label=>app.evaluate(({Menu},label)=>Menu.getApplicationMenu().items[0].submenu.items.find(x=>x.label===label).click(),label);
-const workspace=async()=>{await expect.poll(()=>app.windows().filter(p=>!p.isClosed()&&p.url().includes('/study-log')).length,{timeout:60000}).toBe(1);const p=app.windows().find(p=>!p.isClosed()&&p.url().includes('/study-log'));p.on('dialog',()=>{});await expect(p.locator('.workspace')).toBeVisible({timeout:60000});return p;};
+const workspace=()=>workspacePage(app);
 try{
  await app.firstWindow({timeout:60000});let page=await workspace();
  await menu('模型设置…');
- await expect.poll(()=>app.windows().length).toBe(2);
- const settings=app.windows().find(p=>p!==page);await settings.waitForLoadState();
+ await expect.poll(()=>app.windows().filter(p=>p.url().includes('settings.html')).length).toBe(1);
+ const settings=app.windows().find(p=>p.url().includes('settings.html'));await settings.waitForLoadState();
  await expect(settings.getByRole('heading',{name:'模型设置'})).toBeVisible();
  assert.equal(await settings.evaluate(()=>typeof window.require),'undefined');
  await settings.locator('[name=model]').fill('synthetic-model');
@@ -26,8 +27,8 @@ try{
  await expect.poll(()=>page.isClosed(),{timeout:60000}).toBe(true);page=await workspace();
  const root=JSON.parse(await fs.readFile(path.join(profile,'desktop.json'),'utf8')).root;
  assert.match(await fs.readFile(path.join(root,'.env'),'utf8'),/synthetic-model/);
- await menu('模型设置…');await expect.poll(()=>app.windows().length).toBe(2);
- const again=app.windows().find(p=>p!==page);await expect(again.locator('[name=model]')).toHaveValue('synthetic-model');assert.deepEqual(await again.evaluate(()=>window.modelSettings.read()),{apiUrl:'',model:'synthetic-model',hasKey:true});
+ await menu('模型设置…');await expect.poll(()=>app.windows().filter(p=>p.url().includes('settings.html')).length).toBe(1);
+ const again=app.windows().find(p=>p.url().includes('settings.html'));await expect(again.locator('[name=model]')).toHaveValue('synthetic-model');assert.deepEqual(await again.evaluate(()=>window.modelSettings.read()),{apiUrl:'',model:'synthetic-model',hasKey:true});
  await expect(again.locator('[name=apiKey]')).toHaveValue('');
  await again.emulateMedia({colorScheme:'dark'});await again.setViewportSize({width:420,height:600});await again.screenshot({path:path.join(evidence,'settings-dark-narrow.png')});
  await again.getByRole('button',{name:'取消'}).click();

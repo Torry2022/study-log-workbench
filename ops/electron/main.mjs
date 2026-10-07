@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, dialog, ipcMain, nativeTheme, shell } from 'electron';
+import { app, BrowserWindow, WebContentsView, Menu, dialog, ipcMain, nativeTheme, shell } from 'electron';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -20,15 +20,33 @@ const manager = new DesktopManager({ packageRoot: payload,
     node: path.join(repository, '.local/windows-runtime/node-v22.23.3-win-x64/node.exe')
   }) });
 const preferences = path.join(app.getPath('userData'), 'desktop.json');
+let workspaceView, titleMenu;
 let win, quitting = false, finishing = false, nextRoot = null, pendingAction = null, settingsWindow = null;
 
 function trusted(event) {
   try {
-    return win && event.sender === win.webContents && event.senderFrame === win.webContents.mainFrame
+    return win && event.sender === workspaceView?.webContents && event.senderFrame === workspaceView.webContents.mainFrame
       && manager.url && new URL(event.senderFrame.url).origin === new URL(manager.url).origin;
   } catch { return false; }
 }
 ipcMain.on('workbench:close', event => { if (trusted(event)) win.close(); });
+
+function titlebarTrusted(event) {
+  return win && event.sender === win.webContents && event.senderFrame === win.webContents.mainFrame
+    && event.senderFrame.url.split('?')[0] === pathToFileURL(path.join(here, 'titlebar.html')).href;
+}
+ipcMain.on('titlebar:menu', (event, id, x) => {
+  if (!titlebarTrusted(event) || !Number.isInteger(id) || id < 0 || id > 3 || !Number.isFinite(x)) return;
+  if (settingsWindow || finishing) return;
+  workspaceView.webContents.focus();
+  titleMenu.items[id].submenu.popup({ window: win, x: Math.max(0, Math.min(win.getContentSize()[0] - 1, Math.round(x))), y: 36 });
+});
+ipcMain.on('titlebar:workspace', event => { if (titlebarTrusted(event)) workspaceView.webContents.focus(); });
+ipcMain.on('workbench:theme', (event, theme) => {
+  if (!trusted(event) || !['light', 'dark'].includes(theme)) return;
+  win.setTitleBarOverlay({ color: theme === 'dark' ? '#151412' : '#faf9f5', symbolColor: theme === 'dark' ? '#f5f0e8' : '#141413' });
+  win.webContents.send('titlebar:theme', theme);
+});
 
 async function authenticate(session) {
   const env = await manager.readEnvironment();
@@ -108,7 +126,7 @@ async function settings() {
 const reportError = error => dialog.showMessageBox(win && !win.isDestroyed() ? win : undefined,
   { type: 'error', title: '学习日志工作台', message: '操作未完成', detail: error.message, buttons: ['知道了'] });
 function menu() {
-  Menu.setApplicationMenu(Menu.buildFromTemplate([
+  titleMenu = Menu.buildFromTemplate([
     { label: '文件', submenu: [
       { label: '打开已有资料…', click: () => void selectExisting().catch(reportError) },
       { label: '打开资料所在文件夹', click: () => { if (manager.root) void shell.openPath(manager.root); } },
@@ -119,8 +137,11 @@ function menu() {
     ] },
     { label: '编辑', submenu: [{ role: 'undo', label: '撤销' }, { role: 'redo', label: '重做' }, { type: 'separator' },
       { role: 'cut', label: '剪切' }, { role: 'copy', label: '复制' }, { role: 'paste', label: '粘贴' }, { role: 'selectAll', label: '全选' }] },
-    { label: '查看', submenu: [{ role: 'resetZoom', label: '实际大小' }, { role: 'zoomIn', label: '放大' }, { role: 'zoomOut', label: '缩小' }] }
-  ]));
+    { label: '视图', submenu: [{ role: 'resetZoom', label: '实际大小' }, { role: 'zoomIn', label: '放大' }, { role: 'zoomOut', label: '缩小' }] },
+    { label: '帮助', submenu: [{ label: '关于学习日志工作台', click: () => void dialog.showMessageBox(win, { title: '关于学习日志工作台', message: '学习日志工作台', detail: `版本 ${app.getVersion()}`, buttons: ['关闭'] }) }] }
+  ]);
+  Menu.setApplicationMenu(titleMenu);
+  win.setMenuBarVisibility(false);
 }
 
 async function finishWindow() {
@@ -152,42 +173,72 @@ async function openWorkspace(root, createDefault = false) {
     manager.ports.web = Number(new URL(manager.url).port);
     await atomicPrivateFile(preferences, JSON.stringify({ root: manager.root, webPort: manager.ports.web }, null, 2));
   });
+  const dark = nativeTheme.shouldUseDarkColors;
   win = new BrowserWindow({ title: '学习日志工作台', width: 1440, height: 960, minWidth: 420, minHeight: 560, show: false,
+    titleBarStyle: 'hidden', titleBarOverlay: { height: 36, color: dark ? '#151412' : '#faf9f5', symbolColor: dark ? '#f5f0e8' : '#141413' },
     ...(app.isPackaged ? { icon: path.join(process.resourcesPath, 'icon.png') } : {}),
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#141413' : '#faf9f5',
-    webPreferences: { preload: path.join(here, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true,
-      partition: `persist:workbench-${crypto.createHash('sha256').update(manager.root).digest('hex').slice(0, 24)}` } });
+    backgroundColor: dark ? '#151412' : '#faf9f5',
+    webPreferences: { preload: path.join(here, 'titlebar-preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true } });
   const current = win;
-  const clipboardAllowed = (contents, permission, origin) => contents === current.webContents
+  current.webContents.on('will-navigate', event => event.preventDefault());
+  current.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  workspaceView = new WebContentsView({ webPreferences: {
+    preload: path.join(here, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true,
+    partition: `persist:workbench-${crypto.createHash('sha256').update(manager.root).digest('hex').slice(0, 24)}`
+  } });
+  const content = workspaceView.webContents;
+  current.contentView.addChildView(workspaceView);
+  const layout = () => { const [width, height] = current.getContentSize(); workspaceView.setBounds({ x: 0, y: 36, width, height: Math.max(0, height - 36) }); };
+  current.on('resize', layout); layout();
+  // The workspace owns beforeunload; the shell closes only after it accepts leaving.
+  let contentClosed = false, closeRequested = false;
+  current.on('close', event => {
+    if (contentClosed) return;
+    event.preventDefault();
+    if (!closeRequested) { closeRequested = true; content.close({ waitForBeforeUnload: true }); }
+  });
+  content.once('destroyed', () => { contentClosed = true; if (!current.isDestroyed()) current.close(); });
+  current.once('closed', () => { if (!content.isDestroyed()) content.close(); });
+  let altOnly = false;
+  content.on('before-input-event', (event, input) => {
+    if (input.type === 'keyDown') altOnly = input.key === 'Alt';
+    if (input.type === 'keyDown' && input.key === 'F10' || input.type === 'keyUp' && input.key === 'Alt' && altOnly) {
+      event.preventDefault(); current.webContents.focus(); current.webContents.send('titlebar:focus'); altOnly = false;
+    }
+  });
+  const clipboardAllowed = (contents, permission, origin) => contents === content
     && ['clipboard-read', 'clipboard-sanitized-write'].includes(permission) && origin === new URL(manager.url).origin;
-  current.webContents.session.setPermissionRequestHandler((contents, permission, callback, details) => {
+  content.session.setPermissionRequestHandler((contents, permission, callback, details) => {
     let origin = ''; try { origin = new URL(details.requestingUrl).origin; } catch {}
     callback(clipboardAllowed(contents, permission, origin));
   });
-  current.webContents.session.setPermissionCheckHandler((contents, permission, origin) => clipboardAllowed(contents, permission, origin));
+  content.session.setPermissionCheckHandler((contents, permission, origin) => clipboardAllowed(contents, permission, origin));
   const outside = url => { try { return new URL(url).origin !== new URL(manager.url).origin; } catch { return true; } };
-  current.webContents.on('will-navigate', (event, url) => { if (outside(url)) event.preventDefault(); });
-  current.webContents.on('will-redirect', (event, url) => { if (outside(url)) event.preventDefault(); });
-  current.webContents.setWindowOpenHandler(({ url }) => {
+  content.on('will-navigate', (event, url) => { if (outside(url)) event.preventDefault(); });
+  content.on('will-redirect', (event, url) => { if (outside(url)) event.preventDefault(); });
+  content.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\//i.test(url) && outside(url)) void shell.openExternal(url);
     return { action: 'deny' };
   });
-  current.webContents.on('will-prevent-unload', event => {
+  content.on('will-prevent-unload', event => {
     const choice = dialog.showMessageBoxSync(current, { type: 'question', title: '离开工作台',
       message: '当前内容尚未保存，是否离开？', buttons: ['继续编辑', '放弃修改并离开'], defaultId: 0, cancelId: 0 });
-    if (choice === 1) event.preventDefault(); else { nextRoot = null; pendingAction = null; }
+    if (choice === 1) event.preventDefault(); else { nextRoot = null; pendingAction = null; closeRequested = false; }
   });
-  current.webContents.on('render-process-gone', () => { void reportError(new Error('页面意外退出，请关闭后重新打开。已保存的资料仍保留。')); });
+  content.on('render-process-gone', () => { void reportError(new Error('页面意外退出，请关闭后重新打开。已保存的资料仍保留。')); });
   current.on('closed', () => { void finishWindow(); });
-  current.once('ready-to-show', () => current.show());
-  await authenticate(current.webContents.session);
+
+  await authenticate(content.session);
   // Renew only the current local session, without reloading or losing editor state.
-  const renewal = setInterval(() => { void authenticate(current.webContents.session).catch(reportError); }, 24 * 60 * 60 * 1000);
+  const renewal = setInterval(() => { void authenticate(content.session).catch(reportError); }, 24 * 60 * 60 * 1000);
   current.once('closed', () => clearInterval(renewal));
   for (const service of manager.processes) service.ended.then(() => {
     if (manager.state === 'failed' && !finishing) void reportError(new Error(manager.issue));
   });
-  menu(); await current.loadURL(manager.url);
+  menu();
+  await current.loadFile(path.join(here, 'titlebar.html'), { query: { icon: pathToFileURL(app.isPackaged ? path.join(process.resourcesPath, 'icon.png') : path.join(repository, '.local/electron-icon.png')).href } });
+  await content.loadURL(manager.url);
+  current.show(); content.focus();
 }
 
 app.on('before-quit', event => {

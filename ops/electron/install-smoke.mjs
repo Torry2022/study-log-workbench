@@ -1,3 +1,4 @@
+import { workspacePage } from './workspace-test.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -41,7 +42,7 @@ const installPackage=async file=>{
 };
 const launch=async()=>{
  application=await electron.launch({executablePath:exe,env,timeout:60000});
- const page=await application.firstWindow({timeout:60000});page.on('dialog',()=>{});
+ const page=await workspacePage(application);page.on('dialog',()=>{});
  await expect(page.locator('.workspace')).toBeVisible({timeout:60000});
  installedVersions.push(await application.evaluate(({app})=>app.getVersion()));
  const actual=await application.evaluate(({app})=>app.getPath('userData'));

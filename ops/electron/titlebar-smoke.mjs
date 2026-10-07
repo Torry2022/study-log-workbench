@@ -1,0 +1,46 @@
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+import {workspacePage} from './workspace-test.mjs';
+const require=createRequire(new URL('../../study-log-web/package.json',import.meta.url));
+const {_electron:electron,expect}=require('@playwright/test');
+const er=createRequire(new URL('./package.json',import.meta.url));
+const env={...process.env,STUDY_LOG_DESKTOP_PROFILE:await fs.mkdtemp(path.join(os.tmpdir(),'study-log-titlebar-test-'))};delete env.ELECTRON_RUN_AS_NODE;
+const evidence=path.resolve('.local',`titlebar-${Date.now()}`);await fs.mkdir(evidence);
+const app=await electron.launch({executablePath:process.argv[2]||er('electron'),args:process.argv[2]?[]:[path.resolve('ops/electron')],env,timeout:60000});
+try{
+ const page=await workspacePage(app);const bar=app.context().pages().find(p=>p.url().startsWith('file:')&&p.url().includes('titlebar.html'));
+ await expect(bar.getByRole('menubar')).toBeVisible();
+ await expect(page.locator('.topbar-actions').getByRole('button',{name:'随记',exact:true})).toBeVisible();
+ const geometry=await app.evaluate(({BrowserWindow})=>{const w=BrowserWindow.getAllWindows()[0];return {size:w.getContentSize(),view:w.contentView.children[0].getBounds(),menu:w.isMenuBarVisible()};});
+ assert.equal(geometry.menu,false);assert.equal(geometry.view.y,36);assert.equal(geometry.view.height,geometry.size[1]-36);
+ assert.equal(await page.evaluate(()=>innerHeight),geometry.view.height);
+ assert.equal(await bar.locator('header').evaluate(e=>getComputedStyle(e).getPropertyValue('-webkit-app-region')),'drag');
+ assert.equal(await bar.locator('nav').evaluate(e=>getComputedStyle(e).getPropertyValue('-webkit-app-region')),'no-drag');
+ assert.equal(await bar.evaluate(()=>navigator.windowControlsOverlay.visible),true);
+ await app.evaluate(({BrowserWindow})=>{const contents=BrowserWindow.getAllWindows()[0].contentView.children[0].webContents;contents.sendInputEvent({type:'keyDown',keyCode:'F10'});contents.sendInputEvent({type:'keyUp',keyCode:'F10'});});await expect(bar.getByRole('menuitem',{name:'文件',exact:true})).toBeFocused();
+ await bar.keyboard.press('ArrowRight');await expect(bar.getByRole('menuitem',{name:'编辑',exact:true})).toBeFocused();
+ await app.evaluate(({Menu})=>{globalThis.popupCalls=[];Menu.getApplicationMenu().items.forEach((item,index)=>{item.submenu.popup=options=>globalThis.popupCalls.push({index,x:options.x,y:options.y});});});
+ await bar.keyboard.press('ArrowDown');await expect.poll(()=>app.evaluate(()=>globalThis.popupCalls.length)).toBe(1);
+ assert.equal((await app.evaluate(()=>globalThis.popupCalls[0])).index,1);
+ await bar.getByRole('menuitem',{name:'文件',exact:true}).click();assert.equal((await app.evaluate(()=>globalThis.popupCalls[1])).index,0);
+ await app.evaluate(({Menu,BrowserWindow})=>{const w=BrowserWindow.getAllWindows()[0];Menu.getApplicationMenu().items[2].submenu.items[1].click({},w,w.contentView.children[0].webContents);});
+ assert.deepEqual(await app.evaluate(({BrowserWindow})=>{const w=BrowserWindow.getAllWindows()[0];return [w.webContents.getZoomLevel(),w.contentView.children[0].webContents.getZoomLevel()];}),[0,0.5]);
+ await app.evaluate(({Menu,BrowserWindow})=>{const w=BrowserWindow.getAllWindows()[0];Menu.getApplicationMenu().items[2].submenu.items[0].click({},w,w.contentView.children[0].webContents);});
+ await page.getByRole('button',{name:'切换主题模式',exact:true}).click();await page.locator('.theme-popover').getByRole('button',{name:/夜间/}).click();
+ await expect(bar.locator('html')).toHaveAttribute('data-theme','dark');
+ await page.evaluate(async()=>{await Promise.all(document.getAnimations().map(a=>a.finished.catch(()=>{})));await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));});
+ // Capture only this app's native window, including its child view and system controls.
+ const screenshot=await app.evaluate(async({BrowserWindow,desktopCapturer})=>{const w=BrowserWindow.getAllWindows()[0];const id=w.getMediaSourceId();const sources=await desktopCapturer.getSources({types:['window'],thumbnailSize:{width:1440,height:960}});return sources.find(s=>s.id===id)?.thumbnail.toPNG().toString('base64');});
+ assert.ok(screenshot);await fs.writeFile(path.join(evidence,'window-dark.png'),Buffer.from(screenshot,'base64'));
+ await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setSize(420,600));
+ await expect.poll(()=>bar.evaluate(()=>innerWidth)).toBe(420);
+ const bounds=await bar.getByRole('menubar').boundingBox();assert.ok(bounds.x+bounds.width<=420-138);
+ await bar.screenshot({path:path.join(evidence,'narrow-titlebar.png'),clip:{x:0,y:0,width:420,height:36}});
+ await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].maximize());
+ await expect.poll(()=>app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].isMaximized())).toBe(true);
+ await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].unmaximize());
+ await fs.writeFile(path.join(evidence,'report.json'),JSON.stringify({passed:['single-row titlebar','workspace viewport excludes 36px titlebar','workspace shortcuts retained','system window-controls overlay enabled','drag/no-drag regions','F10 and arrow-key navigation','existing native menu popup routing','theme follows workspace','420px control reservation','native maximize and restore'],profile:env.STUDY_LOG_DESKTOP_PROFILE},null,2));console.log(evidence);
+}finally{const closed=app.waitForEvent('close',{timeout:60000});await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].close());await closed;}

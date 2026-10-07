@@ -79,3 +79,13 @@ node ops/electron/install-smoke.mjs OLD_INSTALLER_PATH NEW_INSTALLER_PATH
 类型检查、最终生产构建与新包独立 Playwright 验证通过：实际窗口可打开，浏览器请求的标签 SVG 与源文件逐字一致，包内窗口 PNG 与生成资源一致；另从应用 EXE 和安装包提取系统图标核看。证据在 `.local\electron-logo-evidence`。仅更新资源与打包来源，未重复系统安装／卸载，未覆盖已安装应用。
 
 当前试用候选为 `.local\electron-logo-dist\study-log-desktop-0.1.0-x64-setup.exe`，SHA-256 `c45a894b80784deaf3db4816a6de61238810af9bddfed4cd75149c6ddd2871f8`。早先安装包仍含旧图标，不会随源码自动更新。新包未签名、未对外发布。
+
+## 菜单并入窗口标题栏（2026-10-07）
+
+文件、编辑、视图、帮助与窗口 Logo、应用名称放在同一行，取消原先独占一行的菜单栏。工作区中的搜索、随记、收藏、问答、统计、主题和退出按钮全部保留。窄窗口隐藏标题栏名称，为菜单和系统窗口按钮留出空间；工作区仍按实际可用高度布局。
+
+独立 Playwright 验证最终打包 EXE，标题栏证据 `.local\titlebar-1791374632950\report.json`：单行布局、36px 视口分界、420px 菜单避让、F10／方向键、菜单路由、工作区缩放、主题同步和最大化／恢复通过；已核看实际窗口暗色截图。菜单 popup 使用记录替身验证调用，未将其称为原生下拉菜单人工验收；拖动区验证 CSS 声明，未模拟系统拖动手势。
+
+同一包的六组生命周期回归通过，证据 `.local\electron-smoke-1791374662227\report.json`，覆盖保存、取消关闭保留草稿、确认放弃、正常停止释放锁、重开读回、资料切换和实际 Web 子进程故障。同包设置／归档回归也已通过（`.local\desktop-settings-1791374735777\report.json`），包含模型设置读回、密钥不回传、备份取消保留草稿和新目录恢复。安装测试入口已适配独立工作区视图，本轮未重复系统安装／卸载。
+
+新候选：`.local\electron-titlebar-dist\study-log-desktop-0.1.0-x64-setup.exe`，SHA-256 `27150fa091f5ef15063764cb4542cdcef68daa14764bc027ab1aeee2d8e1504d`。使用上一轮已验证的新版 Logo Web payload，本轮不修改 Web 源码，未调用模型。安装包未签名、未发布，未覆盖日常应用；旧包不会自动更新。

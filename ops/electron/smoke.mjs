@@ -1,3 +1,4 @@
+import { workspacePage } from './workspace-test.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -22,7 +23,7 @@ let application;
 const passed = [];
 const start = async () => {
   application = await electron.launch({ executablePath, args, env, timeout:60000 });
-  const page = await application.firstWindow({ timeout:60000 });
+  const page = await workspacePage(application);
   // Electron's will-prevent-unload handler owns this dialog; Playwright must not
   // auto-dismiss a Chromium dialog that Electron has already replaced.
   page.on('dialog', () => {});
@@ -41,7 +42,7 @@ try {
   const lock = path.join(root, 'data/.instance-operation.lock');
   const initialOwner = await fs.readFile(path.join(lock, 'owner.json'), 'utf8');
   const webPreferences = await application.evaluate(({ BrowserWindow }) => {
-    const p = BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences();
+    const p = BrowserWindow.getAllWindows()[0].contentView.children[0].webContents.getLastWebPreferences();
     return { nodeIntegration:p.nodeIntegration, sandbox:p.sandbox, contextIsolation:p.contextIsolation };
   });
   assert.deepEqual(webPreferences, { nodeIntegration:false, sandbox:true, contextIsolation:true });
@@ -52,7 +53,7 @@ try {
   const second = spawn(executablePath, args, { env, windowsHide:true, stdio:'ignore' });
   const [secondCode] = await once(second, 'exit'); assert.equal(secondCode, 0);
   assert.equal(await fs.readFile(path.join(lock, 'owner.json'), 'utf8'), initialOwner);
-  assert.equal(application.windows().length, 1);
+  assert.equal(await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length), 1);
   passed.push('second launch reuses existing window and service lock');
   await page.getByRole('button', { name:'今天', exact:true }).click();
   const editor = page.locator('.cm-content');
@@ -86,8 +87,8 @@ try {
     Menu.getApplicationMenu().items[0].submenu.items[0].click();
   }, restored);
   await expect.poll(async () => JSON.parse(await fs.readFile(path.join(profile, 'desktop.json'), 'utf8')).root, { timeout:60000 }).toBe(restored);
-  await expect.poll(() => application.windows().length, { timeout:60000 }).toBe(1);
-  page = application.windows()[0];
+  await expect.poll(async () => await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length), { timeout:60000 }).toBe(1);
+  page = await workspacePage(application);
   page.on('dialog', () => {});
   await expect(page.locator('.workspace')).toBeVisible({ timeout:60000 });
   await expect(page.locator('.markdown-preview')).toContainText('桌面合成记录');

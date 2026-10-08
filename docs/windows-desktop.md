@@ -1,6 +1,6 @@
 # Windows 桌面试用版
 
-安装后从快捷方式打开，无需另开浏览器、安装 Node 或手动启停服务。桌面端沿用现有网页工作台与 Markdown 存储格式，支持本地使用或连接已部署的服务器。当前为未签名的预发布安装包。下载 [Windows x64 安装包](https://github.com/Torry2022/study-log-workbench-public/releases/download/v0.1.0-rc.5/study-log-desktop-0.1.0-rc.5-x64-setup.exe)，版本说明及 SHA-256 校验文件见[预发布页面](https://github.com/Torry2022/study-log-workbench-public/releases/tag/v0.1.0-rc.5)。
+安装后从快捷方式打开，无需另开浏览器、安装 Node 或手动启停服务。桌面端沿用现有网页工作台与 Markdown 存储格式，支持本地使用或连接已部署的服务器。当前为未签名的预发布安装包。下载 [Windows x64 安装包](https://github.com/Torry2022/study-log-workbench-public/releases/download/v0.1.0-rc.6/study-log-desktop-0.1.0-rc.6-x64-setup.exe)，版本说明及 SHA-256 校验文件见[预发布页面](https://github.com/Torry2022/study-log-workbench-public/releases/tag/v0.1.0-rc.6)。
 
 ## 开始使用
 

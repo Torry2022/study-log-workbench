@@ -166,6 +166,7 @@
 .internal-link-results {
   min-height: 280px;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: 8px;
 }
 

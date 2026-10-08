@@ -163,6 +163,7 @@
 .backup-version-panel {
   min-height: 0;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: 14px;
   border-right: 1px solid var(--hairline);
   background: var(--surface-soft);
@@ -315,6 +316,7 @@
 .backup-diff-scroll {
   min-height: 0;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   overscroll-behavior: contain;
   background: var(--canvas);
 }
@@ -439,6 +441,7 @@
   }
   .backup-dialog-content {
     overflow-y: auto;
+    scrollbar-gutter: stable;
     padding: 12px 14px calc(20px + var(--safe-area-bottom));
   }
 
@@ -489,5 +492,5 @@
   .backup-dialog.maximized { position: relative; inset: auto; }
 }
 @container backup-window (max-width: 800px) {
-  .backup-dialog-content { overflow-y: auto; }
+  .backup-dialog-content { overflow-y: auto; scrollbar-gutter: stable; }
 }

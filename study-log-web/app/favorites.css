@@ -1316,6 +1316,7 @@
     width: 100%;
     max-height: calc(var(--mobile-viewport-height, 100dvh) - var(--safe-area-top));
     overflow-y: auto;
+    scrollbar-gutter: stable;
     padding: 18px 16px calc(18px + var(--safe-area-bottom));
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   }
@@ -1340,7 +1341,7 @@
 
 .favorites-error { display: flex; align-items: center; gap: 10px; color: var(--error); font-size: 13px; }
 
-.favorite-group-dialog { max-height: calc(var(--mobile-viewport-height, 100dvh) - 48px); overflow-y: auto; }
+.favorite-group-dialog { max-height: calc(var(--mobile-viewport-height, 100dvh) - 48px); overflow-y: auto; scrollbar-gutter: stable; }
 
 @keyframes favorite-dialog-fade-out { to { opacity: 0; } }
 
@@ -1379,6 +1380,7 @@
 .reader-content-favorites {
   align-content: start;
   overflow: auto;
+  scrollbar-gutter: stable;
   padding: 24px 32px 80px;
 }
 

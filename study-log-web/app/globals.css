@@ -94,6 +94,11 @@
   box-sizing: border-box;
 }
 
+/* Keep the available width unchanged when page scrolling or modal scroll locks change. */
+html {
+  scrollbar-gutter: stable;
+}
+
 html,
 body {
   margin: 0;
@@ -326,3 +331,6 @@ button:disabled {
   --safe-area-left: env(safe-area-inset-left, 0px);
   --safe-area-right: env(safe-area-inset-right, 0px);
 }
+
+/* CodeMirror supplies its own scrolling element. */
+.cm-scroller { scrollbar-gutter: stable; }

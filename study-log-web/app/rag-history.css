@@ -61,6 +61,7 @@
   align-content: start;
   gap: 14px;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding-right: 2px;
 }
 
@@ -247,6 +248,7 @@
 
 .rag-history-popover .rag-history-groups {
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .sidebar.qa-sidebar {
@@ -271,6 +273,7 @@
     height: auto;
     max-height: min(68svh, 520px);
     overflow: auto;
+    scrollbar-gutter: stable;
   }
 
   .rag-history-popover {
@@ -298,6 +301,7 @@
     display: flex;
     gap: 14px;
     overflow: auto;
+    scrollbar-gutter: stable;
     padding: 0 max(14px, var(--safe-area-right)) max(20px, var(--safe-area-bottom)) max(14px, var(--safe-area-left));
     border-right: 1px solid var(--hairline);
     border-bottom: 0;

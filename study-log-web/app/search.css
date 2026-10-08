@@ -159,6 +159,7 @@
   gap: 6px;
   max-height: min(420px, calc(100vh - 96px));
   overflow: auto;
+  scrollbar-gutter: stable;
   padding: 8px;
   border: 1px solid var(--hairline);
   border-radius: var(--radius-lg);
@@ -415,6 +416,7 @@
     max-height: none;
     align-content: start;
     overflow-y: auto;
+    scrollbar-gutter: stable;
     overscroll-behavior: contain;
     padding-bottom: 0;
     border: 0;

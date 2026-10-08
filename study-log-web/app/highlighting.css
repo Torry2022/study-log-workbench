@@ -120,6 +120,7 @@
   min-height: 0;
   margin: 0;
   overflow: auto;
+  scrollbar-gutter: stable;
   padding: 8px 0;
   color: var(--body);
   font-family: "JetBrains Mono", Consolas, monospace;
@@ -239,7 +240,7 @@
 }
 
 .highlight-review-overlay { z-index: 110; }
-.highlight-panel { min-height: 0; display: flex; flex-direction: column; gap: 12px; padding: 16px; overflow: auto; background: var(--canvas); color: var(--body); }
+.highlight-panel { min-height: 0; display: flex; flex-direction: column; gap: 12px; padding: 16px; overflow: auto; scrollbar-gutter: stable; background: var(--canvas); color: var(--body); }
 .highlight-panel .button.secondary-on-dark { color: var(--muted); background: var(--surface-soft); border-color: var(--hairline); }
 .highlight-panel .status-line, .highlight-review-overlay .status-line { margin: 0; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
 .highlight-panel .status-line.warning, .highlight-review-overlay .status-line.warning { color: var(--warning); }

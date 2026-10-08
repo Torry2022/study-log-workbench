@@ -5,6 +5,7 @@
   align-content: start;
   gap: 22px;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   overscroll-behavior: contain;
   padding: 16px;
   border: 1px solid var(--hairline);

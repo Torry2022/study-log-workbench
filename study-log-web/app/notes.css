@@ -80,6 +80,7 @@
 .notes-tag-filter-list {
   min-height: 0;
   overflow: auto;
+  scrollbar-gutter: stable;
   display: flex;
   align-content: flex-start;
   flex-wrap: wrap;
@@ -600,7 +601,7 @@
 .note-tag-chip > span { overflow-wrap: anywhere; }
 .note-tag-chip button { display: grid; place-items: center; flex: none; padding: 2px; border: 0; background: transparent; color: var(--muted); }
 .note-tag-selection input { flex: 1 1 140px; width: 100%; min-width: 0; border: 0; padding: 4px; background: transparent; }
-.note-tag-options { position: absolute; top: 100%; left: 0; right: 0; z-index: 20; max-height: 220px; overflow-y: auto; margin-top: 4px; padding: 4px; background: var(--canvas); border: 1px solid var(--hairline); border-radius: var(--radius-md); box-shadow: var(--shadow-soft); }
+.note-tag-options { position: absolute; top: 100%; left: 0; right: 0; z-index: 20; max-height: 220px; overflow-y: auto; scrollbar-gutter: stable; margin-top: 4px; padding: 4px; background: var(--canvas); border: 1px solid var(--hairline); border-radius: var(--radius-md); box-shadow: var(--shadow-soft); }
 .note-tag-options button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px; text-align: left; border: 0; background: transparent; color: var(--body); font-size: 13px; }
 .note-tag-options button.active, .note-tag-options button:hover { background: var(--surface-soft); }
 .note-tag-options button span { flex: 1; min-width: 0; overflow-wrap: anywhere; }

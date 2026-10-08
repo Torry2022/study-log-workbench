@@ -321,6 +321,7 @@
   min-height: 0;
   max-height: calc(100svh - 108px);
   overflow: auto;
+  scrollbar-gutter: stable;
   padding: 28px 14px 80px;
   border-left: 1px solid var(--hairline-soft);
   background: var(--canvas);
@@ -395,6 +396,7 @@
 .markdown-preview {
   min-height: 0;
   overflow: auto;
+  scrollbar-gutter: stable;
   padding: 28px 48px 80px;
   color: var(--body);
   line-height: 1.7;
@@ -653,6 +655,7 @@
 
 .code-block {
   overflow: auto;
+  scrollbar-gutter: stable;
   padding: 18px;
   border: 1px solid var(--code-block-border);
   border-radius: var(--radius-lg);
@@ -702,6 +705,7 @@
 
 .mermaid-block {
   overflow: auto;
+  scrollbar-gutter: stable;
   margin: 18px auto;
   padding: 18px;
   border: 1px solid var(--hairline);
@@ -777,7 +781,7 @@
 .log-overflow-export,
 .log-overflow-backup,
 .log-overflow-delete { display: none; }
-.log-toolbar-popover { min-width: 180px; max-height: min(480px, 70vh); overflow-y: auto; }
+.log-toolbar-popover { min-width: 180px; max-height: min(480px, 70vh); overflow-y: auto; scrollbar-gutter: stable; }
 .log-overflow-export button { width: 100%; }
 .log-toolbar-popover .danger { color: var(--error); }
 .reader-toolbar-log .log-toolbar-more > .button { width: 40px; min-width: 40px; height: 40px; padding: 0; }
@@ -816,7 +820,7 @@
   }
   .reader-toolbar-log .reader-secondary-actions:empty { display: none; }
 
-  @container reader-workspace (max-width: 1520px) {
+  @container reader-workspace (max-width: 1600px) {
     .reader-toolbar-log { gap: 12px; padding: 12px 16px; }
     .reader-toolbar-log .reader-secondary-actions { display: none; }
     .reader-toolbar-log .reader-log-controls,
@@ -1096,6 +1100,7 @@
     max-height: none;
     display: block;
     overflow-y: auto;
+    scrollbar-gutter: stable;
     padding: 22px 14px 36px;
     border-left: 1px solid var(--hairline);
     background: var(--canvas);

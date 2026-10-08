@@ -250,6 +250,7 @@
   .confirmation-dialog {
     max-height: calc(var(--mobile-viewport-height, 100dvh) - var(--safe-area-top) - var(--mobile-bottom-occupied) - 24px);
     overflow-y: auto;
+    scrollbar-gutter: stable;
   }
 
   .mobile-mode-switch {
@@ -364,7 +365,7 @@
 .editor-toolbar-actions { display: flex; gap: 8px; }
 .mode-split > .editor-attachment-status { grid-column: 1 / -1; }
 .mode-split { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr)); }
-.mode-split > .reader-preview-pane { max-height: calc(100svh - var(--reader-toolbar-height) - 64px); overflow: auto; }
+.mode-split > .reader-preview-pane { max-height: calc(100svh - var(--reader-toolbar-height) - 64px); overflow: auto; scrollbar-gutter: stable; }
 .mode-split .preview-reading-mode-entry { display: none; }
 .mode-split .markdown-preview { padding: 28px 34px 80px; }
 .source-workspace { min-height: calc(100svh - var(--reader-toolbar-height) - 64px); }

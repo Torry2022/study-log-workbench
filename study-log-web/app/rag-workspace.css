@@ -353,6 +353,7 @@
   max-height: 180px;
   resize: none;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: 10px 11px;
   border: 0;
   outline: 0;

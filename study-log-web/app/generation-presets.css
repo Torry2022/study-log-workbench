@@ -6,7 +6,7 @@
 .generation-presets-dialog { width: min(900px, 100%); max-height: calc(100dvh - 48px); display: flex; flex-direction: column; overflow: hidden; color: var(--body); background: var(--canvas); border: 1px solid var(--hairline); border-radius: var(--radius-lg); box-shadow: var(--popover-shadow); }
 .generation-presets-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 24px; border-bottom: 1px solid var(--hairline); }
 .generation-presets-dialog h2 { margin: 0; color: var(--ink); font-family: Cormorant Garamond, Georgia, "Times New Roman", serif; font-size: 28px; font-weight: 500; line-height: 1.15; }
-.generation-presets-body { display: grid; grid-template-columns: 208px minmax(0, 1fr); min-height: 0; overflow: auto; }
+.generation-presets-body { display: grid; grid-template-columns: 208px minmax(0, 1fr); min-height: 0; overflow: auto; scrollbar-gutter: stable; }
 .generation-presets-body aside { display: flex; flex-direction: column; gap: 8px; padding: 16px; background: var(--surface-soft); border-right: 1px solid var(--hairline); }
 .generation-preset-item { display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 12px; border: 1px solid transparent; border-radius: var(--radius-md); background: transparent; color: var(--body); overflow-wrap: anywhere; }
 .generation-preset-item.active { background: var(--surface-card); border-color: var(--hairline); }
@@ -19,7 +19,7 @@
 .generation-presets-hint { margin: 0; }
 .generation-presets-comparison { border: 1px solid var(--hairline); border-radius: var(--radius-md); padding: 12px; }
 .generation-presets-comparison summary { cursor: pointer; font-size: 13px; }
-.generation-presets-comparison pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 160px; overflow: auto; font-size: 13px; }
+.generation-presets-comparison pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 160px; overflow: auto; scrollbar-gutter: stable; font-size: 13px; }
 .generation-presets-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 .generation-presets-actions .button { min-height: 40px; padding: 8px 12px; }
 .generation-presets-backdrop.dialog-exiting { opacity: 0; transition: opacity 160ms ease; }
@@ -29,7 +29,7 @@
   .generation-presets-dialog { max-height: calc(var(--mobile-viewport-height, 100dvh) - max(12px, var(--safe-area-top)) - max(12px, var(--safe-area-bottom))); }
   .generation-presets-dialog header { padding: 16px; }
   .generation-presets-body { grid-template-columns: minmax(0, 1fr); }
-  .generation-presets-body aside { max-height: 180px; overflow: auto; border-right: 0; border-bottom: 1px solid var(--hairline); }
+  .generation-presets-body aside { max-height: 180px; overflow: auto; scrollbar-gutter: stable; border-right: 0; border-bottom: 1px solid var(--hairline); }
   .generation-presets-editor { padding: 16px; }
 }
 @media (prefers-reduced-motion: reduce) { .generation-presets-backdrop { animation: none; transition: none; } }

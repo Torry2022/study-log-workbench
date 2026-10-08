@@ -231,6 +231,7 @@
 .sidebar {
   min-height: 0;
   overflow: auto;
+  scrollbar-gutter: stable;
 }
 
 .sidebar {
@@ -403,6 +404,7 @@
   grid-auto-rows: min-content;
   min-height: 0;
   overflow: auto;
+  scrollbar-gutter: stable;
   padding-right: 2px;
 }
 
@@ -736,6 +738,7 @@
     display: flex;
     gap: 14px;
     overflow: auto;
+    scrollbar-gutter: stable;
     padding: 0 max(14px, var(--safe-area-right)) max(20px, var(--safe-area-bottom)) max(14px, var(--safe-area-left));
     border-right: 1px solid var(--hairline);
     border-bottom: 0;
@@ -891,6 +894,7 @@
     width: min(100%, 620px);
     max-height: min(calc(var(--mobile-viewport-height, 100dvh) - var(--safe-area-top)), 680px);
     overflow-y: auto;
+    scrollbar-gutter: stable;
     padding: 8px 16px calc(18px + var(--safe-area-bottom));
     border: 1px solid var(--hairline);
     border-bottom: 0;

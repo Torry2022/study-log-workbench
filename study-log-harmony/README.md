@@ -1,26 +1,75 @@
 # 鸿蒙公开版客户端
 
+连接自己部署的服务器，在手机、平板和鸿蒙 PC 上阅读、编辑和找回学习记录。日志、随记、收藏、问答和统计与网页共用同一实例；模型在服务端配置，未配置时仍可使用基础记录功能。客户端不提供独立本地存储或离线同步。
+
+当前提供源码构建方式，尚无面向所有设备的通用安装包。维护者已验证本地设备和模拟器的列明流程；其他使用者的独立签名安装、外部受信 HTTPS 连接仍待验证，详见[当前进度](../docs/current-status.md)。
+
+## 准备
+
+- 已按[服务器部署指南](../deploy/README.md)启动实例，并取得服务器地址和实例访问密码。先在目标设备浏览器确认能够打开 `https://你的域名/study-log`。
+- 安装匹配的 DevEco Studio 和 HarmonyOS SDK `6.1.1(24)`；工程支持 `phone`、`tablet`、`2in1`，设备系统须满足工程兼容版本。
+- 获取本仓库源码，用 DevEco 打开 `study-log-harmony`。按本机环境生成或创建不入库的 `local.properties`，设置 `sdk.dir`。命令行测试需要 Node.js 22.13 或更新版本。
+
+Windows 桌面端的本地服务默认只供本机访问，不能直接作为手机的服务器。手机上的 `127.0.0.1` 指向手机自身；USB 反向端口仅用于开发测试。
+
+## 依赖与构建
+
+以下 PowerShell 命令从仓库根目录执行，将 DevEco 安装目录替换为自己的实际路径：
+
+```powershell
+$devEcoStudio = 'D:\Software\DevEco Studio'
+npm --prefix study-log-web ci
+Set-Location study-log-harmony
+npm ci
+& (Join-Path $devEcoStudio 'tools\ohpm\bin\ohpm.bat') install
+npm run test:protocol
+node (Join-Path $devEcoStudio 'tools\hvigor\bin\hvigorw.js') --mode module -p product=default -p module=entry@default -p buildMode=debug assembleHap --no-daemon
+```
+
+协议测试会导入相邻 Web 工程的时间和链接实现，因此需要 Web 依赖，不需要先启动 Web 服务。默认 `signingConfigs` 为空，输出为 `entry\build\default\outputs\default\entry-default-unsigned.hap`；构建成功不表示它可以直接安装到真机。
+
+编辑器已包含可用的构建产物。修改编辑器源码时，另按 [editor-runtime 说明](editor-runtime/README.md)安装依赖并重新构建，不手改压缩产物。
+
+## 签名与安装
+
+在 DevEco 中使用自己的应用身份、证书、私钥和匹配设备的 Profile 配置本地签名。仓库默认包名 `org.studylog.workbench.publicedition` 是维护者验收基线；使用自己的应用身份时，本地 `AppScope/app.json5` 的 `app.bundleName` 必须与 Profile 一致。签名文件和配置不提交到仓库。
+
+签名构建后安装本次生成的 `entry-default-signed.hap`。同一应用后续更新须保持包名和匹配签名；不要为解决签名错误先卸载已有应用。完整步骤、HDC 安装命令和独立试装清单见[独立构建与安装](../docs/harmony-independent-install.md)。维护者调试包绑定的设备范围不能替代使用者自己的签名。
+
+## 连接与首次记录
+
+1. 打开客户端，填写自己的服务器地址（例如 `https://你的域名`）及实例访问密码；客户端使用 `/study-log` 路径。模型 API Key 不填在登录页。
+2. 连接后选择日期阅读已有记录，或新建当天日志，编辑后点击保存。网页连接同一实例时可以读到保存结果。
+3. 日志 AI 可选择网页管理的生成方案，鸿蒙端保留本次补充要求；个人方案的完整管理在网页进行。生成结果需要审阅并显式保存。
+
+局域网 HTTP 只用于明确启用的测试连接。日常远程使用应配置受信 HTTPS；切换服务器不复制或合并两处学习记录。
+
+## 当前验证范围
+
+2026-10-08：224 项协议测试、编辑器 2 项测试及 clean HAP 构建通过；可见平板模拟器完成网页记录读取、原生编辑保存、网页重新登录读回。该链路使用合成实例和本机反向端口，不能代替外部 HTTPS 或其他使用者的独立签名安装。证据见[本轮交付记录](../docs/public-delivery-2026-10-08.md)。
+
+`EntryAbility.ets` 中 `KEEP_SCREEN_ON_DURING_ACCEPTANCE` 默认 `false`，不将维护者临时常亮包作为发行包。剩余条件统一记录在[进度总览](../docs/current-status.md)，不要求使用者先阅读下方历史记录才能开始构建。
+
+## 专项测试与历史证据
+
+登录键盘测试位于 `entry/src/ohosTest`。将构建命令中的 `module=entry@default` 改为 `module=entry@ohosTest`，在授权测试设备同时安装主包与测试包后运行：
+
+```powershell
+$hdc = Join-Path $devEcoStudio 'sdk\default\openharmony\toolchains\hdc.exe'
+$deviceId = '<目标测试设备标识>'
+$bundleName = '<本地 app.bundleName>'
+& $hdc -t $deviceId shell aa test -b $bundleName -m entry_test -s unittest OpenHarmonyTestRunner -s class LoginKeyboardGeometry#keepsPublicConnectionFormInOneTopExtendedViewport -s timeout 240000 -w 300
+```
+
+测试在已退出连接的登录页运行，不清令牌、重置实例或提交连接；PC 宽窄窗口专项将 class 改为 `LoginKeyboardGeometry#restoresNarrowLoginAfterEnteringTheWideLayout`。布局坐标与命中边界不代替密码保护画面的现场观察。
+
+以下保留历次验证范围，未发布、候选和当时缺项等描述不替代上方当前状态。
+
 此目录是连接自部署实例的公开客户端。核心迁移及列明的本地设备专项已完成；独立分发条件尚未验收，当前不宣称正式发行完成。实例连接、日志阅读与编辑、搜索、收藏、随记、统计、本机设置，以及日志 AI、随记候选与问答界面均已接入。维护者已在合成实例上完成 PC／平板多项读写、来源跳转、主题、宽窄窗口、失败重试与实例隔离验证；平板候选编辑保存、两端日志 AI 草稿显式保存已有证据。手机真机的基础安装、局域网连接、日志／随记／收藏／图片／导出和合成模型替身的候选／日志 AI 流程见[自行试装记录](../docs/self-install-2026-10-02.md)；这些交互证据不等于真实模型质量验收。
 
 PC／平板已通过隔离合成实例的双材料原生导入，PC 候选编辑保存及保存失败后的离开保护也已验证；这些证据不代表真实模型质量。手机自行试装已完成 A→B→A 合成实例切换、显式放弃未保存修改和已保存数据隔离，关闭常亮的候选包也按系统临时超时息屏；手机原生选入合成 TXT 后经本地模型替身完成候选编辑、显式保存和服务端读回，日志生成追加／保存及重点标注对照／应用／保存也已用合成响应完成。手机已通过系统浏览器复制合成图片、编辑器粘贴、实际上传／保存和冷启读回，断连上传时原草稿也保留；这项专项见当前收尾清单 R2。当前关闭常亮候选已在 Pura 手机安装并完成列明事务／键盘专项；手机五模块、抽屉、AI 和备份的指定连续采样已补，不外推为所有显示帧通过。原版／公开版模拟器曾出现首点已聚焦但未弹键盘，根因未定位；现有真机指定路径首点正常。其他使用者自行签名安装及不同网络受信 HTTPS 仍未验收；当前缺少外部条件，保留为发布前待验，不阻止本地源码和文档收尾。普通新建及候选批量保存会核对成功响应的记录身份，未确认时保留草稿和重试 ID。具体通过范围与缺口以[当前收尾清单](../docs/harmony-workspace-recovery.md)和[自行试装记录](../docs/self-install-2026-10-02.md)为准，历史操作记录见[鸿蒙迁移记录](../docs/harmony-migration.md)；当前不宣称正式发行验收完成。
 
-支持 phone、tablet 和 2in1，使用自部署 Web/API 作为权威数据源。提交的源码不包含个人服务器地址、模型密钥或签名材料。实际安装还需开发者使用自己应用身份的包名与匹配签名；仓库默认包名是维护者验收基线，使用自己的包名时仅在本地修改 `AppScope/app.json5` 的 `app.bundleName`。无签名构建成功不代表第三方设备可安装。完整操作与未通过的独立验收门槛见[独立构建与安装清单](../docs/harmony-independent-install.md)。
-
-本机需要 HarmonyOS SDK `6.1.1(24)` 及匹配的 DevEco Studio。在本目录创建不入库的 `local.properties`，设置本机 `sdk.dir`，然后运行：
-
-在客户端目录执行 `npm ci` 准备 Node 测试依赖，并使用 DevEco 自带 OHPM 执行 `ohpm install` 准备工程依赖。运行完整协议测试前，还须在相邻的 `study-log-web` 目录执行 `npm ci`：部分跨端测试会直接导入 Web 的时间和链接实现。然后回到本目录执行 `npm ci` 和 `npm run test:protocol`。当前测试使用 Node.js 的实验性 TypeScript 类型剥离功能；设备验收边界以迁移记录为准。
-
-```powershell
-$devEcoStudio = '<DevEco Studio 安装目录>'
-& (Join-Path $devEcoStudio 'tools\ohpm\bin\ohpm.bat') install
-node (Join-Path $devEcoStudio 'tools\hvigor\bin\hvigorw.js') --mode module -p product=default -p module=entry@default -p buildMode=debug assembleHap --no-daemon
-```
-
-将安装目录占位符替换为本机实际路径。签名 Profile、证书、私钥、构建产物及设备调试数据均不入库。
-
-登录键盘原生几何专项位于 `entry/src/ohosTest`。先执行 `ohpm install`，再用上述命令将 `module=entry@default` 改为 `module=entry@ohosTest` 构建测试模块。仅向已授权的公开版隔离安装同时安装主包与测试包，手机窄屏专项在已退出连接的登录页运行 `aa test -b org.studylog.workbench.publicedition -m entry_test -s unittest OpenHarmonyTestRunner -s class LoginKeyboardGeometry#keepsPublicConnectionFormInOneTopExtendedViewport -s timeout 240000 -w 300`；PC 宽窄窗口专项使用相同命令，将 class 改为 `LoginKeyboardGeometry#restoresNarrowLoginAfterEnteringTheWideLayout`。按设备分别运行，手机旋转不作为宽屏窗口验收。测试不会清令牌、重置实例或提交连接；它核对布局和命中边界，密码保护画面的实际绘制仍需现场观察。
-
-## 验收与已知限制
+### 历次专项
 
 本轮新增：日志源码／分屏模式在原生“更多日志操作 → 编辑”中提供正文、三级至六级标题、列表、代码、表格和公式等操作；编辑器仍是同一个 CodeMirror，一次格式变更可独立撤销。宽屏目录按 H3–H6 层级缩进。日志 AI 可选择网页管理的生成方案，个人方案完整管理留在网页；连接旧实例时保留 generation.md 行为。Windows 本机包默认仅监听本机，不能直接作为手机可访问的服务器。
 

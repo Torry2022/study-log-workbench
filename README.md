@@ -30,9 +30,11 @@
 
 ## 选择使用方式
 
+**希望不部署服务器、在本机离线记录，请使用 Windows 桌面端。** 本地模式下，记录、查找和备份无需联网；AI 功能需要访问所配置的模型服务，使用远程模型时需要联网。网页和鸿蒙客户端需要连接服务器，不提供客户端独立离线模式；服务器可部署在局域网，不一定需要公网。
+
 | 方式 | 适合谁 | 从哪里开始 |
 | --- | --- | --- |
-| Windows 本地使用 | 希望在一台电脑记录，不部署服务器 | [桌面端使用说明](docs/windows-desktop.md) |
+| Windows 桌面端本地使用 | 希望离线记录，不部署服务器 | [桌面端使用说明](docs/windows-desktop.md) |
 | 自部署服务器 | 希望浏览器、Windows 和鸿蒙访问同一份学习记录 | [预构建镜像 + Docker Compose 部署指南](deploy/README.md) |
 | 鸿蒙客户端 | 已有可连接的服务器实例 | [鸿蒙构建、签名与连接说明](study-log-harmony/README.md) |
 
@@ -88,4 +90,4 @@ node ops/run-web.mjs start "D:\workbench-instance" 3560
 - 鸿蒙支持手机、平板和 PC，当前以源码构建和侧载为主。使用者需自行配置签名；维护者调试包不适用于所有设备。独立签名及异网络 HTTPS 连接仍待验。
 - Wiki、分享、跨设备接续和鸿蒙独立离线存储暂未提供。
 
-这些结果来自维护者及自动化验收，不代表外部用户反馈。详细记录保留在[实施状态](docs/implementation-status.md)、[桌面端说明](docs/windows-desktop.md)、[服务器验收](docs/server-deployment-acceptance.md)和[鸿蒙迁移记录](docs/harmony-migration.md)，不必先读这些记录才能开始使用。
+这些结果来自维护者及自动化验收，不代表外部用户反馈。当前结果及剩余条件见[进度总览](docs/current-status.md)。详细记录保留在[实施状态](docs/implementation-status.md)、[桌面端说明](docs/windows-desktop.md)、[服务器验收](docs/server-deployment-acceptance.md)和[鸿蒙迁移记录](docs/harmony-migration.md)，不必先读这些记录才能开始使用。

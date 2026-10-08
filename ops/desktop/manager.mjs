@@ -5,7 +5,7 @@ import net from "node:net";
 import { fork } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { parseEnv } from "node:util";
-import { initialize, acquireInstanceLock, assertNoLinks } from "../instance.mjs";
+import { initialize, acquireInstanceLock, assertNoLinks, upgradeDefaultPrompts } from "../instance.mjs";
 import { validateServiceEnvironment } from "../service.mjs";
 import { backupInstance, verifyArchive, restoreInstance } from "../archive.mjs";
 import { atomicPrivateFile, privateDirectory, privateFile, runtimeEnvironment } from "./security.mjs";
@@ -163,6 +163,7 @@ export class DesktopManager {
     // Credentials are fresh for this run and travel only through inherited env/IPC.
     const token = crypto.randomBytes(32).toString("base64url");
     try {
+      await upgradeDefaultPrompts(path.join(this.root, "data"));
       const mcp = launch("mcp", this.mcpRoot, { ...common, MCP_HTTP_PORT: String(mcpPort), MCP_HTTP_TOKEN: token }, this.workerOptions);
       this.processes.push(mcp); await mcp.ready;
       const web = launch("web", this.webRoot, { ...common, PORT: String(webPort), HOSTNAME: "127.0.0.1", STUDY_LOG_MCP_URL: `http://127.0.0.1:${mcpPort}/mcp`, STUDY_LOG_MCP_TOKEN: token }, this.workerOptions);

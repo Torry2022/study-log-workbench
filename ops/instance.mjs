@@ -59,6 +59,88 @@ async function writeNew(file, contents) {
   }
 }
 
+// Exact published rc.5 bytes: Git LF and Windows package CRLF. Never normalize user files.
+const LEGACY_HIGHLIGHTING = new Set([
+  "3079fd811643c740cde8da12a44bc16bdc18d13fde545369d72e1b74d90b4635",
+  "c6cc30ba66b776394f7f8b14251a368360832aa61a61884b1dbff15dcadd1678"
+]);
+const promptDigest = bytes => crypto.createHash("sha256").update(bytes).digest("hex");
+async function readPromptBytes(file) {
+  await assertNoLinks(file);
+  const handle = await fs.open(file, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0));
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.size > 65536) throw new Error("invalid-template");
+    const buffer = Buffer.alloc(65537);
+    let size = 0;
+    while (size < buffer.length) {
+      const { bytesRead } = await handle.read(buffer, size, buffer.length - size, size);
+      if (!bytesRead) break;
+      size += bytesRead;
+    }
+    await assertNoLinks(file);
+    const current = await fs.lstat(file);
+    if (size > 65536 || current.ino !== stat.ino || (process.platform !== "win32" && current.dev !== stat.dev)) throw new Error("invalid-template");
+    return buffer.subarray(0, size);
+  } finally { await handle.close(); }
+}
+async function replacePromptFile(file, bytes, beforeReplace) {
+  await assertNoLinks(file);
+  const temporary = `${file}.${crypto.randomUUID()}.tmp`;
+  const handle = await fs.open(temporary, "wx", 0o600);
+  try {
+    await handle.writeFile(bytes); await handle.sync(); await handle.close();
+    await assertNoLinks(file);
+    if (beforeReplace) await beforeReplace();
+    await fs.rename(temporary, file);
+  } finally {
+    await handle.close().catch(() => {});
+    await fs.unlink(temporary).catch(error => { if (error.code !== "ENOENT") throw error; });
+  }
+}
+
+/** Caller holds the instance lock. Optional template maintenance must not prevent startup. */
+export async function upgradeDefaultPrompts(data) {
+  const file = path.join(data, "prompts", "highlighting.md");
+  const history = path.join(data, "prompts", ".default-upgrades");
+  let result;
+  try {
+    const current = await readPromptBytes(file);
+    const next = await readPromptBytes(fileURLToPath(new URL("../prompts/highlighting.md", import.meta.url)));
+    if (current.equals(next)) return { template: "highlighting", status: "current" };
+    const previous = promptDigest(current);
+    if (!LEGACY_HIGHLIGHTING.has(previous)) result = { template: "highlighting", status: "skipped", reason: "custom-or-unknown" };
+    else {
+      await assertNoLinks(history);
+      await fs.mkdir(history, { recursive: true, mode: 0o700 });
+      const backup = path.join(history, `highlighting-${previous}.md`);
+      await assertNoLinks(backup);
+      try {
+        const handle = await fs.open(backup, "wx", 0o600);
+        try { await handle.writeFile(current); await handle.sync(); } finally { await handle.close(); }
+      } catch (error) { if (error.code !== "EEXIST") throw error; }
+      if (!(await readPromptBytes(backup)).equals(current)) throw new Error("backup-mismatch");
+      await replacePromptFile(file, next, async () => {
+        if (!(await readPromptBytes(file)).equals(current)) throw new Error("template-changed");
+      });
+      result = { template: "highlighting", status: "updated", from: previous, to: promptDigest(next) };
+    }
+  } catch (error) {
+    const allowed = ["invalid-template", "backup-mismatch", "template-changed"];
+    result = { template: "highlighting", status: "failed", reason: allowed.includes(error.message) ? error.message : "template-io" };
+  }
+  // No paths, template contents or provider credentials in the maintenance record.
+  try {
+    await assertNoLinks(history);
+    await fs.mkdir(history, { recursive: true, mode: 0o700 });
+    const report = path.join(history, "status.json"), bytes = Buffer.from(JSON.stringify(result, null, 2) + "\n");
+    await assertNoLinks(report);
+    const previous = await readPromptBytes(report).catch(error => { if (error.code === "ENOENT") return null; throw error; });
+    if (!previous?.equals(bytes)) await replacePromptFile(report, bytes);
+  } catch { console.warn("默认模板维护记录未能写入；原有学习记录不受影响。", result.status); }
+  return result;
+}
+
 export async function initialize(root) {
   if (!root || !path.isAbsolute(root)) throw new Error("请明确指定实例的绝对路径");
   root = path.resolve(root);
@@ -92,6 +174,7 @@ export async function initialize(root) {
       const source = new URL(`../prompts/${name}.md`, import.meta.url);
       await writeNew(target, await fs.readFile(source));
     }
+    await upgradeDefaultPrompts(data);
     const envFile = path.join(root, ".env");
     await assertNoLinks(envFile);
     await writeNew(envFile, [

@@ -10,6 +10,8 @@
 
 `ops/instance.mjs` 负责实例初始化。它只操作显式传入的绝对目录，识别已有身份，使用独占创建保留原配置。`ops/run-web.mjs`读取选定实例环境，强制数据根为该实例的data目录；它与standalone入口`ops/serve.mjs`共用服务监督器，持有含随机归属的运行锁直到子进程正常退出。异常停止保留锁，维护只释放自己拥有的锁。Linux 真实 SIGTERM、子进程异步收尾及问答长流期间停机已有[具名验证](deployment.md#验证范围)，维护限制见[维护边界](maintenance.md)。
 
+默认模板维护同样由 `ops/instance.mjs` 负责：初始化、`runService` 和 `DesktopManager.start` 在持有实例锁、启动服务子进程前调用 `upgradeDefaultPrompts`。本轮只识别 rc.5 标注模板的两份精确历史摘要；先持久化原文件备份，再校验源文件未变并原子替换。定制内容不覆盖，维护失败不阻断基础服务，记录与备份保存在实例 prompts 目录并进入完整归档。Windows 打包与 web/tools 镜像沿用现有文件清单包含此实现，不另设端侧升级器。详见[模板升级](ai-configuration.md#内置默认模板升级)。
+
 Windows 的首选入口是 [Electron 桌面端](windows-desktop.md)，由窗口管理本地服务生命周期或连接远端实例。下面的浏览器启动入口仍保留为备用方式。
 
 浏览器本地包的 `ops/desktop/launcher.mjs` 只提供 loopback 管理入口，使用当前用户私有控制信息、请求令牌与来源检查；界面复用公开版设计资源，不承载另一套日志编辑器。`DesktopManager` 管理选定实例、配置、服务生命周期及归档操作，复用实例锁和归档工具。它先启动本机关键词 MCP 再启动 Web；正常停止按 Web、MCP 顺序等待退出后释放锁，任一服务异常则停止其余自有进程并保留实例锁。关闭浏览器标签不等于停止服务。

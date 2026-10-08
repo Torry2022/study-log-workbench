@@ -171,8 +171,8 @@ export struct LogAiPanel {
           } else {
             Column({ space: 8 }) {
               Text('AI 文本增强').fontSize(11).fontColor($r('app.color.primary'))
-              Text('为当前日块标注重点').fontSize(18).fontWeight(FontWeight.Medium).fontColor($r('app.color.ink'))
-              Text('从技术含义判断核心概念、关键机制、参数指标和结论，只插入 Markdown 加粗标记，不改写原文。')
+              Text('为当前日志标注重点').fontSize(18).fontWeight(FontWeight.Medium).fontColor($r('app.color.ink'))
+              Text('挑出值得回顾的概念、结论和必要条件，以加粗标记重点，保留原文。')
                 .fontSize(13).lineHeight(21).fontColor($r('app.color.muted'))
             }.width('100%').padding(14).alignItems(HorizontalAlign.Start)
               .backgroundColor($r('app.color.surface_soft')).borderRadius(8)

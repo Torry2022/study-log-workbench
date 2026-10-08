@@ -9,7 +9,7 @@ import "@/app/highlighting.css";
 export function HighlightPanel({ highlighting }: { highlighting: HighlightingController }) {
   if (!highlighting.active) return null;
   return <div className="highlight-panel">
-    <div className="highlight-helper"><h3>为当前日块标注重点</h3><p>从技术含义判断核心概念、关键机制、参数指标和结论，只插入 Markdown 加粗标记，不改写原文。</p></div>
+    <div className="highlight-helper"><h3>为当前日志标注重点</h3><p>挑出值得回顾的概念、结论和必要条件，以加粗标记重点，保留原文。</p></div>
     {(highlighting.configurationError || highlighting.configurationMessages.length > 0) && <FeatureAvailability title={highlighting.configurationError ? "暂时无法检查 AI 服务" : "重点标注尚未启用"} description="配置模型后，可为日志中的重点内容添加标注。" messages={highlighting.configurationError ? [highlighting.configurationError] : highlighting.configurationMessages} busy={highlighting.configurationLoading} onCheck={() => void highlighting.refreshConfiguration()} />}
     {!highlighting.date && <WorkspaceState kind="empty" title="未选择日志" description="打开一篇有正文的日志，可为其中的内容标注重点。" layout="compact" className="inspector-empty-state" />}
     {highlighting.date && highlighting.inputProblem && <p className="status-line warning">{highlighting.inputProblem}</p>}

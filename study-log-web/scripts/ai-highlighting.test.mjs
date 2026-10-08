@@ -129,3 +129,20 @@ test('local model selects IDs only; no candidates and invalid cross-segment sele
   await assert.rejects(highlightLogFocus(input, abort.signal), error => error.code === 'AI_CANCELLED'); assert.equal(calls, before);
   assert.deepEqual(await fs.readdir(root), ['prompts']);
 });
+
+
+test('mixed learning subjects preserve full conditional phrases and protected Markdown', () => {
+  const samples = [
+    ['技术概念', '缓存命中不保证数据最新'],
+    ['实践排错', '只有复现相同输入才能比较结果'],
+    ['读书笔记', '叙述者的判断不等于作者的立场'],
+    ['短记录', '尚未证实这两件事存在因果关系']
+  ];
+  for (const [title, phrase] of samples) {
+    const content = `### ${title}\n\n${phrase}。\n\n- 复习：${phrase}。\n\n| 项目 | 内容 |\n| --- | --- |\n| 限制 | ${phrase} |\n\n\`保留代码\` $x=1$ [保留链接](https://example.test) **原有粗体**\n\n\`\`\`text\n保留代码块\n\`\`\``;
+    const result = applyHighlightCandidates(content, [select(content, phrase)]);
+    assert.equal(result.boldCount, 1); assert.equal(result.content, content.replace(phrase, `**${phrase}**`));
+    assert.equal(restored(result), content);
+    assert.equal(applyHighlightCandidates(content, []).content, content);
+  }
+});

@@ -23,12 +23,12 @@ try {
     const response = await page.request.put(`${base}/api/logs/day`, { data: { date, content, baseVersion: day.version } });
     assert.equal(response.status(), 200); return (await response.json()).day;
   };
-  const dialog = page.getByRole("dialog", { name: "备份与恢复", exact: true });
+  const dialog = page.getByRole("dialog", { name: "日志历史版本", exact: true });
   const rows = dialog.locator(".backup-version-list button");
   const open = async () => {
-    await clickLogAction(page, "备份与恢复"); await expect(dialog).toBeVisible();
+    await clickLogAction(page, "日志历史版本"); await expect(dialog).toBeVisible();
   };
-  const close = async () => { await dialog.getByRole("button", { name: "关闭备份与恢复", exact: true }).click(); await expect(dialog).not.toBeVisible(); };
+  const close = async () => { await dialog.getByRole("button", { name: "关闭日志历史版本", exact: true }).click(); await expect(dialog).not.toBeVisible(); };
   const select = async (index = 0) => { await rows.nth(index).click(); await expect(dialog.locator(".backup-diff-viewer")).toBeVisible(); };
   const confirm = async () => { const modal = page.getByRole("alertdialog"); await expect(modal).toBeVisible(); await modal.getByRole("button").last().click(); await expect(modal).not.toBeVisible(); };
   const restore = async () => { await dialog.getByRole("button", { name: "恢复此版本", exact: true }).click(); await confirm(); };

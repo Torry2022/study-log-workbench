@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { acquireInstanceLock, assertNoLinks } from "./instance.mjs";
+import { acquireInstanceLock, assertNoLinks, upgradeDefaultPrompts } from "./instance.mjs";
 
 export async function validateServiceEnvironment(environment) {
   const data = environment.LOG_ROOT;
@@ -21,6 +21,7 @@ export async function validateServiceEnvironment(environment) {
 export async function runService(command, args, { cwd, env = process.env, stdio = "inherit" } = {}) {
   const data = await validateServiceEnvironment(env);
   const release = await acquireInstanceLock(data, "web-service");
+  await upgradeDefaultPrompts(data);
   let child;
   try { child = spawn(command, args, { cwd, env, stdio, windowsHide: true }); }
   catch (error) { await release(); throw error; }

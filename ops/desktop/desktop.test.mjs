@@ -253,3 +253,14 @@ test('history settings preserve model configuration and do not clean existing fi
  await manager.configureHistory({enabled:false,days:30});assert.deepEqual(await manager.historyConfiguration(),{enabled:false,days:30});assert.equal((await manager.configuration()).model,'synthetic');
  await assert.rejects(manager.configureHistory({enabled:true,days:-1}),/无效/);assert.deepEqual(await manager.historyConfiguration(),{enabled:false,days:30});
 });
+
+
+test("desktop startup updates only the published default before serving", async t => {
+  const { manager, root } = await fixture(t);
+  await manager.select({ root, create: true, password: "synthetic-password" });
+  const file = path.join(root, "data/prompts/highlighting.md");
+  await fs.writeFile(file, await fs.readFile(new URL("../fixtures/highlighting-rc5.md", import.meta.url)));
+  await manager.start();
+  assert.deepEqual(await fs.readFile(file), await fs.readFile(new URL("../../prompts/highlighting.md", import.meta.url)));
+  assert.equal(manager.status().state, "running"); await manager.stop();
+});

@@ -449,7 +449,6 @@ async function openWorkspace(root, createDefault = false, remote = null) {
   menu();
   await current.loadFile(path.join(here, 'titlebar.html'), { query: { icon: pathToFileURL(app.isPackaged ? path.join(process.resourcesPath, 'icon.png') : path.join(repository, '.local/electron-icon.png')).href } });
   await content.loadURL(workspaceUrl());
-  current.webContents.send('titlebar:location', remote ? remote.origin : '本地使用');
   if (remote) { savedPreferences = { ...savedPreferences, mode: 'remote', remote }; await savePreferences(); }
   if (savedSize?.maximized === true) current.maximize();
   reopenAfterExit = false;

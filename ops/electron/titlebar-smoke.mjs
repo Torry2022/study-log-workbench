@@ -15,6 +15,7 @@ try{
  await app.evaluate(({BrowserWindow,screen})=>{const area=(screen.getAllDisplays().find(d=>d.workArea.width>=1440)||screen.getPrimaryDisplay()).workArea;BrowserWindow.getAllWindows()[0].setBounds({x:area.x,y:area.y,width:1440,height:960});});
  await expect.poll(()=>page.evaluate(()=>innerWidth)).toBe(1440);
  await expect(bar.getByRole('menubar')).toBeVisible();
+ await expect(bar.locator('#location')).toHaveCount(0);
  await expect(page.locator('.topbar-actions').getByRole('button',{name:'随记',exact:true})).toBeVisible();
  const geometry=await app.evaluate(({BrowserWindow})=>{const w=BrowserWindow.getAllWindows()[0];return {size:w.getContentSize(),view:w.contentView.children[0].getBounds(),menu:w.isMenuBarVisible()};});
  assert.equal(geometry.menu,false);assert.equal(geometry.view.y,36);assert.equal(geometry.view.height,geometry.size[1]-36);

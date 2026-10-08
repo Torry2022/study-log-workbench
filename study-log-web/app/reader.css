@@ -771,7 +771,6 @@
 }
 
 /* Keep the original progressive toolbar overflow rather than squeezing controls. */
-.reader-toolbar-log .log-toolbar-more,
 .log-mode-select,
 .log-overflow-navigation,
 .log-overflow-refresh,
@@ -781,6 +780,10 @@
 .log-toolbar-popover { min-width: 180px; max-height: min(480px, 70vh); overflow-y: auto; }
 .log-overflow-export button { width: 100%; }
 .log-toolbar-popover .danger { color: var(--error); }
+.reader-toolbar-log .log-toolbar-more > .button { width: 40px; min-width: 40px; height: 40px; padding: 0; }
+.log-toolbar-popover button { align-items: center; gap: 8px; }
+.log-toolbar-popover button:not(.log-overflow-refresh, .log-overflow-backup, .log-overflow-delete) { display: flex; }
+.log-toolbar-popover button svg { flex: 0 0 auto; }
 
 @media (min-width: 1024px) {
   .reader-toolbar-log {
@@ -819,62 +822,60 @@
     .reader-toolbar-log .reader-log-controls,
     .reader-toolbar-log .day-toolbar-actions { gap: 8px; }
     .reader-toolbar-log .toolbar-danger-action { margin-left: 0; }
-    .reader-toolbar-log:has(.editor-toolbar-actions, .reader-secondary-actions > .button) .log-toolbar-more { display: inline-flex; }
   }
 
   /* Match Harmony label priority: navigation, mode, save, refresh, export, history, delete. */
   .reader-toolbar-log .view-mode-switch { min-width: 0; }
   @container reader-workspace (max-width: 1180px) {
     .reader-toolbar-log .log-action-delete {
-      width: 36px; min-width: 36px; flex: 0 0 36px;
+      width: 40px; min-width: 40px; height: 40px; min-height: 40px; flex: 0 0 40px;
       padding: 0; gap: 0; font-size: 0;
     }
   }
   @container reader-workspace (max-width: 1140px) {
     .reader-toolbar-log .log-action-backup {
-      width: 36px; min-width: 36px; flex: 0 0 36px;
+      width: 40px; min-width: 40px; height: 40px; min-height: 40px; flex: 0 0 40px;
       padding: 0; gap: 0; font-size: 0;
     }
   }
   @container reader-workspace (max-width: 1060px) {
     .reader-toolbar-log .log-action-export > .button {
-      width: 36px; min-width: 36px; flex: 0 0 36px;
+      width: 40px; min-width: 40px; height: 40px; min-height: 40px; flex: 0 0 40px;
       padding: 0; gap: 0; font-size: 0;
     }
   }
   @container reader-workspace (max-width: 1020px) {
     .reader-toolbar-log .log-action-refresh {
-      width: 36px; min-width: 36px; flex: 0 0 36px;
+      width: 40px; min-width: 40px; height: 40px; min-height: 40px; flex: 0 0 40px;
       padding: 0; gap: 0; font-size: 0;
     }
   }
   @container reader-workspace (max-width: 980px) {
     .reader-toolbar-log .toolbar-save-button {
-      width: 36px; min-width: 36px; flex: 0 0 36px;
+      width: 40px; min-width: 40px; height: 40px; min-height: 40px; flex: 0 0 40px;
       padding: 0; gap: 0; font-size: 0;
     }
   }
   @container reader-workspace (max-width: 940px) {
     .reader-toolbar-log .view-mode-button {
-      width: 36px; min-width: 36px; flex: 0 0 36px;
+      width: 34px; min-width: 34px; height: 34px; min-height: 34px; flex: 0 0 34px;
       padding: 0; gap: 0; font-size: 0;
     }
   }
   @container reader-workspace (max-width: 820px) {
     .reader-toolbar-log .day-nav-button {
-      width: 36px; min-width: 36px; flex: 0 0 36px;
+      width: 40px; min-width: 40px; height: 40px; min-height: 40px; flex: 0 0 40px;
       padding: 0; gap: 0; font-size: 0;
     }
   }
 
   @container reader-workspace (max-width: 850px) {
     .reader-toolbar-log .log-action-delete { display: none; }
-    .reader-toolbar-log .log-toolbar-more { display: inline-flex; }
-    .log-overflow-delete { display: block; }
+    .log-overflow-delete { display: flex; }
   }
   @container reader-workspace (max-width: 790px) {
     .reader-toolbar-log .log-action-backup { display: none; }
-    .log-overflow-backup { display: block; }
+    .log-overflow-backup { display: flex; }
   }
   @container reader-workspace (max-width: 730px) {
     .reader-toolbar-log .log-action-export { display: none; }
@@ -882,7 +883,7 @@
   }
   @container reader-workspace (max-width: 670px) {
     .reader-toolbar-log .log-action-refresh { display: none; }
-    .log-overflow-refresh { display: block; }
+    .log-overflow-refresh { display: flex; }
   }
   @container reader-workspace (max-width: 560px) {
     .reader-toolbar-log .view-mode-switch { display: none; }

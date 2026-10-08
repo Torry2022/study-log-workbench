@@ -33,7 +33,7 @@ export function ExportMenu({ scopes, onExport, busy, disabled = false, variant =
   const items = scopes.map((item) => <button key={item.scope} type="button" role="menuitem"
     disabled={disabled || busy || item.disabled}
     onClick={() => { setOpen(false); if (variant === "menu") trigger.current?.focus(); void onExport(item.scope); }}>
-    {item.label}
+    <Download size={15} />{item.label}
   </button>);
   if (variant === "items") return <>{items}</>;
   return <div className="export-menu log-action-export" ref={wrapper}

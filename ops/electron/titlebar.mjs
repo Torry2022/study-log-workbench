@@ -21,8 +21,6 @@ window.addEventListener('keydown',event=>{
  if(event.key==='F10'||event.key==='Alt'){event.preventDefault();focus(0);}
 });
 
-window.titlebar.onLocation(label=>{const location=document.querySelector('#location');location.textContent=label;location.title=label;});
-
 window.titlebar.onActiveMenu(id=>buttons.forEach((button,index)=>{
  button.setAttribute('aria-expanded',String(index===id));
  // A native popup can retain Chromium's :hover after the pointer leaves this view.

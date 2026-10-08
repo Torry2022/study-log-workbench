@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { Bold, Braces, ChevronDown, Code, Heading3, Heading4, Heading5, Heading6, Image, Italic, Link2, List, ListOrdered, Quote, Sigma, Table, Type, type LucideIcon } from "lucide-react";
 import type { MarkdownEdit } from "@/lib/markdown-edit";
 import "@/app/markdown-edit.css";
 
@@ -11,6 +11,9 @@ const groups: [MarkdownEdit, string][][] = [
   [["unordered", "无序列表"], ["ordered", "有序列表"], ["quote", "引用"], ["table", "表格"]],
   [["math", "行内公式"], ["mathBlock", "块公式"], ["link", "链接"]]
 ];
+const icons: Record<MarkdownEdit, LucideIcon> = { paragraph: Type, h3: Heading3, h4: Heading4, h5: Heading5, h6: Heading6,
+  bold: Bold, italic: Italic, code: Code, codeBlock: Braces, unordered: List, ordered: ListOrdered,
+  quote: Quote, table: Table, math: Sigma, mathBlock: Sigma, link: Link2 };
 
 export function MarkdownEditMenu({ disabled, onCommand, onInternalLink, onImage }: {
   disabled?: boolean; onCommand: (command: MarkdownEdit) => void; onInternalLink: () => void; onImage: () => void;
@@ -48,11 +51,11 @@ export function MarkdownEditMenu({ disabled, onCommand, onInternalLink, onImage 
       onMouseDown={event => event.preventDefault()} onClick={() => setOpen(value => !value)}>编辑<ChevronDown size={14} /></button>
     {open && <div id={id} className="markdown-edit-options" role="group" aria-label="Markdown 格式">
       {groups.map((group, index) => <div className="markdown-edit-group" key={index}>
-        {group.map(([command, label]) => <button key={command} type="button" onMouseDown={event => event.preventDefault()} onClick={() => action(() => onCommand(command))}>{label}</button>)}
+        {group.map(([command, label]) => { const Icon = icons[command]; return <button key={command} type="button" onMouseDown={event => event.preventDefault()} onClick={() => action(() => onCommand(command))}><Icon size={15} />{label}</button>; })}
       </div>)}
       <div className="markdown-edit-group">
-        <button type="button" onMouseDown={event => event.preventDefault()} onClick={() => action(onInternalLink)}>内部链接</button>
-        <button type="button" onMouseDown={event => event.preventDefault()} onClick={() => action(onImage)}>图片</button>
+        <button type="button" onMouseDown={event => event.preventDefault()} onClick={() => action(onInternalLink)}><Link2 size={15} />内部链接</button>
+        <button type="button" onMouseDown={event => event.preventDefault()} onClick={() => action(onImage)}><Image size={15} />图片</button>
       </div>
     </div>}
   </div>;

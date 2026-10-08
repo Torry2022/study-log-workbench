@@ -295,16 +295,18 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
             <button ref={toolbarMenuTrigger} className="button secondary" type="button" title="更多日志操作" aria-label="更多操作" aria-expanded={toolbarMenuOpen} aria-controls="log-toolbar-popover" onClick={() => setToolbarMenuOpen(value => !value)}><MoreHorizontal size={18} /></button>
             {toolbarMenuOpen && <div id="log-toolbar-popover" className="export-popover log-toolbar-popover" role="group" aria-label="更多日志操作" onClick={event => { if (event.target instanceof Element && event.target.closest("button")) { toolbarMenuTrigger.current?.focus({ preventScroll: true }); setToolbarMenuOpen(false); } }}>
               <div className="log-overflow-navigation">{dayNavigator()}</div>
-              {navigation?.onReturnNotes && <button type="button" onClick={navigation.onReturnNotes}>返回随记</button>}
+              {navigation?.onReturnNotes && <button type="button" onClick={navigation.onReturnNotes}><CornerUpLeft size={15} />返回随记</button>}
+              <button type="button" disabled={!headings.length || !ready} onClick={() => setOutlineOpen(true)}><LayoutList size={15} />大纲</button>
+              {onOpenAi && <button type="button" disabled={!date} onClick={onOpenAi}><PanelRightOpen size={15} />AI 工具</button>}
               {mode !== "preview" && <>
-                <button type="button" disabled={!editorReady || attachments.busy || editing.busy} onClick={openLink}>内部链接</button>
-                <button type="button" disabled={!editorReady || attachments.busy || editing.busy} onClick={() => imageInput.current?.click()}>插入图片</button>
-                <button type="button" disabled={!editing.dirty || editing.busy} onClick={editing.onDiscard}>放弃修改</button>
+                <button type="button" disabled={!editorReady || attachments.busy || editing.busy} onClick={openLink}><Link2 size={15} />内部链接</button>
+                <button type="button" disabled={!editorReady || attachments.busy || editing.busy} onClick={() => imageInput.current?.click()}><Upload size={15} />插入图片</button>
+                <button type="button" disabled={!editing.dirty || editing.busy} onClick={editing.onDiscard}><Eye size={15} />放弃修改</button>
               </>}
-              <button className="log-overflow-refresh" type="button" disabled={!date || editing.busy} onClick={editing.onReload}>刷新</button>
+              <button className="log-overflow-refresh" type="button" disabled={!date || editing.busy} onClick={editing.onReload}><RefreshCw size={15} />刷新</button>
               <div className="log-overflow-export"><ExportMenu variant="items" scopes={exportScopes.map(item => ({ ...item, label: `导出${item.label}` }))} onExport={exporting.run} busy={exporting.busy} disabled={!active || !hasLogs} /></div>
-              <button className="log-overflow-backup" type="button" aria-label="日志历史版本" disabled={!date || editing.busy} onClick={editing.onBackups}>历史版本</button>
-              <button className="log-overflow-delete danger" type="button" aria-label="删除当前日志" disabled={!day?.exists || editing.busy} onClick={editing.onDelete}>删除</button>
+              <button className="log-overflow-backup" type="button" aria-label="日志历史版本" disabled={!date || editing.busy} onClick={editing.onBackups}><DatabaseBackup size={15} />历史版本</button>
+              <button className="log-overflow-delete danger" type="button" aria-label="删除当前日志" disabled={!day?.exists || editing.busy} onClick={editing.onDelete}><Trash2 size={15} />删除</button>
             </div>}
           </div>
           {saveButton()}

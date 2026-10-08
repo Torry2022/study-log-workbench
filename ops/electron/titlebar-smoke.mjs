@@ -35,11 +35,33 @@ try{
  await expect(bar.getByRole('menuitem',{name:'帮助',exact:true})).toHaveAttribute('aria-expanded','true');
  await app.evaluate(({Menu})=>Menu.getApplicationMenu().items[3].submenu.closePopup());await expect(bar.getByRole('menuitem',{name:'帮助',exact:true})).toHaveAttribute('aria-expanded','false');
  const closedCount=await app.evaluate(()=>globalThis.popupCalls.length);await bar.getByRole('menuitem',{name:'编辑',exact:true}).hover();assert.equal(await app.evaluate(()=>globalThis.popupCalls.length),closedCount);
+ await bar.getByRole('menuitem',{name:'文件',exact:true}).click();
+ await page.locator('.reader-log-identity').click();
+ await app.evaluate(({Menu})=>Menu.getApplicationMenu().items[0].submenu.closePopup());
+ await expect(bar.getByRole('menuitem',{name:'文件',exact:true})).toHaveCSS('background-color','rgba(0, 0, 0, 0)');
+ await bar.getByRole('menuitem',{name:'编辑',exact:true}).hover();
+ await expect(bar.getByRole('menuitem',{name:'编辑',exact:true})).toHaveCSS('background-color','rgb(239, 233, 222)');
+ assert.equal(await app.evaluate(()=>globalThis.popupCalls.length),closedCount+1);
+ await bar.getByRole('menuitem',{name:'文件',exact:true}).click();
+ await bar.keyboard.press('Escape');
+ await app.evaluate(({Menu})=>Menu.getApplicationMenu().items[0].submenu.closePopup());
+ await expect(bar.getByRole('menuitem',{name:'文件',exact:true})).toHaveAttribute('aria-expanded','false');
+ assert.equal(await bar.getByRole('menuitem',{name:'文件',exact:true}).evaluate(button=>button.classList.contains('hover')),false);
+ await app.evaluate(({BrowserWindow})=>{const contents=BrowserWindow.getAllWindows()[0].contentView.children[0].webContents;contents.sendInputEvent({type:'keyDown',keyCode:'F10'});contents.sendInputEvent({type:'keyUp',keyCode:'F10'});});
+ await expect(bar.getByRole('menuitem',{name:'文件',exact:true})).toBeFocused();
+ await bar.keyboard.press('ArrowRight');await expect(bar.getByRole('menuitem',{name:'编辑',exact:true})).toBeFocused();
+ await bar.keyboard.press('Escape');
  await app.evaluate(({Menu,BrowserWindow})=>{const w=BrowserWindow.getAllWindows()[0];Menu.getApplicationMenu().items[2].submenu.items[1].click({},w,w.contentView.children[0].webContents);});
  assert.deepEqual(await app.evaluate(({BrowserWindow})=>{const w=BrowserWindow.getAllWindows()[0];return [w.webContents.getZoomLevel(),w.contentView.children[0].webContents.getZoomLevel()];}),[0,0.5]);
  await app.evaluate(({Menu,BrowserWindow})=>{const w=BrowserWindow.getAllWindows()[0];Menu.getApplicationMenu().items[2].submenu.items[0].click({},w,w.contentView.children[0].webContents);});
  await page.getByRole('button',{name:'切换主题模式',exact:true}).click();await page.locator('.theme-popover').getByRole('button',{name:/夜间/}).click();
  await expect(bar.locator('html')).toHaveAttribute('data-theme','dark');
+ for(const [index,name] of ['文件','编辑','视图','帮助'].entries()){
+  await bar.getByRole('menuitem',{name,exact:true}).click();
+  await page.locator('.reader-log-identity').click();
+  await app.evaluate(({Menu},id)=>Menu.getApplicationMenu().items[id].submenu.closePopup(),index);
+  await expect(bar.getByRole('menuitem',{name,exact:true})).toHaveCSS('background-color','rgba(0, 0, 0, 0)');
+ }
  await page.evaluate(async()=>{await Promise.all(document.getAnimations().map(a=>a.finished.catch(()=>{})));await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));});
  // Capture only this app's native window, including its child view and system controls.
  const screenshot=await app.evaluate(async({BrowserWindow,desktopCapturer})=>{const w=BrowserWindow.getAllWindows()[0];const id=w.getMediaSourceId();const sources=await desktopCapturer.getSources({types:['window'],thumbnailSize:{width:1440,height:960}});return sources.find(s=>s.id===id)?.thumbnail.toPNG().toString('base64');});
@@ -51,5 +73,5 @@ try{
  await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].maximize());
  await expect.poll(()=>app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].isMaximized())).toBe(true);
  await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].unmaximize());
- await fs.writeFile(path.join(evidence,'report.json'),JSON.stringify({passed:['single-row titlebar','workspace viewport excludes 36px titlebar','workspace shortcuts retained','system window-controls overlay enabled','drag/no-drag regions','F10 and arrow-key navigation','native menu popup routing with stubbed popup/cursor','hover only switches while menu open','captured-pointer fallback switches menus','close clears menu state','theme follows workspace','420px control reservation','native maximize and restore'],profile:env.STUDY_LOG_DESKTOP_PROFILE},null,2));console.log(evidence);
+ await fs.writeFile(path.join(evidence,'report.json'),JSON.stringify({passed:['single-row titlebar','workspace viewport excludes 36px titlebar','workspace shortcuts retained','system window-controls overlay enabled','drag/no-drag regions','F10 and arrow-key navigation','native menu popup routing with stubbed popup/cursor','hover only switches while menu open','captured-pointer fallback switches menus','close clears menu state','outside workspace click clears actual button background','hover resumes after dismissal without opening a menu','Escape route and close clear hover','dark theme repeated dismissal for all four menus','theme follows workspace','420px control reservation','native maximize and restore'],profile:env.STUDY_LOG_DESKTOP_PROFILE},null,2));console.log(evidence);
 }finally{const closed=app.waitForEvent('close',{timeout:60000});await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].close());await closed;}

@@ -4,7 +4,9 @@ const focus = index => { buttons.forEach((button,i)=>button.tabIndex=i===index?0
 buttons.forEach((button,index)=>{
  const open=hover=>window.titlebar.menu(index,button.getBoundingClientRect().left,hover,buttons.map(item=>{const rect=item.getBoundingClientRect();return {left:rect.left,right:rect.right};}));
  button.onclick=()=>open(false);
- button.onpointerenter=()=>open(true);
+ button.onpointerenter=()=>{button.classList.add('hover');open(true);};
+ button.onpointermove=()=>button.classList.add('hover');
+ button.onpointerleave=()=>button.classList.remove('hover');
  button.onkeydown=event=>{
   if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){
    event.preventDefault();focus(event.key==='Home'?0:event.key==='End'?buttons.length-1:(index+(event.key==='ArrowRight'?1:buttons.length-1))%buttons.length);
@@ -21,4 +23,11 @@ window.addEventListener('keydown',event=>{
 
 window.titlebar.onLocation(label=>{const location=document.querySelector('#location');location.textContent=label;location.title=label;});
 
-window.titlebar.onActiveMenu(id=>buttons.forEach((button,index)=>button.setAttribute('aria-expanded',String(index===id))));
+window.titlebar.onActiveMenu(id=>buttons.forEach((button,index)=>{
+ button.setAttribute('aria-expanded',String(index===id));
+ // A native popup can retain Chromium's :hover after the pointer leaves this view.
+ if(id===-1){
+  button.classList.remove('hover');
+  if(document.activeElement===button)button.blur();
+ }
+}));

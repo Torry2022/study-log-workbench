@@ -9,13 +9,48 @@ import { runService } from "./service.mjs";
 import { backupInstance, restoreInstance } from "./archive.mjs";
 const old = await fs.readFile(new URL("./fixtures/highlighting-rc5.md", import.meta.url));
 const next = await fs.readFile(new URL("../prompts/highlighting.md", import.meta.url));
+const oldExtraction = await fs.readFile(new URL("./fixtures/extraction-rc5.md", import.meta.url));
+const nextExtraction = await fs.readFile(new URL("../prompts/extraction.md", import.meta.url));
 async function fixture(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "study-prompt-upgrade-"));
   t.after(async () => { assert.equal(path.dirname(root), path.resolve(os.tmpdir())); assert.match(path.basename(root), /^study-prompt-upgrade-/); await fs.rm(root, { recursive: true, force: true }); });
   const instance = path.join(root, "instance"); await initialize(instance);
   const data = path.join(instance, "data"), file = path.join(data, "prompts/highlighting.md"), history = path.join(data, "prompts/.default-upgrades");
-  return { root, instance, data, file, history, run: () => withInstanceLock(data, () => upgradeDefaultPrompts(data)) };
+  return { root, instance, data, file, history, run: () => withInstanceLock(data, async () => (await upgradeDefaultPrompts(data))[0]) };
 }
+for (const newline of ["LF", "CRLF"]) test(`extraction ${newline} upgrade preserves its original and runs independently of a custom highlighting template`, async t => {
+  const f = await fixture(t), file = path.join(f.data, "prompts/extraction.md");
+  const bytes = newline === "LF" ? oldExtraction : Buffer.from(oldExtraction.toString().replaceAll("\n", "\r\n"));
+  await fs.writeFile(file, bytes); await fs.writeFile(f.file, "custom highlighting");
+  const run = () => withInstanceLock(f.data, () => upgradeDefaultPrompts(f.data));
+  const results = await run();
+  assert.deepEqual(results.map(r => r.status), ["skipped", "updated"]);
+  assert.deepEqual(await fs.readFile(file), nextExtraction);
+  assert.equal(await fs.readFile(f.file, "utf8"), "custom highlighting");
+  const backup = (await fs.readdir(f.history)).find(n => /^extraction-.*\.md$/.test(n));
+  assert.deepEqual(await fs.readFile(path.join(f.history, backup)), bytes);
+  const stat = await fs.stat(file); assert.equal((await run())[1].status, "current");
+  assert.equal((await fs.stat(file)).mtimeMs, stat.mtimeMs);
+  const custom = Buffer.concat([oldExtraction, Buffer.from(" ")]);
+  await fs.writeFile(file, custom); assert.equal((await run())[1].status, "skipped");
+  assert.deepEqual(await fs.readFile(file), custom);
+});
+
+test("extraction replacement failure preserves old bytes; normal initialization retries and backup restores the result", async t => {
+  const f = await fixture(t), file = path.join(f.data, "prompts/extraction.md");
+  await fs.writeFile(file, oldExtraction);
+  const rename = fs.rename;
+  fs.rename = async (from, to) => { if (to === file) throw new Error("synthetic failure"); return rename(from, to); };
+  try {
+    const results = await withInstanceLock(f.data, () => upgradeDefaultPrompts(f.data));
+    assert.equal(results[1].status, "failed");
+  } finally { fs.rename = rename; }
+  assert.deepEqual(await fs.readFile(file), oldExtraction);
+  await initialize(f.instance); assert.deepEqual(await fs.readFile(file), nextExtraction);
+  await backupInstance(f.instance, path.join(f.root, "extraction.slarchive"));
+  await restoreInstance(path.join(f.root, "extraction.slarchive"), path.join(f.root, "restored"));
+  assert.deepEqual(await fs.readFile(path.join(f.root, "restored/data/prompts/extraction.md")), nextExtraction);
+});
 for (const newline of ["LF", "CRLF"]) test(`exact published ${newline} default upgrades with byte-identical backup and is idempotent`, async t => {
   const f = await fixture(t), bytes = newline === "LF" ? old : Buffer.from(old.toString().replaceAll("\n", "\r\n"));
   await fs.writeFile(f.file, bytes);

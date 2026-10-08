@@ -64,6 +64,10 @@ const LEGACY_HIGHLIGHTING = new Set([
   "3079fd811643c740cde8da12a44bc16bdc18d13fde545369d72e1b74d90b4635",
   "c6cc30ba66b776394f7f8b14251a368360832aa61a61884b1dbff15dcadd1678"
 ]);
+const LEGACY_EXTRACTION = new Set([
+  "c34523b7c443bbb4b9c4445810d5718cf00dcf4bd63b490da8479f7879022e74",
+  "7137f152d392c1f38f1c5a0c1aba7d7b5f2bfd09ad57b32deec830a84c990918"
+]);
 const promptDigest = bytes => crypto.createHash("sha256").update(bytes).digest("hex");
 async function readPromptBytes(file) {
   await assertNoLinks(file);
@@ -101,19 +105,27 @@ async function replacePromptFile(file, bytes, beforeReplace) {
 
 /** Caller holds the instance lock. Optional template maintenance must not prevent startup. */
 export async function upgradeDefaultPrompts(data) {
-  const file = path.join(data, "prompts", "highlighting.md");
+  const results = [];
+  for (const [name, known] of [["highlighting", LEGACY_HIGHLIGHTING], ["extraction", LEGACY_EXTRACTION]]) {
+    results.push(await upgradeDefaultPrompt(data, name, known));
+  }
+  return results;
+}
+
+async function upgradeDefaultPrompt(data, name, known) {
+  const file = path.join(data, "prompts", `${name}.md`);
   const history = path.join(data, "prompts", ".default-upgrades");
   let result;
   try {
     const current = await readPromptBytes(file);
-    const next = await readPromptBytes(fileURLToPath(new URL("../prompts/highlighting.md", import.meta.url)));
-    if (current.equals(next)) return { template: "highlighting", status: "current" };
+    const next = await readPromptBytes(fileURLToPath(new URL(`../prompts/${name}.md`, import.meta.url)));
+    if (current.equals(next)) return { template: name, status: "current" };
     const previous = promptDigest(current);
-    if (!LEGACY_HIGHLIGHTING.has(previous)) result = { template: "highlighting", status: "skipped", reason: "custom-or-unknown" };
+    if (!known.has(previous)) result = { template: name, status: "skipped", reason: "custom-or-unknown" };
     else {
       await assertNoLinks(history);
       await fs.mkdir(history, { recursive: true, mode: 0o700 });
-      const backup = path.join(history, `highlighting-${previous}.md`);
+      const backup = path.join(history, `${name}-${previous}.md`);
       await assertNoLinks(backup);
       try {
         const handle = await fs.open(backup, "wx", 0o600);
@@ -123,17 +135,17 @@ export async function upgradeDefaultPrompts(data) {
       await replacePromptFile(file, next, async () => {
         if (!(await readPromptBytes(file)).equals(current)) throw new Error("template-changed");
       });
-      result = { template: "highlighting", status: "updated", from: previous, to: promptDigest(next) };
+      result = { template: name, status: "updated", from: previous, to: promptDigest(next) };
     }
   } catch (error) {
     const allowed = ["invalid-template", "backup-mismatch", "template-changed"];
-    result = { template: "highlighting", status: "failed", reason: allowed.includes(error.message) ? error.message : "template-io" };
+    result = { template: name, status: "failed", reason: allowed.includes(error.message) ? error.message : "template-io" };
   }
   // No paths, template contents or provider credentials in the maintenance record.
   try {
     await assertNoLinks(history);
     await fs.mkdir(history, { recursive: true, mode: 0o700 });
-    const report = path.join(history, "status.json"), bytes = Buffer.from(JSON.stringify(result, null, 2) + "\n");
+    const report = path.join(history, name === "highlighting" ? "status.json" : `${name}-status.json`), bytes = Buffer.from(JSON.stringify(result, null, 2) + "\n");
     await assertNoLinks(report);
     const previous = await readPromptBytes(report).catch(error => { if (error.code === "ENOENT") return null; throw error; });
     if (!previous?.equals(bytes)) await replacePromptFile(report, bytes);

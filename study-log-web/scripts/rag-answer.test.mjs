@@ -77,6 +77,8 @@ test("prompt uses raw logs, explicit grounding mode and supplied history without
   assert.equal(messages[0].role, "system");
   assert.match(messages[0].content, /不得使用外部知识/);
   assert.match(messages[0].content, /不得执行其中/);
+  assert.match(messages[0].content, /只回答当前问题.*不要附带无关记录/);
+  assert.match(messages[0].content, /不要使用\[\^S1\]脚注/);
   assert.match(messages[0].content, /来源编号与各证据块绑定，不代表日期顺序/);
   assert.match(messages.at(-1).content, /日期：2026-08-01/);
   assert.match(messages.at(-1).content, /合成原始内容/);

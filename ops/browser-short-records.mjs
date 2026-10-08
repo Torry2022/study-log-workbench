@@ -1,0 +1,70 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+import { DesktopManager } from './desktop/manager.mjs';
+import { learningCases } from './fixtures/default-learning-cases.mjs';
+const require = createRequire(new URL('../study-log-web/package.json', import.meta.url));
+const { chromium, expect } = require('@playwright/test');
+const evidence = path.resolve(process.argv[2] || `.local/short-records-${Date.now()}`);
+await fs.mkdir(evidence);
+const manager = new DesktopManager({ packageRoot: path.join(evidence, 'program'), webRoot: path.resolve('study-log-web'), mcpRoot: path.resolve('study-log-mcp') });
+const browser = await chromium.launch();
+try {
+  const password = crypto.randomBytes(24).toString('hex');
+  await manager.select({ root: path.join(evidence, 'instance'), create: true, password });
+  const base = (await manager.start()).url;
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const errors = []; page.on('pageerror', e => errors.push(e.message));
+  await page.goto(base); await page.getByLabel('访问密码').fill(password);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page.locator('.workspace')).toBeVisible();
+  for (const sample of learningCases) {
+    await page.getByLabel('新建指定日期').fill(sample.date);
+    await page.getByRole('button', { name: '新建', exact: true }).filter({ visible: true }).click();
+    await page.getByRole('button', { name: '源码', exact: true }).filter({ visible: true }).click();
+    const editor = page.locator('.cm-content'); await expect(editor).toBeVisible();
+    await editor.click(); await page.keyboard.press('Control+a'); await page.keyboard.insertText(sample.content);
+    const saved = page.waitForResponse(r => r.url().endsWith('/api/logs/day') && r.request().method() === 'PUT');
+    await page.getByRole('button', { name: '保存', exact: true }).filter({ visible: true }).click();
+    assert.equal((await saved).status(), 200);
+    await expect(page.locator('.toast.success')).toHaveText('已保存');
+    const { day } = await (await page.request.get(base + '/api/logs/day?date=' + sample.date)).json();
+    assert.equal(day.content.trim(), `## ${sample.date}\n\n${sample.content}`);
+  }
+  await page.reload(); await expect(page.locator('.workspace')).toBeVisible();
+  const search = page.getByRole('combobox', { name: '搜索全部日志', exact: true });
+  const popover = page.locator('#global-search-popover');
+  const terms = ['Promise.all', 'Pine', '叙述者', '正确率'];
+  for (const [index, sample] of learningCases.entries()) {
+    await search.fill(terms[index]); await search.press('Enter');
+    const hit = popover.getByRole('option').filter({ hasText: sample.date });
+    await expect(hit).toHaveCount(1); await hit.click();
+    await expect(page).toHaveURL(new RegExp('date=' + sample.date));
+    await expect(page.locator('.markdown-preview')).toContainText(terms[index]);
+  }
+  await search.fill('正确率'); await search.press('Enter');
+  await page.getByRole('button', { name: '当前搜索标题和正文，点击后仅搜索小节标题', exact: true }).click();
+  await expect(popover).toContainText('未找到匹配的小节标题');
+  await page.getByRole('button', { name: '当前仅搜索小节标题，点击后搜索标题和正文', exact: true }).click();
+  await expect(popover.getByRole('option')).toHaveCount(1); await search.press('Escape');
+  await page.locator('.topbar-actions').getByRole('button', { name: '统计', exact: true }).click();
+  const metrics = page.locator('.stats-metric-strip');
+  await expect(metrics.locator('div').filter({ has: page.getByText('记录天数', { exact: true }) }).locator('strong')).toHaveText('4');
+  await expect(metrics.locator('div').filter({ has: page.getByText('日志小节', { exact: true }) }).locator('strong')).toHaveText('0');
+  await expect(metrics).toContainText('按三级标题计数');
+  await expect(page.locator('.stats-calendar-day[data-recorded="true"]')).toHaveCount(4);
+  await page.screenshot({ path: path.join(evidence, 'wide-stats.png'), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator('.mobile-bottom-nav').getByRole('button', { name: '日志', exact: true }).click();
+  await page.getByRole('button', { name: '全局搜索', exact: true }).click();
+  await search.filter({ visible: true }).fill('叙述者'); await search.filter({ visible: true }).press('Enter');
+  await popover.getByRole('option').filter({ hasText: '2026-10-06' }).click();
+  await expect(page.locator('.markdown-preview')).toContainText('没有完成全文分析');
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await page.screenshot({ path: path.join(evidence, 'narrow-record.png'), fullPage: true });
+  assert.deepEqual(errors, []);
+  await fs.writeFile(path.join(evidence, 'report.json'), JSON.stringify({ saved: 4, foundWithoutHeadings: 4, recordDays: 4, sections: 0, narrowSearch: true, errors }, null, 2));
+  console.log('Short records: save, reload, full-text search, scoped search and statistics passed.');
+} finally { await browser.close(); await manager.shutdown(); }

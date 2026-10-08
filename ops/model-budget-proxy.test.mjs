@@ -100,3 +100,27 @@ test("bounded proxy forwards completed SSE and reports interrupted upstream with
     if (path.dirname(directory) === os.tmpdir()) await fs.rm(directory, { recursive: true, force: true });
   }
 });
+
+
+test("complete usage releases excess reservation only after durable settlement; incomplete usage keeps its ceiling", async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "study-log-budget-settle-"));
+  const clientFetch = globalThis.fetch; let calls = 0, proxy;
+  try {
+    globalThis.fetch = async () => new Response(JSON.stringify({ choices: [{ message: { content: "synthetic" } }],
+      usage: ++calls === 3 ? { prompt_tokens: 100 } : { prompt_tokens: 100, completion_tokens: 50 } }), { headers: { "Content-Type": "application/json" } });
+    const ledgerFile = path.join(directory, "ledger.jsonl");
+    proxy = await startBudgetProxy({ apiKey: "synthetic", apiUrl: "https://api.deepseek.com/chat/completions", model: "deepseek-flash", budgetCny: .2, ledgerFile });
+    const options = { method: "POST", headers: { Authorization: `Bearer ${proxy.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "deepseek-flash", messages: [{ role: "user", content: "synthetic" }] }) };
+    for (let i = 0; i < 3; i++) { const result = await clientFetch(proxy.url, options); assert.equal(result.status, 200); await result.text(); }
+    const r = proxy.report(); assert.ok(r.reservedCny > .5); assert.ok(r.budgetedCny < .2);
+    assert.equal(r.usageCeilingCny, .0012); assert.ok(r.unsettledReservedCny > .18);
+    assert.equal((await clientFetch(proxy.url, options)).status, 502); assert.equal(calls, 3);
+    const rows = (await fs.readFile(ledgerFile, "utf8")).trim().split("\n").map(JSON.parse);
+    assert.equal(rows.filter(row => row.event === 'usage-settled').length, 2);
+    assert.equal(rows.at(-1).cumulativeBudgetedCny, r.budgetedCny);
+    assert.ok(rows[0].cumulativeBudgetedCny > .18);
+  } finally { await proxy?.close(); globalThis.fetch = clientFetch;
+    assert.equal(path.dirname(directory), path.resolve(os.tmpdir())); assert.match(path.basename(directory), /^study-log-budget-settle-/);
+    await fs.rm(directory, { recursive: true, force: true }); }
+});

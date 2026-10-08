@@ -51,7 +51,23 @@ try {
   const before = await fs.readFile(path.join(root, "data", "2026-10_学习日志.md"));
   await control("stop");
   await assert.rejects(fs.stat(path.join(root, "data", ".instance-operation.lock")), { code: "ENOENT" });
+  const templates = path.join(root, "data", "prompts");
+  const credentials = await fs.readFile(path.join(root, ".env"));
+  const generation = await fs.readFile(path.join(templates, "generation.md"));
+  for (const name of ["highlighting", "extraction"]) {
+    await fs.copyFile(new URL(`../fixtures/${name}-rc5.md`, import.meta.url), path.join(templates, `${name}.md`));
+  }
   base = (await control("start")).url; await login();
+  for (const name of ["highlighting", "extraction"]) {
+    assert.deepEqual(await fs.readFile(path.join(templates, `${name}.md`)), await fs.readFile(path.join(packageRoot, "prompts", `${name}.md`)));
+    const backups = (await fs.readdir(path.join(templates, ".default-upgrades"))).filter(file => file.startsWith(`${name}-`) && file.endsWith(".md"));
+    assert.equal(backups.length, 1);
+    assert.deepEqual(await fs.readFile(path.join(templates, ".default-upgrades", backups[0])), await fs.readFile(new URL(`../fixtures/${name}-rc5.md`, import.meta.url)));
+  }
+  assert.deepEqual(await fs.readFile(path.join(root, ".env")), credentials);
+  assert.deepEqual(await fs.readFile(path.join(templates, "generation.md")), generation);
+  assert.deepEqual(await fs.readFile(path.join(templates, "generation-presets.json")), presetBytes);
+  mark("Packaged startup upgrades exact rc.5 defaults with original backups; credentials and personal schemes preserved");
   assert.match((await (await request("/api/logs/day?date=2026-10-06")).json()).day.content, /SyntheticLocalLearningEvidence/);
   mark("Actual Next and MCP clean IPC shutdown, lock release, restart persistence");
   await control("stop");

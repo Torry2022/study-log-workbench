@@ -2,7 +2,7 @@
 
 此目录是服务器使用者的部署入口，部署附件包含 `compose.yaml`、`.env.example`、本说明和 `RELEASE-NOTES.md`，不需要源码、Node 或 npm。需要 Docker Engine 与 Docker Compose 2.24 或以上；当前支持 Linux amd64。三个镜像共用同一发布版本。
 
-当前公开候选为 **`0.1.0-rc.5`（Linux amd64）**，`.env.example` 已填写配套 ACR 公网地址及版本，可以匿名拉取，无需阿里云账号。版本摘要及验收边界见随包 [版本说明](RELEASE-NOTES.md)。镜像前缀也可换成自己的兼容镜像仓库。
+源码目录当前准备 **`0.1.0-rc.6`（Linux amd64）**，尚未发布，配套 `.env.example` 的镜像标签暂不能从 ACR 拉取。当前可下载、可匿名拉取的公开版本仍为 `0.1.0-rc.5`，请使用下面的固定版本附件，不混用主线部署文件。版本范围见 [版本说明](RELEASE-NOTES.md)。镜像前缀也可换成自己的兼容镜像仓库。
 
 ## 获取部署文件
 

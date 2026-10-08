@@ -26,7 +26,7 @@ window.titlebar.onLocation(label=>{const location=document.querySelector('#locat
 window.titlebar.onActiveMenu(id=>buttons.forEach((button,index)=>{
  button.setAttribute('aria-expanded',String(index===id));
  // A native popup can retain Chromium's :hover after the pointer leaves this view.
- if(id===-1){
+ if(index!==id){
   button.classList.remove('hover');
   if(document.activeElement===button)button.blur();
  }

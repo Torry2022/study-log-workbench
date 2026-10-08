@@ -104,10 +104,6 @@ body {
   letter-spacing: 0;
 }
 
-html {
-  scrollbar-gutter: stable;
-}
-
 html.theme-transitioning,
 html.theme-transitioning body,
 html.theme-transitioning body * {

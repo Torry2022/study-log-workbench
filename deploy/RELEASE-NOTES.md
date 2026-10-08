@@ -1,10 +1,13 @@
 # 服务器候选 0.1.0-rc.6
 
-发布日期：2026-10-08。平台：Linux amd64。产品源码基线为 `f34be8a`；Windows、Web、MCP 及部署文件统一为 rc.6。rc.5 的标签、附件和镜像保持不变。
+发布日期：2026-10-08。平台：Linux amd64。产品源码基线为 `346eedb`；Windows、Web、MCP 及部署文件统一为 rc.6。rc.5 的标签、附件和镜像保持不变。
 
 本次按维护者明确要求，用当前源码替换原 rc.6 产物，版本号保持不变。已有 rc.6 使用者需重新下载覆盖安装；服务器需重新拉取同名镜像，不能只依靠本机缓存。以本说明中的新摘要及附件校验文件区分构建。
 
 ## 本次变化
+
+- 大纲定位当前预览正文，未保存的新标题不再被误报为不存在；导航提示不再撑高正文，窄屏标题定位避开工具栏。
+- Windows 顶部菜单关闭后清除悬停高亮与按钮焦点，保留再次悬停反馈及键盘导航。
 
 - 重点标注及基础问答采用与材料相关的中性表述，保留来源约束；技术学习日志生成预设继续保留。
 - 随记提取合并相关过程、结论与限制，保留条件和否定，不虚构个人经历；没有合适候选可正常结束。
@@ -14,6 +17,8 @@
 - 日志正文的一级、二级标题统一识别井号及下划线写法；拒绝保存时保留草稿，代码示例与缩进不受影响，旧日志不自动改写。
 
 ## 验证范围
+
+本次最终 EXE 菜单检查、六组生命周期、包内网页宽窄大纲定位及配套 Compose 六组通过；原生菜单 popup／光标使用测试替身。网页镜像已重建及匿名拉取验证，MCP、tools 代码未变，沿用原摘要。其余下文检查保留既有证据，不冒称本轮重新执行。
 
 最终 Windows 打包 EXE 六组流程、七项更新入口检查及包内 Node 运行时五组流程通过；配套 Compose 六组基础流程及三组模拟模型问答／停止检查通过。覆盖无模型记录、保存重开、检索、材料解析、备份和新目录恢复、旧默认模板更新与流式请求期间正常停止。本次发布验证未调用付费模型，先前有限真实模型样本另有记录。
 
@@ -25,7 +30,7 @@
 
 | 服务 | 镜像 | Digest |
 | --- | --- | --- |
-| web | `crpi-2sv5e1hzpqiwbovs.cn-qingdao.personal.cr.aliyuncs.com/study-log-public/web:0.1.0-rc.6` | `sha256:ffaf7bbe42ef31052fa4e9bc0e6fe0deaf569706159d5b7923282f8a117a4681` |
+| web | `crpi-2sv5e1hzpqiwbovs.cn-qingdao.personal.cr.aliyuncs.com/study-log-public/web:0.1.0-rc.6` | `sha256:d5ef4a1114dc1aa937b8a1da78cfe9dce265bad8664b55c2a69ff48027b5f49b` |
 | mcp | `crpi-2sv5e1hzpqiwbovs.cn-qingdao.personal.cr.aliyuncs.com/study-log-public/mcp:0.1.0-rc.6` | `sha256:8dcef700745838eecd40abf45858f934a3f81e95218921dabd85a8ba950b940b` |
 | tools | `crpi-2sv5e1hzpqiwbovs.cn-qingdao.personal.cr.aliyuncs.com/study-log-public/tools:0.1.0-rc.6` | `sha256:0a6d8af6a031a759a469632c54ab5df553b27019fbec5354cff49a6c2ff31796` |
 

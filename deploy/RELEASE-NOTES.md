@@ -1,6 +1,8 @@
 # 服务器候选 0.1.0-rc.6
 
-发布日期：2026-10-08。平台：Linux amd64。产品源码基线为 `e8f52b3`；Windows、Web、MCP 及部署文件统一为 rc.6。rc.5 的标签、附件和镜像保持不变。
+发布日期：2026-10-08。平台：Linux amd64。产品源码基线为 `f34be8a`；Windows、Web、MCP 及部署文件统一为 rc.6。rc.5 的标签、附件和镜像保持不变。
+
+本次按维护者明确要求，用当前源码替换原 rc.6 产物，版本号保持不变。已有 rc.6 使用者需重新下载覆盖安装；服务器需重新拉取同名镜像，不能只依靠本机缓存。以本说明中的新摘要及附件校验文件区分构建。
 
 ## 本次变化
 
@@ -9,6 +11,7 @@
 - 仅升级与已发布默认版本逐字节匹配的标注／提取模板，先备份再替换；自定义模板、生成方案、凭据和已有记录保留。
 - Windows、网页与鸿蒙统一日常提示，简化异常退出及设置说明，移除用户无需理解的内部术语。
 - 鸿蒙源码修复启动窗口监听生命周期；本次不附设备调试包。
+- 日志正文的一级、二级标题统一识别井号及下划线写法；拒绝保存时保留草稿，代码示例与缩进不受影响，旧日志不自动改写。
 
 ## 验证范围
 
@@ -16,13 +19,15 @@
 
 三个镜像已用空登录配置匿名拉取并核对身份，复用了本机缓存。Windows 安装包未签名；打包 EXE 验证不等同于覆盖安装或任意跨版本迁移，本轮未覆盖日常应用、未部署生产服务器。详见源码仓 `docs/release-rc6-2026-10-08.md`。
 
+本次替换新增最终 EXE 六组生命周期流程、包内固定 Node 的宽窄窗口标题校验和六组 Compose 检查，全部通过；上一构建的更新入口及模拟问答证据保留为历史范围，不冒称本次重复执行。
+
 ## 镜像摘要
 
 | 服务 | 镜像 | Digest |
 | --- | --- | --- |
-| web | `crpi-2sv5e1hzpqiwbovs.cn-qingdao.personal.cr.aliyuncs.com/study-log-public/web:0.1.0-rc.6` | `sha256:6e2f75014f35a9fcaad4178b47aa5fca49548bf75b3b98b8d97c01a8ee998802` |
-| mcp | `crpi-2sv5e1hzpqiwbovs.cn-qingdao.personal.cr.aliyuncs.com/study-log-public/mcp:0.1.0-rc.6` | `sha256:6fd41f4f18d5458235ddab8a86f77785043af2fb26397d7a2e8e125c37722b0d` |
-| tools | `crpi-2sv5e1hzpqiwbovs.cn-qingdao.personal.cr.aliyuncs.com/study-log-public/tools:0.1.0-rc.6` | `sha256:7604c1b8e00e534a7629555b39b363c429ca72e6630fa1c7cb3c4c294867b14d` |
+| web | `crpi-2sv5e1hzpqiwbovs.cn-qingdao.personal.cr.aliyuncs.com/study-log-public/web:0.1.0-rc.6` | `sha256:ffaf7bbe42ef31052fa4e9bc0e6fe0deaf569706159d5b7923282f8a117a4681` |
+| mcp | `crpi-2sv5e1hzpqiwbovs.cn-qingdao.personal.cr.aliyuncs.com/study-log-public/mcp:0.1.0-rc.6` | `sha256:8dcef700745838eecd40abf45858f934a3f81e95218921dabd85a8ba950b940b` |
+| tools | `crpi-2sv5e1hzpqiwbovs.cn-qingdao.personal.cr.aliyuncs.com/study-log-public/tools:0.1.0-rc.6` | `sha256:0a6d8af6a031a759a469632c54ab5df553b27019fbec5354cff49a6c2ff31796` |
 
 ## 历史版本
 

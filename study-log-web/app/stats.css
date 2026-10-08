@@ -20,6 +20,17 @@
   background: transparent;
 }
 
+@media (min-width: 1024px) {
+  .app-shell.view-stats {
+    height: 100dvh;
+    grid-template-rows: minmax(64px, auto) minmax(0, 1fr);
+  }
+  .view-stats .stats-shell-embedded {
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+  }
+}
+
 .stats-workspace {
   width: 100%;
   margin: 0 auto;

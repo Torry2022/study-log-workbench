@@ -156,6 +156,7 @@ textarea {
 
 button {
   cursor: pointer;
+  line-height: 1.4;
 }
 
 button:disabled {

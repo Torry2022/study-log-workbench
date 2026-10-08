@@ -1,9 +1,9 @@
 .markdown-edit-menu { position: relative; display: inline-flex; flex: 0 0 auto; }
-.markdown-edit-menu .markdown-edit-trigger { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: auto; min-height: 40px; padding: 4px 10px; border: 1px solid var(--hairline); border-radius: var(--radius-sm); background: var(--canvas); color: var(--body); font: inherit; font-size: 13px; }
+.markdown-edit-menu .markdown-edit-trigger { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: auto; min-height: 40px; padding: 4px 10px; border: 1px solid var(--hairline); border-radius: var(--radius-sm); background: var(--canvas); color: var(--body); font: inherit; font-size: 13px; line-height: 1.4; }
 .markdown-edit-options { position: absolute; z-index: 40; top: calc(100% + 4px); left: 0; width: 244px; max-width: calc(100vw - 48px); max-height: min(440px, 60vh); overflow-y: auto; border: 1px solid var(--hairline); border-radius: var(--radius-md); background: var(--canvas); box-shadow: var(--popover-shadow); padding: 4px; }
 .markdown-edit-group { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 4px; gap: 2px; }
 .markdown-edit-group + .markdown-edit-group { border-top: 1px solid var(--hairline); }
-.markdown-edit-options .markdown-edit-group button { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 40px; height: auto; text-align: left; justify-content: flex-start; border: 0; padding: 7px 8px; border-radius: var(--radius-sm); background: transparent; color: var(--body); font: inherit; font-size: 13px; }
+.markdown-edit-options .markdown-edit-group button { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 40px; height: auto; text-align: left; justify-content: flex-start; border: 0; padding: 7px 8px; border-radius: var(--radius-sm); background: transparent; color: var(--body); font: inherit; font-size: 13px; line-height: 1.4; }
 .markdown-edit-menu button:hover, .markdown-edit-menu button:focus-visible { background: var(--surface-soft); color: var(--ink); }
 .editor-date-line { gap: 16px; padding-top: 6px; padding-bottom: 6px; }
 .editor-date-line .markdown-edit-trigger { height: 30px; min-height: 30px; padding-top: 0; padding-bottom: 0; }

@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
   try {
     const [taxonomy, blocks] = await Promise.all([readTaxonomy(), listSavedDayContents()]);
     return Response.json({ taxonomy, catalog: calculateTaxonomyCatalog(parseStatsDays(blocks), taxonomy) }, { headers });
-  } catch { return Response.json({ error: "分类读取失败，请检查实例文件后重试" }, { status: 500, headers }); }
+  } catch { return Response.json({ error: "分类读取失败，请检查相关文件后重试" }, { status: 500, headers }); }
 }
 export async function PUT(request: NextRequest) {
   const unauthorized = requireAuth(request); if (unauthorized) return unauthorized;
@@ -21,7 +21,7 @@ export async function PUT(request: NextRequest) {
   try { return Response.json({ taxonomy: await writeTaxonomy(input) }, { headers }); }
   catch (error) {
     if (error instanceof TaxonomyConflictError) return Response.json({ error: error.message, code: "TAXONOMY_CONFLICT" }, { status: 409, headers });
-    return Response.json({ error: error instanceof TaxonomyInputError ? error.message : "分类保存失败，请检查实例存储后重试" },
+    return Response.json({ error: error instanceof TaxonomyInputError ? error.message : "分类保存失败，请检查存储状态后重试" },
       { status: error instanceof TaxonomyInputError ? 400 : 500, headers });
   }
 }

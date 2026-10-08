@@ -18,7 +18,7 @@ function render() {
   const locked = busy || !connected;
   element("state").textContent = !connected ? "未连接" : ({ stopped: "未运行", starting: "正在启动", running: "正在运行", stopping: "正在停止", failed: "运行异常" })[state.state];
   element("state").dataset.running = String(running);
-  element("current").textContent = !value("root") ? "请选择保存位置。" : !candidate ? "正在检查目录…" : candidate.kind === "new" ? "此目录可用于新建实例。设置访问密码后创建，学习记录将保存在这里。" : candidate.kind === "existing" ? ready ? "保存位置已就绪。" : "已找到工作台实例，可直接打开，无需重新设置密码。" : candidate.message;
+  element("current").textContent = !value("root") ? "请选择保存位置。" : !candidate ? "正在检查目录…" : candidate.kind === "new" ? "此文件夹可以保存学习记录。设置访问密码后即可开始使用。" : candidate.kind === "existing" ? ready ? "保存位置已就绪。" : "已找到学习记录，可直接打开，无需重新设置密码。" : candidate.message;
   element("current").classList.toggle("error", candidate?.kind === "invalid");
   element("create-fields").hidden = candidate?.kind !== "new";
   element("select").hidden = candidate?.kind !== "existing" || ready;
@@ -31,10 +31,10 @@ function render() {
   element("start").classList.toggle("primary", !running);
   element("open").hidden = !running || !state.url;
   if (state.url) element("open").href = state.url;
-  element("run-help").textContent = running ? `访问地址：${state.url}` : ready ? "实例已准备好，可以启动工作台。" : "选择保存位置并创建或打开实例后，即可启动。";
+  element("run-help").textContent = running ? `访问地址：${state.url}` : ready ? "保存位置已准备好，可以启动工作台。" : "准备好保存位置后，即可启动工作台。";
   element("configure").disabled = locked || !stopped || !ready;
   element("model-help").hidden = ready && stopped;
-  element("model-help").textContent = !stopped ? "停止工作台后可修改模型配置。" : "请先选择保存位置并创建或打开实例。";
+  element("model-help").textContent = !stopped ? "停止工作台后可修改模型配置。" : "请先选择保存位置，并创建或打开学习记录。";
   for (const id of ["apiUrl", "model", "apiKey", "clearKey"]) element(id).disabled = locked || !stopped || !ready;
   element("backup").disabled = locked || !ready || !["stopped", "running"].includes(state.state);
   element("verify").disabled = locked || !value("archive");

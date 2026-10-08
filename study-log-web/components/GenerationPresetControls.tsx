@@ -109,7 +109,7 @@ function GenerationPresetManager({ presets, onClose }: { presets: GenerationPres
           <aside aria-label="生成方案列表">
             <button type="button" className="button secondary" disabled={busy} onClick={() => create()}><Plus size={15} />新增方案</button>
             {presets.snapshot!.presets.map(preset => <button type="button" key={preset.id} className={`generation-preset-item${editingId === preset.id ? " active" : ""}`} disabled={busy}
-              onClick={() => guard(() => edit(preset))}><span>{preset.name}</span><small>{preset.id === presets.snapshot!.defaultPresetId ? "默认 · " : ""}{preset.id === "legacy" ? "实例模板" : preset.readOnly ? "内置" : "个人"}</small></button>)}
+              onClick={() => guard(() => edit(preset))}><span>{preset.name}</span><small>{preset.id === presets.snapshot!.defaultPresetId ? "默认 · " : ""}{preset.id === "legacy" ? "原有模板" : preset.readOnly ? "内置" : "个人"}</small></button>)}
           </aside>
           <div className="generation-presets-editor">
             <label htmlFor="preset-name">方案名称</label><input id="preset-name" value={name} readOnly={readOnly} disabled={busy} maxLength={80} onChange={event => setName(event.target.value)} />

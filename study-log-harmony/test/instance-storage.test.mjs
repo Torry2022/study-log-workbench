@@ -69,6 +69,6 @@ test('device-local token aliases do not cross instances or delayed writes', asyn
   activeInstance.activate('https://two.example', 'two');
   while (typeof release !== 'function') await Promise.resolve();
   release();
-  await assert.rejects(late, /实例已切换/);
+  await assert.rejects(late, /服务器连接已切换/);
   assert.equal(await TokenStore.read(), 'two-token');
 });

@@ -53,7 +53,7 @@ test("rejects implicit roots and unrelated nonempty folders without changing the
   await assert.rejects(initialize("relative"), /绝对路径/);
   const root = await fixture(t);
   await fs.writeFile(path.join(root, "unrelated.txt"), "preserve");
-  await assert.rejects(initialize(root), /非空/);
+  await assert.rejects(initialize(root), /已有其他文件/);
   assert.deepEqual(await fs.readdir(root), ["unrelated.txt"]);
 });
 
@@ -82,5 +82,5 @@ test("web launcher rejects malformed identities before starting the server", asy
   await fs.writeFile(path.join(root, "data/.instance.json"), JSON.stringify({ schemaVersion: 1, id: "not-a-uuid" }));
   const result = spawnSync(process.execPath, [fileURLToPath(new URL("./run-web.mjs", import.meta.url)), "dev", root, "3569"], { encoding: "utf8", timeout: 3000 });
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /实例身份无效/);
+  assert.match(result.stderr, /工作台标识无效/);
 });

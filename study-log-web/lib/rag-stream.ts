@@ -16,7 +16,7 @@ export async function streamRagAnswer(config: ChatConfig, messages: RagPromptMes
     if (!response.ok) {
       await response.body?.cancel();
       if (response.status === 429) throw new AiChatError("AI_RATE_LIMITED", "模型服务请求过于频繁，请稍后重试", 429);
-      if ([401, 403].includes(response.status)) throw new AiChatError("AI_PROVIDER_AUTH", "模型服务认证失败，请检查实例的聊天配置");
+      if ([401, 403].includes(response.status)) throw new AiChatError("AI_PROVIDER_AUTH", "模型服务认证失败，请检查模型配置");
       throw new AiChatError("AI_PROVIDER_FAILED", "模型服务暂时不可用，请稍后重试");
     }
     if (!response.headers.get("content-type")?.toLowerCase().startsWith("text/event-stream") || !response.body) { await response.body?.cancel(); throw invalid(); }
@@ -69,6 +69,6 @@ export async function streamRagAnswer(config: ChatConfig, messages: RagPromptMes
     if (options.signal?.aborted) throw new AiChatError("AI_CANCELLED", "已取消回答", 499);
     if (deadline.signal.aborted) throw new AiChatError("AI_TIMEOUT", "模型响应超时，请重试", 504);
     if (error instanceof AiChatError) throw error;
-    throw new AiChatError("AI_NETWORK_ERROR", "模型响应中断，请检查实例配置或稍后重试");
+    throw new AiChatError("AI_NETWORK_ERROR", "模型响应中断，请检查模型配置或稍后重试");
   } finally { clearTimeout(timer); }
 }

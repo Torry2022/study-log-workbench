@@ -42,7 +42,7 @@ try {
   await expect.poll(() => app.evaluate(() => globalThis.opened.length)).toBe(1);
   assert.deepEqual(await app.evaluate(() => globalThis.opened), ['https://github.com/Torry2022/study-log-workbench-public/releases/tag/v99.0.0-rc.5']);
   await app.evaluate(() => { globalThis.releases[0].tag_name = 'v0.0.1'; });
-  await click('检查更新…'); value = await message(); assert.equal(value.message, '当前没有可用更新');
+  await click('检查更新…'); value = await message(); assert.equal(value.message, '当前没有可用更新'); assert.doesNotMatch(value.detail, /实例|包含预发布/); assert.match(value.detail, /当前使用预发布版本/); assert.match(value.detail, /仅针对 Windows 桌面端/);
   await app.evaluate(() => { globalThis.updateFailure = true; });
   await click('检查更新…'); value = await message(); assert.equal(value.message, '暂时无法检查更新');
   await expect.poll(() => app.evaluate(({ Menu }) => Menu.getApplicationMenu().getMenuItemById('check-updates').enabled)).toBe(true);

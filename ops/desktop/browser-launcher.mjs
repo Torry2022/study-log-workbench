@@ -36,13 +36,13 @@ try {
   await shot("wide-light-unselected");
   await page.emulateMedia({ colorScheme: "dark" }); await shot("wide-dark-unselected");
   const nonempty = path.join(synthetic, "unrelated"); await fs.mkdir(nonempty); await fs.writeFile(path.join(nonempty, "keep.txt"), "untouched");
-  await setRoot(nonempty); await expect(page.locator("#current")).toContainText("此目录已有文件");
+  await setRoot(nonempty); await expect(page.locator("#current")).toContainText("此文件夹已有其他文件");
   await expect(page.locator("#create")).toBeHidden(); await expect(page.locator("#select")).toBeHidden(); await expect(page.locator("#start")).toBeDisabled();
   await shot("wide-dark-nonempty");
   const selectedRoot = path.join(synthetic, "instance");
   await page.route("**/api/pick", route => route.fulfill({ contentType: "application/json", body: JSON.stringify({ path: selectedRoot }) }));
   await page.getByRole("button", { name: "选择目录", exact: true }).click();
-  await expect(page.locator("#current")).toContainText("此目录可用于新建实例");
+  await expect(page.locator("#current")).toContainText("此文件夹可以保存学习记录");
   await expect(page.locator("#start")).toBeDisabled(); await expect(page.locator("#create")).toBeDisabled();
   await page.locator("#password").fill("short"); await expect(page.locator("#create")).toBeDisabled();
   await page.locator("#password").fill("synthetic-browser-password"); await expect(page.locator("#create")).toBeEnabled();

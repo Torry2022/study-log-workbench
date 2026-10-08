@@ -25,7 +25,7 @@ export async function requestChat(config: ChatConfig, messages: ChatMessage[], o
     if (!response.ok) {
       await response.body?.cancel();
       if (response.status === 429) throw new AiChatError("AI_RATE_LIMITED", "模型服务请求过于频繁，请稍后重试", 429);
-      if (response.status === 401 || response.status === 403) throw new AiChatError("AI_PROVIDER_AUTH", "模型服务认证失败，请检查实例的聊天配置");
+      if (response.status === 401 || response.status === 403) throw new AiChatError("AI_PROVIDER_AUTH", "模型服务认证失败，请检查模型配置");
       throw new AiChatError("AI_PROVIDER_FAILED", "模型服务暂时不可用，请稍后重试");
     }
     const reader = response.body?.getReader();
@@ -55,6 +55,6 @@ export async function requestChat(config: ChatConfig, messages: ChatMessage[], o
     if (options.signal?.aborted) throw new AiChatError("AI_CANCELLED", "已取消生成", 499);
     if (deadline.signal.aborted) throw new AiChatError("AI_TIMEOUT", "模型响应超时，请重试", 504);
     if (error instanceof AiChatError) throw error;
-    throw new AiChatError("AI_NETWORK_ERROR", "无法连接模型服务，请检查实例配置或稍后重试");
+    throw new AiChatError("AI_NETWORK_ERROR", "无法连接模型服务，请检查模型配置或稍后重试");
   } finally { clearTimeout(timer); }
 }

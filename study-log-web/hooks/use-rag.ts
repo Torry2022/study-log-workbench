@@ -63,7 +63,7 @@ export function useRag(options: Options) {
       const result = await requestJson<{ features: { rag?: { supported: boolean; configured: boolean } } }>("/api/capabilities");
       if (!live.current.active) return;
       const enabled = Boolean(result.features?.rag?.supported && result.features.rag.configured);
-      setConfigured(enabled); setConfigurationError(enabled ? "" : "问答尚未配置，请由实例维护者配置模型和日志检索服务；已有历史仍可查看。");
+      setConfigured(enabled); setConfigurationError(enabled ? "" : "问答尚未配置，请配置模型和日志检索服务；已有历史仍可查看。");
     } catch (failure) { if (live.current.active) setConfigurationError(failure instanceof Error ? failure.message : "读取配置失败"); }
   }, []);
   useEffect(() => {

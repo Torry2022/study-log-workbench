@@ -19,7 +19,7 @@ export class ArchiveError extends Error {
 }
 const fail = (code, message) => { throw new ArchiveError(code, message); };
 const invalid = () => fail("ARCHIVE_INVALID", "归档格式、清单或内容无效；未执行覆盖操作");
-const outside = () => fail("ARCHIVE_PATH_INVALID", "路径不符合实例边界或跨平台归档规则");
+const outside = () => fail("ARCHIVE_PATH_INVALID", "路径超出保存范围或不符合跨平台归档规则");
 const limits = () => fail("ARCHIVE_LIMIT", "归档超过 20 GiB、100000 项或 16 MiB 清单限制");
 const exists = async target => fs.lstat(target).then(() => true, error => { if (error.code === "ENOENT") return false; throw error; });
 function absolute(value) {
@@ -100,7 +100,7 @@ function readIdentityAndEnvironment(identityBytes, envBytes) {
       if ((environment[name] || "").trim().length < minimum || /^(?:change-me|replace-|dev-session-secret)/i.test(environment[name])) invalid();
     }
     return identity.id;
-  } catch { fail("ARCHIVE_INSTANCE_INVALID", "实例身份或凭据配置无效；内容不会打印到终端"); }
+  } catch { fail("ARCHIVE_INSTANCE_INVALID", "工作台标识或访问凭据无效；内容不会打印到终端"); }
 }
 
 function entryPath(value) {
@@ -224,18 +224,18 @@ export async function backupInstance(instanceRoot, archivePath, { protectFile } 
         if (entry.type !== "file") continue;
         const source = path.join(root, ...entry.path.split("/")), { handle, stat } = await openRegular(source);
         try {
-          if (!sameFile(scanned.snapshots.get(entry.path), stat)) fail("ARCHIVE_SOURCE_CHANGED", "实例文件在归档时发生变化，请停止外部写入后重试");
+          if (!sameFile(scanned.snapshots.get(entry.path), stat)) fail("ARCHIVE_SOURCE_CHANGED", "文件在归档时发生变化，请停止外部写入后重试");
           const hash = await streamBytes(handle, 0, entry.size, write);
-          if (hash !== entry.sha256) fail("ARCHIVE_SOURCE_CHANGED", "实例文件在归档时发生变化，请停止外部写入后重试");
+          if (hash !== entry.sha256) fail("ARCHIVE_SOURCE_CHANGED", "文件在归档时发生变化，请停止外部写入后重试");
           await unchanged(handle, stat, source);
         } finally { await handle.close(); }
       }
       for (const [relative, before] of scanned.snapshots) {
-        if (!sameFile(before, await regular(path.join(root, ...relative.split("/"))))) fail("ARCHIVE_SOURCE_CHANGED", "实例文件在归档时发生变化，请停止外部写入后重试");
+        if (!sameFile(before, await regular(path.join(root, ...relative.split("/"))))) fail("ARCHIVE_SOURCE_CHANGED", "文件在归档时发生变化，请停止外部写入后重试");
       }
       for (const [relative, before] of scanned.directories) {
         const source = path.join(root, ...relative.split("/")); await noLinks(source);
-        if (!sameFile(before, await fs.lstat(source, { bigint: true }))) fail("ARCHIVE_SOURCE_CHANGED", "实例目录在归档时发生变化，请停止外部写入后重试");
+        if (!sameFile(before, await fs.lstat(source, { bigint: true }))) fail("ARCHIVE_SOURCE_CHANGED", "保存目录在归档时发生变化，请停止外部写入后重试");
       }
       await output.sync();
     } finally { await output.close(); }
@@ -292,7 +292,7 @@ export async function restoreInstance(archivePath, targetRoot, { onReserved } = 
       const output = await fs.open(destination, "wx", 0o600);
       try {
         const digest = await streamBytes(handle, position, entry.size, chunk => writeAll(output, chunk));
-        if (digest !== entry.sha256) fail("ARCHIVE_FILE_MISMATCH", "恢复过程中归档内容发生变化；已保留目标和锁");
+        if (digest !== entry.sha256) fail("ARCHIVE_FILE_MISMATCH", "恢复过程中备份内容发生变化，恢复已停止；目标目录已保留供检查");
         await output.sync();
       } finally { await output.close(); }
       position += entry.size;
@@ -302,7 +302,7 @@ export async function restoreInstance(archivePath, targetRoot, { onReserved } = 
     await fs.unlink(marker); await release();
     return { restored: true, root: target, instanceId: manifest.instanceId, files: manifest.entries.filter(entry => entry.type === "file").length };
   } catch (error) {
-    if (reserved) throw new ArchiveError("RESTORE_INCOMPLETE", "恢复未完成；已保留目标目录及恢复标记/锁供检查。不要启动该目录，请另选不存在的新目标重试");
+    if (reserved) throw new ArchiveError("RESTORE_INCOMPLETE", "恢复未完成，目标目录已保留供检查。不要打开该目录，请另选新的保存位置重试");
     if (error instanceof ArchiveError) throw error;
     if (error.code === "EEXIST") throw new ArchiveError("RESTORE_TARGET_EXISTS", "恢复目标已被另一操作占用；未覆盖任何文件");
     throw new ArchiveError("ARCHIVE_RESTORE_FAILED", "无法验证或创建恢复目标，请检查归档、摘要、父目录和权限");

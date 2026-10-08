@@ -28,7 +28,7 @@ export async function PUT(request: NextRequest) {
     if (error instanceof LogWriteInputError || error instanceof InvalidDayContentError || error instanceof FutureLogDateError) {
       return Response.json({ error: error.message }, { status: 400, headers });
     }
-    return Response.json({ error: "日志保存失败，未能确认日志是否已保存，请检查实例存储后重试" }, { status: 500, headers });
+    return Response.json({ error: "日志保存失败，未能确认日志是否已保存，请检查存储状态后重试" }, { status: 500, headers });
   }
 }
 
@@ -43,6 +43,6 @@ export async function DELETE(request: NextRequest) {
   catch (error) {
     if (error instanceof LogConflictError) return Response.json({ error: error.message, code: "LOG_CONFLICT" }, { status: 409, headers });
     if (error instanceof LogWriteInputError) return Response.json({ error: error.message }, { status: 400, headers });
-    return Response.json({ error: "日块删除失败，请检查实例存储后重试" }, { status: 500, headers });
+    return Response.json({ error: "日块删除失败，请检查存储状态后重试" }, { status: 500, headers });
   }
 }

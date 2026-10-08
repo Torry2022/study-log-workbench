@@ -106,7 +106,7 @@ export function LoginScreen({ onAuthenticated, notice = "" }: { onAuthenticated:
               </button>
             </form>
           </div>
-          <footer className="login-footer">学习日志工作台 · 自部署实例</footer>
+          <footer className="login-footer">学习日志工作台 · 自部署</footer>
         </section>
       </main>);
 }

@@ -28,7 +28,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
         setAuthenticated(Boolean(value.authenticated));
         setHasWorkspace(Boolean(value.authenticated));
       })
-      .catch(() => { if (!controller.signal.aborted) setConnectionError("连接失败，请检查实例服务后重试"); });
+      .catch(() => { if (!controller.signal.aborted) setConnectionError("连接失败，请检查服务状态后重试"); });
     const expire = () => {
       cancelWorkspaceRequests();
       setAuthenticated(false);

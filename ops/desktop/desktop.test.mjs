@@ -39,7 +39,7 @@ test("create/open boundaries, configured password, model key retention and no ra
   await assert.rejects(manager.select({ root, create: true, password: "change-me-password" }), /占位/);
   await manager.select({ root, create: true, password: "synthetic-password" });
   assert.equal(parseEnv(await fs.readFile(path.join(root, ".env"), "utf8")).APP_PASSWORD, "synthetic-password");
-  await assert.rejects(manager.select({ root, create: true, password: "synthetic-password" }), /空目录/);
+  await assert.rejects(manager.select({ root, create: true, password: "synthetic-password" }), /空文件夹/);
   await manager.select({ root });
   await manager.configure({ apiUrl: "https://example.test/v1/chat/completions", model: "synthetic-model", apiKey: "synthetic-key" });
   assert.deepEqual(await manager.configuration(), { apiUrl: "https://example.test/v1/chat/completions", model: "synthetic-model", hasKey: true });
@@ -76,9 +76,9 @@ test("abnormal worker termination preserves instance lock and blocks restart", a
   manager.processes[1].child.kill(); await manager.processes[1].ended;
   await new Promise(resolve => setTimeout(resolve, 40));
   assert.equal(manager.state, "failed");
-  await assert.rejects(manager.stop(), /实例锁/);
+  await assert.rejects(manager.stop(), /上次运行未正常结束/);
   assert.ok(await fs.stat(path.join(root, "data", ".instance-operation.lock")));
-  await assert.rejects(manager.start(), /实例锁/);
+  await assert.rejects(manager.start(), /上次运行未正常结束/);
 });
 
 test("port occupation fails before taking the instance lock", async t => {
@@ -95,7 +95,7 @@ test("stop still closes MCP when Web crashes during draining, and preserves the 
   const { manager, root } = await fixture(t);
   await manager.select({ root, create: true, password: "synthetic-password" }); await manager.start();
   await fs.writeFile(path.join(root, "data", "crash-on-stop"), "synthetic fault");
-  await assert.rejects(manager.stop(), /实例锁/);
+  await assert.rejects(manager.stop(), /上次运行未正常结束/);
   assert.equal((await manager.processes[0].ended).code, 0);
   assert.equal(manager.state, "failed");
   assert.ok(await fs.stat(path.join(root, "data", ".instance-operation.lock")));
@@ -210,15 +210,15 @@ test("directory inspection is read-only and distinguishes new, existing, unrelat
   const unrelated = path.join(base, "unrelated"); await fs.mkdir(unrelated);
   await fs.writeFile(path.join(unrelated, "keep.txt"), "untouched");
   assert.equal((await manager.inspect(unrelated)).kind, "invalid");
-  await assert.rejects(manager.select({ root: unrelated, create: true, password: "synthetic-password" }), /已有文件/);
-  await assert.rejects(manager.select({ root: unrelated }), /已有文件/);
+  await assert.rejects(manager.select({ root: unrelated, create: true, password: "synthetic-password" }), /已有其他文件/);
+  await assert.rejects(manager.select({ root: unrelated }), /已有其他文件/);
   assert.equal(await fs.readFile(path.join(unrelated, "keep.txt"), "utf8"), "untouched");
   await assert.rejects(manager.inspect(packageRoot), /程序目录/);
   await manager.select({ root, create: true, password: "synthetic-password" });
   assert.equal((await manager.inspect(root)).kind, "existing");
   await fs.mkdir(path.join(root, "data", ".instance-operation.lock"));
   assert.equal((await manager.inspect(root)).kind, "invalid");
-  await assert.rejects(manager.select({ root }), /运行锁/);
+  await assert.rejects(manager.select({ root }), /上次运行未正常结束/);
   assert.equal((await fs.stat(path.join(root, "data", ".instance-operation.lock"))).isDirectory(), true);
 });
 

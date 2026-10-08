@@ -26,7 +26,7 @@ export class InstanceStore {
   }
 
   async select(origin: string, capabilities: InstanceCapabilities, localHttp: boolean): Promise<void> {
-    if (!this.store) throw new Error('实例设置尚未初始化');
+    if (!this.store) throw new Error('连接设置尚未初始化');
     const key = `instance:${origin}:${capabilities.instanceId}`;
     let namespace = await this.store.get(key, '') as string;
     if (!namespace) { namespace = util.generateRandomUUID(); await this.store.put(key, namespace); }

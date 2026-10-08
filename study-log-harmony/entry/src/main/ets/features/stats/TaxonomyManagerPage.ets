@@ -314,7 +314,7 @@ export struct TaxonomyManagerPage {
                 $r('app.color.error') : $r('app.color.muted'))
             }
             if (!activeInstance.capabilities?.features.aiTaxonomy.configured) {
-              Text('当前实例尚未配置分类建议模型').fontSize(11).fontColor($r('app.color.muted'))
+              Text('尚未配置分类建议模型').fontSize(11).fontColor($r('app.color.muted'))
             } else if (!this.data.savedTaxonomy.domains.some((domain: string) => domain !== '其他')) {
               Text('请先添加并保存自定义领域').fontSize(11).fontColor($r('app.color.muted'))
             } else if (this.data.hasChanges()) {

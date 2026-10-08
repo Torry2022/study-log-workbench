@@ -209,7 +209,7 @@ export struct NoteCandidateExtractor {
 
   private async extract(): Promise<void> {
     if (!activeInstance.capabilities?.features.aiNoteExtraction.configured) {
-      this.message = '当前实例尚未配置随记提取模型'; return;
+      this.message = '尚未配置随记提取模型'; return;
     }
     if (this.files.length === 0 || this.loading) {
       if (this.files.length === 0) this.message = '请先选择文档';
@@ -521,12 +521,12 @@ export struct NoteCandidateExtractor {
       if (this.materialsExpanded) {
         if (this.contentWidth >= 600) {
           Row({ space: 16 }) {
-            Text(this.loading ? '正在分析文档…' : '文件正文将发送给当前实例配置的模型处理，原件不会保存在服务器中。')
+            Text(this.loading ? '正在分析文档…' : '文件正文将发送给已配置的模型处理，原件不会保存在服务器中。')
               .fontSize(12).lineHeight(18).fontColor($r('app.color.muted')).layoutWeight(1)
             this.extractAction()
           }.width('100%')
         } else {
-          Text(this.loading ? '正在分析文档…' : '文件正文将发送给当前实例配置的模型处理，原件不会保存在服务器中。')
+          Text(this.loading ? '正在分析文档…' : '文件正文将发送给已配置的模型处理，原件不会保存在服务器中。')
             .width('100%').fontSize(12).lineHeight(18).fontColor($r('app.color.muted'))
           Row() { this.extractAction() }.width('100%').justifyContent(FlexAlign.End)
         }
@@ -573,7 +573,7 @@ export struct NoteCandidateExtractor {
           .border({ width: { bottom: 1 }, color: $r('app.color.hairline') })
         this.materials()
         if (!activeInstance.capabilities?.features.aiNoteExtraction.configured) {
-          Text('当前实例尚未配置随记提取模型').fontSize(12).fontColor($r('app.color.muted'))
+          Text('尚未配置随记提取模型').fontSize(12).fontColor($r('app.color.muted'))
         }
         InlineStatus({ text: this.message, error: true })
         InlineStatus({ text: this.warning, error: false })

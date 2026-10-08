@@ -374,7 +374,7 @@ export struct QaPage {
                   .onKeyEvent((event: KeyEvent) => textNavigationKey(event))
 
                 if (!this.configured) {
-                  Text('当前实例尚未配置问答模型，仍可查看已有历史。')
+                  Text('尚未配置问答模型，仍可查看已有历史。')
                     .fontSize(11).fontColor($r('app.color.muted')).width('100%')
                 }
 

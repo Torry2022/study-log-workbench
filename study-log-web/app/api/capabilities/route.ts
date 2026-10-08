@@ -33,6 +33,6 @@ export async function GET(request: NextRequest) {
       }
     }, { headers: { "Cache-Control": "no-store" } });
   } catch {
-    return NextResponse.json({ error: "实例尚未正确初始化" }, { status: 503 });
+    return NextResponse.json({ error: "工作台尚未完成初始化" }, { status: 503 });
   }
 }

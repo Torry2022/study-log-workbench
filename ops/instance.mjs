@@ -12,18 +12,18 @@ export async function assertNoLinks(target) {
       if (error.code === "ENOENT") return null;
       throw error;
     });
-    if (stat?.isSymbolicLink()) throw new Error("实例路径不能包含符号链接或目录联接");
+    if (stat?.isSymbolicLink()) throw new Error("保存路径不能包含符号链接或目录联接");
   }
 }
 
 export async function acquireInstanceLock(data, operation = "maintenance") {
-  if (!data || !path.isAbsolute(data)) throw new Error("实例锁需要明确的数据绝对路径");
+  if (!data || !path.isAbsolute(data)) throw new Error("运行锁需要明确的数据绝对路径");
   await assertNoLinks(data);
-  if (!(await fs.stat(data)).isDirectory()) throw new Error("实例数据路径必须是目录");
+  if (!(await fs.stat(data)).isDirectory()) throw new Error("学习记录保存路径必须是目录");
   const lock = path.join(data, ".instance-operation.lock");
   try { await fs.mkdir(lock, { mode: 0o700 }); }
   catch (error) {
-    if (error.code === "EEXIST") throw new Error("实例正在运行、维护或存在待检查的遗留锁");
+    if (error.code === "EEXIST") throw new Error("此保存位置可能仍在使用，或上次运行未正常结束。请先关闭正在使用它的工作台；仍无法打开时，请按维护说明检查，不要删除文件。");
     throw error;
   }
   const identity = await fs.lstat(lock);
@@ -37,7 +37,7 @@ export async function acquireInstanceLock(data, operation = "maintenance") {
     await assertNoLinks(lock);
     await assertNoLinks(ownerFile);
     const current = await fs.lstat(lock), ownerStat = await fs.lstat(ownerFile);
-    if (!ownerStat.isFile() || ownerStat.size > 4096 || current.ino !== identity.ino || current.dev !== identity.dev || JSON.parse(await fs.readFile(ownerFile, "utf8")).ownerId !== ownerId) throw new Error("实例锁归属已变化；保留锁，请停机检查");
+    if (!ownerStat.isFile() || ownerStat.size > 4096 || current.ino !== identity.ino || current.dev !== identity.dev || JSON.parse(await fs.readFile(ownerFile, "utf8")).ownerId !== ownerId) throw new Error("运行状态发生变化，操作已停止。请按维护说明检查，不要删除文件");
     await fs.unlink(ownerFile);
     await fs.rmdir(lock);
     released = true;
@@ -55,7 +55,7 @@ async function writeNew(file, contents) {
   catch (error) {
     if (error.code !== "EEXIST") throw error;
     const stat = await fs.lstat(file);
-    if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("实例配置必须是普通文件");
+    if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("工作台配置必须是普通文件");
   }
 }
 
@@ -154,7 +154,7 @@ async function upgradeDefaultPrompt(data, name, known) {
 }
 
 export async function initialize(root) {
-  if (!root || !path.isAbsolute(root)) throw new Error("请明确指定实例的绝对路径");
+  if (!root || !path.isAbsolute(root)) throw new Error("请明确指定保存位置的绝对路径");
   root = path.resolve(root);
   await assertNoLinks(root);
   await fs.mkdir(root, { recursive: true, mode: 0o700 });
@@ -165,9 +165,9 @@ export async function initialize(root) {
     await assertNoLinks(identityFile);
     let identity;
     try { identity = JSON.parse(await fs.readFile(identityFile, "utf8")); }
-    catch { throw new Error("目标目录非空且不是已初始化实例；请选择新目录"); }
+    catch { throw new Error("此文件夹已有其他文件；请选择空文件夹或原有学习记录的保存位置"); }
     if (identity.schemaVersion !== 1 || !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(identity.id)) {
-      throw new Error("实例身份无效，请检查目录");
+      throw new Error("工作台标识无效，请检查保存位置");
     }
   }
   await fs.mkdir(data, { recursive: true, mode: 0o700 });
@@ -200,7 +200,7 @@ export async function initialize(root) {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    if (process.argv[2] !== "init") throw new Error("用法：node ops/instance.mjs init 实例绝对路径");
+    if (process.argv[2] !== "init") throw new Error("用法：node ops/instance.mjs init 保存位置绝对路径");
     console.log(JSON.stringify(await initialize(process.argv[3])));
   } catch (error) { console.error(error.message); process.exitCode = 1; }
 }

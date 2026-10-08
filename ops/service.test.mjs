@@ -36,7 +36,7 @@ test("lock ownership metadata survives conflicts and release never removes anoth
   assert.equal(owner.operation, "synthetic-operation"); assert.equal(owner.pid, process.pid);
   await assert.rejects(acquireInstanceLock(data), /运行/);
   await fs.writeFile(ownerFile, JSON.stringify({ ...owner, ownerId: "another-owner" }));
-  await assert.rejects(release(), /归属已变化/);
+  await assert.rejects(release(), /运行状态发生变化/);
   assert.equal(JSON.parse(await fs.readFile(ownerFile, "utf8")).ownerId, "another-owner");
 });
 
@@ -74,7 +74,7 @@ test("runtime rejects malformed identity or credentials before taking a lock", a
   const { root, lock, env } = await fixture(t);
   await assert.rejects(runService(process.execPath, ["-e", "process.exit(0)"], { env: { ...env, APP_PASSWORD: "" }, stdio: "ignore" }), /APP_PASSWORD/);
   await fs.writeFile(path.join(root, "data", ".instance.json"), '{"schemaVersion":1,"id":"wrong"}');
-  await assert.rejects(runService(process.execPath, ["-e", "process.exit(0)"], { env, stdio: "ignore" }), /身份无效/);
+  await assert.rejects(runService(process.execPath, ["-e", "process.exit(0)"], { env, stdio: "ignore" }), /标识无效/);
   await assert.rejects(fs.stat(lock), { code: "ENOENT" });
 });
 

@@ -33,6 +33,6 @@ export async function POST(request: NextRequest) {
     if (error instanceof NoteCandidateInputError) return Response.json({ error: error.message }, { status: 400, headers });
     if (error instanceof ChatConfigurationError || error instanceof WritingPromptError) return Response.json({ error: error.message, code: error.code }, { status: 503, headers });
     if (error instanceof AiChatError) return Response.json({ error: error.message, code: error.code }, { status: error.status, headers });
-    return Response.json({ error: "候选提取失败，请检查实例配置或稍后重试" }, { status: 500, headers });
+    return Response.json({ error: "候选提取失败，请检查模型配置或稍后重试" }, { status: 500, headers });
   }
 }

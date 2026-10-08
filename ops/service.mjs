@@ -5,12 +5,12 @@ import { acquireInstanceLock, assertNoLinks, upgradeDefaultPrompts } from "./ins
 
 export async function validateServiceEnvironment(environment) {
   const data = environment.LOG_ROOT;
-  if (!data || !path.isAbsolute(data)) throw new Error("LOG_ROOT 必须是已初始化实例的数据绝对路径");
+  if (!data || !path.isAbsolute(data)) throw new Error("LOG_ROOT 必须是已初始化学习记录的保存位置绝对路径");
   await assertNoLinks(data);
   const identityFile = path.join(data, ".instance.json");
   await assertNoLinks(identityFile);
   const identity = JSON.parse(await fs.readFile(identityFile, "utf8"));
-  if (identity.schemaVersion !== 1 || typeof identity.id !== "string" || !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(identity.id)) throw new Error("实例身份无效");
+  if (identity.schemaVersion !== 1 || typeof identity.id !== "string" || !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(identity.id)) throw new Error("工作台标识无效");
   for (const [name, minimum] of [["APP_PASSWORD", 12], ["SESSION_SECRET", 32]]) {
     if ((environment[name] || "").trim().length < minimum || /^(?:change-me|replace-|dev-session-secret)/i.test(environment[name])) throw new Error(`${name} 缺失或不安全`);
   }
@@ -36,7 +36,7 @@ export async function runService(command, args, { cwd, env = process.env, stdio 
       child.once("close", (code, signal) => resolve({ code, signal, startupError }));
     });
     if (result.startupError) { await release(); throw new Error("Web 服务进程未能启动，请检查运行环境"); }
-    if (result.code !== 0 || result.signal) throw new Error("Web 服务异常停止，实例锁已保留；确认全部服务停止并核对资料后再处理遗留锁");
+    if (result.code !== 0 || result.signal) throw new Error("工作台服务异常停止，暂时无法重新打开。请按维护说明检查服务和学习记录，不要删除文件");
     await release();
   } finally { process.off("SIGINT", onInterrupt); process.off("SIGTERM", onTerminate); }
 }

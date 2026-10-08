@@ -6,7 +6,7 @@ import { addFavorite, createFavoriteGroup, FavoriteInputError, listFavoritesSnap
 export const runtime = "nodejs";
 const headers = { "Cache-Control": "no-store" };
 function failure(error: unknown) {
-  return Response.json({ error: error instanceof FavoriteInputError ? error.message : "收藏操作失败，请检查实例文件后重试" },
+  return Response.json({ error: error instanceof FavoriteInputError ? error.message : "收藏操作失败，请检查相关文件后重试" },
     { status: error instanceof FavoriteInputError ? 400 : 500, headers });
 }
 async function body(request: NextRequest): Promise<Record<string, unknown>> {

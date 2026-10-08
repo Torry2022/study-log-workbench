@@ -12,7 +12,7 @@
 
 产品仍面向愿意使用 Markdown 的技术学习者。Windows 提供本机记录；网页、Windows 服务器模式和鸿蒙连接自部署实例，两处记录不自动同步。未新增模板设置或客户端业务协议。
 
-## 最终产物
+## 首轮产物（已由下述文案修正版替代）
 
 目录：`D:\BaiduSyncdisk\study-log-workbench-public-rebuild\.local\candidate-rc6-20261008`。
 
@@ -46,3 +46,19 @@ Compose 首次检查漏传 IMAGE_PREFIX，后一次检查又发现测试脚本�
 ## 发布前最后一步
 
 待用户确认本套产物后，推送源码及新 rc.6 镜像、验证匿名拉取，创建草稿 Release 并核对上传摘要，最后公开预发布并更新下载入口。发布时补 Registry digest；不覆写 rc.5。标注密度和个别回答冗长仍作为体验观察，不宣称长期准确率。
+
+## 文案修正版（当前候选）
+
+同日按用户反馈修正 Windows、网页和鸿蒙的可见用词：不再使用“实例”，改为学习记录、保存位置、服务器或具体配置；日常异常提示不要求理解锁机制。维护文档保留运行锁的准确说明和操作边界，文件名、身份字段、协议与保护机制未变。
+
+当前产物目录：`D:\BaiduSyncdisk\study-log-workbench-public-rebuild\.local\candidate-rc6-wording-20261008`；安装包、服务器 ZIP、校验文件和版本草稿在该目录，首轮安装包仅保留为旧构建证据，不再作为发布候选。仍为未发布的 rc.6，rc.5 发布内容未变。
+
+当前 Windows SHA-256：`e8bb06272f7738c45753c25a7b83f7b539b1a150cc8fbcd84f8815b0f89c09ec`；服务器 ZIP：`880957b7e87d288552c1652768a028e4a77cb517e5fa6465a59cde78d766474a`。
+
+修正版实际验证：Web 类型检查及生产构建通过（`.local/wording-{typecheck,build}.log`）；相关 Web 测试 46 项通过（`wording-web-tests.log`）；初始化、归档、运行生命周期与目录选择 38 项通过、1 项 Linux 平台专用测试在 Windows 跳过（`wording-focused-final.log`）；鸿蒙 228 项协议测试和 HAP 构建通过（`wording-harmony-tests-final.log`、`wording-harmony-build.log`），没有安装设备。
+
+独立 Playwright 的浏览器入口四组通过，覆盖目录状态、真实打包服务启停、启动失败及宽窄／浅深色界面（`.local/wording-launcher-browser/report.json`），截图已核对。最终打包 EXE 的更新检查测试覆盖版本、旧服务器、仅手动请求、新版链接、无更新、离线重试及认证远端；最终证据为 `.local/desktop-updates-1791450800927/report.json`（入口日志 `.local/wording-updates-final.log`）。其无更新提示明确只检查 Windows 桌面端，不含“实例”或“当前包含预发布版本”。
+
+Web 与初始化工具镜像已按修正版重新构建，MCP 代码未变；本地 ACR rc.6 标签已更新，身份见 `.local/rc6-wording-images.json`。本次没有重新执行完整 Compose／问答矩阵，先前结果只作为未改动行为的基线，不冒称新镜像复测。包内生命周期及错误提示源码已与当前源码逐字节核对。
+
+首轮测试中旧文案断言随实际提示更新；另一次并行测试的预算代理断言遇到异步记录读取时序问题，使用包内固定 Node 22 单独复核 3 项通过（`wording-proxy-recheck.log`），未修改代理实现或弱化其断言。浏览器脚本首次漏传包路径，补全入口参数后按原要求重跑。所有验证使用隔离合成数据，没有调用真实模型、覆盖日常安装、推送或发布。

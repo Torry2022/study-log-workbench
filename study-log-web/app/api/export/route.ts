@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     } });
   } catch (error) {
     const status = error instanceof ExportInputError ? 400 : error instanceof ExportNotFoundError ? 404 : error instanceof ExportChangedError ? 409 : error instanceof NoteRecoveryError ? 503 : 500;
-    const message = status === 500 ? "导出失败，请检查实例源文件和附件后重试" : (error as Error).message;
+    const message = status === 500 ? "导出失败，请检查学习记录文件和附件后重试" : (error as Error).message;
     return Response.json({ error: message }, { status, headers: { "Cache-Control": "no-store" } });
   }
 }

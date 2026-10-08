@@ -29,6 +29,6 @@ export async function POST(request: NextRequest) {
     if (error instanceof NoteInputError) return Response.json({ error: error.message }, { status: 400, headers });
     if (error instanceof NoteRecoveryError) return Response.json({ error: error.message, code: "NOTES_RECOVERY_REQUIRED" }, { status: 503, headers });
     if (error instanceof NoteFormatError) return Response.json({ error: error.message }, { status: 500, headers });
-    return Response.json({ error: "批量保存失败，请保留候选并检查实例存储后重试" }, { status: 500, headers });
+    return Response.json({ error: "批量保存失败，请保留候选并检查存储状态后重试" }, { status: 500, headers });
   }
 }

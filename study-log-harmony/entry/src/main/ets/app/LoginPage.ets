@@ -19,7 +19,7 @@ function loginErrorMessage(error: Object, fallback: string): string {
     case '服务器地址无效':
     case '端口无效':
     case 'HTTP 仅允许明确启用的本地或局域网测试地址':
-    case '服务器实例身份已变化，请重新输入密码连接':
+    case '服务器连接信息已变化，请重新输入密码连接':
     case '服务器登录响应无效':
     case '服务器不支持当前公开版接口':
       return error.message;
@@ -74,7 +74,7 @@ export struct LoginPage {
       if (generation !== this.generation) return;
       if (!validCapabilities(capabilities) || capabilities.instanceId !== saved.instanceId) {
         await TokenStore.clear();
-        throw new Error('服务器实例身份已变化，请重新输入密码连接');
+        throw new Error('服务器连接信息已变化，请重新输入密码连接');
       }
       activeInstance.activate(saved.origin, saved.namespace, capabilities);
       restoredConnection = true;

@@ -155,7 +155,7 @@ async function openConnection(target) {
     const remote = { ...target, origin };
     const response = await session.fromPartition(remotePartition(remote)).fetch(origin + '/study-log/api/capabilities', { redirect: 'error', signal: AbortSignal.timeout(10000) });
     const caps = response.ok ? await response.json() : null;
-    if (!checkCapabilities(caps) || caps.instanceId !== remote.instanceId) throw Error('服务器连接已失效或实例已变化，请重新输入密码连接。');
+    if (!checkCapabilities(caps) || caps.instanceId !== remote.instanceId) throw Error('服务器连接已失效或连接信息已变化，请重新输入密码连接。');
     await openWorkspace(null, false, remote);
   } else {
     if (Number.isInteger(savedPreferences.webPort) && savedPreferences.webPort >= 1024 && savedPreferences.webPort <= 65535) manager.ports.web = await availablePort(savedPreferences.webPort).catch(() => 0);
@@ -164,7 +164,7 @@ async function openConnection(target) {
 }
 async function migration() {
   const result = await dialog.showMessageBox(win, { title: '迁移到服务器', message: '将本地学习记录转到服务器继续使用',
-    detail: '先创建完整备份，在服务器恢复到新目录并核对内容，再通过“使用方式”连接服务器。迁移后以服务器为日常记录位置；本地学习记录保留，不会自动同步。备份包含实例配置，请妥善保管。', buttons: ['创建完整备份…', '取消'], cancelId: 1 });
+    detail: '先创建完整备份，在服务器恢复到新目录并核对内容，再通过“使用方式”连接服务器。迁移后以服务器为日常记录位置；本地学习记录保留，不会自动同步。备份包含配置和密钥，请妥善保管。', buttons: ['创建完整备份…', '取消'], cancelId: 1 });
   if (result.response === 0) await backup();
 }
 
@@ -299,7 +299,7 @@ async function checkUpdates() {
     if (owner !== win || owner.isDestroyed()) return;
     const result = await dialog.showMessageBox(owner, { title: '检查更新',
       message: update ? `发现新版本 ${update.version}` : '当前没有可用更新',
-      detail: update ? `当前桌面版本：${app.getVersion()}\n\n可前往发布页查看更新内容并下载安装包。\n安装前，请保存内容并正常退出应用。` : `桌面版本：${app.getVersion()}\n${parseVersion(app.getVersion()).pre.length ? '当前包含预发布版本。' : '当前只检查正式版本。'}\n此检查仅针对 Windows 桌面端，服务器由实例维护者更新。`,
+      detail: update ? `当前桌面版本：${app.getVersion()}\n\n可前往发布页查看更新内容并下载安装包。\n安装前，请保存内容并正常退出应用。` : `桌面版本：${app.getVersion()}\n${parseVersion(app.getVersion()).pre.length ? '当前使用预发布版本。' : '当前只检查正式版本。'}\n此检查仅针对 Windows 桌面端。`,
       buttons: update ? ['查看版本说明与下载', '稍后'] : ['知道了'], cancelId: update ? 1 : 0 });
     if (update && result.response === 0) await shell.openExternal(update.url);
   } catch {

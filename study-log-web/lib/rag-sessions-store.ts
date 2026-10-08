@@ -11,7 +11,7 @@ export class RagSessionConflictError extends Error {
   constructor() { super("问答会话已变化，未覆盖；请保留当前回答并重新读取后核对"); }
 }
 export class RagSessionNotFoundError extends Error { constructor() { super("问答会话不存在"); } }
-export class RagSessionStorageError extends Error { constructor() { super("问答历史存储异常，请保留当前回答并联系实例维护者"); } }
+export class RagSessionStorageError extends Error { constructor() { super("问答历史存储异常，请保留当前回答并检查存储状态"); } }
 type TitleSource = "fallback" | "generated" | "manual";
 interface SessionRecord {
   id: string; title: string; titleSource: TitleSource; createdAt: string; updatedAt: string;

@@ -13,7 +13,7 @@ export function writingConfigurationMessages(capabilities: WritingCapabilities, 
   const configuration = capabilities.aiConfiguration;
   const messages = [...configuration?.provider.issues.map(issue => issue.message) || []];
   if (usesLegacyTemplate && configuration?.templates.generation.issue) messages.push(configuration.templates.generation.issue.message);
-  if (!(usesLegacyTemplate ? capabilities.features.aiWriting.configured : configuration?.provider.configured ?? capabilities.features.aiWriting.configured) && !messages.length) messages.push("日志生成尚未配置完成，请联系实例维护者。仍可导入材料。");
+  if (!(usesLegacyTemplate ? capabilities.features.aiWriting.configured : configuration?.provider.configured ?? capabilities.features.aiWriting.configured) && !messages.length) messages.push("日志生成尚未配置完成，请检查模型配置。仍可导入材料。");
   return messages;
 }
 

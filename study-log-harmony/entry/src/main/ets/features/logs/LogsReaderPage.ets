@@ -2412,7 +2412,7 @@ export struct LogsReaderPage {
       message: this.ai.message || (this.aiMode === 'generate' &&
         !this.ai.generationConfigured(activeInstance.capabilities) || this.aiMode === 'highlight' &&
         !activeInstance.capabilities?.features.aiHighlighting.configured ?
-        (this.aiMode === 'generate' ? '当前实例尚未配置日志生成模型' : '当前实例尚未配置重点标注模型') : ''),
+        (this.aiMode === 'generate' ? '尚未配置日志生成模型' : '尚未配置重点标注模型') : ''),
       desktop: this.isWide(), onClose: () => this.closeAiTools(),
       onImport: () => this.importAiMaterial(),
       onGenerate: () => this.ai.generate(this.session.selectedDate),

@@ -29,6 +29,6 @@ export function ragSessionError(error: unknown): Response {
     : error instanceof RagSessionInputError ? { status: 400, code: "RAG_SESSION_INVALID_INPUT", message: error.message }
     : error instanceof RagSessionConflictError ? { status: 409, code: error.code, message: error.message }
     : error instanceof RagSessionNotFoundError ? { status: 404, code: "RAG_SESSION_NOT_FOUND", message: error.message }
-    : { status: 500, code: "RAG_SESSION_STORAGE_ERROR", message: "问答历史存储异常，请保留当前回答并联系实例维护者" };
+    : { status: 500, code: "RAG_SESSION_STORAGE_ERROR", message: "问答历史存储异常，请保留当前回答并检查存储状态" };
   return Response.json({ error: result.message, code: result.code }, { status: result.status, headers: ragSessionHeaders });
 }

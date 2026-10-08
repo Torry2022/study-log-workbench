@@ -71,8 +71,8 @@ const exit = async page => {
 try {
   let entry = await start();
   await entry.getByLabel("保存位置", { exact: true }).fill(root);
-  await entry.getByLabel("新建实例的访问密码").fill(password);
-  await entry.getByRole("button", { name: "新建实例", exact: true }).click();
+  await entry.getByLabel("访问密码").fill(password);
+  await entry.getByRole("button", { name: "创建学习记录", exact: true }).click();
   await expect(entry.locator("#current")).toHaveText("保存位置已就绪。", { timeout: 30000 });
   let workspace = await openWorkspace(entry);
   await workspace.getByLabel("新建指定日期", { exact: true }).fill(date);

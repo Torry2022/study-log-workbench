@@ -12,7 +12,7 @@ import { atomicPrivateFile, privateDirectory, privateFile, runtimeEnvironment } 
 
 const worker = fileURLToPath(new URL("./worker.mjs", import.meta.url));
 const inside = (root, value) => { const relative = path.relative(root, value); return !relative || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative)); };
-const errorText = "上次运行未正常结束。请先检查服务和文件状态，再按维护说明处理。实例锁已保留。";
+const errorText = "上次运行未正常结束，暂时无法打开。请按维护说明检查服务和文件状态，不要删除学习记录。";
 
 export async function availablePort(preferred = 0) {
   const server = net.createServer();
@@ -80,13 +80,13 @@ export class DesktopManager {
       const identity = JSON.parse(await fs.readFile(identityFile, "utf8"));
       if (identity.schemaVersion !== 1 || !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(identity.id)) throw new Error();
       await this.readEnvironment(root);
-    } catch { return { root, kind: "invalid", message: "此目录已有文件，但不是可用的工作台实例。请选择空目录或已有实例目录。" }; }
+    } catch { return { root, kind: "invalid", message: "此文件夹已有其他文件。请选择空文件夹，或原有学习记录的保存位置。" }; }
     const lock = await fs.lstat(path.join(root, "data", ".instance-operation.lock")).catch(error => { if (error.code === "ENOENT") return null; throw error; });
-    if (lock && !(root === this.root && this.state === "running")) return { root, kind: "invalid", message: "此实例正在使用，或有待检查的运行锁。请先检查，勿删除记录或锁文件。" };
+    if (lock && !(root === this.root && this.state === "running")) return { root, kind: "invalid", message: "此保存位置可能仍在使用，或上次运行未正常结束。请先关闭正在使用它的工作台；仍无法打开时，请按维护说明检查，不要删除文件。" };
     return { root, kind: "existing" };
   }
   async readEnvironment(root = this.root) {
-    if (!root) throw new Error("请先选择保存位置并创建或打开实例");
+    if (!root) throw new Error("请先选择保存位置，并创建或打开学习记录");
     await assertNoLinks(path.join(root, ".env"));
     const env = parseEnv(await fs.readFile(path.join(root, ".env"), "utf8"));
     await validateServiceEnvironment({ ...env, LOG_ROOT: path.join(root, "data") }); return env;
@@ -95,11 +95,11 @@ export class DesktopManager {
     if (this.state !== "stopped") throw new Error("请先停止当前工作台");
     const inspected = await this.inspect(root);
     root = inspected.root;
-    if (inspected.kind !== (create ? "new" : "existing")) throw new Error(inspected.message || (create ? "新实例需要空目录；此目录已有实例，请打开已有实例。" : "此目录尚未创建实例，请先新建。"));
+    if (inspected.kind !== (create ? "new" : "existing")) throw new Error(inspected.message || (create ? "创建学习记录需要空文件夹；此处已有记录，请直接打开。" : "此文件夹尚无学习记录，请先创建。"));
     if (create) {
       if (typeof password !== "string" || password.trim().length < 12 || /[\r\n\0]/.test(password) || /^(?:change-me|replace-|dev-session-secret)/i.test(password)) throw new Error("访问密码至少 12 个字符，不能包含换行或使用占位密码");
       serializeEnvironment({ APP_PASSWORD: password });
-      if ((await fs.readdir(root).catch(error => { if (error.code === "ENOENT") return []; throw error; })).length) throw new Error("新实例需要空目录；已有学习记录请使用打开");
+      if ((await fs.readdir(root).catch(error => { if (error.code === "ENOENT") return []; throw error; })).length) throw new Error("创建学习记录需要空文件夹；已有学习记录请直接打开");
       await privateDirectory(root);
       await initialize(root);
       const env = parseEnv(await fs.readFile(path.join(root, ".env"), "utf8"));
@@ -134,7 +134,7 @@ export class DesktopManager {
     return { apiUrl: env.CHAT_API_URL ?? "", model: env.CHAT_MODEL ?? "", hasKey: Boolean(env.CHAT_API_KEY) };
   }
   async configure({ apiUrl = "", model = "", apiKey, clearKey = false }) {
-    if (!this.root) throw new Error("请先选择保存位置并创建或打开实例");
+    if (!this.root) throw new Error("请先选择保存位置，并创建或打开学习记录");
     if (this.state !== "stopped") throw new Error("请先停止工作台再修改模型配置");
     if (typeof apiUrl !== "string" || typeof model !== "string" || (apiKey !== undefined && typeof apiKey !== "string")) throw new Error("模型配置格式无效");
     if (apiUrl) {

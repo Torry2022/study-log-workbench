@@ -28,7 +28,7 @@ export class TokenStore {
     const tokenAlias = alias();
     const revision = activeInstance.revision;
     await TokenStore.clear();
-    if (revision !== activeInstance.revision) throw new Error('实例已切换');
+    if (revision !== activeInstance.revision) throw new Error('服务器连接已切换');
     const attributes: asset.AssetMap = new Map();
     attributes.set(asset.Tag.ALIAS, bytes(tokenAlias));
     attributes.set(asset.Tag.SECRET, bytes(token));

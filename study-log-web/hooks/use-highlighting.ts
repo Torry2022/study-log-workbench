@@ -35,7 +35,7 @@ export function useHighlighting(options: Options) {
     ...capabilities.aiConfiguration?.provider.issues.map(issue => issue.message) || [],
     ...capabilities.aiConfiguration?.templates.highlighting?.issue ? [capabilities.aiConfiguration.templates.highlighting.issue.message] : []
   ];
-  if (capabilities?.features.aiHighlighting?.supported && !configured && !configurationMessages.length) configurationMessages.push("重点标注尚未配置完成，请联系实例维护者。");
+  if (capabilities?.features.aiHighlighting?.supported && !configured && !configurationMessages.length) configurationMessages.push("重点标注尚未配置完成，请检查模型配置。");
   const inputProblem = !options.date ? "请先选择左侧日块" : options.date > todayInShanghai() ? "不能标注未来日期的日志" : !options.content.trim() ? "当前日块暂无可标注内容" : options.content.length > 60_000 ? "当前日块超过 60,000 字符，暂不支持重点标注" : "";
   const stale = Boolean(review && (review.date !== options.date || review.original !== options.content));
   function feedback(message: string, kind: typeof statusKind = "success") { setStatus(message); setStatusKind(kind); }

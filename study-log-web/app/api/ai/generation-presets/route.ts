@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 const headers = { "Cache-Control": "no-store" };
 function failure(error: unknown) {
   const known = error instanceof GenerationPresetError;
-  return Response.json({ error: known ? error.message : "读取或保存生成方案失败，请检查实例配置后重试", code: known ? error.code : "GENERATION_PRESET_FAILED" }, { status: known ? error.status : 500, headers });
+  return Response.json({ error: known ? error.message : "读取或保存生成方案失败，请检查生成方案文件后重试", code: known ? error.code : "GENERATION_PRESET_FAILED" }, { status: known ? error.status : 500, headers });
 }
 async function body(request: NextRequest): Promise<Record<string, unknown>> {
   const reader = request.body?.getReader();

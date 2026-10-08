@@ -55,7 +55,7 @@ export async function startLauncher({ packageRoot = path.resolve(here, "../.."),
       if (!response.ok || data.launchId !== old.launchId) throw new Error();
       if (openBrowser) browser(`${old.origin}/#${old.token}`);
       return { reused: true, origin: old.origin };
-    } catch { throw new Error(`上次运行未正常结束，或另一个入口仍在启动。请先检查服务和文件状态，再按维护说明处理。启动锁已保留：${lock}`); }
+    } catch { throw new Error(`另一个工作台可能仍在启动，或上次运行未正常结束。请稍后重试；仍无法打开时，请按维护说明检查。保留的运行状态位置：${lock}`); }
   }
   manager ??= new DesktopManager({ packageRoot });
   const token = crypto.randomBytes(32).toString("base64url"), launchId = crypto.randomUUID();
@@ -172,7 +172,7 @@ export async function startLauncher({ packageRoot = path.resolve(here, "../.."),
       for (const [socket, pending] of connections) if (pending === 0) socket.destroySoon();
     });
     const owner = JSON.parse(await fs.readFile(descriptor, "utf8"));
-    if (owner.launchId !== launchId) throw new Error("启动锁归属变化，已保留锁");
+    if (owner.launchId !== launchId) throw new Error("运行状态发生变化，关闭操作已停止。请按维护说明检查，不要删除文件");
     await fs.unlink(descriptor); await fs.rmdir(lock);
   })();
   try {

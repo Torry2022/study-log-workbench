@@ -13,7 +13,7 @@ export interface PromptReadiness { configured: boolean; issue?: PromptIssue }
 const explanations: Record<PromptIssueReason, string> = {
   missing: "文件不存在", empty: "内容为空", too_large: "文件超过 64 KiB",
   invalid_utf8: "文件不是有效 UTF-8 文本", unsafe_path: "路径包含链接或不是普通文件",
-  unreadable: "无法读取文件", invalid_root: "实例数据目录未正确配置"
+  unreadable: "无法读取文件", invalid_root: "学习记录目录未正确配置"
 };
 
 export class WritingPromptError extends Error {

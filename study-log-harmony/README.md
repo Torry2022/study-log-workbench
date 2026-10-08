@@ -34,4 +34,4 @@ node (Join-Path $devEcoStudio 'tools\hvigor\bin\hvigorw.js') --mode module -p pr
 
 原版／公开版模拟器的首点键盘异常仍未定位，维护者真机指定首点路径已有正常结果。独立签名安装和异网络受信 HTTPS 仍是发布前待验条件，USB 反向端口与维护者调试签名不能替代；当前不宣称正式发行验收完成。两端个人版待核查事项见[反馈索引](../docs/personal-edition-feedback.md)，不将同源源码风险直接当作个人版设备已复现。
 
-当前交付和剩余门槛见[进度总览](../docs/current-status.md)，最近构建与网页/API 互通结果见[2026-10-08 记录](../docs/public-delivery-2026-10-08.md)。原生模拟器安装本轮被自动审批拒绝，未记为通过。
+当前交付和剩余门槛见[进度总览](../docs/current-status.md)，最近构建与网页/API 互通结果见[2026-10-08 记录](../docs/public-delivery-2026-10-08.md)。此前原生模拟器安装被自动审批拒绝；用户打开可见模拟器并重新要求安装验证后，安装和原生读写已通过，详见该记录后续补验。

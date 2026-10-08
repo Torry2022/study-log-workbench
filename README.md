@@ -30,11 +30,11 @@ Windows 桌面端既可本地使用，也可连接服务器。本地资料与服
 2. 点击“今天”，写下学习内容并保存；关闭应用会正常停止本地服务。
 3. 需要 AI 时再到“文件 → 模型设置…”配置。需要独立备份时使用“文件 → 备份全部资料…”。
 
-无需安装 Node、Docker 或另开浏览器。安装包尚未签名，GitHub Release 下载入口将在发布时补齐；目前可按[桌面构建说明](docs/windows-desktop.md#开发与验收)自行构建。此前的[浏览器本地包](docs/windows-portable.md)仍保留，但不是首选入口。
+无需安装 Node、Docker 或另开浏览器。下载 [Windows x64 安装包](https://github.com/Torry2022/study-log-workbench-public/releases/download/v0.1.0-rc.3/study-log-desktop-0.1.0-x64-setup.exe)，或查看[预发布说明与 SHA-256 校验文件](https://github.com/Torry2022/study-log-workbench-public/releases/tag/v0.1.0-rc.3)。安装包尚未签名；也可按[桌面构建说明](docs/windows-desktop.md#开发与验收)自行构建。此前的[浏览器本地包](docs/windows-portable.md)仍保留，但不是首选入口。
 
 ### 服务器：使用预构建镜像
 
-准备自己的 Linux amd64 主机及 Docker Compose，下载 `deploy/` 中的部署文件，按[部署指南](deploy/README.md)完成初始化和启动。使用公开 ACR 镜像无需阿里云账号，也无需在服务器安装 Node 或构建源码。
+准备自己的 Linux amd64 主机及 Docker Compose，下载[服务器部署配置包](https://github.com/Torry2022/study-log-workbench-public/releases/download/v0.1.0-rc.3/study-log-server-0.1.0-rc.3.zip)（或使用 `deploy/` 中的文件），按[部署指南](deploy/README.md)完成初始化和启动。使用公开 ACR 镜像无需阿里云账号，也无需在服务器安装 Node 或构建源码。
 
 镜像、Compose 示例和[版本说明](deploy/RELEASE-NOTES.md)配套使用；不要混用版本。首次先验证本机访问，再按需配置模型、HTTPS 和其他客户端。域名及服务器由部署者自行准备，本项目不提供公共服务地址，也不修改其他应用的配置。
 

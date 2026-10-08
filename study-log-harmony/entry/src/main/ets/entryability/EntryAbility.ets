@@ -10,6 +10,9 @@ const KEEP_SCREEN_ON_DURING_ACCEPTANCE = false;
 
 export default class EntryAbility extends UIAbility {
   private mainWindow?: window.Window;
+  private contentReady: boolean = false;
+  private keyboardObserved: boolean = false;
+  private avoidAreaObserved: boolean = false;
   private initialThemeReady: Promise<void> = Promise.resolve();
   private updateStartWindowBackground(mode?: ConfigurationConstant.ColorMode): void {
     // Keep these values aligned with the base/dark start_window_background resources.
@@ -41,9 +44,11 @@ export default class EntryAbility extends UIAbility {
   };
   private bottomAvoidAreaChanged = (): void => {
     if (!this.mainWindow) return;
-    const system = this.mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
-    const navigation = this.mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR);
-    AppStorage.setOrCreate('windowBottomAvoidPx', Math.max(system.bottomRect.height, navigation.bottomRect.height));
+    try {
+      const system = this.mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
+      const navigation = this.mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR);
+      AppStorage.setOrCreate('windowBottomAvoidPx', Math.max(system.bottomRect.height, navigation.bottomRect.height));
+    } catch (_) { /* An already queued event may arrive while the window is closing. */ }
   };
 
   onCreate(): void {
@@ -79,32 +84,67 @@ export default class EntryAbility extends UIAbility {
     if (KEEP_SCREEN_ON_DURING_ACCEPTANCE) this.mainWindow.setWindowKeepScreenOn(true);
     AppStorage.setOrCreate('softwareKeyboardVisible', false);
     AppStorage.setOrCreate('softwareKeyboardHeightPx', 0);
-    this.mainWindow.on('keyboardHeightChange', this.keyboardHeightChanged);
-    this.mainWindow.on('avoidAreaChange', this.bottomAvoidAreaChanged);
+    this.contentReady = false;
+    const createdWindow = this.mainWindow;
     this.updateSystemBars(this.context.config.colorMode);
-    this.initialThemeReady.then(() => stage.loadContent('pages/Index', (error) => {
-      if (!error.code) this.bottomAvoidAreaChanged();
-      if (error.code || deviceInfo.deviceType !== '2in1' || !this.mainWindow) return;
+    this.initialThemeReady.then(() => {
+      if (this.mainWindow !== createdWindow) return;
+      stage.loadContent('pages/Index', (error) => {
+        if (this.mainWindow !== createdWindow || error.code) return;
+        this.contentReady = true;
+        this.observeWindow();
+        if (deviceInfo.deviceType !== '2in1') return;
+        try {
+          this.mainWindow.setWindowDecorHeight(40);
+          this.mainWindow.setWindowTitleMoveEnabled(false);
+          this.mainWindow.setWindowDecorVisible(false);
+          DesktopWindow.mainWindow = this.mainWindow;
+          AppStorage.setOrCreate<boolean>('desktopWindowChrome', true);
+        } catch (_) {
+          this.mainWindow.setWindowDecorVisible(true);
+          this.mainWindow.setWindowTitleMoveEnabled(true);
+        }
+      });
+    });
+  }
+
+  private observeWindow(): void {
+    if (!this.mainWindow || !this.contentReady) return;
+    // Listener registration needs a loaded window; retry a failed registration on foreground.
+    if (!this.keyboardObserved) {
       try {
-        this.mainWindow.setWindowDecorHeight(40);
-        this.mainWindow.setWindowTitleMoveEnabled(false);
-        this.mainWindow.setWindowDecorVisible(false);
-        DesktopWindow.mainWindow = this.mainWindow;
-        AppStorage.setOrCreate<boolean>('desktopWindowChrome', true);
-      } catch (_) {
-        this.mainWindow.setWindowDecorVisible(true);
-        this.mainWindow.setWindowTitleMoveEnabled(true);
-      }
-    }));
+        this.mainWindow.on('keyboardHeightChange', this.keyboardHeightChanged);
+        this.keyboardObserved = true;
+      } catch (_) { console.warn('Keyboard observer is waiting for the main window.'); }
+    }
+    if (!this.avoidAreaObserved) {
+      try {
+        this.mainWindow.on('avoidAreaChange', this.bottomAvoidAreaChanged);
+        this.avoidAreaObserved = true;
+      } catch (_) { console.warn('Avoid-area observer is waiting for the main window.'); }
+    }
+    this.bottomAvoidAreaChanged();
+  }
+
+  onForeground(): void {
+    this.observeWindow();
   }
 
   onWindowStageDestroy(): void {
-    this.mainWindow?.off('keyboardHeightChange', this.keyboardHeightChanged);
-    this.mainWindow?.off('avoidAreaChange', this.bottomAvoidAreaChanged);
+    const closingWindow = this.mainWindow;
+    this.mainWindow = undefined;
+    this.contentReady = false;
+    try {
+      if (this.keyboardObserved) closingWindow?.off('keyboardHeightChange', this.keyboardHeightChanged);
+    } catch (_) { /* The system may already have destroyed the window. */ }
+    try {
+      if (this.avoidAreaObserved) closingWindow?.off('avoidAreaChange', this.bottomAvoidAreaChanged);
+    } catch (_) { /* Release the remaining state even when the window is gone. */ }
+    this.keyboardObserved = false;
+    this.avoidAreaObserved = false;
     AppStorage.setOrCreate('windowBottomAvoidPx', 0);
     AppStorage.setOrCreate('softwareKeyboardVisible', false);
     AppStorage.setOrCreate('softwareKeyboardHeightPx', 0);
-    this.mainWindow = undefined;
     DesktopWindow.mainWindow = undefined;
   }
 }

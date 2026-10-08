@@ -24,7 +24,7 @@ const manager = new DesktopManager({ packageRoot: payload,
   }) });
 const preferences = path.join(app.getPath('userData'), 'desktop.json');
 let workspaceView, titleMenu, connectionWindow, nextConnection, connectionLocal;
-let closeAfterTransition = false;
+let closeAfterTransition = false, reopenAfterExit = false;
 let savedPreferences = {}, active = { mode: 'local' };
 const workspaceUrl = () => active.mode === 'remote' ? active.origin + '/study-log' : manager.url;
 const remotePartition = target => 'persist:remote-' + crypto.createHash('sha256').update(target.origin + ':' + target.instanceId).digest('hex').slice(0, 24);
@@ -43,11 +43,40 @@ function titlebarTrusted(event) {
   return win && event.sender === win.webContents && event.senderFrame === win.webContents.mainFrame
     && event.senderFrame.url.split('?')[0] === pathToFileURL(path.join(here, 'titlebar.html')).href;
 }
-ipcMain.on('titlebar:menu', (event, id, x) => {
+let activeTitleMenu;
+function showTitleMenu(id, x, regions) {
+  const owner = win, previous = activeTitleMenu;
+  const state = { id, owner, menu: titleMenu.items[id].submenu, timer: null };
+  activeTitleMenu = state;
+  if (previous) { clearInterval(previous.timer); previous.menu.closePopup(owner); }
+  owner.webContents.send('titlebar:active-menu', id);
+  let lastPoint = screen.getCursorScreenPoint();
+  // Native popups can capture mouse events before the titlebar renderer receives them.
+  state.timer = setInterval(() => {
+    if (owner.isDestroyed()) { clearInterval(state.timer); return; }
+    const point = screen.getCursorScreenPoint();
+    if (point.x === lastPoint.x && point.y === lastPoint.y) return;
+    lastPoint = point;
+    const bounds = owner.getContentBounds();
+    if (point.y < bounds.y || point.y >= bounds.y + 36) return;
+    const target = regions.findIndex(region => point.x - bounds.x >= region.left && point.x - bounds.x < region.right);
+    if (target >= 0 && target !== state.id) showTitleMenu(target, regions[target].left, regions);
+  }, 50);
+  state.menu.popup({ window: owner, x: Math.max(0, Math.min(owner.getContentSize()[0] - 1, Math.round(x))), y: 36,
+    callback: () => {
+      clearInterval(state.timer);
+      if (activeTitleMenu !== state) return;
+      activeTitleMenu = null;
+      if (!owner.isDestroyed()) owner.webContents.send('titlebar:active-menu', -1);
+    } });
+}
+ipcMain.on('titlebar:menu', (event, id, x, hover, regions) => {
   if (!titlebarTrusted(event) || !Number.isInteger(id) || id < 0 || id > 3 || !Number.isFinite(x)) return;
   if (settingsWindow || connectionWindow || finishing) return;
+  if (!Array.isArray(regions) || regions.length !== 4 || !regions.every(r => Number.isFinite(r?.left) && Number.isFinite(r?.right) && r.right > r.left)) return;
+  if (hover && (!activeTitleMenu || activeTitleMenu.id === id)) return;
   workspaceView.webContents.focus();
-  titleMenu.items[id].submenu.popup({ window: win, x: Math.max(0, Math.min(win.getContentSize()[0] - 1, Math.round(x))), y: 36 });
+  showTitleMenu(id, x, regions);
 });
 ipcMain.on('titlebar:workspace', event => { if (titlebarTrusted(event)) workspaceView.webContents.focus(); });
 ipcMain.on('workbench:theme', (event, theme) => {
@@ -189,7 +218,7 @@ ipcMain.handle('settings:read', event => {
   if (!settingsTrusted(event)) throw Error('无效窗口');
   return manager.configuration();
 });
-ipcMain.handle('settings:save', (event, value) => {
+ipcMain.handle('settings:save', async (event, value) => {
   if (!settingsTrusted(event) || finishing || pendingAction) throw Error('当前无法保存');
   if (!value || typeof value.apiUrl !== 'string' || typeof value.model !== 'string'
     || typeof value.apiKey !== 'string' || typeof value.clearKey !== 'boolean') throw Error('模型配置格式无效');
@@ -199,6 +228,9 @@ ipcMain.handle('settings:save', (event, value) => {
   }
   if (/[\u0000-\u001f\u007f]/.test(value.model) || value.apiKey && /[^\x21-\x7e]/.test(value.apiKey)) throw Error('模型配置含无效字符');
   const config = { apiUrl: value.apiUrl, model: value.model, apiKey: value.apiKey, clearKey: value.clearKey };
+  const current = await manager.configuration();
+  if (!settingsTrusted(event) || finishing || pendingAction) throw Error('当前无法保存');
+  if (config.apiUrl === current.apiUrl && config.model === current.model && !config.apiKey && !(config.clearKey && current.hasKey)) return;
   pendingAction = async () => { await manager.configure(config); };
   settingsWindow.close(); win.close();
 });
@@ -206,22 +238,39 @@ ipcMain.handle('history:read', event => {
   if (!settingsTrusted(event, 'history.html')) throw Error('无效窗口');
   return manager.historyConfiguration();
 });
-ipcMain.handle('history:save', (event, value) => {
+ipcMain.handle('history:save', async (event, value) => {
   if (!settingsTrusted(event, 'history.html') || finishing || pendingAction) throw Error('当前无法保存');
   if (typeof value?.enabled !== 'boolean' || ![0, 30, 90, 180, 365].includes(value.days)) throw Error('历史版本设置无效');
+  const current = await manager.historyConfiguration();
+  if (!settingsTrusted(event, 'history.html') || finishing || pendingAction) throw Error('当前无法保存');
+  if (current.enabled === value.enabled && current.days === value.days) return;
   pendingAction = async () => { await manager.configureHistory(value); };
   settingsWindow.close(); win.close();
 });
 async function settings(kind = 'model') {
   if (finishing || pendingAction || manager.state !== 'running') return;
-  if (settingsWindow) { settingsWindow.focus(); return; }
-  settingsWindow = new BrowserWindow({ parent: win, modal: true, width: 600, height: 640, minWidth: 420, minHeight: 520,
+  if (settingsWindow && !settingsWindow.isDestroyed() && !settingsWindow.webContents.isDestroyed()) { settingsWindow.focus(); return; }
+  const owner = win;
+  const area = screen.getDisplayMatching(owner.getBounds()).workArea;
+  settingsWindow = new BrowserWindow({ parent: owner, modal: true, show: false, useContentSize: true,
+    width: Math.min(600, area.width - 80), height: Math.min(620, area.height - 100), minWidth: 360, minHeight: 320,
+    minimizable: false, maximizable: false,
     title: kind === 'history' ? '日志历史版本' : '模型设置', autoHideMenuBar: true, backgroundColor: nativeTheme.shouldUseDarkColors ? '#151412' : '#faf9f5',
     webPreferences: { preload: path.join(here, kind === 'history' ? 'history-preload.cjs' : 'settings-preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false } });
-  settingsWindow.webContents.on('will-navigate', event => event.preventDefault());
-  settingsWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  settingsWindow.on('closed', () => { settingsWindow = null; });
-  await settingsWindow.loadFile(path.join(here, kind === 'history' ? 'history.html' : 'settings.html'));
+  const current = settingsWindow;
+  current.webContents.on('will-navigate', event => event.preventDefault());
+  current.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  current.on('close', () => { current.hide(); if (settingsWindow === current) settingsWindow = null; });
+  current.on('closed', () => {
+    if (settingsWindow === current) settingsWindow = null;
+    if (!settingsWindow && !finishing && !pendingAction && !owner.isDestroyed()) { owner.focus(); workspaceView?.webContents.focus(); }
+  });
+  await current.loadFile(path.join(here, kind === 'history' ? 'history.html' : 'settings.html'));
+  if (current.isDestroyed()) return;
+  const height = await current.webContents.executeJavaScript('Math.ceil(document.querySelector("main").getBoundingClientRect().height)');
+  if (current.isDestroyed()) return;
+  current.setContentSize(current.getContentSize()[0], Math.min(height, area.height - 100));
+  current.show();
 }
 
 const reportError = error => dialog.showMessageBox(win && !win.isDestroyed() ? win : undefined,
@@ -286,6 +335,7 @@ function menu() {
 async function finishWindow() {
   if (finishing) { closeAfterTransition = true; return; }
   finishing = true;
+  await savePreferences().catch(reportError);
   await manager.operation(() => manager.shutdown());
   win = null;
   const target = nextConnection; nextConnection = null;
@@ -306,7 +356,9 @@ async function finishWindow() {
       return;
     } catch (error) { await reportError(error); await manager.shutdown(); }
   }
-  quitting = true; app.quit();
+  quitting = true;
+  if (reopenAfterExit) app.relaunch();
+  app.quit();
 }
 
 async function openWorkspace(root, createDefault = false, remote = null) {
@@ -321,12 +373,22 @@ async function openWorkspace(root, createDefault = false, remote = null) {
     await savePreferences();
   });
   const dark = nativeTheme.shouldUseDarkColors;
-  win = new BrowserWindow({ title: '学习日志工作台', width: 1440, height: 960, minWidth: 420, minHeight: 560, show: false,
+  const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  const savedSize = savedPreferences.windowSize;
+  const maxWidth = Math.max(1, area.width - 80), maxHeight = Math.max(1, area.height - 80);
+  const minWidth = Math.min(420, maxWidth), minHeight = Math.min(560, maxHeight);
+  const width = Math.min(maxWidth, Math.max(minWidth, Number.isFinite(savedSize?.width) ? Math.round(savedSize.width) : Math.min(1280, Math.round(area.width * 0.78))));
+  const height = Math.min(maxHeight, Math.max(minHeight, Number.isFinite(savedSize?.height) ? Math.round(savedSize.height) : Math.min(820, Math.round(area.height * 0.8), Math.round(width / 1.6))));
+  win = new BrowserWindow({ title: '学习日志工作台', width, height, minWidth, minHeight,
+    x: area.x + Math.round((area.width - width) / 2), y: area.y + Math.round((area.height - height) / 2), show: false,
     titleBarStyle: 'hidden', titleBarOverlay: { height: 36, color: dark ? '#151412' : '#faf9f5', symbolColor: dark ? '#f5f0e8' : '#141413' },
     ...(app.isPackaged ? { icon: path.join(process.resourcesPath, 'icon.png') } : {}),
     backgroundColor: dark ? '#151412' : '#faf9f5',
     webPreferences: { preload: path.join(here, 'titlebar-preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true } });
   const current = win;
+  current.once('closed', () => {
+    if (activeTitleMenu?.owner === current) { clearInterval(activeTitleMenu.timer); activeTitleMenu = null; }
+  });
   current.webContents.on('will-navigate', event => event.preventDefault());
   current.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   workspaceView = new WebContentsView({ webPreferences: {
@@ -340,6 +402,8 @@ async function openWorkspace(root, createDefault = false, remote = null) {
   // The workspace owns beforeunload; the shell closes only after it accepts leaving.
   let contentClosed = false, closeRequested = false;
   current.on('close', event => {
+    const bounds = current.getNormalBounds();
+    savedPreferences.windowSize = { width: bounds.width, height: bounds.height, maximized: current.isMaximized() };
     if (contentClosed) return;
     event.preventDefault();
     if (!closeRequested) { closeRequested = true; content.close({ waitForBeforeUnload: true }); }
@@ -373,7 +437,7 @@ async function openWorkspace(root, createDefault = false, remote = null) {
     if (choice === 1) event.preventDefault(); else { nextRoot = null; pendingAction = null; nextConnection = null; closeRequested = false; }
   });
   content.on('render-process-gone', () => { void reportError(new Error('页面意外退出，请关闭后重新打开。已保存的学习记录仍保留。')); });
-  current.on('closed', () => { void finishWindow(); });
+  current.on('closed', () => { if (win === current) win = null; void finishWindow(); });
 
   if (!remote) await authenticate(content.session);
   // Renew only the current local session, without reloading or losing editor state.
@@ -387,16 +451,22 @@ async function openWorkspace(root, createDefault = false, remote = null) {
   await content.loadURL(workspaceUrl());
   current.webContents.send('titlebar:location', remote ? remote.origin : '本地使用');
   if (remote) { savedPreferences = { ...savedPreferences, mode: 'remote', remote }; await savePreferences(); }
+  if (savedSize?.maximized === true) current.maximize();
+  reopenAfterExit = false;
   current.show(); content.focus();
 }
 
 app.on('before-quit', event => {
-  if (!quitting) { event.preventDefault(); if (win) win.close(); else if (!finishing) void finishWindow(); }
+  if (!quitting) { event.preventDefault(); if (win && !win.isDestroyed()) win.close(); else if (!finishing) void finishWindow(); }
 });
 app.on('window-all-closed', () => {});
 if (!app.requestSingleInstanceLock()) { quitting = true; app.quit(); }
 else {
-  app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } else connectionWindow?.focus(); });
+  app.on('second-instance', () => {
+    if (finishing || quitting) { reopenAfterExit = true; return; }
+    if (win && !win.isDestroyed()) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); }
+    else if (connectionWindow && !connectionWindow.isDestroyed()) connectionWindow.focus();
+  });
   void app.whenReady().then(async () => { try {
     await privateDirectory(app.getPath('userData'));
     try { savedPreferences = JSON.parse(await fs.readFile(preferences, 'utf8')); }

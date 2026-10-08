@@ -822,20 +822,49 @@
     .reader-toolbar-log:has(.editor-toolbar-actions, .reader-secondary-actions > .button) .log-toolbar-more { display: inline-flex; }
   }
 
-  @container reader-workspace (max-width: 1200px) {
-    .reader-toolbar-log .view-mode-switch { min-width: 0; }
-    .reader-toolbar-log .day-nav-button,
-    .reader-toolbar-log .view-mode-button,
-    .reader-toolbar-log .day-toolbar-actions > .button,
-    .reader-toolbar-log .day-toolbar-actions > .export-menu > .button {
-      width: 36px;
-      min-width: 36px;
-      flex: 0 0 36px;
-      padding: 0;
-      gap: 0;
-      font-size: 0;
+  /* Match Harmony label priority: navigation, mode, save, refresh, export, history, delete. */
+  .reader-toolbar-log .view-mode-switch { min-width: 0; }
+  @container reader-workspace (max-width: 1180px) {
+    .reader-toolbar-log .log-action-delete {
+      width: 36px; min-width: 36px; flex: 0 0 36px;
+      padding: 0; gap: 0; font-size: 0;
     }
-    .reader-toolbar-log .reader-heading-row { gap: 8px; }
+  }
+  @container reader-workspace (max-width: 1140px) {
+    .reader-toolbar-log .log-action-backup {
+      width: 36px; min-width: 36px; flex: 0 0 36px;
+      padding: 0; gap: 0; font-size: 0;
+    }
+  }
+  @container reader-workspace (max-width: 1060px) {
+    .reader-toolbar-log .log-action-export > .button {
+      width: 36px; min-width: 36px; flex: 0 0 36px;
+      padding: 0; gap: 0; font-size: 0;
+    }
+  }
+  @container reader-workspace (max-width: 1020px) {
+    .reader-toolbar-log .log-action-refresh {
+      width: 36px; min-width: 36px; flex: 0 0 36px;
+      padding: 0; gap: 0; font-size: 0;
+    }
+  }
+  @container reader-workspace (max-width: 980px) {
+    .reader-toolbar-log .toolbar-save-button {
+      width: 36px; min-width: 36px; flex: 0 0 36px;
+      padding: 0; gap: 0; font-size: 0;
+    }
+  }
+  @container reader-workspace (max-width: 940px) {
+    .reader-toolbar-log .view-mode-button {
+      width: 36px; min-width: 36px; flex: 0 0 36px;
+      padding: 0; gap: 0; font-size: 0;
+    }
+  }
+  @container reader-workspace (max-width: 820px) {
+    .reader-toolbar-log .day-nav-button {
+      width: 36px; min-width: 36px; flex: 0 0 36px;
+      padding: 0; gap: 0; font-size: 0;
+    }
   }
 
   @container reader-workspace (max-width: 850px) {

@@ -1,0 +1,37 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import {createRequire} from 'node:module';
+import {workspacePage} from './workspace-test.mjs';
+const require=createRequire(new URL('../../study-log-web/package.json',import.meta.url));
+const {_electron:electron}=require('@playwright/test');
+const er=createRequire(new URL('./package.json',import.meta.url));
+const profile=await fs.mkdtemp(path.join(os.tmpdir(),'window-size-'));
+const output=path.resolve('.local',`window-size-${Date.now()}`);await fs.mkdir(output);
+const env={...process.env,STUDY_LOG_DESKTOP_PROFILE:profile};delete env.ELECTRON_RUN_AS_NODE;
+let app;
+const start=async()=>{app=await electron.launch({executablePath:er('electron'),args:[path.resolve('ops/electron')],env});return workspacePage(app);};
+const close=async()=>{const done=app.waitForEvent('close');await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().forEach(w=>w.close()));await done;app=null;};
+try{
+ let page=await start();
+ const initial=await app.evaluate(({BrowserWindow,screen})=>{const w=BrowserWindow.getAllWindows()[0];return {bounds:w.getBounds(),area:screen.getDisplayMatching(w.getBounds()).workArea};});
+ assert.ok(initial.bounds.width<=1280 && initial.bounds.height<=820);
+ assert.ok(initial.bounds.x>=initial.area.x && initial.bounds.y>=initial.area.y);
+ assert.ok(initial.bounds.x+initial.bounds.width<=initial.area.x+initial.area.width);
+ assert.ok(initial.bounds.y+initial.bounds.height<=initial.area.y+initial.area.height);
+ await page.screenshot({path:path.join(output,'default-workspace.png')});
+ const manual=[Math.max(420,initial.bounds.width-40),Math.max(560,initial.bounds.height-40)];
+ await app.evaluate(({BrowserWindow},size)=>BrowserWindow.getAllWindows()[0].setSize(...size),manual);
+ await close();
+ page=await start();
+ const restored=await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].getSize());assert.deepEqual(restored,manual);
+ await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].maximize());
+ await close();
+ await start();assert.equal(await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].isMaximized()),true);
+ await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].unmaximize());
+ assert.deepEqual(await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].getSize()),manual);
+ await close();
+ const preferences=JSON.parse(await fs.readFile(path.join(profile,'desktop.json'),'utf8'));assert.ok(preferences.root && preferences.usageConfirmed);
+ await fs.writeFile(path.join(output,'report.json'),JSON.stringify({initial,restored,passed:['default size within work area','manual resize survives restart','maximized state survives restart','unmaximize restores manual size','instance preferences retained']},null,2));console.log(output);
+}finally{if(app)await close();}

@@ -8,10 +8,11 @@ PC／平板已通过隔离合成实例的双材料原生导入，PC 候选编辑
 
 本机需要 HarmonyOS SDK `6.1.1(24)` 及匹配的 DevEco Studio。在本目录创建不入库的 `local.properties`，设置本机 `sdk.dir`，然后运行：
 
-只构建客户端时，在本目录执行 `npm ci` 即可。运行完整协议测试前，还须在相邻的 `study-log-web` 目录执行 `npm ci`：部分跨端测试会直接导入 Web 的时间和链接实现。然后回到本目录执行 `npm ci` 和 `npm run test:protocol`。当前测试使用 Node.js 的实验性 TypeScript 类型剥离功能；设备验收边界以迁移记录为准。
+在客户端目录执行 `npm ci` 准备 Node 测试依赖，并使用 DevEco 自带 OHPM 执行 `ohpm install` 准备工程依赖。运行完整协议测试前，还须在相邻的 `study-log-web` 目录执行 `npm ci`：部分跨端测试会直接导入 Web 的时间和链接实现。然后回到本目录执行 `npm ci` 和 `npm run test:protocol`。当前测试使用 Node.js 的实验性 TypeScript 类型剥离功能；设备验收边界以迁移记录为准。
 
 ```powershell
 $devEcoStudio = '<DevEco Studio 安装目录>'
+& (Join-Path $devEcoStudio 'tools\ohpm\bin\ohpm.bat') install
 node (Join-Path $devEcoStudio 'tools\hvigor\bin\hvigorw.js') --mode module -p product=default -p module=entry@default -p buildMode=debug assembleHap --no-daemon
 ```
 
@@ -32,3 +33,5 @@ node (Join-Path $devEcoStudio 'tools\hvigor\bin\hvigorw.js') --mode module -p pr
 登录页宽屏背景延伸至顶部系统栏，内容保留安全区；窄屏滚动视口也延伸至顶部，内部内容用实际状态栏高度避让，滚动后允许介绍区进入透明状态栏后方。窄窗版权随表单滚动，宽窗保留底部位置。问答隐藏返回顶部控件的外壳不再阻挡重试点击，保留原布局及动效。对应设备、主题和候选包证据见[工作台恢复清单](../docs/harmony-workspace-recovery.md)，不把有限采样视为每一显示帧通过。
 
 原版／公开版模拟器的首点键盘异常仍未定位，维护者真机指定首点路径已有正常结果。独立签名安装和异网络受信 HTTPS 仍是发布前待验条件，USB 反向端口与维护者调试签名不能替代；当前不宣称正式发行验收完成。两端个人版待核查事项见[反馈索引](../docs/personal-edition-feedback.md)，不将同源源码风险直接当作个人版设备已复现。
+
+当前交付和剩余门槛见[进度总览](../docs/current-status.md)，最近构建与网页/API 互通结果见[2026-10-08 记录](../docs/public-delivery-2026-10-08.md)。原生模拟器安装本轮被自动审批拒绝，未记为通过。

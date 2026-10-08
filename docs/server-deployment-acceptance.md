@@ -1,5 +1,7 @@
 # 服务器预构建部署验收（2026-10-07）
 
+当前交付与剩余项见[进度总览](current-status.md)。下文保留各次操作当时的状态，历史“未发布”等表述不代表当前发布状态。
+
 ## 交付范围
 
 新增 `deploy/compose.yaml`、`.env.example`、`README.md`，服务器仅拉取镜像，不需源码或现场构建。`IMAGE_PREFIX` 可选 ACR 或其他 Registry；`RELEASE_VERSION` 同时控制 Web、MCP、tools。实例父目录与根目录显式填写，默认 Web 只监听宿主 loopback，MCP 不映射端口。源码版 Compose 和现有 Dockerfile 保留。

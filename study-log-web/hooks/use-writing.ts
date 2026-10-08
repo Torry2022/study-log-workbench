@@ -98,7 +98,7 @@ export function useWriting(options: Options) {
     confirming.current = true;
     const token = generation.current;
     try {
-      const accepted = await live.current.onConfirm({ title: "放弃 AI 助手内容？", message: "学习材料、补充要求和生成草稿尚未保存在资料中。离开将清除这些内容并取消正在进行的操作。", confirmLabel: "放弃", tone: "danger" });
+      const accepted = await live.current.onConfirm({ title: "放弃 AI 助手内容？", message: "当前学习材料、补充要求和生成草稿尚未保存。离开将清除这些内容并取消正在进行的操作。", confirmLabel: "放弃", tone: "danger" });
       if (!accepted || !live.current.active || token !== generation.current) return false;
       discard(); return true;
     } finally { confirming.current = false; }

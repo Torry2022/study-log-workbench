@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
   try {
     const [taxonomy, blocks] = await Promise.all([readTaxonomy(), listSavedDayContents()]);
     return Response.json({ taxonomy, catalog: calculateTaxonomyCatalog(parseStatsDays(blocks), taxonomy) }, { headers });
-  } catch { return Response.json({ error: "分类读取失败，请检查实例资料后重试" }, { status: 500, headers }); }
+  } catch { return Response.json({ error: "分类读取失败，请检查实例文件后重试" }, { status: 500, headers }); }
 }
 export async function PUT(request: NextRequest) {
   const unauthorized = requireAuth(request); if (unauthorized) return unauthorized;

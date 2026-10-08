@@ -70,10 +70,10 @@ const exit = async page => {
 };
 try {
   let entry = await start();
-  await entry.getByLabel("资料目录", { exact: true }).fill(root);
+  await entry.getByLabel("保存位置", { exact: true }).fill(root);
   await entry.getByLabel("新建实例的访问密码").fill(password);
   await entry.getByRole("button", { name: "新建实例", exact: true }).click();
-  await expect(entry.locator("#current")).toHaveText("资料目录已就绪。", { timeout: 30000 });
+  await expect(entry.locator("#current")).toHaveText("保存位置已就绪。", { timeout: 30000 });
   let workspace = await openWorkspace(entry);
   await workspace.getByLabel("新建指定日期", { exact: true }).fill(date);
   await workspace.getByRole("button", { name: "新建", exact: true }).filter({ visible: true }).click();
@@ -88,9 +88,9 @@ try {
   await exit(entry); await workspace.close(); await entry.close();
   await context.clearCookies();
   entry = await start();
-  await expect(entry.getByLabel("资料目录", { exact: true })).toHaveValue(root);
+  await expect(entry.getByLabel("保存位置", { exact: true })).toHaveValue(root);
 
-  await expect(entry.locator("#current")).toHaveText("资料目录已就绪。");
+  await expect(entry.locator("#current")).toHaveText("保存位置已就绪。");
   workspace = await openWorkspace(entry);
   await workspace.getByRole("button", { name: "源码", exact: true }).filter({ visible: true }).click();
   await expect(workspace.locator(".cm-content")).toContainText("本机首次记录");
@@ -123,7 +123,7 @@ try {
   await expect(entry.locator("#backup-notice")).toHaveText("备份校验通过。");
   await entry.locator("#restoreRoot").fill(restored);
   await entry.locator("#restore").click();
-  await expect(entry.locator("#backup-notice")).toHaveText("已恢复到新目录，原资料保持不变。", { timeout: 60000 });
+  await expect(entry.locator("#backup-notice")).toHaveText("已恢复到新目录，原有学习记录保持不变。", { timeout: 60000 });
   await context.clearCookies();
   workspace = await openWorkspace(entry);
   await expect(workspace.locator(".workspace")).toContainText("本机首次记录");

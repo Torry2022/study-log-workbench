@@ -47,7 +47,7 @@ try {
   await page.locator("#password").fill("short"); await expect(page.locator("#create")).toBeDisabled();
   await page.locator("#password").fill("synthetic-browser-password"); await expect(page.locator("#create")).toBeEnabled();
   await shot("wide-dark-new");
-  await page.locator("#create").click(); await expect(page.locator("#current")).toHaveText("资料目录已就绪。", { timeout: 30000 });
+  await page.locator("#create").click(); await expect(page.locator("#current")).toHaveText("保存位置已就绪。", { timeout: 30000 });
   await expect(page.locator("#create-fields")).toBeHidden(); await expect(page.locator("#start")).toBeEnabled();
   await expect(page.locator("#directory-notice")).toBeHidden();
   await page.unroute("**/api/pick");
@@ -60,7 +60,7 @@ try {
     await second.goto(`${other.origin}/#${other.token}`); await expect(second.locator("#root")).toBeEnabled();
     await second.locator("#root").fill(selectedRoot); await expect(second.locator("#select")).toBeEnabled();
     await expect(second.locator("#create")).toBeHidden(); await expect(second.locator("#start")).toBeDisabled();
-    await second.locator("#select").click(); await expect(second.locator("#current")).toHaveText("资料目录已就绪。");
+    await second.locator("#select").click(); await expect(second.locator("#current")).toHaveText("保存位置已就绪。");
   } finally { await other.close(); await second.close(); }
   passed.push("Unselected, empty/new, nonempty unrelated, existing-but-unopened and ready directories gate actions; picker and typed paths agree");
   await page.getByText("模型配置（可选）", { exact: true }).click();
@@ -69,7 +69,7 @@ try {
   await page.getByLabel("API Key", { exact: true }).fill("synthetic-browser-key");
   await page.locator("#configure").click(); await expect(page.locator("#keyStatus")).toHaveText("已保存 API Key");
   await expect(page.locator("#apiKey")).toHaveValue("");
-  await page.reload(); await expect(page.locator("#current")).toHaveText("资料目录已就绪。");
+  await page.reload(); await expect(page.locator("#current")).toHaveText("保存位置已就绪。");
   await expect(page.locator("#keyStatus")).toHaveText("已保存 API Key");
   await page.route("**/api/pick", route => route.fulfill({ contentType: "application/json", body: '{"path":""}' }));
   await page.getByRole("button", { name: "选择目录", exact: true }).click();

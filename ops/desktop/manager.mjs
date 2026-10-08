@@ -12,7 +12,7 @@ import { atomicPrivateFile, privateDirectory, privateFile, runtimeEnvironment } 
 
 const worker = fileURLToPath(new URL("./worker.mjs", import.meta.url));
 const inside = (root, value) => { const relative = path.relative(root, value); return !relative || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative)); };
-const errorText = "上次运行未正常结束。请先检查服务和资料状态，再按维护说明处理。实例锁已保留。";
+const errorText = "上次运行未正常结束。请先检查服务和文件状态，再按维护说明处理。实例锁已保留。";
 
 export async function availablePort(preferred = 0) {
   const server = net.createServer();
@@ -62,16 +62,16 @@ export class DesktopManager {
     const result = this.queue.then(work); this.queue = result.catch(() => {}); return result;
   }
   async rootPath(value) {
-    if (typeof value !== "string" || !path.isAbsolute(value)) throw new Error("请选择资料目录的绝对路径");
+    if (typeof value !== "string" || !path.isAbsolute(value)) throw new Error("请选择保存位置的绝对路径");
     const root = path.resolve(value);
-    if (inside(this.packageRoot, root) || inside(root, this.packageRoot)) throw new Error("资料目录必须与程序目录分开，不能使用程序目录或其父目录");
+    if (inside(this.packageRoot, root) || inside(root, this.packageRoot)) throw new Error("保存文件夹必须与程序目录分开，不能使用程序目录或其父目录");
     await assertNoLinks(root); return root;
   }
   async inspect(value) {
     const root = await this.rootPath(value);
     const stat = await fs.stat(root).catch(error => { if (error.code === "ENOENT") return null; throw error; });
     if (!stat) return { root, kind: "new" };
-    if (!stat.isDirectory()) return { root, kind: "invalid", message: "请选择文件夹，不能使用文件作为资料目录。" };
+    if (!stat.isDirectory()) return { root, kind: "invalid", message: "请选择文件夹，不能使用文件作为保存位置。" };
     const entries = await fs.readdir(root);
     if (!entries.length) return { root, kind: "new" };
     try {
@@ -82,11 +82,11 @@ export class DesktopManager {
       await this.readEnvironment(root);
     } catch { return { root, kind: "invalid", message: "此目录已有文件，但不是可用的工作台实例。请选择空目录或已有实例目录。" }; }
     const lock = await fs.lstat(path.join(root, "data", ".instance-operation.lock")).catch(error => { if (error.code === "ENOENT") return null; throw error; });
-    if (lock && !(root === this.root && this.state === "running")) return { root, kind: "invalid", message: "此实例正在使用，或有待检查的运行锁。请先检查，勿删除资料或锁文件。" };
+    if (lock && !(root === this.root && this.state === "running")) return { root, kind: "invalid", message: "此实例正在使用，或有待检查的运行锁。请先检查，勿删除记录或锁文件。" };
     return { root, kind: "existing" };
   }
   async readEnvironment(root = this.root) {
-    if (!root) throw new Error("请先创建或打开资料目录");
+    if (!root) throw new Error("请先选择保存位置并创建或打开实例");
     await assertNoLinks(path.join(root, ".env"));
     const env = parseEnv(await fs.readFile(path.join(root, ".env"), "utf8"));
     await validateServiceEnvironment({ ...env, LOG_ROOT: path.join(root, "data") }); return env;
@@ -99,7 +99,7 @@ export class DesktopManager {
     if (create) {
       if (typeof password !== "string" || password.trim().length < 12 || /[\r\n\0]/.test(password) || /^(?:change-me|replace-|dev-session-secret)/i.test(password)) throw new Error("访问密码至少 12 个字符，不能包含换行或使用占位密码");
       serializeEnvironment({ APP_PASSWORD: password });
-      if ((await fs.readdir(root).catch(error => { if (error.code === "ENOENT") return []; throw error; })).length) throw new Error("新实例需要空目录；已有资料请使用打开");
+      if ((await fs.readdir(root).catch(error => { if (error.code === "ENOENT") return []; throw error; })).length) throw new Error("新实例需要空目录；已有学习记录请使用打开");
       await privateDirectory(root);
       await initialize(root);
       const env = parseEnv(await fs.readFile(path.join(root, ".env"), "utf8"));
@@ -134,7 +134,7 @@ export class DesktopManager {
     return { apiUrl: env.CHAT_API_URL ?? "", model: env.CHAT_MODEL ?? "", hasKey: Boolean(env.CHAT_API_KEY) };
   }
   async configure({ apiUrl = "", model = "", apiKey, clearKey = false }) {
-    if (!this.root) throw new Error("请先创建或打开资料目录");
+    if (!this.root) throw new Error("请先选择保存位置并创建或打开实例");
     if (this.state !== "stopped") throw new Error("请先停止工作台再修改模型配置");
     if (typeof apiUrl !== "string" || typeof model !== "string" || (apiKey !== undefined && typeof apiKey !== "string")) throw new Error("模型配置格式无效");
     if (apiUrl) {

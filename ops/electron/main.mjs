@@ -64,7 +64,7 @@ function connectionTrusted(event) {
 ipcMain.handle('connection:pick-directory', async event => {
   if (!connectionTrusted(event) || finishing || pendingAction || nextConnection) return { error: '请等待当前操作完成。' };
   const current = connectionWindow;
-  const selected = await dialog.showOpenDialog(current, { title: '选择资料文件夹', defaultPath: connectionLocal.root, properties: ['openDirectory', 'createDirectory'] });
+  const selected = await dialog.showOpenDialog(current, { title: '选择保存文件夹', defaultPath: connectionLocal.root, properties: ['openDirectory', 'createDirectory'] });
   if (selected.canceled || current !== connectionWindow) return { canceled: true };
   try {
     const inspected = await manager.inspect(selected.filePaths[0]);
@@ -76,7 +76,7 @@ ipcMain.handle('connection:pick-directory', async event => {
 ipcMain.handle('connection:read', async event => {
   if (!connectionTrusted(event)) throw Error('无效窗口');
   const inspected = await manager.inspect(connectionLocal.root);
-  if (inspected.kind === 'new' && !connectionLocal.create) { inspected.kind = 'invalid'; inspected.message = '没有找到原有资料，请重新选择文件夹。'; }
+  if (inspected.kind === 'new' && !connectionLocal.create) { inspected.kind = 'invalid'; inspected.message = '没有找到原有学习记录，请重新选择文件夹。'; }
   const assets = app.isPackaged ? path.join(payload, 'web/public') : path.join(repository, 'study-log-web/public');
   return { kind: inspected.kind, error: inspected.message, logos: { light: pathToFileURL(path.join(assets, 'app-logo-light.svg')).href, dark: pathToFileURL(path.join(assets, 'app-logo-dark.svg')).href }, mode: win ? active.mode : savedPreferences.mode || 'local', origin: savedPreferences.remote?.origin || '', localHttp: savedPreferences.remote?.localHttp || false, root: connectionLocal.root };
 });
@@ -87,7 +87,7 @@ ipcMain.handle('connection:select', async (event, value) => {
     if (value?.mode === 'local') {
       const inspected = await manager.inspect(connectionLocal.root);
       if (inspected.kind === 'invalid') throw Error(inspected.message);
-      if (inspected.kind === 'new' && !connectionLocal.create) throw Error('没有找到原有资料，请重新选择文件夹。');
+      if (inspected.kind === 'new' && !connectionLocal.create) throw Error('没有找到原有学习记录，请重新选择文件夹。');
       target = { mode: 'local', ...connectionLocal };
     }
     else {
@@ -134,8 +134,8 @@ async function openConnection(target) {
   }
 }
 async function migration() {
-  const result = await dialog.showMessageBox(win, { title: '迁移到服务器', message: '将本地资料转到服务器继续使用',
-    detail: '先备份全部资料，在服务器恢复到新目录并核对内容，再通过“使用方式”连接服务器。迁移后以服务器为日常记录位置；本地资料保留，不会自动同步。备份包含实例配置，请妥善保管。', buttons: ['备份全部资料…', '取消'], cancelId: 1 });
+  const result = await dialog.showMessageBox(win, { title: '迁移到服务器', message: '将本地学习记录转到服务器继续使用',
+    detail: '先创建完整备份，在服务器恢复到新目录并核对内容，再通过“使用方式”连接服务器。迁移后以服务器为日常记录位置；本地学习记录保留，不会自动同步。备份包含实例配置，请妥善保管。', buttons: ['创建完整备份…', '取消'], cancelId: 1 });
   if (result.response === 0) await backup();
 }
 
@@ -151,18 +151,18 @@ async function authenticate(session) {
 
 async function selectExisting() {
   if (finishing || manager.state !== 'running') return;
-  const result = await dialog.showOpenDialog(win, { title: '打开已有资料', properties: ['openDirectory'] });
+  const result = await dialog.showOpenDialog(win, { title: '打开已有学习记录', properties: ['openDirectory'] });
   if (result.canceled) return;
   const selected = result.filePaths[0];
   if (selected === manager.root) return;
   const inspected = await manager.inspect(selected);
-  if (inspected.kind !== 'existing') throw Error(inspected.message || '请选择已有工作台资料所在的文件夹。');
+  if (inspected.kind !== 'existing') throw Error(inspected.message || '请选择已有学习记录所在的文件夹。');
   nextRoot = selected; win.close();
 }
 
 async function backup() {
   if (finishing || pendingAction || manager.state !== 'running') return;
-  const result = await dialog.showSaveDialog(win, { title: '备份全部资料', defaultPath: `学习日志备份-${new Date().toISOString().slice(0, 10)}.slarchive`, filters: [{ name: '备份归档', extensions: ['slarchive'] }] });
+  const result = await dialog.showSaveDialog(win, { title: '创建完整备份', defaultPath: `学习日志备份-${new Date().toISOString().slice(0, 10)}.slarchive`, filters: [{ name: '备份归档', extensions: ['slarchive'] }] });
   if (result.canceled) return;
   pendingAction = async () => { await manager.backup(result.filePath); };
   win.close();
@@ -176,7 +176,7 @@ async function restore() {
   if (destination.canceled) return;
   const root = path.join(destination.filePaths[0], `学习日志恢复-${Date.now()}`);
   const inspected = await manager.inspect(root);
-  if (inspected.kind !== 'new') throw Error('请选择空文件夹，原有资料不会被覆盖。');
+  if (inspected.kind !== 'new') throw Error('请选择空文件夹，原有学习记录不会被覆盖。');
   pendingAction = async () => { await manager.restore(archive.filePaths[0], root); };
   win.close();
 }
@@ -236,7 +236,7 @@ async function about() {
   } catch { serverVersion = '暂时无法读取'; }
   if (owner !== win || owner.isDestroyed()) return;
   await dialog.showMessageBox(owner, { title: '关于学习日志工作台', message: '学习日志工作台',
-    detail: `桌面版本：${app.getVersion()}\n${mode === 'remote' ? '服务器' : '本地服务'}版本：${serverVersion}\n\n${mode === 'remote' ? '服务器更新后，重新打开即可加载新版网页。桌面菜单等功能随安装包更新。' : '网页和本地服务随安装包一起更新。升级保留资料与设置。'}`,
+    detail: `桌面版本：${app.getVersion()}\n${mode === 'remote' ? '服务器' : '本地服务'}版本：${serverVersion}\n\n${mode === 'remote' ? '服务器更新后，重新打开即可加载新版网页。桌面菜单等功能随安装包更新。' : '网页和本地服务随安装包一起更新。升级保留学习记录与设置。'}`,
     buttons: ['关闭'] });
 }
 let checkingUpdate = false;
@@ -262,13 +262,13 @@ function menu() {
   titleMenu = Menu.buildFromTemplate([
     { label: '文件', submenu: [
       { label: '使用方式…', click: () => void connection().catch(reportError) },
-      { label: '打开已有资料…', enabled: active.mode === 'local', click: () => void selectExisting().catch(reportError) },
-      { label: '打开资料所在文件夹', enabled: active.mode === 'local', click: () => { if (manager.root) void shell.openPath(manager.root); } },
+      { label: '打开已有学习记录…', enabled: active.mode === 'local', click: () => void selectExisting().catch(reportError) },
+      { label: '打开保存文件夹', enabled: active.mode === 'local', click: () => { if (manager.root) void shell.openPath(manager.root); } },
       { type: 'separator' },
       { label: '模型设置…', enabled: active.mode === 'local', click: () => void settings().catch(reportError) },
       { label: '日志历史版本…', enabled: active.mode === 'local', click: () => void settings('history').catch(reportError) },
       { type: 'separator' },
-      { label: '备份全部资料…', enabled: active.mode === 'local', click: () => void backup().catch(reportError) },
+      { label: '创建完整备份…', enabled: active.mode === 'local', click: () => void backup().catch(reportError) },
       { label: '从备份恢复…', enabled: active.mode === 'local', click: () => void restore().catch(reportError) },
       { label: '迁移到服务器…', enabled: active.mode === 'local', click: () => void migration().catch(reportError) },
       { type: 'separator' }, { label: '退出', accelerator: 'Alt+F4', click: () => win?.close() }
@@ -313,7 +313,7 @@ async function openWorkspace(root, createDefault = false, remote = null) {
   active = remote || { mode: 'local' };
   if (!remote) await manager.operation(async () => {
     const inspected = await manager.inspect(root);
-    if (inspected.kind === 'new' && !createDefault) throw Error('没有找到上次使用的资料，请检查文件夹是否被移动或删除。');
+    if (inspected.kind === 'new' && !createDefault) throw Error('没有找到上次使用的学习记录，请检查文件夹是否被移动或删除。');
     await manager.select({ root, create: createDefault && inspected.kind === 'new', password: crypto.randomBytes(24).toString('base64url') });
     await manager.start();
     manager.ports.web = Number(new URL(manager.url).port);
@@ -372,7 +372,7 @@ async function openWorkspace(root, createDefault = false, remote = null) {
       message: '当前内容尚未保存，是否离开？', buttons: ['继续编辑', '放弃修改并离开'], defaultId: 0, cancelId: 0 });
     if (choice === 1) event.preventDefault(); else { nextRoot = null; pendingAction = null; nextConnection = null; closeRequested = false; }
   });
-  content.on('render-process-gone', () => { void reportError(new Error('页面意外退出，请关闭后重新打开。已保存的资料仍保留。')); });
+  content.on('render-process-gone', () => { void reportError(new Error('页面意外退出，请关闭后重新打开。已保存的学习记录仍保留。')); });
   current.on('closed', () => { void finishWindow(); });
 
   if (!remote) await authenticate(content.session);
@@ -385,7 +385,7 @@ async function openWorkspace(root, createDefault = false, remote = null) {
   menu();
   await current.loadFile(path.join(here, 'titlebar.html'), { query: { icon: pathToFileURL(app.isPackaged ? path.join(process.resourcesPath, 'icon.png') : path.join(repository, '.local/electron-icon.png')).href } });
   await content.loadURL(workspaceUrl());
-  current.webContents.send('titlebar:location', remote ? remote.origin : '本地资料');
+  current.webContents.send('titlebar:location', remote ? remote.origin : '本地学习记录');
   if (remote) { savedPreferences = { ...savedPreferences, mode: 'remote', remote }; await savePreferences(); }
   current.show(); content.focus();
 }
@@ -400,11 +400,11 @@ else {
   void app.whenReady().then(async () => { try {
     await privateDirectory(app.getPath('userData'));
     try { savedPreferences = JSON.parse(await fs.readFile(preferences, 'utf8')); }
-    catch (error) { if (error.code !== 'ENOENT') throw Error('无法读取上次使用的资料位置，请检查本地配置。'); }
+    catch (error) { if (error.code !== 'ENOENT') throw Error('无法读取上次使用的保存位置，请检查本地配置。'); }
     if (savedPreferences.usageConfirmed !== true || (!savedPreferences.root && !savedPreferences.remote)) { await connection(); return; }
     if (savedPreferences.mode === 'remote') {
       try { await openConnection(savedPreferences.remote); }
-      catch { await connection('请重新连接服务器。原有本地资料仍保留。'); }
+      catch { await connection('请重新连接服务器。原有本地学习记录仍保留。'); }
     } else await openConnection({ mode: 'local' });
   } catch (error) {
     await reportError(error); await manager.shutdown(); quitting = true; app.quit();

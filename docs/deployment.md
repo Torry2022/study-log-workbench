@@ -17,7 +17,7 @@ mkdir -p .local
 sudo chown 1000:1000 .local
 ```
 
-所有镜像使用 `USER node`，UID/GID 为 1000。数据目录和备份目录必须可被该 UID 写入，MCP 来源目录只需读取。这里只更改新父目录的所有者，不递归修改现有资料。宿主用户不是 UID 1000 时，应由管理员提供专用目录并管理其权限；不要直接将未知权限的旧实例交给容器。Windows Docker Desktop 可在 PowerShell 使用 `New-Item -ItemType Directory -Force .local`；NTFS 映射不代表已验证 Linux 文件所有权迁移。
+所有镜像使用 `USER node`，UID/GID 为 1000。数据目录和备份目录必须可被该 UID 写入，MCP 来源目录只需读取。这里只更改新父目录的所有者，不递归修改现有学习记录。宿主用户不是 UID 1000 时，应由管理员提供专用目录并管理其权限；不要直接将未知权限的旧实例交给容器。Windows Docker Desktop 可在 PowerShell 使用 `New-Item -ItemType Directory -Force .local`；NTFS 映射不代表已验证 Linux 文件所有权迁移。
 
 ```sh
 docker compose build tools
@@ -38,8 +38,8 @@ Compose 仅把 Web 映射到主机 loopback。网络访问者需要自行配置 
 | --- | --- | --- |
 | 实例根 `.env` | Web 密码、会话密钥、聊天配置、MCP 客户端配置 | 作为环境加载，不挂载给 Web |
 | 实例根 `.env.mcp`（可选） | MCP token、向量与重排配置 | 只加载给 MCP |
-| `data/` | UUID、月/年原始日志、随记、附件、模板、会话等权威资料 | Web 读写，MCP 只读 |
-| `backups/` | 写入前备份等用户恢复资料 | Web 读写，不挂载给 MCP |
+| `data/` | UUID、月/年原始日志、随记、附件、模板、会话等权威学习记录 | Web 读写，MCP 只读 |
+| `backups/` | 写入前备份等用户恢复学习记录 | Web 读写，不挂载给 MCP |
 | `index/` | 可重建向量缓存和独占锁 | 只挂载给 MCP 读写 |
 
 Compose 要求这些挂载源已经存在，拒绝自动创建拼错的数据目录。源码、运行数据和环境配置不会被 Docker 构建上下文一起打入镜像。Web standalone 镜像包含 Markdown/AI 运行依赖、PDF worker/字体资源、维护锁入口和公共模板；它不依赖开发机的 `node_modules`。
@@ -82,7 +82,7 @@ docker compose run --rm tools ops/archive-cli.mjs backup /instances/instance /in
 docker compose run --rm tools ops/archive-cli.mjs verify /instances/instance-backup.slarchive
 ```
 
-归档包含秘密配置及资料，应与生成的同名 `.sha256` 摘要文件一起私密保存。向量 index 不纳入归档，可重建。不能将归档放入实例自身数据或备份目录，也不能覆盖已有归档；每次使用新名称。
+归档包含秘密配置及学习记录，应与生成的同名 `.sha256` 摘要文件一起私密保存。向量 index 不纳入归档，可重建。不能将归档放入实例自身数据或备份目录，也不能覆盖已有归档；每次使用新名称。
 
 恢复到不存在的新目录：
 
@@ -90,7 +90,7 @@ docker compose run --rm tools ops/archive-cli.mjs verify /instances/instance-bac
 docker compose run --rm tools ops/archive-cli.mjs restore /instances/instance-backup.slarchive /instances/restored
 ```
 
-恢复完成后，把根 Compose 配置中的 `INSTANCE_ROOT` 改为对应宿主路径 `.local/restored`，再 `docker compose --profile retrieval up -d`。原 UUID、凭据、模板及资料保留；新文件的修改时间可能变化，因此并发写入版本号不保证与恢复前相同，应重新加载后再编辑。已经存在的恢复目标不会被覆盖；失败目标须保留检查，选择另一个新目录重试。推荐使用相同 UID 的 tools 容器完成备份和恢复；用不同宿主用户恢复后再交给 Docker 的权限转换不能自动保证。归档格式和限制见 [完整备份恢复说明](backup-restore.md)。
+恢复完成后，把根 Compose 配置中的 `INSTANCE_ROOT` 改为对应宿主路径 `.local/restored`，再 `docker compose --profile retrieval up -d`。原 UUID、凭据、模板及学习记录保留；新文件的修改时间可能变化，因此并发写入版本号不保证与恢复前相同，应重新加载后再编辑。已经存在的恢复目标不会被覆盖；失败目标须保留检查，选择另一个新目录重试。推荐使用相同 UID 的 tools 容器完成备份和恢复；用不同宿主用户恢复后再交给 Docker 的权限转换不能自动保证。归档格式和限制见 [完整备份恢复说明](backup-restore.md)。
 
 ## 不使用 Docker
 
@@ -117,7 +117,7 @@ node ops/docker-smoke.mjs
 node ops/docker-rag-smoke.mjs
 ```
 
-基础脚本只创建新的 `.local/public-rebuild-b27-*` 合成实例，以 `127.0.0.1:3580` 验证初始化、登录、未配 AI 时写入、PDF/DOCX 提取、重启、MCP 只读检索、离线恢复与字节一致性。RAG 脚本使用 `127.0.0.1:3581`，模型替身仅位于项目内部 Docker 网络，验证关键词与向量两模式的问答引用和 SSE 完成事件，以及收到 delta 后 SIGTERM 停机；不调用外部模型。两个脚本结束后只关闭自己的 Compose 项目，保留报告和合成资料供检查。使用已批准的基础镜像来源时，可给构建命令加 `--build-arg NODE_IMAGE=<镜像引用>`，不必修改全局镜像标签。
+基础脚本只创建新的 `.local/public-rebuild-b27-*` 合成实例，以 `127.0.0.1:3580` 验证初始化、登录、未配 AI 时写入、PDF/DOCX 提取、重启、MCP 只读检索、离线恢复与字节一致性。RAG 脚本使用 `127.0.0.1:3581`，模型替身仅位于项目内部 Docker 网络，验证关键词与向量两模式的问答引用和 SSE 完成事件，以及收到 delta 后 SIGTERM 停机；不调用外部模型。两个脚本结束后只关闭自己的 Compose 项目，保留报告和合成学习记录供检查。使用已批准的基础镜像来源时，可给构建命令加 `--build-arg NODE_IMAGE=<镜像引用>`，不必修改全局镜像标签。
 
 若要验收其他标签的当前构建，可在运行脚本前设置 `WEB_IMAGE`、`MCP_IMAGE` 和 `TOOLS_IMAGE`；未设置时仍使用上方的 `b27` 标签。三个变量都应指向同一源码版本构建的镜像，避免把旧标签的测试结果当作当前提交的结果。Windows PowerShell 示例：`$env:WEB_IMAGE='study-log-workbench-web:local'; $env:MCP_IMAGE='study-log-workbench-mcp:local'; $env:TOOLS_IMAGE='study-log-workbench-tools:local'`，然后分别运行 `node ops/docker-smoke.mjs` 和 `node ops/docker-rag-smoke.mjs`。
 
@@ -127,4 +127,4 @@ node ops/docker-rag-smoke.mjs
 
 Windows 检查使用解压包内的 `runtime\node.exe`：`--test ops/desktop/desktop.test.mjs ops/archive.test.mjs` 共 24 项无跳过；`ops/desktop/smoke-package.mjs` 的四流程报告在仓库忽略目录 `.local\windows-package-design-final-smoke\report.json`，`ops/desktop/smoke-vbs.mjs` 的三项入口检查报告在 `.local\windows-vbs-complete-final-report.json`。原生目录／保存对话框未实际点击确认；页面自动化仅模拟其取消返回，不能据此宣称系统选择器已验收。
 
-Windows 首次使用还通过 `ops/desktop/browser-first-record.mjs` 的全浏览器串联：设置资料目录／密码、登录、写入、退出、重开读回，包含实际随包子进程及两类锁释放核查。当前包与曾出现控制连接等待的旧候选分别记录，见[本轮实施记录](product-iteration-acceptance.md)。
+Windows 首次使用还通过 `ops/desktop/browser-first-record.mjs` 的全浏览器串联：设置保存位置／密码、登录、写入、退出、重开读回，包含实际随包子进程及两类锁释放核查。当前包与曾出现控制连接等待的旧候选分别记录，见[本轮实施记录](product-iteration-acceptance.md)。

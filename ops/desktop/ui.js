@@ -18,7 +18,7 @@ function render() {
   const locked = busy || !connected;
   element("state").textContent = !connected ? "未连接" : ({ stopped: "未运行", starting: "正在启动", running: "正在运行", stopping: "正在停止", failed: "运行异常" })[state.state];
   element("state").dataset.running = String(running);
-  element("current").textContent = !value("root") ? "请选择资料目录。" : !candidate ? "正在检查目录…" : candidate.kind === "new" ? "此目录可用于新建实例。设置访问密码后创建，资料将保存在这里。" : candidate.kind === "existing" ? ready ? "资料目录已就绪。" : "已找到工作台实例，可直接打开，无需重新设置密码。" : candidate.message;
+  element("current").textContent = !value("root") ? "请选择保存位置。" : !candidate ? "正在检查目录…" : candidate.kind === "new" ? "此目录可用于新建实例。设置访问密码后创建，学习记录将保存在这里。" : candidate.kind === "existing" ? ready ? "保存位置已就绪。" : "已找到工作台实例，可直接打开，无需重新设置密码。" : candidate.message;
   element("current").classList.toggle("error", candidate?.kind === "invalid");
   element("create-fields").hidden = candidate?.kind !== "new";
   element("select").hidden = candidate?.kind !== "existing" || ready;
@@ -31,10 +31,10 @@ function render() {
   element("start").classList.toggle("primary", !running);
   element("open").hidden = !running || !state.url;
   if (state.url) element("open").href = state.url;
-  element("run-help").textContent = running ? `访问地址：${state.url}` : ready ? "资料已准备好，可以启动工作台。" : "创建或打开资料目录后，即可启动。";
+  element("run-help").textContent = running ? `访问地址：${state.url}` : ready ? "实例已准备好，可以启动工作台。" : "选择保存位置并创建或打开实例后，即可启动。";
   element("configure").disabled = locked || !stopped || !ready;
   element("model-help").hidden = ready && stopped;
-  element("model-help").textContent = !stopped ? "停止工作台后可修改模型配置。" : "请先创建或打开资料目录。";
+  element("model-help").textContent = !stopped ? "停止工作台后可修改模型配置。" : "请先选择保存位置并创建或打开实例。";
   for (const id of ["apiUrl", "model", "apiKey", "clearKey"]) element(id).disabled = locked || !stopped || !ready;
   element("backup").disabled = locked || !ready || !["stopped", "running"].includes(state.state);
   element("verify").disabled = locked || !value("archive");
@@ -84,7 +84,7 @@ element("configure").onclick = () => run("model-notice", async () => { await api
 for (const button of document.querySelectorAll("[data-pick]")) button.onclick = () => run(button.dataset.for === "root" ? "directory-notice" : "backup-notice", async () => { const selected = await api("pick", { mode: button.dataset.pick }); if (!selected.path) return false; element(button.dataset.for).value = selected.path; if (button.dataset.for === "root") await inspect(); });
 element("backup").onclick = () => run("backup-notice", async () => { const selected = await api("pick", { mode: "save" }); if (!selected.path) return false; await api("backup", { archive: selected.path }); element("archive").value = selected.path; }, "备份已保存，工作台已停止。");
 element("verify").onclick = () => run("backup-notice", () => api("verify", { archive: value("archive") }), "备份校验通过。");
-element("restore").onclick = () => run("backup-notice", async () => { await api("restore", { archive: value("archive"), root: value("restoreRoot") }); element("root").value = value("restoreRoot"); await status(); await inspect(); await configuration(); }, "已恢复到新目录，原资料保持不变。");
+element("restore").onclick = () => run("backup-notice", async () => { await api("restore", { archive: value("archive"), root: value("restoreRoot") }); element("root").value = value("restoreRoot"); await status(); await inspect(); await configuration(); }, "已恢复到新目录，原有学习记录保持不变。");
 status().then(async () => { if (state.root) { element("root").value = state.root; await inspect(); await configuration(); } }).catch(error => { feedback("notice", error.message, true); render(); });
 setInterval(() => { if (!busy) void status().catch(() => { connected = false; feedback("notice", "本地工作台已断开，请通过启动文件重新打开。", true); render(); }); }, 2500);
 

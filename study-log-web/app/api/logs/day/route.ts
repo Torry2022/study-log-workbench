@@ -28,7 +28,7 @@ export async function PUT(request: NextRequest) {
     if (error instanceof LogWriteInputError || error instanceof InvalidDayContentError || error instanceof FutureLogDateError) {
       return Response.json({ error: error.message }, { status: 400, headers });
     }
-    return Response.json({ error: "日志保存失败，原有资料未被确认更新，请检查实例存储后重试" }, { status: 500, headers });
+    return Response.json({ error: "日志保存失败，未能确认日志是否已保存，请检查实例存储后重试" }, { status: 500, headers });
   }
 }
 

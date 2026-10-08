@@ -138,7 +138,7 @@ export function updateNotesMarkdown(content: string, year: string, id: string, r
         return !actual || noteVersion(actual) !== noteVersion(note);
       })) throw new NoteFormatError();
       return result;
-    } catch { throw new NoteInputError("随记 Markdown 结构不完整或字段分隔有歧义，未写入资料"); }
+    } catch { throw new NoteInputError("随记 Markdown 结构不完整或字段分隔有歧义，未写入随记文件"); }
   }
   let next = existing ? content.slice(0, existing.start) + content.slice(existing.end) : content;
   if (!replacement) return validate(next);

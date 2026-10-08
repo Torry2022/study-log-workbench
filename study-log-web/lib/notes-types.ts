@@ -27,7 +27,7 @@ export interface UpdateStudyNoteInput extends StudyNoteInput { id: string; baseV
 export interface BatchStudyNoteInput extends StudyNoteInput { clientId: string }
 export class NoteInputError extends Error {}
 export class NoteFormatError extends Error {
-  constructor() { super("随记源文件格式异常，请先核对 Markdown 文件，未覆盖资料"); }
+  constructor() { super("随记源文件格式异常，请先核对 Markdown 文件，未覆盖随记文件"); }
 }
 export class NoteConflictError extends Error {
   constructor() { super("随记已在其他位置发生变化，请保留草稿并重新读取后核对"); }
@@ -36,5 +36,5 @@ export class NoteNotFoundError extends Error {
   constructor() { super("未找到该随记"); }
 }
 export class NoteRecoveryError extends Error {
-  constructor() { super("上次跨年随记写入未完成，请先根据写入前备份恢复资料后移除待恢复标记"); }
+  constructor() { super("上次跨年随记写入未完成，请先根据写入前备份恢复随记文件后移除待恢复标记"); }
 }

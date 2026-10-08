@@ -22,7 +22,7 @@ function browser(url) {
 async function pick(mode) {
   if (process.platform !== "win32") throw new Error("请在输入框填写绝对路径");
   const dialogs = {
-    folder: "$dialog=New-Object System.Windows.Forms.FolderBrowserDialog; $dialog.Description='选择学习日志资料目录'; $dialog.ShowNewFolderButton=$true; if($dialog.ShowDialog() -eq 'OK'){ [Console]::Write($dialog.SelectedPath) }",
+    folder: "$dialog=New-Object System.Windows.Forms.FolderBrowserDialog; $dialog.Description='选择学习记录的保存位置'; $dialog.ShowNewFolderButton=$true; if($dialog.ShowDialog() -eq 'OK'){ [Console]::Write($dialog.SelectedPath) }",
     archive: "$dialog=New-Object System.Windows.Forms.OpenFileDialog; $dialog.Filter='学习日志备份 (*.slwb)|*.slwb|全部文件 (*.*)|*.*'; if($dialog.ShowDialog() -eq 'OK'){ [Console]::Write($dialog.FileName) }",
     save: "$dialog=New-Object System.Windows.Forms.SaveFileDialog; $dialog.Filter='学习日志备份 (*.slwb)|*.slwb'; $dialog.FileName='study-log-'+(Get-Date -Format 'yyyyMMdd-HHmmss')+'.slwb'; if($dialog.ShowDialog() -eq 'OK'){ [Console]::Write($dialog.FileName) }"
   };
@@ -55,7 +55,7 @@ export async function startLauncher({ packageRoot = path.resolve(here, "../.."),
       if (!response.ok || data.launchId !== old.launchId) throw new Error();
       if (openBrowser) browser(`${old.origin}/#${old.token}`);
       return { reused: true, origin: old.origin };
-    } catch { throw new Error(`上次运行未正常结束，或另一个入口仍在启动。请先检查服务和资料状态，再按维护说明处理。启动锁已保留：${lock}`); }
+    } catch { throw new Error(`上次运行未正常结束，或另一个入口仍在启动。请先检查服务和文件状态，再按维护说明处理。启动锁已保留：${lock}`); }
   }
   manager ??= new DesktopManager({ packageRoot });
   const token = crypto.randomBytes(32).toString("base64url"), launchId = crypto.randomUUID();
@@ -139,7 +139,7 @@ export async function startLauncher({ packageRoot = path.resolve(here, "../.."),
       });
       reply(res, 200, result);
       if (closing) setImmediate(() => void close());
-    } catch (error) { reply(res, 400, { error: error.code === "EACCES" || error.code === "EPERM" ? "目录不可写，请选择当前账户可写的资料目录" : error.message }); }
+    } catch (error) { reply(res, 400, { error: error.code === "EACCES" || error.code === "EPERM" ? "目录不可写，请选择当前账户可写的文件夹" : error.message }); }
   });
   server.on("connection", socket => {
     connections.set(socket, 0);

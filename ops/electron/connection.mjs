@@ -1,6 +1,6 @@
 const form=document.querySelector('form'),notice=document.querySelector('#notice'),submit=form.querySelector('[type=submit]');
 let localReady=false;
-function directory(root,kind){localReady=kind==='new'||kind==='existing';document.querySelector('#root').value=root;document.querySelector('#root').title=root;document.querySelector('#directory-state').textContent=kind==='new'?'将在此处创建资料':kind==='existing'?'已找到已有资料':'';render();}
+function directory(root,kind){localReady=kind==='new'||kind==='existing';document.querySelector('#root').value=root;document.querySelector('#root').title=root;document.querySelector('#directory-state').textContent=kind==='new'?'将在此处保存学习记录':kind==='existing'?'可打开已有学习记录':'';render();}
 window.connection.notice(message=>notice.textContent=message);
 function render(){const remote=form.elements.mode.value==='remote';document.querySelector('#remote').hidden=!remote;document.querySelector('#local').hidden=remote;form.elements.origin.required=remote;form.elements.password.required=remote;submit.disabled=!remote&&!localReady;submit.textContent=remote?'连接服务器':'打开本地工作台';}
 form.addEventListener('change',render);document.querySelector('#cancel').onclick=()=>window.close();

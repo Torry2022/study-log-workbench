@@ -48,6 +48,6 @@ export function WritingPanel({ writing }: { writing: WritingController; themeMod
     <label htmlFor="writing-output">生成草稿</label>
     <textarea id="writing-output" className="ai-output" value={writing.busy === "generate" && !writing.output ? "正在生成，请稍候..." : writing.output} onChange={event => writing.setOutput(event.target.value)} readOnly={writing.busy === "generate" && !writing.output} />
     <button className="button secondary-on-dark full" type="button" onClick={() => void writing.apply()} disabled={Boolean(writing.busy) || !writing.output.trim() || writing.outputDate !== writing.date}><Check size={15} />追加到编辑器</button>
-    <p className="status-line">追加后仍需在日志编辑器中保存，才会写入资料。</p>
+    <p className="status-line">追加后仍需在日志编辑器中保存，才会保存到日志文件。</p>
   </div>;
 }

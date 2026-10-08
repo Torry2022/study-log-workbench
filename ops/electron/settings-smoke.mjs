@@ -39,7 +39,7 @@ try{
  await page.getByRole('button',{name:'今天',exact:true}).click();
  const editor=page.locator('.cm-content');await expect(editor).toBeVisible();await editor.click();await page.keyboard.insertText('### 未保存草稿\n\n取消备份后保留。');
  await app.evaluate(({dialog})=>{globalThis.cancelCount=0;dialog.showMessageBoxSync=()=>{globalThis.cancelCount++;return 0;};});
- await menu('备份全部资料…');await expect.poll(()=>app.evaluate(()=>globalThis.cancelCount)).toBe(1);
+ await menu('创建完整备份…');await expect.poll(()=>app.evaluate(()=>globalThis.cancelCount)).toBe(1);
  await expect(editor).toContainText('取消备份后保留');await assert.rejects(fs.stat(archive),{code:'ENOENT'});
  const saved=page.waitForResponse(r=>r.url().endsWith('/api/logs/day')&&r.request().method()==='PUT');
  await page.getByRole('button',{name:'保存',exact:true}).filter({visible:true}).click();assert.equal((await saved).status(),200);await expect(page.getByRole('button',{name:'保存',exact:true}).filter({visible:true})).toBeDisabled();
@@ -56,7 +56,7 @@ try{
  response=page.waitForResponse(r=>r.url().endsWith('/api/backups/restore')&&r.request().method()==='POST');
  await history.getByRole('button',{name:'恢复此版本'}).click();await page.getByRole('button',{name:'恢复',exact:true}).click();assert.equal((await response).status(),200);
  await expect(history).not.toBeVisible();await expect(editor).toContainText('取消备份后保留');await expect(editor).not.toContainText('第二版合成内容');
- await menu('备份全部资料…');await expect.poll(()=>page.isClosed(),{timeout:60000}).toBe(true);page=await workspace();
+ await menu('创建完整备份…');await expect.poll(()=>page.isClosed(),{timeout:60000}).toBe(true);page=await workspace();
  assert.ok((await fs.stat(archive)).size>0);
  await app.evaluate(({dialog},paths)=>{let i=0;dialog.showOpenDialog=async()=>({canceled:false,filePaths:[paths[i++]]});},[archive,profile]);
  await menu('从备份恢复…');await expect.poll(()=>page.isClosed(),{timeout:60000}).toBe(true);page=await workspace();

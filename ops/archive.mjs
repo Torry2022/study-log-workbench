@@ -224,14 +224,14 @@ export async function backupInstance(instanceRoot, archivePath, { protectFile } 
         if (entry.type !== "file") continue;
         const source = path.join(root, ...entry.path.split("/")), { handle, stat } = await openRegular(source);
         try {
-          if (!sameFile(scanned.snapshots.get(entry.path), stat)) fail("ARCHIVE_SOURCE_CHANGED", "实例资料在归档时发生变化，请停止外部写入后重试");
+          if (!sameFile(scanned.snapshots.get(entry.path), stat)) fail("ARCHIVE_SOURCE_CHANGED", "实例文件在归档时发生变化，请停止外部写入后重试");
           const hash = await streamBytes(handle, 0, entry.size, write);
-          if (hash !== entry.sha256) fail("ARCHIVE_SOURCE_CHANGED", "实例资料在归档时发生变化，请停止外部写入后重试");
+          if (hash !== entry.sha256) fail("ARCHIVE_SOURCE_CHANGED", "实例文件在归档时发生变化，请停止外部写入后重试");
           await unchanged(handle, stat, source);
         } finally { await handle.close(); }
       }
       for (const [relative, before] of scanned.snapshots) {
-        if (!sameFile(before, await regular(path.join(root, ...relative.split("/"))))) fail("ARCHIVE_SOURCE_CHANGED", "实例资料在归档时发生变化，请停止外部写入后重试");
+        if (!sameFile(before, await regular(path.join(root, ...relative.split("/"))))) fail("ARCHIVE_SOURCE_CHANGED", "实例文件在归档时发生变化，请停止外部写入后重试");
       }
       for (const [relative, before] of scanned.directories) {
         const source = path.join(root, ...relative.split("/")); await noLinks(source);

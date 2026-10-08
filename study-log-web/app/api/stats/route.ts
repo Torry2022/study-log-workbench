@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
     assertMonth(month);
     return Response.json({ stats: await getMonthlyStats(month) }, { headers });
   } catch (error) {
-    return Response.json({ error: error instanceof TaxonomyInputError ? error.message : "统计读取失败，请检查实例资料后重试" },
+    return Response.json({ error: error instanceof TaxonomyInputError ? error.message : "统计读取失败，请检查实例文件后重试" },
       { status: error instanceof TaxonomyInputError ? 400 : 500, headers });
   }
 }

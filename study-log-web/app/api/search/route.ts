@@ -19,6 +19,6 @@ export async function GET(request: NextRequest) {
       ignoreCase: ignoreCase !== "false", headingsOnly: scope === "heading"
     }) }, { headers });
   } catch {
-    return Response.json({ error: "搜索失败，请检查实例资料后重试" }, { status: 500, headers });
+    return Response.json({ error: "搜索失败，请检查日志源文件后重试" }, { status: 500, headers });
   }
 }

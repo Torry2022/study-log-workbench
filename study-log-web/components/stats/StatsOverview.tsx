@@ -151,7 +151,7 @@ export function StatsOverview({
       <div className="stats-review-toolbar">
         <div>
           <h2>{selectedMonth || "月度复盘"}</h2>
-          <p>按日志日块与日志小节回看本月学习结构。</p>
+          <p>按日志日志与日志小节回看本月学习结构。</p>
         </div>
         <div className="stats-review-actions">
           <label className="stats-month-select">

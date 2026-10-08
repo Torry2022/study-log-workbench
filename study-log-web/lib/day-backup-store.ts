@@ -102,9 +102,9 @@ export async function listDayBackups(date: string, cursor?: string) {
 
 export async function previewDayBackup(date: string, kind: string, id: string) {
   assertDate(date);
-  if (kind !== "write") throw new DayBackupInputError("仅支持写入前日块备份");
+  if (kind !== "write") throw new DayBackupInputError("只支持恢复保存前的历史版本");
   const [backup, current] = await Promise.all([readVersion(id, date), getDay(date)]);
-  if (!backup.content) throw new DayBackupNotFoundError("此备份不包含所选日块");
+  if (!backup.content) throw new DayBackupNotFoundError("此备份不包含所选日志");
   return { date, kind: "write" as const, id, fileName: backup.fileName,
     historicalContent: backup.content, currentContent: current.content, currentVersion: current.version,
     backupVersion: digest(backup.content) };
@@ -117,11 +117,11 @@ export async function restoreDayBackup(input: RestoreDayBackupInput) {
   if (!input || typeof input !== "object" || input.kind !== "write" || !Object.hasOwn(input, "baseVersion") ||
     !(input.baseVersion === null || typeof input.baseVersion === "string" && input.baseVersion.length > 0) ||
     typeof input.backupVersion !== "string" || !/^[a-f0-9]{64}$/.test(input.backupVersion)) {
-    throw new DayBackupInputError("恢复需要 write 备份、当前 baseVersion 和预览 backupVersion");
+    throw new DayBackupInputError("无法确认历史版本及当前日志，请重新选择历史版本后重试");
   }
   assertDate(input.date);
   const backup = await readVersion(input.id, input.date);
-  if (!backup.content) throw new DayBackupNotFoundError("此备份不包含所选日块");
+  if (!backup.content) throw new DayBackupNotFoundError("此备份不包含所选日志");
   if (digest(backup.content) !== input.backupVersion) throw new DayBackupChangedError();
   // Reuse the same versioned transaction and pre-write backup as normal saves.
   // Only the selected day is copied out of the historical source snapshot.

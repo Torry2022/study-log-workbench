@@ -9,12 +9,12 @@ export interface HighlightedLog { content: string; model: string; boldCount: num
 export class HighlightInputError extends Error { readonly code = "AI_INVALID_HIGHLIGHT_INPUT"; }
 
 export function validateHighlightInput(value: unknown): HighlightInput {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new HighlightInputError("标注请求必须是对象");
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new HighlightInputError("标注请求无效，请刷新后重试");
   const input = value as Record<string, unknown>;
   if (typeof input.date !== "string" || !isValidLogDate(input.date)) throw new HighlightInputError("请选择有效日期 YYYY-MM-DD");
   if (input.date > todayInShanghai()) throw new HighlightInputError("不能标注未来日期的日志");
-  if (typeof input.content !== "string" || !input.content.trim()) throw new HighlightInputError("当前日块暂无可标注内容");
-  if (input.content.length > 60000) throw new HighlightInputError("当前日块超过 60,000 字符，暂不支持重点标注");
+  if (typeof input.content !== "string" || !input.content.trim()) throw new HighlightInputError("当前日志暂无可标注内容");
+  if (input.content.length > 60000) throw new HighlightInputError("当前日志超过 60,000 字符，暂不支持重点标注");
   return { date: input.date, content: input.content };
 }
 

@@ -56,7 +56,7 @@ export class LogDocumentController {
       const response = await this.reads.day(date);
       if (this.view !== view || lifecycle !== view.lifecycle() || revision !== this.dayLoadRevision) return;
       if (!response.day || response.day.date !== date || typeof response.day.content !== 'string') {
-        throw new Error('日块响应格式异常');
+        throw new Error('日志响应格式异常');
       }
       view.installed(response.day, date, heading, headingIndex);
     } catch (error) {

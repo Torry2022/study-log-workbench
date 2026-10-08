@@ -13,10 +13,12 @@ const browser = await chromium.launch();
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const errors = []; page.on('pageerror', error => errors.push(error.message));
-  let configured = false;
+  let configured = false, unsupported = false, offline = false;
   await page.route('**/api/capabilities', async route => {
+    if (offline) return route.fulfill({ status: 503, json: { error: '合成连接失败' } });
     const response = await route.fetch(); const json = await response.json();
     if (configured && response.ok()) json.features.rag = { supported: true, configured: true };
+    if (unsupported) json.features.aiWriting = { supported: false, configured: false };
     await route.fulfill({ response, json });
   });
   await page.goto(base + '?date=2026-01-15');
@@ -24,7 +26,7 @@ try {
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await page.getByRole('button', { name: 'AI生成', exact: true }).filter({ visible: true }).click();
   const notice = page.locator('.writing-panel .feature-availability');
-  await expect(notice).toContainText('AI 写作尚未启用');
+  await expect(notice).toContainText('暂时无法生成日志');
   await expect(notice.locator('details')).not.toHaveAttribute('open');
   assert.doesNotMatch(await notice.innerText(), /CHAT_API|CHAT_MODEL/);
   await expect(page.getByLabel('学习材料', { exact: true })).toBeEnabled();
@@ -32,6 +34,18 @@ try {
   await page.screenshot({ path: path.join(output, 'writing-desktop.png'), animations: 'disabled' });
   await notice.locator('summary').click();
   await expect(notice).toContainText('模型访问密钥');
+  await expect(notice).toContainText('文件 → 模型设置');
+  unsupported = true;
+  await notice.getByRole('button', { name: '重新检查', exact: true }).click();
+  await expect(notice).toContainText('当前服务器版本不支持日志生成');
+  offline = true;
+  await notice.getByRole('button', { name: '重新检查', exact: true }).click();
+  await expect(notice).toContainText('合成连接失败');
+  await expect(notice).not.toContainText('当前服务器版本不支持日志生成');
+  offline = false; unsupported = false;
+  await notice.getByRole('button', { name: '重新检查', exact: true }).click();
+  await expect(notice).toContainText('模型访问密钥');
+  if (await notice.locator('details').getAttribute('open') === null) await notice.locator('summary').click();
   await expect(notice.getByRole('button', { name: '重新检查', exact: true })).toBeVisible();
   await notice.getByRole('button', { name: '重新检查', exact: true }).click();
   await expect(page.getByLabel('学习材料', { exact: true })).toBeEnabled();

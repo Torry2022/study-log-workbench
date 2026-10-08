@@ -212,7 +212,7 @@ export function LogEditor({ date, value, active, onChange, onSave, onView, onUpd
   }, []);
 
   return <div className="editor-shell workspace-editor-shell">
-    <div className="editor-date-line" aria-label={`当前日块日期 ${date}，不可编辑`} title="日期由日块创建入口维护">
+    <div className="editor-date-line" aria-label={`当前日志日期 ${date}，不可编辑`} title="日期由系统维护，不可修改">
       <code><span>##</span> {date}</code>
       {tools}
     </div>

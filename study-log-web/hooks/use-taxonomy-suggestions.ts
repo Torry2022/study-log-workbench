@@ -26,7 +26,7 @@ export function useTaxonomySuggestions(options: Options) {
   const [configurationLoading, setConfigurationLoading] = useState(false);
   const configurationRef = useRef<AbortController | null>(null);
   const configured = Boolean(configuration?.features.aiTaxonomy?.supported && configuration.features.aiTaxonomy.configured);
-  const configurationMessages = !configuration ? [] : !configuration.features.aiTaxonomy?.supported ? ["此服务器尚未开放分类建议。"] : configuration.aiConfiguration?.provider.issues.map(issue => issue.message) || [];
+  const configurationMessages = !configuration ? [] : !configuration.features.aiTaxonomy?.supported ? ["当前服务器版本不支持分类建议。"] : configuration.aiConfiguration?.provider.issues.map(issue => issue.message) || [];
   if (configuration?.features.aiTaxonomy?.supported && !configured && !configurationMessages.length) configurationMessages.push("分类建议尚未配置完成，请检查模型配置。");
   const inputProblem = !same(options.draft, options.saved) ? "请先保存当前分类修改，再请求新的分类建议。" : !options.saved.domains.some(domain => domain !== "其他") ? "请先添加并保存自定义领域，再请求分类建议。" : "";
 

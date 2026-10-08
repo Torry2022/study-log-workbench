@@ -12,7 +12,7 @@ function failure(error: unknown) {
 async function body(request: NextRequest): Promise<Record<string, unknown>> {
   let value: unknown;
   try { value = await request.json(); } catch { throw new FavoriteInputError("请求正文必须是有效JSON"); }
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new FavoriteInputError("请求正文必须是对象");
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new FavoriteInputError("请求内容无效，请刷新后重试");
   return value as Record<string, unknown>;
 }
 function string(value: unknown): string { return typeof value === "string" ? value : ""; }

@@ -9,7 +9,7 @@ export interface WritingCapabilities {
 }
 
 export function writingConfigurationMessages(capabilities: WritingCapabilities, usesLegacyTemplate = true): string[] {
-  if (!capabilities.features.aiWriting.supported) return ["此服务器尚未开放日志生成；仍可导入和整理学习材料。"];
+  if (!capabilities.features.aiWriting.supported) return ["当前服务器版本不支持日志生成；仍可导入和整理学习材料。"];
   const configuration = capabilities.aiConfiguration;
   const messages = [...configuration?.provider.issues.map(issue => issue.message) || []];
   if (usesLegacyTemplate && configuration?.templates.generation.issue) messages.push(configuration.templates.generation.issue.message);
@@ -23,7 +23,7 @@ export function appendMaterial(current: string, document: Pick<ExtractedDocument
 }
 
 export function writingInputProblem(date: string, today: string, material: string, instruction: string): string {
-  if (!date) return "请先选择左侧日块";
+  if (!date) return "请先选择左侧日志";
   if (date > today) return "不能为未来日期生成日志";
   if (!material.trim() && !instruction.trim()) return "请先填写补充要求或学习材料";
   if (material.length > 120_000) return "学习材料不能超过 120,000 字符，请先整理材料";

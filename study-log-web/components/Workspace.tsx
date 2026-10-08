@@ -165,7 +165,7 @@ export function Workspace() {
     if (!active || draft.busy || deleting || !logs.day?.exists || !draft.draft) return;
     const date = logs.day.date;
     const version = draft.draft.version;
-    if (!(await confirm({ title: "删除当前日块？", message: draft.dirty ? "当前有未保存修改。删除会移除这一天的日志，如需留存，请先导出当前内容。" : "删除会移除这一天的日志，如需留存，请先导出当前内容。", confirmLabel: "删除", tone: "danger" }))) return;
+    if (!(await confirm({ title: "删除当前日志？", message: draft.dirty ? "当前有未保存修改。删除会移除这一天的日志，如需留存，请先导出当前内容。" : "删除会移除这一天的日志，如需留存，请先导出当前内容。", confirmLabel: "删除", tone: "danger" }))) return;
     setDeleting(true); setOperationError("");
     try {
       const { day } = await requestJson<{ day: DayEntry }>("/api/logs/day", { method: "DELETE", body: JSON.stringify({ date, baseVersion: version }) });
@@ -250,7 +250,7 @@ export function Workspace() {
       {rag.error && <div className="editor-navigation-status" role="alert">{rag.error}<button className="button secondary" onClick={rag.clearError}>关闭</button><button className="button secondary" onClick={() => void rag.reloadSession()}>重新读取</button></div>}
       {(rag.saveError || rag.saving) && <div className="editor-navigation-status" role={rag.saveError ? "alert" : "status"}>{rag.saveError || "正在保存问答历史…"}{rag.saveError && <><button className="button secondary" disabled={rag.saving || !active} onClick={rag.retrySave}>重试保存</button><button className="button secondary" disabled={rag.saving || !active} onClick={() => void rag.reloadSession()}>放弃本地回答并重新读取</button></>}</div>}
       <RagWorkspace noLogs={!logs.navigationLoading && !logs.navigationError && !logs.months.length} onOpenLog={openLog} active={active} visible={logs.selection.view === "qa"} disabled={!rag.configured || rag.saving || Boolean(rag.saveError)} messages={rag.messages} initializing={rag.initializing}
-        availability={rag.configurationError ? <FeatureAvailability title="问答服务尚未就绪" description="暂时无法提问，已有的问答记录仍可查看。" messages={[rag.configurationError]} onCheck={() => void rag.refreshConfiguration()} /> : undefined}
+        availability={rag.configurationError ? <FeatureAvailability title="暂时无法提问" description="已有的问答记录仍可查看。" messages={[rag.configurationError]} onCheck={() => void rag.refreshConfiguration()} /> : undefined}
         question={rag.question} stage={rag.stage} generating={rag.generating} themeMode={theme} answerMode={rag.answerMode} focusRequestToken={rag.focusToken} sessionNavigationToken={rag.navigationToken}
         onQuestionChange={rag.setQuestion} onAnswerModeChange={rag.setAnswerMode} onSubmit={() => void rag.submit()} onStop={rag.stop} onRegenerate={() => void rag.regenerate()} onCitation={citation => void openRagCitation(citation)} />
     </div>

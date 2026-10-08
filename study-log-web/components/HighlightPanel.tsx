@@ -10,7 +10,7 @@ export function HighlightPanel({ highlighting }: { highlighting: HighlightingCon
   if (!highlighting.active) return null;
   return <div className="highlight-panel">
     <div className="highlight-helper"><h3>为当前日志标注重点</h3><p>挑出值得回顾的概念、结论和必要条件，以加粗标记重点，保留原文。</p></div>
-    {(highlighting.configurationError || highlighting.configurationMessages.length > 0) && <FeatureAvailability title={highlighting.configurationError ? "暂时无法检查 AI 服务" : "重点标注尚未启用"} description="配置模型后，可为日志中的重点内容添加标注。" messages={highlighting.configurationError ? [highlighting.configurationError] : highlighting.configurationMessages} busy={highlighting.configurationLoading} onCheck={() => void highlighting.refreshConfiguration()} />}
+    {(highlighting.configurationError || highlighting.configurationMessages.length > 0) && <FeatureAvailability title={highlighting.configurationError ? "暂时无法检查 AI 服务" : "暂时无法使用重点标注"} description="配置模型后，可为日志中的重点内容添加标注。" messages={highlighting.configurationError ? [highlighting.configurationError] : highlighting.configurationMessages} busy={highlighting.configurationLoading} onCheck={() => void highlighting.refreshConfiguration()} />}
     {!highlighting.date && <WorkspaceState kind="empty" title="未选择日志" description="打开一篇有正文的日志，可为其中的内容标注重点。" layout="compact" className="inspector-empty-state" />}
     {highlighting.date && highlighting.inputProblem && <p className="status-line warning">{highlighting.inputProblem}</p>}
     <button className="button primary" type="button" disabled={highlighting.busy || !highlighting.configured || Boolean(highlighting.inputProblem)} onClick={() => void highlighting.request()}><Edit3 size={15} />{highlighting.busy ? "标注中" : "标注重点"}</button>

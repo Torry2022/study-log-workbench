@@ -10,5 +10,5 @@ export function dayBackupErrorResponse(error: unknown): Response {
   if (error instanceof DayBackupInputError || error instanceof LogWriteInputError || error instanceof InvalidDayContentError || error instanceof FutureLogDateError) {
     return Response.json({ error: error.message }, { status: 400, headers: dayBackupHeaders });
   }
-  return Response.json({ error: "日块备份操作失败，请检查存储状态后重试" }, { status: 500, headers: dayBackupHeaders });
+  return Response.json({ error: "日志备份操作失败，请检查存储状态后重试" }, { status: 500, headers: dayBackupHeaders });
 }

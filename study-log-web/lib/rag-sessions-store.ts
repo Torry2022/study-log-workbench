@@ -30,7 +30,7 @@ const queues = new Map<string, Promise<unknown>>();
 const hash = (text: string) => crypto.createHash("sha256").update(text).digest("hex");
 const version = (record: SessionRecord) => hash(JSON.stringify(record));
 function object(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new RagSessionInputError("会话字段必须是对象");
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new RagSessionInputError("问答记录格式无效，请刷新历史后重试");
   return value as Record<string, unknown>;
 }
 function fields(value: Record<string, unknown>, allowed: string[]) {
@@ -41,11 +41,11 @@ function text(value: unknown, label: string, maximum: number, allowEmpty = false
   return value;
 }
 function uuid(value: unknown): string {
-  if (typeof value !== "string" || !UUID.test(value)) throw new RagSessionInputError("会话与操作标识必须是UUID");
+  if (typeof value !== "string" || !UUID.test(value)) throw new RagSessionInputError("无法确认要操作的问答记录，请重新打开后重试");
   return value.toLowerCase();
 }
 function baseVersion(value: unknown): string {
-  if (typeof value !== "string" || !HASH.test(value)) throw new RagSessionInputError("必须提供有效的baseVersion");
+  if (typeof value !== "string" || !HASH.test(value)) throw new RagSessionInputError("无法确认问答记录的当前版本，请重新打开后重试");
   return value;
 }
 function citation(input: unknown): RagCitation {
@@ -209,7 +209,7 @@ export function getRagSession(id: string): Promise<RagSession> { const target = 
 export function createRagSession(input: CreateRagSessionInput): Promise<RagSession> {
   const value = object(input); fields(value, ["id", "mutationId", "baseVersion", "answerMode", "messages"]);
   const id = uuid(value.id), mutationId = uuid(value.mutationId), mode = answerMode(value.answerMode), content = messages(value.messages);
-  if (value.baseVersion !== null) throw new RagSessionInputError("创建会话必须提供baseVersion:null");
+  if (value.baseVersion !== null) throw new RagSessionInputError("创建问答记录的请求无效，请刷新后重试");
   const digest = fingerprint("create", { id, answerMode: mode, messages: content });
   return queued(async root => {
     const { file, raw } = await read(root), existing = file.sessions.find(item => item.id === id);

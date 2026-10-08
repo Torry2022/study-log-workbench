@@ -134,7 +134,7 @@ export struct DesktopWorkspaceTopBar {
       Row({ space: 8 }) {
         Image(icon).width(16).height(16).colorFilter(iconTint($r('app.color.body')))
         Text(label).fontSize(13)
-          .fontColor(label === '删除日块' ? $r('app.color.error') : $r('app.color.body'))
+          .fontColor(label === '删除日志' ? $r('app.color.error') : $r('app.color.body'))
       }.width('100%')
     }.width('100%').height(40).padding({ left: 10, right: 10 }).borderRadius(8)
       .attributeModifier(new InteractiveSurface(Color.Transparent, this.hoveredMoreAction === label))

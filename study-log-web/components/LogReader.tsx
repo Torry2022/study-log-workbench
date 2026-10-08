@@ -107,7 +107,7 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
   const linkPosition = useReadingPosition({ editor: () => editorView.current, preview: () => preview.current,
     toolbarBottom: () => toolbar.current?.getBoundingClientRect().bottom || 0 });
   const ready = Boolean(day?.exists && !loading && !error);
-  const exportScopes = [{ scope: "day" as const, label: "当前日块", disabled: !ready }, { scope: "file" as const, label: "当前源文件", disabled: !ready }, { scope: "all" as const, label: "全部日志", disabled: !hasLogs }];
+  const exportScopes = [{ scope: "day" as const, label: "当前日志", disabled: !ready }, { scope: "file" as const, label: "当前源文件", disabled: !ready }, { scope: "all" as const, label: "全部日志", disabled: !hasLogs }];
   const editorReady = Boolean(date && editing.documentDate === date);
   const mode = !date || reading ? "preview" : editing.mode;
   // Validate the destination once against the saved document at navigation time.
@@ -133,7 +133,7 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
       if (target.date) {
         const result = await requestLogJson<{ day: DayEntry }>(`/api/logs/day?date=${encodeURIComponent(targetDate)}`);
         if (attempt !== linkRequest.current || currentNavigation.current !== navigationRevision) return;
-        if (!result.day.exists) { setLinkError("未找到目标日块"); return; }
+        if (!result.day.exists) { setLinkError("未找到目标日志"); return; }
       }
       linkPosition.capture(mode);
       if (await onNavigate(targetDate, target.headingText) && attempt === linkRequest.current) {
@@ -244,7 +244,7 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
   const modes = [["preview", "浏览", Eye], ["source", "源码", Edit3], ["split", "分屏", FileText]] as const;
   const modeButtons = (mobile = false) => <div className={mobile ? "mobile-mode-switch" : "view-mode-switch"} role="group" aria-label="工作区模式">{modes.filter(([value]) => !mobile || value !== "split").map(([value, label, Icon]) => <button key={value} type="button" className={`${mobile ? "" : "view-mode-button"}${(mode === value || (mobile && mode === "split" && value === "source")) ? " active" : ""}`} title={label} aria-label={label} disabled={!date} aria-pressed={mode === value || (mobile && mode === "split" && value === "source")} onClick={() => changeMode(value)}><Icon size={mobile ? 16 : 15} />{label}</button>)}</div>;
   const saveButton = (mobile = false) => <button className={mobile ? "mobile-toolbar-icon primary" : "button primary toolbar-save-button"} type="button" title={editing.busy ? "保存中" : "保存"} aria-label={editing.busy ? "保存中" : "保存"} disabled={!editorReady || !active || editing.busy || (!editing.dirty && Boolean(day?.exists))} onClick={editing.onSave}>{mobile && editing.busy ? <RefreshCw className="mobile-spinner" size={17} /> : <Save size={mobile ? 17 : 15} />}{!mobile && (editing.busy ? "保存中" : "保存")}</button>;
-  const dayNavigator = () => (returnPoint || navigation?.onReturnRag || navigation?.showAdjacent) && <div className="day-navigator" aria-label="日块浏览导航">
+  const dayNavigator = () => (returnPoint || navigation?.onReturnRag || navigation?.showAdjacent) && <div className="day-navigator" aria-label="日志浏览导航">
     {returnPoint && <button className="day-nav-button" type="button" disabled={editing.busy} title="返回内部链接跳转前的位置" aria-label="返回链接前位置" onClick={() => void returnFromLink()}><CornerUpLeft size={14} />返回</button>}
     {navigation?.onReturnRag && <button className="day-nav-button" type="button" disabled={editing.busy} title="返回知识问答" aria-label="返回问答" onClick={navigation.onReturnRag}><CornerUpLeft size={14} />返回问答</button>}
     {navigation?.showAdjacent && <>
@@ -280,7 +280,7 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
           <button className="button secondary log-action-refresh" type="button" title="刷新" aria-label="刷新" disabled={!date || editing.busy} onClick={editing.onReload}><RefreshCw size={15} />刷新</button>
           <ExportMenu scopes={exportScopes} onExport={exporting.run} busy={exporting.busy} disabled={!active || !hasLogs} />
           <button className="button secondary log-action-backup" type="button" aria-label="日志历史版本" title="历史版本" disabled={!date || editing.busy} onClick={editing.onBackups}><DatabaseBackup size={15} />历史版本</button>
-          <button className="button danger toolbar-danger-action log-action-delete" type="button" aria-label="删除当前日块" title="删除" disabled={!day?.exists || editing.busy} onClick={editing.onDelete}><Trash2 size={15} />删除</button>
+          <button className="button danger toolbar-danger-action log-action-delete" type="button" aria-label="删除当前日志" title="删除" disabled={!day?.exists || editing.busy} onClick={editing.onDelete}><Trash2 size={15} />删除</button>
           <div className="log-toolbar-more export-menu" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setToolbarMenuOpen(false); }} onKeyDown={event => { if (event.key === "Escape" && toolbarMenuOpen) { event.preventDefault(); event.stopPropagation(); setToolbarMenuOpen(false); toolbarMenuTrigger.current?.focus(); } }}>
             <button ref={toolbarMenuTrigger} className="button secondary" type="button" title="更多日志操作" aria-label="更多操作" aria-expanded={toolbarMenuOpen} aria-controls="log-toolbar-popover" onClick={() => setToolbarMenuOpen(value => !value)}><MoreHorizontal size={18} /></button>
             {toolbarMenuOpen && <div id="log-toolbar-popover" className="export-popover log-toolbar-popover" role="group" aria-label="更多日志操作" onClick={event => { if (event.target instanceof Element && event.target.closest("button")) { toolbarMenuTrigger.current?.focus({ preventScroll: true }); setToolbarMenuOpen(false); } }}>
@@ -294,7 +294,7 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
               <button className="log-overflow-refresh" type="button" disabled={!date || editing.busy} onClick={editing.onReload}>刷新</button>
               <div className="log-overflow-export"><ExportMenu variant="items" scopes={exportScopes.map(item => ({ ...item, label: `导出${item.label}` }))} onExport={exporting.run} busy={exporting.busy} disabled={!active || !hasLogs} /></div>
               <button className="log-overflow-backup" type="button" aria-label="日志历史版本" disabled={!date || editing.busy} onClick={editing.onBackups}>历史版本</button>
-              <button className="log-overflow-delete danger" type="button" aria-label="删除当前日块" disabled={!day?.exists || editing.busy} onClick={editing.onDelete}>删除</button>
+              <button className="log-overflow-delete danger" type="button" aria-label="删除当前日志" disabled={!day?.exists || editing.busy} onClick={editing.onDelete}>删除</button>
             </div>}
           </div>
           {saveButton()}
@@ -346,7 +346,7 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
         <button type="button" disabled={!editorReady || mode === "preview" || attachments.busy || editing.busy} onClick={() => { setActionsOpen(false); imageInput.current?.click(); }}><Upload size={18} />插入图片</button>
         <button type="button" disabled={!editing.dirty || editing.busy} onClick={() => { setActionsOpen(false); editing.onDiscard(); }}><Eye size={18} />放弃修改</button>
         <button type="button" aria-label="日志历史版本" disabled={!date || editing.busy} onClick={() => { setActionsOpen(false); editing.onBackups(); }}><DatabaseBackup size={18} />历史版本</button>
-        <button className="danger" type="button" aria-label="删除当前日块" disabled={!day?.exists || editing.busy} onClick={() => { setActionsOpen(false); editing.onDelete(); }}><Trash2 size={18} />删除日块</button>
+        <button className="danger" type="button" aria-label="删除当前日志" disabled={!day?.exists || editing.busy} onClick={() => { setActionsOpen(false); editing.onDelete(); }}><Trash2 size={18} />删除日志</button>
       </div>
       <div className="mobile-sheet-section"><span>导出</span><div>
         {exportScopes.map(item => <button key={item.scope} type="button" aria-label={`导出${item.label}`} disabled={!active || exporting.busy || item.disabled} onClick={() => { setActionsOpen(false); void exporting.run(item.scope); }}>{item.scope === "file" ? "源文件" : item.label}</button>)}

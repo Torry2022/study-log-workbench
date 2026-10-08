@@ -115,7 +115,7 @@ function parseBlocks(content: string, file: LogFile): ParsedBlock[] {
     if (!isValidLogDate(heading.text)) throw new Error("源文件包含无效日期");
     const sourceDate = file.fileName.match(LOG_FILE_PATTERN);
     const prefix = sourceDate ? `${sourceDate[1]}-${sourceDate[2] ? sourceDate[2] + "-" : ""}` : null;
-    if (prefix && !heading.text.startsWith(prefix)) throw new Error("日块日期与源文件年月不一致");
+    if (prefix && !heading.text.startsWith(prefix)) throw new Error("日志日期与源文件年月不一致");
     const start = heading.start;
     const end = index + 1 < headings.length ? headings[index + 1].start : content.length;
     return {
@@ -136,7 +136,7 @@ export function extractDayBlockFromSource(content: string, fileName: string, dat
   const file = { fileName, filePath: fileName };
   const blocks = parseBlocks(content, file);
   if (new Set(blocks.map(block => block.date)).size !== blocks.length) {
-    throw new LogWriteInputError("备份源文件包含重复日期，无法确认所选日块");
+    throw new LogWriteInputError("备份源文件包含重复日期，无法确认所选日志");
   }
   return blocks.find((block) => block.date === date)?.content || null;
 }
@@ -329,7 +329,7 @@ function assertMutationVersion(input: { date: string; baseVersion: string | null
   if (!input || typeof input !== "object" || !Object.hasOwn(input, "baseVersion") ||
     !(input.baseVersion === null || typeof input.baseVersion === "string" && input.baseVersion.length > 0) ||
     typeof input.date !== "string" || !isValidLogDate(input.date)) {
-    throw new LogWriteInputError("需要有效日期和 baseVersion（非空字符串或 null）");
+    throw new LogWriteInputError("无法确认日志日期及当前版本，请重新打开后重试");
   }
 }
 
@@ -341,7 +341,7 @@ export async function saveDay(input: SaveDayInput, missingDaySourceFileName?: st
   // Only trusted backup metadata supplies this internal hint. Public writes
   // pass one argument and cannot choose a source filename or filesystem path.
   if (missingDaySourceFileName !== undefined && ![`${toMonth(input.date)}_学习日志.md`, `${input.date.slice(0, 4)}_学习日志.md`].includes(missingDaySourceFileName)) {
-    throw new LogWriteInputError("历史源文件与日块年月不匹配");
+    throw new LogWriteInputError("历史源文件与日志年月不匹配");
   }
   assertLogDateIsNotFuture(input.date);
   const normalized = normalizeDayContent(input.date, input.content);
@@ -354,7 +354,7 @@ export async function saveDay(input: SaveDayInput, missingDaySourceFileName?: st
 
 export async function deleteDay(input: DeleteDayInput): Promise<DayEntry> {
   assertMutationVersion(input);
-  if (input.baseVersion === null) throw new LogWriteInputError("删除日块必须提供当前非空 baseVersion");
+  if (input.baseVersion === null) throw new LogWriteInputError("无法确认要删除日志的当前版本，请重新打开后重试");
   return mutateDay(input.date, input.baseVersion, () => null);
 }
 
@@ -389,7 +389,7 @@ async function mutateDay(date: string, baseVersion: string | null, replacement: 
     const nextBlocks = parseBlocks(next, file);
     const updated = nextBlocks.find(block => block.date === date);
     if ((normalized === null ? Boolean(updated) : !updated) || new Set(nextBlocks.map(block => block.date)).size !== nextBlocks.length) {
-      throw new LogWriteInputError("日块结构无效，未写入源文件");
+      throw new LogWriteInputError("日志结构无效，未写入源文件");
     }
     if (present && logHistoryPolicy().enabled) {
       await assertUnlinkedPath(backupRoot);

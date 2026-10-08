@@ -41,7 +41,7 @@ try {
   await expect.poll(async () => target.evaluate(el => el.getBoundingClientRect().top)).toBeLessThan(300);
   await page.getByRole('button', { name: '返回链接前位置', exact: true }).filter({ visible: true }).click();
   await expect(page).toHaveURL(/date=2026-04-11/); await expect(page.getByRole('button', { name: '分屏', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await page.getByRole('link', { name: '不存在的日块', exact: true }).click(); await expect(page.locator('.editor-navigation-status[role=alert]')).toHaveText('未找到目标日块'); await expect(page).toHaveURL(/date=2026-04-11/);
+  await page.getByRole('link', { name: '不存在的日块', exact: true }).click(); await expect(page.locator('.editor-navigation-status[role=alert]')).toHaveText('未找到目标日志'); await expect(page).toHaveURL(/date=2026-04-11/);
   await page.getByRole('link', { name: '缺失标题', exact: true }).click(); await expect(page.getByRole('status').filter({ hasText: '未找到目标小节，已打开该日日志。' })).toBeVisible();
   await page.getByRole('button', { name: '返回链接前位置', exact: true }).filter({ visible: true }).click();
 

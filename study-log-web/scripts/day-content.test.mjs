@@ -52,7 +52,7 @@ test("rejects an additional level-two heading in the body", () => {
 test("rejects a mismatched date heading at the top", () => {
   assert.throws(
     () => normalizeDayContent("2026-05-29", "## 2026-07-24\n\n### 1. 标题"),
-    /日块顶部日期与当前选择的日期不一致/
+    /日志顶部日期与当前选择的日期不一致/
   );
 });
 

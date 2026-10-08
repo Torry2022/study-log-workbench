@@ -208,31 +208,31 @@ export function BackupDialog({ date, active = true, onClose, beforeRestore, onRe
     <div ref={backdropRef} className="backup-dialog-backdrop" role="presentation" onMouseDown={event => event.target === event.currentTarget && closeDialog()}>
       <section className={`backup-dialog${maximized ? " maximized" : ""}`} role="dialog" aria-modal="true" aria-labelledby="backup-dialog-title">
         <header className="backup-dialog-header">
-          <div><span className="backup-dialog-icon"><DatabaseBackup size={20} /></span><div><h2 id="backup-dialog-title">日志历史版本</h2><p>比较历史内容，恢复当前日块。</p></div></div>
+          <div><span className="backup-dialog-icon"><DatabaseBackup size={20} /></span><div><h2 id="backup-dialog-title">日志历史版本</h2><p>比较历史内容，恢复当前日志。</p></div></div>
           <div className="backup-dialog-window-actions">
             <button className="button icon-only backup-dialog-size-toggle" type="button" onClick={() => setMaximized(value => !value)} aria-label={maximized ? "还原历史版本窗口" : "最大化历史版本窗口"} title={maximized ? "还原" : "最大化"}>{maximized ? <Minimize2 size={18} /> : <Maximize2 size={18} />}</button>
             <button className="button icon-only" type="button" onClick={closeDialog} disabled={Boolean(busy)} aria-label="关闭日志历史版本"><X size={18} /></button>
           </div>
         </header>
         <div className="backup-dialog-content">
-          <section className="backup-status-panel" aria-label="日块版本说明"><div className="backup-status-mark"><DatabaseBackup size={20} /></div><div><strong>保存前日块版本</strong><span>这里展示已保留的历史内容；恢复仅影响所选日期。</span></div></section>
+          <section className="backup-status-panel" aria-label="日志版本说明"><div className="backup-status-mark"><DatabaseBackup size={20} /></div><div><strong>保存前日志版本</strong><span>这里展示已保留的历史内容；恢复仅影响所选日期。</span></div></section>
           {error && <div className="backup-dialog-error" role="alert">{error}</div>}
           <button className="button backup-version-toggle" type="button" aria-expanded={versionsExpanded} aria-controls="backup-versions" onClick={() => setVersionsExpanded(value => !value)}>{selected ? `历史版本 · ${formatDateTime(selected.createdAt)}` : "选择历史版本"} · {versionsExpanded ? "收起" : "更换"}</button>
           <div className="backup-dialog-main" data-versions-expanded={versionsExpanded}>
             <aside id="backup-versions" className="backup-version-panel">
               <div className="backup-version-date"><span>恢复目标</span><strong>{date}</strong></div>
-              <section className="backup-version-group"><header><strong>保存前版本</strong><span>最近 20 个不同的日块版本</span></header>
+              <section className="backup-version-group"><header><strong>保存前版本</strong><span>最近 20 个不同的日志版本</span></header>
                 <div className="backup-version-list">{versions.map(item => <button className={selected?.id === item.id ? "active" : ""} type="button" key={item.id} onClick={() => void selectVersion(item)} disabled={Boolean(busy)} aria-pressed={selected?.id === item.id}><span>{formatDateTime(item.createdAt)}</span><small>{formatSize(item.sizeBytes)}</small></button>)}</div>
                 {loading ? <BackupState kind="loading" title={versions.length ? "正在读取更早版本" : "正在读取历史版本"} compact /> : listError ? <BackupState kind="error" title={listError} onRetry={() => setListRetry(value => value + 1)} compact /> : !versions.length && <p className="backup-version-empty">暂无历史版本</p>}
               </section>
             </aside>
             <section className="backup-preview-panel">
-              {previewLoading ? <BackupState kind="loading" title="正在读取历史日块" /> : preview ? <>
+              {previewLoading ? <BackupState kind="loading" title="正在读取历史日志" /> : preview ? <>
                 <BackupDiffViewer key={`${preview.id}:${preview.currentVersion}:${preview.backupVersion}`} currentContent={preview.currentContent} historicalContent={preview.historicalContent} historicalLabel={selected ? formatDateTime(selected.createdAt) : "历史版本"} />
                 <footer className="backup-dialog-actions"><p>{conflict ? "内容已变化，请重新预览并确认后再恢复。" : "仅恢复所选日期，其他日期保持不变。"}</p>
                   {conflict ? <button className="button secondary" type="button" onClick={() => selected && void selectVersion(selected)}><RefreshCw size={16} />重新预览</button> : <button className="button primary" type="button" onClick={() => void restoreSelected()} disabled={Boolean(busy)}><ArchiveRestore size={16} />{busy === "confirming" ? "等待确认" : busy === "restoring" ? "恢复中" : "恢复此版本"}</button>}
                 </footer>
-              </> : selected && error ? <BackupState kind="error" title="未能读取历史日块" onRetry={() => void selectVersion(selected)} /> : <BackupState kind="empty" title="选择一个版本，查看历史内容" />}
+              </> : selected && error ? <BackupState kind="error" title="未能读取历史日志" onRetry={() => void selectVersion(selected)} /> : <BackupState kind="empty" title="选择一个版本，查看历史内容" />}
             </section>
           </div>
         </div>

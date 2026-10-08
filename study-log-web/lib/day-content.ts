@@ -16,7 +16,7 @@ export interface MarkdownRootHeading {
 export class InvalidDayContentError extends Error {
   readonly code = INVALID_DAY_CONTENT_ERROR_CODE;
 
-  constructor(message = "当前日块正文不能包含二级标题；日期标题由系统维护，请改用三级标题") {
+  constructor(message = "当前日志正文不能包含二级标题；日期标题由系统维护，请改用三级标题") {
     super(message);
     this.name = "InvalidDayContentError";
   }
@@ -78,7 +78,7 @@ export function normalizeDayContent(date: string, content: string): string {
   if (headings[0]?.start === 0) {
     const firstHeading = headings[0];
     if (firstHeading.text !== date) {
-      throw new InvalidDayContentError("日块顶部日期与当前选择的日期不一致");
+      throw new InvalidDayContentError("日志顶部日期与当前选择的日期不一致");
     }
     body = trimmed.slice(firstHeading.end).replace(/^\r?\n+/, "").trim();
   }

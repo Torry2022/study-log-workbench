@@ -31,12 +31,12 @@ export function useHighlighting(options: Options) {
   const [configurationError, setConfigurationError] = useState("");
   const configurationRef = useRef<AbortController | null>(null);
   const configured = Boolean(capabilities?.features.aiHighlighting?.supported && capabilities.features.aiHighlighting.configured);
-  const configurationMessages = !capabilities ? [] : !capabilities.features.aiHighlighting?.supported ? ["此服务器尚未开放重点标注。"] : [
+  const configurationMessages = !capabilities ? [] : !capabilities.features.aiHighlighting?.supported ? ["当前服务器版本不支持重点标注。"] : [
     ...capabilities.aiConfiguration?.provider.issues.map(issue => issue.message) || [],
     ...capabilities.aiConfiguration?.templates.highlighting?.issue ? [capabilities.aiConfiguration.templates.highlighting.issue.message] : []
   ];
   if (capabilities?.features.aiHighlighting?.supported && !configured && !configurationMessages.length) configurationMessages.push("重点标注尚未配置完成，请检查模型配置。");
-  const inputProblem = !options.date ? "请先选择左侧日块" : options.date > todayInShanghai() ? "不能标注未来日期的日志" : !options.content.trim() ? "当前日块暂无可标注内容" : options.content.length > 60_000 ? "当前日块超过 60,000 字符，暂不支持重点标注" : "";
+  const inputProblem = !options.date ? "请先选择左侧日志" : options.date > todayInShanghai() ? "不能标注未来日期的日志" : !options.content.trim() ? "当前日志暂无可标注内容" : options.content.length > 60_000 ? "当前日志超过 60,000 字符，暂不支持重点标注" : "";
   const stale = Boolean(review && (review.date !== options.date || review.original !== options.content));
   function feedback(message: string, kind: typeof statusKind = "success") { setStatus(message); setStatusKind(kind); }
   const refreshConfiguration = useCallback(async () => {
@@ -82,12 +82,12 @@ export function useHighlighting(options: Options) {
   async function apply() {
     const selected = reviewRef.current;
     if (!selected || !live.current.active || !live.current.visible || requestRef.current || applying.current) return false;
-    if (selected.date !== live.current.date || selected.original !== live.current.content) { feedback("当前日块或编辑草稿已变化，请重新标注后再应用。", "warning"); return false; }
+    if (selected.date !== live.current.date || selected.original !== live.current.content) { feedback("当前日志或编辑草稿已变化，请重新标注后再应用。", "warning"); return false; }
     applying.current = true; setBusy(true); const token = epoch.current;
     try {
       const accepted = await live.current.onApply(selected.date, selected.original, selected.highlighted);
       if (token !== epoch.current || !live.current.active || !live.current.visible) return false;
-      if (!accepted) { feedback("当前日块或编辑草稿已变化，未应用标注；请重新标注。", "warning"); return false; }
+      if (!accepted) { feedback("当前日志或编辑草稿已变化，未应用标注；请重新标注。", "warning"); return false; }
       reviewRef.current = null; setReview(null); feedback("已应用重点标注，尚未保存。"); return true;
     } catch (error) { if (token === epoch.current) feedback(error instanceof Error ? error.message : "应用标注失败，当前草稿未修改", "error"); return false; }
     finally { if (token === epoch.current) { applying.current = false; setBusy(false); } }

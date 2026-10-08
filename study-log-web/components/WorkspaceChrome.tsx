@@ -265,7 +265,7 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, module
               {!loading && !error && !filteredDays.length && <WorkspaceState kind="empty" title={query ? "没有符合条件的日志" : months.length ? "本月暂无日志" : "暂无学习日志"} layout="compact" />}
               {!loading && !error && filteredDays.map(day => <div key={day.date} className={`day-item${day.date === selectedDate ? " active" : ""}`} onClick={() => void selectSidebarDate(day.date)}>
                 <button className="day-item-open" type="button" aria-current={day.date === selectedDate ? "date" : undefined} onClick={event => { event.stopPropagation(); void selectSidebarDate(day.date); }}>
-                  <span className="day-date">{query.trim() ? day.date : day.date.slice(5)}</span><span className="sr-only">打开该日块</span>
+                  <span className="day-date">{query.trim() ? day.date : day.date.slice(5)}</span><span className="sr-only">打开该日志</span>
                 </button>
                 <div className="day-tags">{day.headings.length ? day.headings.map((heading, index) => <button type="button" className="day-tag interactive" key={`${index}:${heading}`} title={`定位到“${heading}”`} onClick={event => { event.stopPropagation(); void selectSidebarDate(day.date, heading, index); }}>{heading}</button>) : <span className="day-tag muted">未命名</span>}</div>
               </div>)}

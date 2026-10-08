@@ -15,7 +15,7 @@ export const MAX_GENERATION_MATERIAL = 60_000;
 const parser = unified().use(remarkParse);
 
 export function validateGenerationInput(value: unknown): GenerateInput {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new AiGenerationInputError("生成请求必须是对象");
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new AiGenerationInputError("生成请求无效，请刷新后重试");
   const input = value as Record<string, unknown>;
   if (typeof input.date !== "string" || !isValidLogDate(input.date)) throw new AiGenerationInputError("请选择有效日期 YYYY-MM-DD");
   if (input.date > todayInShanghai()) throw new AiGenerationInputError("不能为未来日期生成日志");

@@ -99,7 +99,7 @@ export function TaxonomyManager({
 
       <div className="taxonomy-ai-status" aria-live="polite">
         {ai.configurationLoading && <p>正在读取 AI 配置…</p>}
-        {!ai.configured && !ai.configurationLoading && <FeatureAvailability title="AI 分类建议尚未启用" description="可以继续手动调整和保存分类。" messages={ai.configurationError ? [ai.configurationError] : ai.configurationMessages} busy={ai.configurationLoading} onCheck={() => void ai.refreshConfiguration()} />}
+        {!ai.configured && !ai.configurationLoading && <FeatureAvailability title="暂时无法获取分类建议" description="可以继续手动调整和保存分类。" messages={ai.configurationError ? [ai.configurationError] : ai.configurationMessages} busy={ai.configurationLoading} onCheck={() => void ai.refreshConfiguration()} />}
         {ai.inputProblem && <p>{ai.inputProblem}</p>}
         {filteredRows.length > 200 && <p>本次最多处理 200 个标签，请缩小筛选范围。</p>}
         {ai.status && <p>{ai.status}</p>}

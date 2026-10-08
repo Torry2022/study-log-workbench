@@ -102,7 +102,7 @@ export function InternalLinkDialog({ initialAlias = "", onClose, onInsert }: Int
             <span aria-hidden="true"><Link2 size={19} /></span>
             <div>
               <h2 id="internal-link-dialog-title">插入内部链接</h2>
-              <p>选择日块或小节，自动生成跳转语法。</p>
+              <p>选择日志或小节，自动生成跳转语法。</p>
             </div>
           </div>
           <button type="button" onClick={closeDialog} aria-label="关闭内部链接选择器"><X size={18} /></button>
@@ -210,8 +210,8 @@ export function InternalLinkDialog({ initialAlias = "", onClose, onInsert }: Int
                   {candidate.kind === "day" ? <CalendarDays size={17} /> : <FileText size={17} />}
                 </span>
                 <span className="internal-link-result-copy">
-                  <strong>{candidate.heading || `${candidate.date} 日块`}</strong>
-                  <small>{candidate.date}{candidate.kind === "day" ? " · 跳转到日块顶部" : ""}</small>
+                  <strong>{candidate.heading || `${candidate.date} 日志`}</strong>
+                  <small>{candidate.date}{candidate.kind === "day" ? " · 跳转到日志顶部" : ""}</small>
                   {candidate.preview && <span>{candidate.preview}</span>}
                 </span>
                 <span className="internal-link-result-action">插入</span>

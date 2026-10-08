@@ -299,7 +299,7 @@ export function RagWorkspace({
                               <button className="rag-citation" type="button" onClick={() => toggleCitation(message.id, citation)}>
                                 <span>{citation.sourceId}</span>
                                 <strong>{citation.date}</strong>
-                                <em>{citation.heading || "日块原文"}</em>
+                                <em>{citation.heading || "日志原文"}</em>
                                 <ChevronDown size={14} />
                               </button>
                               {expandedCitationKey === `${message.id}:${citation.sourceId}` && (

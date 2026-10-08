@@ -331,7 +331,7 @@ export struct LogsReaderPage {
       if (menu === '文件') return [
         new DesktopMenuEntry('newLog', '新建日志…', true, false, 'Ctrl+Alt+N'),
         new DesktopMenuEntry('save', '保存当前日志', ready && this.session.isDirty(), false, 'Ctrl+S'),
-        new DesktopMenuEntry('export-day', '导出当前日块', ready && !!this.session.day?.exists),
+        new DesktopMenuEntry('export-day', '导出当前日志', ready && !!this.session.day?.exists),
         new DesktopMenuEntry('export-file', '导出当前源文件', ready && !!this.session.day?.exists),
         new DesktopMenuEntry('export-all', '导出全部日志', logActive && !this.exportBusy),
         new DesktopMenuEntry('backup', '备份与恢复', ready && !!this.session.day?.exists)
@@ -1021,7 +1021,7 @@ export struct LogsReaderPage {
     }
     return new Promise<boolean>((resolve) => {
       AlertDialog.show({ title: '恢复此版本', autoCancel: false,
-        message: `仅恢复 ${this.session.selectedDate} 日块，恢复前会再次保留现有文件。` +
+        message: `仅恢复 ${this.session.selectedDate} 日志，恢复前会再次保留现有文件。` +
           (this.session.isDirty() ? '\n当前编辑器有未保存修改，恢复会放弃这些修改。' : ''),
         primaryButton: { value: '取消', action: () => resolve(false) },
         secondaryButton: { value: '恢复', action: () => resolve(true) },
@@ -1148,7 +1148,7 @@ export struct LogsReaderPage {
     if (!this.pendingImageCount || this.imageBusy) return;
     if (!this.session.day || this.pendingImageDate !== this.session.selectedDate || !this.sourceMode ||
       !this.editorReady || this.editor.loadedDocumentKey !== this.session.selectedDate) {
-      appFeedback.show('日块或编辑模式已变化，请重新插入图片', 'error');
+      appFeedback.show('日志或编辑模式已变化，请重新插入图片', 'error');
       return;
     }
     this.imageBusy = true;
@@ -1349,8 +1349,8 @@ export struct LogsReaderPage {
       }
     }
     AlertDialog.show({
-      message: this.session.isDirty() ? `确认删除 ${date} 日块？当前有未保存修改，删除会保留写入前备份。` :
-        `确认删除 ${date} 日块？此操作会保留写入前备份。`,
+      message: this.session.isDirty() ? `确认删除 ${date} 日志？当前有未保存修改，删除会保留写入前备份。` :
+        `确认删除 ${date} 日志？此操作会保留写入前备份。`,
       primaryButton: { value: '取消', action: () => {} },
       secondaryButton: { value: '删除', fontColor: $r('app.color.error'),
         action: () => { if (this.session.day?.date === date && this.session.day.version === version) this.deleteDay(date, version); } }
@@ -1370,7 +1370,7 @@ export struct LogsReaderPage {
     this.splitMode = false;
     this.reads.invalidate();
     this.refreshNavigation(date);
-    appFeedback.show('日块已删除', 'success');
+    appFeedback.show('日志已删除', 'success');
   }
 
   private async deleteDay(date: string, version: string): Promise<void> {
@@ -1496,19 +1496,19 @@ export struct LogsReaderPage {
       appFeedback.show(found ? '已定位到小节' : '未找到大纲小节',
         found ? 'success' : 'warning', 3600, 'navigation');
     } else if (kind === 'internal') {
-      appFeedback.show(found ? '已定位到内部链接' : '已打开目标日块，但未找到标题',
+      appFeedback.show(found ? '已定位到内部链接' : '已打开目标日志，但未找到标题',
         found ? 'success' : 'warning', 3600, 'navigation');
     } else if (kind === 'search') {
-      appFeedback.show(found ? '已定位到搜索关键词' : '已打开日块，但未在预览中定位到关键词',
+      appFeedback.show(found ? '已定位到搜索关键词' : '已打开日志，但未在预览中定位到关键词',
         found ? 'success' : 'warning', 3600, 'navigation');
     } else if (kind === 'favorite') {
-      appFeedback.show(found ? '已定位到收藏小节' : '已打开收藏日块，但未找到标题',
+      appFeedback.show(found ? '已定位到收藏小节' : '已打开收藏日志，但未找到标题',
         found ? 'success' : 'warning');
     } else if (kind === 'citation') {
-      appFeedback.show(found ? '已定位到引用小节' : '已打开来源日块，但未找到引用小节',
+      appFeedback.show(found ? '已定位到引用小节' : '已打开来源日志，但未找到引用小节',
         found ? 'success' : 'warning');
     } else if (kind === 'stats') {
-      appFeedback.show(found ? '已定位到统计小节' : '已打开日块，但未找到统计小节',
+      appFeedback.show(found ? '已定位到统计小节' : '已打开日志，但未找到统计小节',
         found ? 'success' : 'warning');
     }
   }
@@ -1609,7 +1609,7 @@ export struct LogsReaderPage {
       Row({ space: 8 }) {
         Image(icon).width(16).height(16).colorFilter(iconTint($r('app.color.body')))
         Text(label).fontSize(13)
-          .fontColor(label === '删除日块' ? $r('app.color.error') : $r('app.color.body'))
+          .fontColor(label === '删除日志' ? $r('app.color.error') : $r('app.color.body'))
       }.width('100%')
     }.width('100%').height(40).padding({ left: 10, right: 10 }).borderRadius(8)
       .attributeModifier(new InteractiveSurface(Color.Transparent, this.hoveredMoreAction === label))
@@ -1652,12 +1652,12 @@ export struct LogsReaderPage {
             () => this.backupOpen = true)
         }
         if (!this.documentActionsInHeader('delete')) {
-          this.desktopMoreItem($r('app.media.trash_2'), '删除日块', !!this.session.day?.exists && !this.deleting,
+          this.desktopMoreItem($r('app.media.trash_2'), '删除日志', !!this.session.day?.exists && !this.deleting,
             () => this.confirmDelete())
         }
         if (!this.documentActionsInHeader('export')) {
           Divider().color($r('app.color.hairline')).margin({ top: 4, bottom: 4 })
-          this.desktopMoreItem($r('app.media.download'), '导出当前日块', !!this.session.day && !this.exportBusy,
+          this.desktopMoreItem($r('app.media.download'), '导出当前日志', !!this.session.day && !this.exportBusy,
             () => this.exportLogs('day'))
           this.desktopMoreItem($r('app.media.download'), '导出当前源文件', !!this.session.day && !this.exportBusy,
             () => this.exportLogs('file'))
@@ -1774,7 +1774,7 @@ export struct LogsReaderPage {
       Button({ type: ButtonType.Normal }) {
         Row({ space: 7 }) {
           Image($r('app.media.trash_2')).width(16).height(16).colorFilter(iconTint($r('app.color.error')))
-          Text('删除日块').fontSize(12).fontWeight(FontWeight.Medium).fontColor($r('app.color.error'))
+          Text('删除日志').fontSize(12).fontWeight(FontWeight.Medium).fontColor($r('app.color.error'))
         }.justifyContent(FlexAlign.Center)
       }.width('100%').height(42).padding(0)
         .backgroundColor($r('app.color.error_surface'))
@@ -1785,7 +1785,7 @@ export struct LogsReaderPage {
       Text('导出').width('100%').fontSize(13).fontWeight(FontWeight.Medium)
         .fontColor($r('app.color.muted'))
       Row({ space: 8 }) {
-        this.exportAction('当前日块', 'day')
+        this.exportAction('当前日志', 'day')
         this.exportAction('当前源文件', 'file')
         this.exportAction('全部日志', 'all')
       }.width('100%')
@@ -1822,7 +1822,7 @@ export struct LogsReaderPage {
   @Builder
   private exportActions() {
     Column() {
-      this.exportMenuItem('当前日块', 'day')
+      this.exportMenuItem('当前日志', 'day')
       this.exportMenuItem('当前源文件', 'file')
       this.exportMenuItem('全部日志', 'all')
     }.width('100%').padding(4)
@@ -2226,7 +2226,7 @@ export struct LogsReaderPage {
     const output = this.ai.output;
     const current = (): boolean => lifecycle === this.lifecycle && this.session.day?.date === date &&
       revision === this.ai.requestRevision && this.ai.outputDate === date && this.ai.output === output && !this.ai.busy;
-    if (this.ai.outputDate !== date) { this.ai.message = '请切回生成草稿时的日块'; return; }
+    if (this.ai.outputDate !== date) { this.ai.message = '请切回生成草稿时的日志'; return; }
     try {
       if (!await this.prepareEditor(date, lifecycle)) return;
       if (!current()) return;
@@ -2258,7 +2258,7 @@ export struct LogsReaderPage {
       const snapshot = await this.editor.command('snapshot');
       if (!current()) return;
       if (snapshot.documentKey !== date || snapshot.text !== originalDraft) {
-        this.ai.message = '当前日块或编辑草稿已变化，请重新标注重点'; return;
+        this.ai.message = '当前日志或编辑草稿已变化，请重新标注重点'; return;
       }
       await this.editor.replace(highlighted);
       if (!current()) return;

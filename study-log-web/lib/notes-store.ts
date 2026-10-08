@@ -176,7 +176,7 @@ function snapshotFor(snapshots: Snapshot[], year: string): Snapshot {
 }
 function mutationIdentity(id: unknown, baseVersion: unknown): asserts id is string {
   if (typeof id !== "string" || !id.trim() || typeof baseVersion !== "string" || !baseVersion.trim()) {
-    throw new NoteInputError("修改或删除随记需要 id 和当前非空 baseVersion");
+    throw new NoteInputError("无法确认要操作的随记及其当前版本，请重新打开后重试");
   }
 }
 export async function createStudyNote(input: StudyNoteInput): Promise<StudyNote> {
@@ -198,10 +198,10 @@ export async function createStudyNotes(input: BatchStudyNoteInput[]): Promise<St
   const ids = new Set<string>();
   const normalized = input.map(item => {
     if (!item || typeof item !== "object" || typeof item.clientId !== "string" || !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(item.clientId)) {
-      throw new NoteInputError("每条批量随记都需要有效的 UUID clientId");
+      throw new NoteInputError("随记保存信息不完整，请重新提取后重试");
     }
     const id = item.clientId.toLowerCase();
-    if (ids.has(id)) throw new NoteInputError("同批随记的 clientId 不能重复");
+    if (ids.has(id)) throw new NoteInputError("本次保存包含重复的随记，请重新选择后重试");
     ids.add(id);
     return { ...normalizeNoteInput(item), id };
   });

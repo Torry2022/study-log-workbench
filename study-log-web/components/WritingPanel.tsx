@@ -29,7 +29,7 @@ export function WritingPanel({ writing }: { writing: WritingController; themeMod
   }, [writing.instruction, writing.active, writing.visible]);
   if (!writing.active) return null;
   return <div className="writing-panel panel-body">
-    {(writing.configurationError || writing.configurationMessages.length > 0) && <FeatureAvailability title={writing.configurationError ? "暂时无法检查 AI 服务" : "AI 写作尚未启用"} description="可以先整理学习材料，配置模型后再生成草稿。" messages={writing.configurationError ? [writing.configurationError] : writing.configurationMessages} busy={writing.configurationLoading} onCheck={() => void writing.refreshConfiguration()} />}
+    {(writing.configurationError || writing.configurationMessages.length > 0) && <FeatureAvailability title={writing.configurationError ? "暂时无法检查 AI 服务" : "暂时无法生成日志"} description="可以先整理学习材料，配置模型后再生成草稿。" messages={writing.configurationError ? [writing.configurationError] : writing.configurationMessages} busy={writing.configurationLoading} onCheck={() => void writing.refreshConfiguration()} />}
     {!writing.date && <WorkspaceState kind="empty" title="未选择日志" description="选择记录日期后，可将学习材料整理成日志草稿。" layout="compact" className="inspector-empty-state" />}
     <GenerationPresetControls presets={writing.presets} disabled={Boolean(writing.busy)} />
     <label htmlFor="writing-instruction">补充要求</label>
@@ -44,7 +44,7 @@ export function WritingPanel({ writing }: { writing: WritingController; themeMod
     {writing.busy && writing.busy !== "apply" && <button className="mini-button" type="button" onClick={writing.cancelOperation}><X size={13} />取消当前操作</button>}
     {writing.status && <p className={`status-line ${writing.statusKind}`} role={writing.statusKind === "error" ? "alert" : "status"}>{writing.status}</p>}
     {[...writing.materialWarnings, ...writing.generationWarnings].map((warning, index) => <p className="status-line warning" key={`${index}:${warning}`}>{warning}</p>)}
-    {writing.output && writing.outputDate && writing.outputDate !== writing.date && <p className="status-line warning">该草稿属于 {writing.outputDate}，切回对应日块后才能追加。</p>}
+    {writing.output && writing.outputDate && writing.outputDate !== writing.date && <p className="status-line warning">该草稿属于 {writing.outputDate}，切回对应日志后才能追加。</p>}
     <label htmlFor="writing-output">生成草稿</label>
     <textarea id="writing-output" className="ai-output" value={writing.busy === "generate" && !writing.output ? "正在生成，请稍候..." : writing.output} onChange={event => writing.setOutput(event.target.value)} readOnly={writing.busy === "generate" && !writing.output} />
     <button className="button secondary-on-dark full" type="button" onClick={() => void writing.apply()} disabled={Boolean(writing.busy) || !writing.output.trim() || writing.outputDate !== writing.date}><Check size={15} />追加到编辑器</button>

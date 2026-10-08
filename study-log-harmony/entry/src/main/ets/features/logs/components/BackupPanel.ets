@@ -251,7 +251,7 @@ export struct BackupPanel {
         }.width('100%').padding({ bottom: 10 }).margin({ bottom: 8 })
           .border({ width: { bottom: 1 }, color: $r('app.color.hairline') })
         Text('保存前版本').fontSize(13).fontWeight(FontWeight.Bold).fontColor($r('app.color.ink'))
-        Text('最近 20 个不同的日块版本').fontSize(11).fontColor($r('app.color.muted'))
+        Text('最近 20 个不同的日志版本').fontSize(11).fontColor($r('app.color.muted'))
         if (this.loading) {
           Row({ space: 8 }) {
             LoadingProgress().width(18).height(18).color($r('app.color.primary'))
@@ -300,7 +300,7 @@ export struct BackupPanel {
         Image($r('app.media.archive_restore')).width(22).height(22)
           .colorFilter(iconTint($r('app.color.muted_soft')))
       }
-      Text(this.previewPending() ? '正在读取历史日块' : '选择一个历史版本')
+      Text(this.previewPending() ? '正在读取历史日志' : '选择一个历史版本')
         .fontSize(13).fontWeight(FontWeight.Medium).fontColor($r('app.color.muted'))
       if (!this.previewLoading && !this.preview) {
         Text('确认内容后再恢复，不会整文件覆盖。').fontSize(12)
@@ -345,7 +345,7 @@ export struct BackupPanel {
         Flex({ direction: FlexDirection.Row,
           wrap: this.wide() ? FlexWrap.NoWrap : FlexWrap.Wrap,
           justifyContent: FlexAlign.End, alignItems: ItemAlign.Center }) {
-          Text(this.conflict ? '请重新预览后再恢复。' : '仅恢复当前日块，恢复前会保留现有文件。')
+          Text(this.conflict ? '请重新预览后再恢复。' : '仅恢复当前日志，恢复前会保留现有文件。')
             .fontSize(12).fontColor($r('app.color.muted'))
             .width(this.wide() ? undefined : '100%')
             .layoutWeight(this.wide() ? 1 : 0)
@@ -384,7 +384,7 @@ export struct BackupPanel {
           Column({ space: 3 }) {
             Text('备份与恢复').fontFamily(workspaceSerifFamily(this.breakpoint)).fontSize(24)
               .fontColor($r('app.color.ink'))
-            Text('比较历史内容，恢复当前日块。').fontSize(11).fontColor($r('app.color.muted'))
+            Text('比较历史内容，恢复当前日志。').fontSize(11).fontColor($r('app.color.muted'))
           }.layoutWeight(1).alignItems(HorizontalAlign.Start)
           ToolbarAction({ label: this.maximized ? '还原备份窗口' : '最大化备份窗口', showLabel: false,
             icon: this.maximized ? $r('app.media.minimize_2') : $r('app.media.maximize_2'),

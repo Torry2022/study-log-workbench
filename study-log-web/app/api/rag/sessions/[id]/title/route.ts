@@ -11,7 +11,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   const unauthorized = requireAuth(request); if (unauthorized) { unauthorized.headers.set("Cache-Control", "no-store"); return unauthorized; }
   try {
     const input = await readRagSessionBody(request);
-    if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(key => key !== "baseVersion") || !("baseVersion" in input) || typeof input.baseVersion !== "string" || !/^[a-f0-9]{64}$/.test(input.baseVersion)) throw new RagSessionInputError("生成标题必须提供有效的baseVersion");
+    if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(key => key !== "baseVersion") || !("baseVersion" in input) || typeof input.baseVersion !== "string" || !/^[a-f0-9]{64}$/.test(input.baseVersion)) throw new RagSessionInputError("生成标题无法确认问答记录的当前版本，请重新打开后重试");
     const id = (await context.params).id, session = await getRagSession(id);
     if (session.titleSource !== "fallback") return Response.json({ session }, { headers: ragSessionHeaders });
     if (session.version !== input.baseVersion) throw new RagSessionConflictError();

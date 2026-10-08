@@ -107,7 +107,7 @@ export struct WorkspaceLogNavigation {
           .fontColor($r('app.color.muted')).backgroundColor(Color.Transparent).onClick(() => this.loadCalendar())
       } else {
         Text(this.logNavigation.calendarLoading ? '正在读取日志日期…' :
-          this.calendarMode === 'jump' ? '有记录的日期可直接跳转' : '选定日期后，点击“新建”打开日块')
+          this.calendarMode === 'jump' ? '有记录的日期可直接跳转' : '选定日期后，点击“新建”打开日志')
           .fontSize(12).fontColor($r('app.color.muted'))
       }
     }.width(280).padding(14)

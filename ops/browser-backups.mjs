@@ -90,7 +90,7 @@ try {
 
   console.log("Backups: draft-safe restore and conflicts passed");
   // Delete cancellation leaves the authoritative day; confirmed deletion is recoverable.
-  const deleteButton = page.getByRole("button", { name: "删除当前日块", exact: true }).filter({ visible: true });
+  const deleteButton = page.getByRole("button", { name: "删除当前日志", exact: true }).filter({ visible: true });
   await deleteButton.click(); await page.getByRole("alertdialog").getByRole("button", { name: "取消", exact: true }).click(); await expect(page.getByRole("alertdialog")).not.toBeVisible(); assert.equal((await getDay(date)).exists, true);
   const deletedResponse = page.waitForResponse(response => response.request().method() === "DELETE" && response.url().endsWith("/api/logs/day"));
   await deleteButton.click(); await confirm(); const deleted = await deletedResponse; assert.equal(deleted.status(), 200, JSON.stringify(await deleted.json())); await expect.poll(async () => (await getDay(date)).exists).toBe(false);

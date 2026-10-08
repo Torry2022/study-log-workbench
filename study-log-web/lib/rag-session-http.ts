@@ -9,7 +9,7 @@ export class RagSessionRequestError extends Error {
 export async function readRagSessionBody(request: Request): Promise<unknown> {
   if (request.signal.aborted) throw new RagSessionRequestError("已取消请求，未确认的回答请保留", 499, "RAG_SESSION_CANCELLED");
   const reader = request.body?.getReader();
-  if (!reader) throw new RagSessionInputError("请求正文必须是有效JSON对象");
+  if (!reader) throw new RagSessionInputError("请求内容无效，请刷新后重试");
   const chunks: Uint8Array[] = []; let size = 0;
   try {
     while (true) {
@@ -22,7 +22,7 @@ export async function readRagSessionBody(request: Request): Promise<unknown> {
     }
   } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
   try { return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks))); }
-  catch { throw new RagSessionInputError("请求正文必须是有效JSON对象"); }
+  catch { throw new RagSessionInputError("请求内容无效，请刷新后重试"); }
 }
 export function ragSessionError(error: unknown): Response {
   const result = error instanceof RagSessionRequestError ? { status: error.status, code: error.code, message: error.message }

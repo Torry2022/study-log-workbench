@@ -62,7 +62,7 @@ struct CandidateListItem {
             .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
         }
       }.layoutWeight(1).alignItems(HorizontalAlign.Start)
-      Text(this.draft.kind === 'explicit' ? '原文明示' : '归纳提炼').fontSize(12).fontColor($r('app.color.muted'))
+      Text(this.draft.kind === 'explicit' ? '材料中已有' : '归纳提炼').fontSize(12).fontColor($r('app.color.muted'))
       SymbolGlyph(this.active ? $r('sys.symbol.chevron_up') : $r('sys.symbol.chevron_down'))
         .fontSize(12).fontColor([$r('app.color.muted')])
     }.width('100%').padding({ top: 8, bottom: 8 })
@@ -238,7 +238,7 @@ export struct NoteCandidateExtractor {
       this.evidenceExpanded = false;
       this.warning = response.result.warnings.join('；');
       this.resultSummary = `${response.result.documents.length} 个文件 · ${response.result.documents.reduce((sum, doc) => sum + doc.sectionCount, 0)} 个内容区段 · ${response.result.model}`;
-      if (this.drafts.length === 0 && !this.warning) this.message = '没有提取到适合沉淀的随记';
+      if (this.drafts.length === 0 && !this.warning) this.message = '这次材料中没有适合保存为随记的内容。';
     } catch (error) {
       if (this.current(lifecycle, instance)) this.message = error instanceof ApiError ? error.message : 'AI提取失败，请稍后重试';
     } finally {

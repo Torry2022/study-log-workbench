@@ -126,7 +126,7 @@ export struct EditorLinkPicker {
           Column({ space: 4 }) {
             ActionPanelHeader({ title: '插入内部链接', closeLabel: '关闭内部链接选择器', showDragBar: true,
               onClose: () => { if (!this.inserting) this.onClose(); } })
-            Text('选择日块或小节，自动生成跳转语法。').fontSize(12).fontColor($r('app.color.muted'))
+            Text('选择日志或小节，自动生成跳转语法。').fontSize(12).fontColor($r('app.color.muted'))
               .width('100%')
           }.width('100%').padding({ left: 16, right: 16, top: 8, bottom: 12 })
             .border({ width: { bottom: 1 }, color: $r('app.color.hairline') })
@@ -137,7 +137,7 @@ export struct EditorLinkPicker {
           Column({ space: 3 }) {
             Text('插入内部链接').fontFamily(workspaceSerifFamily(this.breakpoint)).fontSize(26).fontWeight(600)
               .fontColor($r('app.color.ink'))
-            Text('选择日块或小节，自动生成跳转语法。').fontSize(12).fontColor($r('app.color.muted'))
+            Text('选择日志或小节，自动生成跳转语法。').fontSize(12).fontColor($r('app.color.muted'))
           }.layoutWeight(1).alignItems(HorizontalAlign.Start)
           Button({ type: ButtonType.Normal }) {
             SymbolGlyph($r('sys.symbol.xmark')).fontSize(16).fontColor([$r('app.color.muted')])
@@ -163,7 +163,7 @@ export struct EditorLinkPicker {
         LoadingProgress().width(24).height(24).color($r('app.color.primary')).margin(16)
       }
       if (!this.loading && this.results.length === 0 && !this.error) {
-        Text('未找到匹配的日块或小节').fontSize(13).fontColor($r('app.color.muted')).padding(16)
+        Text('未找到匹配的日志或小节').fontSize(13).fontColor($r('app.color.muted')).padding(16)
       }
       List({ scroller: this.scroller }) {
         ForEach(this.results, (candidate: EditorLinkCandidate, index: number) => {
@@ -175,7 +175,7 @@ export struct EditorLinkPicker {
                   .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(6)
                 Column({ space: 3 }) {
                   Row({ space: 8 }) {
-                    Text(candidate.heading || `${candidate.date} 日块`).fontSize(13).fontWeight(FontWeight.Medium)
+                    Text(candidate.heading || `${candidate.date} 日志`).fontSize(13).fontWeight(FontWeight.Medium)
                       .fontColor($r('app.color.body_strong')).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
                       .layoutWeight(1).textAlign(TextAlign.Start)
                     Text(candidate.date).fontSize(11).fontColor($r('app.color.muted')).textAlign(TextAlign.End)

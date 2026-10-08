@@ -13,7 +13,7 @@ import { ExportInputError, exportAssetReferences, rewriteExportAssetLinks } from
 export { ExportInputError } from "./export-assets.ts";
 export type ExportScope = "day" | "file" | "all" | "notes";
 export interface BuiltExport { fileName: string; buffer: Buffer; warnings: string[] }
-export class ExportNotFoundError extends Error { constructor() { super("未找到要导出的已保存日块"); } }
+export class ExportNotFoundError extends Error { constructor() { super("未找到要导出的已保存日志"); } }
 export class ExportChangedError extends Error { constructor() { super("导出期间源文件发生变化，请重试"); } }
 interface SourceFile { fileName: string; content: string; filePath: string }
 

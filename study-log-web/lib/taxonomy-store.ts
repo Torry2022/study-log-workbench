@@ -15,7 +15,7 @@ export class TaxonomyConflictError extends Error {
 const versionOf = (raw: string) => crypto.createHash("sha256").update(raw).digest("hex");
 
 function normalize(input: unknown): Pick<Taxonomy, "domains" | "mappings"> {
-  if (!input || typeof input !== "object" || Array.isArray(input)) throw new TaxonomyInputError("分类配置必须是对象");
+  if (!input || typeof input !== "object" || Array.isArray(input)) throw new TaxonomyInputError("分类设置格式无效，请重新读取后重试");
   const value = input as SaveTaxonomyInput;
   if (!Array.isArray(value.domains) || !value.domains.every(domain => typeof domain === "string" && domain.trim()) ||
     !value.mappings || typeof value.mappings !== "object" || Array.isArray(value.mappings) ||
@@ -71,7 +71,7 @@ export function readTaxonomy(): Promise<Taxonomy> {
 export async function writeTaxonomy(input: SaveTaxonomyInput): Promise<Taxonomy> {
   const normalized = normalize(input);
   if (!Object.hasOwn(input, "baseVersion") || (input.baseVersion !== null && (typeof input.baseVersion !== "string" || !input.baseVersion))) {
-    throw new TaxonomyInputError("必须提供baseVersion（字符串或null）");
+    throw new TaxonomyInputError("无法确认分类设置的当前版本，请重新读取后重试");
   }
   const root = getLogRoot();
   const backupRoot = getBackupRoot();

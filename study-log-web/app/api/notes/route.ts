@@ -23,7 +23,7 @@ async function mutate(request: NextRequest, operation: (body: any) => Promise<un
   let body: unknown;
   try { body = await request.json(); }
   catch { return Response.json({ error: "请求正文必须是有效 JSON" }, { status: 400, headers }); }
-  if (!body || typeof body !== "object" || Array.isArray(body)) return Response.json({ error: "请求正文必须是对象" }, { status: 400, headers });
+  if (!body || typeof body !== "object" || Array.isArray(body)) return Response.json({ error: "请求内容无效，请刷新后重试" }, { status: 400, headers });
   try { return Response.json(await operation(body), { headers }); } catch (error) { return failure(error); }
 }
 export function POST(request: NextRequest) { return mutate(request, async body => ({ note: await createStudyNote(body) })); }

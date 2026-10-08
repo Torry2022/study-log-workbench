@@ -27,12 +27,13 @@ try {
   const start = async () => { await page.getByRole("button", { name: "AI提取", exact: true }).filter({ visible: true }).first().click(); await expect(section).toBeVisible(); await section.getByLabel("提取随记材料文件", { exact: true }).setInputFiles(material); };
   const extract = async () => { await section.getByRole("button", { name: "提取随记", exact: true }).click(); await expect(first).toBeVisible(); };
   const ownNotes = async () => { const response = await page.request.get(`${base}/api/notes`); assert.equal(response.status(), 200); return (await response.json()).notes.filter(note => note.title.startsWith(prefix)); };
-  let status = 200, pending = null, latestIds = [], calls = 0;
+  let emptyResult = false, status = 200, pending = null, latestIds = [], calls = 0;
   // This permanent handler forbids paid model calls, including retries and late responses.
   await page.route("**/api/notes/candidates", async route => {
     calls++; const input = route.request().postDataJSON(); assert.equal(input.documents[0].fileName, material.name); assert.ok(input.documents[0].text.includes(materialText));
     latestIds = [1, 2].map(() => `b0200000-${randomUUID().slice(9)}`);
     const result = { model: "synthetic-candidates-mock", warnings: ["合成材料提取提示"], documents: [{ fileName: material.name, fileType: "text", size: material.buffer.length, sectionCount: 1 }], candidates: latestIds.map((id, index) => ({ id, kind: index ? "inferred" : "explicit", title: `${prefix}候选${index + 1}`, body: `合成候选正文${index + 1}`, insight: "", sources: ["普通材料来源"], tags: [tag], newTags: [tag], evidence: [{ sourceId: "doc1:s1", sourceLabel: "合成材料 · 第1段", quote: materialText }] })) };
+    if (emptyResult) { result.candidates = []; result.warnings = []; }
     const response = status === 200 ? { status, json: { result } } : { status, json: { error: status === 401 ? "Unauthorized" : "合成提取失败，旧候选保留" } };
     if (pending) { const gate = pending; gate.started(); await gate.promise; }
     await route.fulfill(response).catch(() => {});
@@ -48,7 +49,14 @@ try {
     else if (batchCalls === 2) await route.fulfill({ status: 200, json: {} });
     else await route.fulfill({ response });
   });
-  await page.goto(base); await login(); await center(); await start(); await extract();
+  await page.goto(base); await login(); await center(); await start();
+  emptyResult = true;
+  await section.getByRole("button", { name: "提取随记", exact: true }).click();
+  await expect(section).toContainText("这次材料中没有适合保存为随记的内容。");
+  await expect(section.locator(".notes-error")).toHaveCount(0);
+  await expect(section.getByRole("button", { name: "提取随记", exact: true })).toBeEnabled();
+  await expect(section.getByLabel("提取随记材料文件", { exact: true })).toBeEnabled();
+  emptyResult = false; await extract();
   await first.getByText("查看原文依据", { exact: true }).click(); await expect(first.locator("blockquote")).toBeVisible(); await expect(first.locator("blockquote")).toContainText(materialText); await expect(section).toContainText("合成材料提取提示");
   await first.getByLabel("标题", { exact: true }).fill(`${prefix}已编辑`); await first.getByLabel("正文", { exact: true }).fill("人工核对后的正文"); await first.getByLabel("个人理解", { exact: true }).fill("独立个人理解"); await first.getByLabel("来源", { exact: true }).fill("普通出处\nhttps://example.com/b20"); await first.getByLabel("标签", { exact: true }).fill(tag);
   await second.getByRole("checkbox").first().uncheck();

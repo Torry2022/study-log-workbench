@@ -152,11 +152,11 @@ export function useWriting(options: Options) {
   }
   async function apply() {
     if (!live.current.active || !live.current.visible || pending.current || confirming.current || !inputs.current.output.trim()) return;
-    if (!live.current.date || inputs.current.outputDate !== live.current.date) { feedback(`该草稿属于 ${inputs.current.outputDate || "其他日期"}，切回对应日块后才能追加。`, "warning"); return; }
+    if (!live.current.date || inputs.current.outputDate !== live.current.date) { feedback(`该草稿属于 ${inputs.current.outputDate || "其他日期"}，切回对应日志后才能追加。`, "warning"); return; }
     const operation = begin("apply");
     try {
       const accepted = await live.current.onApply(operation.date, inputs.current.output);
-      if (current(operation)) feedback(accepted ? "AI 草稿已追加到当前编辑草稿，尚未保存。" : "当前日块暂时无法追加，生成草稿已保留。", accepted ? "success" : "warning");
+      if (current(operation)) feedback(accepted ? "AI 草稿已追加到当前编辑草稿，尚未保存。" : "当前日志暂时无法追加，生成草稿已保留。", accepted ? "success" : "warning");
     } catch (error) { if (current(operation)) feedback(error instanceof Error ? error.message : "追加失败，生成草稿已保留", "error"); }
     finally { finish(operation); }
   }

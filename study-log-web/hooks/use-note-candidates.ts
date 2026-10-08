@@ -122,7 +122,7 @@ export function useNoteCandidates(options: Options) {
       if (controller.signal.aborted || !live.current.active || !live.current.visible) return;
       setCandidates(result.candidates.map(item => ({ ...item, selected: true, sourcesText: item.sources.join("\n"), tagsText: item.tags.join("、"), newTagsConfirmed: false })));
       setDocuments(result.documents); setWarnings([...problems, ...result.warnings]); setModel(result.model);
-      setStatus(result.candidates.length ? "请逐项核对候选、原文依据与新增标签后保存。" : "未提取到候选，请补充材料后重试。");
+      setStatus(result.candidates.length ? "请逐项核对候选、原文依据与新增标签后保存。" : "这次材料中没有适合保存为随记的内容。");
     } catch (failure) { if (!controller.signal.aborted && live.current.active) setError(failure instanceof Error ? failure.message : "提取失败，已有候选保留"); }
     finally { if (request.current === controller) { request.current = null; setBusy(null); } }
   }

@@ -24,9 +24,9 @@ export function FeatureAvailability({ title, description, messages = [], dark = 
       <strong>{title}</strong>
       <p>{description}</p>
       <details>
-        <summary>配置说明</summary>
+        <summary>检查说明</summary>
         <div className="feature-availability-details">
-          <p>使用 Windows 本地包时，可在启动页的“模型配置”中设置；连接服务器时，请由维护者配置。完成后重新检查。</p>
+          <p>Windows 桌面端本地使用：打开“文件 → 模型设置”。浏览器本地启动入口：打开“模型配置”。连接服务器：请服务器管理员检查配置或服务版本。处理后点击“重新检查”。</p>
           {messages.length > 0 && <ul>{[...new Set(messages.filter(Boolean).map(readable))].map(message => <li key={message}>{message}</li>)}</ul>}
           <button type="button" disabled={busy} onClick={onCheck}><RefreshCw size={13} aria-hidden="true" />{busy ? "检查中…" : "重新检查"}</button>
         </div>

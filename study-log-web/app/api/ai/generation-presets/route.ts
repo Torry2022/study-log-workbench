@@ -10,7 +10,7 @@ function failure(error: unknown) {
 }
 async function body(request: NextRequest): Promise<Record<string, unknown>> {
   const reader = request.body?.getReader();
-  if (!reader) throw new GenerationPresetError("请求正文必须是 JSON 对象");
+  if (!reader) throw new GenerationPresetError("请求内容无效，请刷新后重试");
   const chunks: Uint8Array[] = []; let size = 0;
   try {
     while (true) {
@@ -23,7 +23,7 @@ async function body(request: NextRequest): Promise<Record<string, unknown>> {
   let value: unknown;
   try { value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks))); }
   catch { throw new GenerationPresetError("请求正文必须是有效 JSON"); }
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new GenerationPresetError("请求正文必须是 JSON 对象");
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new GenerationPresetError("请求内容无效，请刷新后重试");
   return value as Record<string, unknown>;
 }
 export async function GET(request: NextRequest) {

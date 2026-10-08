@@ -135,11 +135,11 @@ export struct HelpPanel {
             Text('常用操作').width('100%').fontSize(14).fontWeight(FontWeight.Medium)
               .fontColor($r('app.color.ink'))
             Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.SpaceBetween }) {
-              this.helpAction('日块与源文件', '左侧按日块操作，保存时只写回该日块，月度或年度 Markdown 源文件仍保持完整。')
+              this.helpAction('日志与源文件', '左侧按日志操作，保存时只写回该日志，月度或年度 Markdown 源文件仍保持完整。')
               this.helpAction('阅读与编辑', '浏览、源码、分栏会延续当前内容；离开未保存的日志前会先请求确认。')
-              this.helpAction('搜索与定位', '顶部搜索用于全文检索；左栏标题搜索只在当前月份内定位日块；日期按钮可直接跳转。')
+              this.helpAction('搜索与定位', '顶部搜索用于全文检索；左栏标题搜索只在当前月份内定位日志；日期按钮可直接跳转。')
               this.helpAction('收藏与问答', '收藏日志小节后可分组管理；知识问答的来源条目可回到对应日志。')
-              this.helpAction('备份恢复', '备份入口只恢复当前日块的历史内容，恢复前会保留当前版本，不会覆盖整份源文件。')
+              this.helpAction('备份恢复', '备份入口只恢复当前日志的历史内容，恢复前会保留当前版本，不会覆盖整份源文件。')
             }.width('100%')
           }.width('100%').alignItems(HorizontalAlign.Start)
 
@@ -148,12 +148,12 @@ export struct HelpPanel {
               SymbolGlyph($r('sys.symbol.link')).fontSize(18).fontColor([$r('app.color.primary')])
               Column({ space: 3 }) {
                 Text('内部链接').fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.ink'))
-                Text('在源码区按以下格式填写，可跳转到指定日块或小节。')
+                Text('在源码区按以下格式填写，可跳转到指定日志或小节。')
                   .fontSize(11).lineHeight(18).fontColor($r('app.color.muted'))
               }.layoutWeight(1).alignItems(HorizontalAlign.Start)
             }.layoutWeight(1).alignItems(VerticalAlign.Top)
             Column({ space: 6 }) {
-              this.helpLinkExample('[[2026-06-01]]', '跳转到指定日块')
+              this.helpLinkExample('[[2026-06-01]]', '跳转到指定日志')
               this.helpLinkExample('[[2026-06-01#Coding Agent]]', '跳转到指定小节')
               this.helpLinkExample('[[2026-06-01#Coding Agent|阅读笔记]]', '自定义显示文字')
             }.layoutWeight(1)

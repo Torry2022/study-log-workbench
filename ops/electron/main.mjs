@@ -299,7 +299,7 @@ async function checkUpdates() {
     if (owner !== win || owner.isDestroyed()) return;
     const result = await dialog.showMessageBox(owner, { title: '检查更新',
       message: update ? `发现新版本 ${update.version}` : '当前没有可用更新',
-      detail: update ? `当前桌面版本：${app.getVersion()}\n\n${update.notes}\n\n打开发布页面后下载安装包；安装前请保存内容并正常关闭应用。` : `桌面版本：${app.getVersion()}\n${parseVersion(app.getVersion()).pre.length ? '当前包含预发布版本。' : '当前只检查正式版本。'}\n此检查仅针对 Windows 桌面端，服务器由实例维护者更新。`,
+      detail: update ? `当前桌面版本：${app.getVersion()}\n\n可前往发布页查看更新内容并下载安装包。\n安装前，请保存内容并正常退出应用。` : `桌面版本：${app.getVersion()}\n${parseVersion(app.getVersion()).pre.length ? '当前包含预发布版本。' : '当前只检查正式版本。'}\n此检查仅针对 Windows 桌面端，服务器由实例维护者更新。`,
       buttons: update ? ['查看版本说明与下载', '稍后'] : ['知道了'], cancelId: update ? 1 : 0 });
     if (update && result.response === 0) await shell.openExternal(update.url);
   } catch {

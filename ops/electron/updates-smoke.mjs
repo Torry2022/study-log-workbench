@@ -37,8 +37,8 @@ try {
   await page.route('**/api/capabilities', route => route.fulfill({ json: { apiContractVersion: 1 } }));
   await click('关于学习日志工作台'); value = await message(); assert.match(value.detail, /未提供（旧版服务器）/); await page.unroute('**/api/capabilities');
   assert.equal(await app.evaluate(() => globalThis.updateRequests), 0, 'no automatic release requests');
-  await app.evaluate(() => { globalThis.releases = [{ tag_name: 'v99.0.0-rc.5', prerelease: true, body: '合成版本说明', assets: [{ name: 'study-log-desktop-99.0.0-rc.5-x64-setup.exe' }] }]; });
-  await click('检查更新…'); value = await message(); assert.match(value.message, /99\.0\.0-rc\.5/); assert.match(value.detail, /合成版本说明/);
+  await app.evaluate(() => { globalThis.releases = [{ tag_name: 'v99.0.0-rc.5', prerelease: true, body: '# 合成版本说明\n\n## 本次更新\n- **合成改动**\n'.repeat(300), assets: [{ name: 'study-log-desktop-99.0.0-rc.5-x64-setup.exe' }] }]; });
+  await click('检查更新…'); value = await message(); assert.match(value.message, /99\.0\.0-rc\.5/); assert.doesNotMatch(value.detail, /合成版本说明|##|\*\*/); assert.ok(value.detail.length < 160); assert.match(value.detail, /发布页/);
   await expect.poll(() => app.evaluate(() => globalThis.opened.length)).toBe(1);
   assert.deepEqual(await app.evaluate(() => globalThis.opened), ['https://github.com/Torry2022/study-log-workbench-public/releases/tag/v99.0.0-rc.5']);
   await app.evaluate(() => { globalThis.releases[0].tag_name = 'v0.0.1'; });

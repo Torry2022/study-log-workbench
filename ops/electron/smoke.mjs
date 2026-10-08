@@ -84,7 +84,7 @@ try {
   page = await start();
   await application.evaluate(({ dialog, Menu }, selected) => {
     dialog.showOpenDialog = async () => ({ canceled:false, filePaths:[selected] });
-    Menu.getApplicationMenu().items[0].submenu.items[0].click();
+    Menu.getApplicationMenu().items[0].submenu.items.find(item => item.label === '打开已有学习记录…').click();
   }, restored);
   await expect.poll(async () => JSON.parse(await fs.readFile(path.join(profile, 'desktop.json'), 'utf8')).root, { timeout:60000 }).toBe(restored);
   await expect.poll(async () => await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length), { timeout:60000 }).toBe(1);

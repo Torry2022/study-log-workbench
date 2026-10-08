@@ -4,7 +4,7 @@ import {DesktopManager} from '../desktop/manager.mjs';import {normalizeOrigin} f
 const require=createRequire(new URL('../../study-log-web/package.json',import.meta.url));const {_electron:electron,expect}=require('@playwright/test');const er=createRequire(new URL('./package.json',import.meta.url));
 const evidence=path.resolve('.local',`remote-desktop-${Date.now()}`);await fs.mkdir(evidence);
 const profile=await fs.mkdtemp(path.join(os.tmpdir(),'desktop-remote-'));const root=path.join(profile,'server');
-const payload=path.resolve('.local/electron-logo-payload');const manager=new DesktopManager({packageRoot:payload,node:path.join(payload,'runtime/node.exe')});
+const payload=process.argv[2]?path.join(path.dirname(path.resolve(process.argv[2])),'resources/payload'):path.resolve('.local/electron-payload');const manager=new DesktopManager({packageRoot:payload,node:path.join(payload,'runtime/node.exe')});
 const password='SyntheticRemotePassword2026';await manager.select({root,create:true,password});
 const source=path.join(root,'data/2026-10_学习日志.md');const migrated='## 2026-10-06\n\n### 迁移合成记录\n\n迁移前保留的学习内容。\n';await fs.writeFile(source,migrated);
 const archive=path.join(profile,'migration.slarchive'),restored=path.join(profile,'restored-server');await backupInstance(root,archive);await restoreInstance(archive,restored);await manager.select({root:restored});await manager.start();

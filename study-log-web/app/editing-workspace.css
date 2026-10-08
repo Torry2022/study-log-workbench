@@ -356,7 +356,7 @@
 }
 
 /* Keep the same editor mounted across source/preview/split mode changes. */
-.editing-workspace { position: relative; min-width: 0; }
+.editing-workspace { position: relative; min-width: 0; grid-auto-rows: min-content; }
 .editing-workspace > .reader-preview-pane { min-width: 0; }
 .editor-attachment-status { padding: 8px 16px; color: var(--muted); font-size: 13px; border-bottom: 1px solid var(--hairline-soft); }
 .editor-attachment-status[role="alert"] { color: var(--error); }

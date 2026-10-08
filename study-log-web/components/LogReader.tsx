@@ -152,6 +152,16 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
     position.capture(mode); restorePending.current = true; editing.onMode(next);
   }
   function changeReading(value: boolean) { position.capture(mode); restorePending.current = true; onReading(value); }
+  function jumpToOutline(item: MarkdownHeading) {
+    setOutlineOpen(false);
+    const element = preview.current?.querySelector<HTMLElement>(`#${CSS.escape(item.id)}`);
+    if (!element) return;
+    setMissingHeading(false);
+    const toolbarBottom = Math.max(toolbar.current?.getBoundingClientRect().bottom || 0,
+      toolbar.current?.querySelector<HTMLElement>(".mobile-log-toolbar")?.getBoundingClientRect().bottom || 0);
+    window.scrollTo({ top: Math.max(0, window.scrollY + element.getBoundingClientRect().top - toolbarBottom - 12), behavior: "instant" });
+    setActiveHeading(item.id);
+  }
   useEffect(() => {
     if (!active || !restorePending.current) return;
     let frame = 0, attempts = 0;
@@ -256,7 +266,7 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
     {popup && <button className="mobile-outline-close" type="button" aria-label="关闭大纲" onClick={() => setOutlineOpen(false)}><X size={18} /></button>}
     <div className="preview-outline-inner"><div className="preview-outline-title">目录</div><div className="preview-outline-list">
       {headings.map(item => <div className={`outline-row${item.id === activeHeading ? " active" : ""}`} key={item.id} style={{ "--outline-indent": `${Math.max(0, item.level - (headings[0]?.level || 3)) * 12}px` } as CSSProperties}>
-        <button className="outline-item" type="button" title={item.text} aria-current={item.id === activeHeading ? "location" : undefined} onClick={() => { setOutlineOpen(false); onNavigate(date, item.id); }}>{item.text}</button>
+        <button className="outline-item" type="button" title={item.text} aria-current={item.id === activeHeading ? "location" : undefined} onClick={() => jumpToOutline(item)}>{item.text}</button>
         {item.level === 3 && <button className={`outline-favorite${favoriteByHeading.has(item.id) ? " active" : ""}`} type="button" disabled={!favorites.loaded || favorites.busy || editing.dirty} title={editing.dirty ? "保存修改后可收藏小节" : favoriteByHeading.has(item.id) ? "取消收藏" : "收藏小节"} aria-label={`${favoriteByHeading.has(item.id) ? "取消收藏" : "收藏章节"}：${item.text}`} aria-pressed={favoriteByHeading.has(item.id)} onClick={event => void toggleFavorite(item, event.currentTarget)}><Star size={14} fill={favoriteByHeading.has(item.id) ? "currentColor" : "none"} /></button>}
       </div>)}
     </div></div>

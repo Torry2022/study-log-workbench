@@ -28,6 +28,23 @@ async function fixture(t) {
 }
 const create = (date, content = "### 1. 合成练习\n\n合成正文") => saveDay({ date, content, baseVersion: null });
 
+test("forbidden root headings fail create, replace and append before any file or history change", async t => {
+  const { data, backups } = await fixture(t);
+  const invalid = ["# 一级", "一级\n===", "二级\n---", "##"];
+  for (const content of invalid) await assert.rejects(create("2026-01-02", content), InvalidDayContentError);
+  assert.deepEqual(await fs.readdir(data), []);
+  const day = await create("2026-01-02", "### 已保存\n\n保留正文");
+  const source = await fs.readFile(path.join(data, day.fileName));
+  for (const mode of ["replace", "append"]) {
+    for (const content of invalid) {
+      await assert.rejects(saveDay({ date: day.date, content, baseVersion: day.version, mode }), InvalidDayContentError);
+      assert.deepEqual(await fs.readFile(path.join(data, day.fileName)), source);
+      assert.deepEqual(await fs.readdir(backups), []);
+      assert.equal((await getDay(day.date)).version, day.version);
+    }
+  }
+});
+
 test("null creates a missing day, returns the actual complete saved snapshot, and does not invent a backup", async t => {
   const { data, backups } = await fixture(t);
   assert.equal((await getDay("2026-01-02")).version, null);

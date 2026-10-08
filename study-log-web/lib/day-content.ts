@@ -24,8 +24,12 @@ export class InvalidDayContentError extends Error {
 
 export function stripTrailingStructuralSeparator(markdown: string): string {
   const trimmed = markdown.trimEnd();
-  if (/^[ \t]*---[ \t]*$/.test(trimmed)) return "";
-  return trimmed.replace(/(?:\r?\n)+[ \t]*---[ \t]*$/, "").trimEnd();
+  const last = markdownParser.parse(trimmed).children.at(-1);
+  const start = last?.position?.start.offset;
+  if (last?.type === "thematicBreak" && start !== undefined && /^[ \t]*---[ \t]*$/.test(trimmed.slice(start))) {
+    return trimmed.slice(0, start).trimEnd();
+  }
+  return trimmed;
 }
 
 export function findRootAtxHeadings(markdown: string, depth?: 2 | 3 | 4 | 5 | 6): MarkdownRootHeading[] {
@@ -57,8 +61,13 @@ export function findLevelTwoHeadings(markdown: string): MarkdownRootHeading[] {
 }
 
 export function assertEditableDayBody(content: string): void {
-  if (findLevelTwoHeadings(content).length > 0) {
-    throw new InvalidDayContentError();
+  // Parse both ATX and Setext syntax; nested examples are not day structure.
+  for (const node of markdownParser.parse(content).children) {
+    if (node.type !== "heading") continue;
+    if (node.depth === 1) {
+      throw new InvalidDayContentError("日志正文不能使用一级标题，请改用三级至六级标题");
+    }
+    if (node.depth === 2) throw new InvalidDayContentError();
   }
 }
 
@@ -70,7 +79,7 @@ export function toEditableDayBody(date: string, content: string): string {
 }
 
 export function normalizeDayContent(date: string, content: string): string {
-  const trimmed = stripTrailingStructuralSeparator(content.trim());
+  const trimmed = stripTrailingStructuralSeparator(content.replace(/^(?:[ \t]*\r?\n)+/, ""));
   if (!trimmed) return `## ${date}\n\n`;
 
   const headings = findLevelTwoHeadings(trimmed);
@@ -80,7 +89,7 @@ export function normalizeDayContent(date: string, content: string): string {
     if (firstHeading.text !== date) {
       throw new InvalidDayContentError("日志顶部日期与当前选择的日期不一致");
     }
-    body = trimmed.slice(firstHeading.end).replace(/^\r?\n+/, "").trim();
+    body = trimmed.slice(firstHeading.end).replace(/^(?:[ \t]*\r?\n)+/, "").trimEnd();
   }
 
   assertEditableDayBody(body);

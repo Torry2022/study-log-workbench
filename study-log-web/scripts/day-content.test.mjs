@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   InvalidDayContentError,
   findLevelTwoHeadings,
+  stripTrailingStructuralSeparator,
   normalizeDayContent,
   toEditableDayBody
 } from "../lib/day-content.ts";
@@ -86,4 +87,27 @@ test("ignores nested, indented and HTML headings but preserves root offsets", ()
 
 test("fence marker and length are respected", () => {
   assert.deepEqual(findLevelTwoHeadings("````md\n```\n## hidden\n~~~~\n````\n\n## visible").map(h => h.text), ["visible"]);
+});
+
+test("rejects root H1 and Setext H1/H2, including empty ATX and trailing underlines", () => {
+  for (const body of ["# 标题", "  # 标题 #", "#", "##", "标题\n===", "标题\n---", "多行\n标题\n-", "标题\r\n===\r\n", "标题\n===\n\n---"]) {
+    assert.throws(() => normalizeDayContent("2026-05-29", body), InvalidDayContentError, body);
+  }
+  assert.throws(() => normalizeDayContent("2026-05-29", "## 2026-05-29\n\n# 标题"), /一级标题/);
+  assert.throws(() => normalizeDayContent("2026-05-29", "## 2026-05-29\n\n标题\n---"), /二级标题/);
+});
+
+test("distinguishes Setext underlines from structural separators without rewriting legacy reads", () => {
+  assert.equal(stripTrailingStructuralSeparator("标题\n---"), "标题\n---");
+  assert.equal(stripTrailingStructuralSeparator("正文\n\n---"), "正文");
+  assert.equal(toEditableDayBody("2026-05-29", "## 2026-05-29\n\n标题\n---"), "标题\n---");
+  assert.equal(toEditableDayBody("2026-05-29", "## 2026-05-29\n\n# 旧标题\n\n---"), "# 旧标题");
+});
+
+test("allows short records, H3-H6, rules and nested heading examples unchanged", () => {
+  const bodies = ["几句话的记录。", "### 小节\n\n#### 内部\n\n##### 内部\n\n###### 内部", "段落\n\n---\n\n后续段落", "```markdown\n# 标题\n标题\n===\n```", "    # 标题\n    标题\n    ---", "> # 引用标题\n>\n> 下划线标题\n> ===", "- # 列表内标题"];
+  for (const body of bodies) {
+    assert.equal(normalizeDayContent("2026-05-29", body), `## 2026-05-29\n\n${body}`);
+    assert.equal(normalizeDayContent("2026-05-29", `## 2026-05-29\n\n${body}`), `## 2026-05-29\n\n${body}`);
+  }
 });

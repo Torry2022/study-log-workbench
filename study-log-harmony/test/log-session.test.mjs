@@ -19,11 +19,14 @@ const handlers = ['bindDocuments', 'save', 'acceptSavedDay', 'applyRestoredDay',
 }).join('\n');
 function subject() {
   const module = { exports: {} };
+  class ApiError extends Error {
+    constructor(message, statusCode) { super(message); this.statusCode = statusCode; }
+  }
   const source = bodySource.replace(/^import .*;\r?\n/gm, '') + sessionSource.replace(/^import .*;\r?\n/gm, '').replace('@Observed', '') + controllerSource.replace(/^import .*;\r?\n/gm, '').replace('@Observed', '') +
     `\nexport class Page { ${handlers} }`;
   runInNewContext(ts.transpileModule(source, {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS }
-  }).outputText, { module, exports: module.exports, Error, ApiError: class extends Error {},
+  }).outputText, { module, exports: module.exports, Error, ApiError,
     appFeedback: { show() {}, dismissScope() {} }, activeInstance: { namespace: 'synthetic' }, restoredLogDraft });
   const session = new module.exports.LogSession();
   session.commitDocument(day('v1'), 'baseline');
@@ -39,11 +42,32 @@ function subject() {
   page.documents = new module.exports.LogDocumentController(session, page.reads, page.writes);
   Object.defineProperty(page, 'dayRevision', { get: () => page.documents.dayLoadRevision, set: value => { page.documents.dayLoadRevision = value; } });
   page.bindDocuments();
-  return { session, page };
+  return { session, page, ApiError };
 }
 function day(version, content = 'baseline', date = '2026-02-05') {
   return { date, version, content, exists: true };
 }
+
+test('server heading validation keeps the native draft and displays its message without retry reads', async () => {
+  for (const [text, message] of [['# 标题', '日志正文不能使用一级标题，请改用三级至六级标题'],
+    ['标题\n===', '日志正文不能使用一级标题，请改用三级至六级标题'],
+    ['标题\n---', '当前日志正文不能包含二级标题；日期标题由系统维护，请改用三级标题']]) {
+    const { session, page, ApiError } = subject();
+    page.editor = { command: async () => ({ documentKey: session.selectedDate, text }) };
+    page.writes.save = async request => {
+      assert.equal(request.content, text);
+      throw new ApiError(message, 400);
+    };
+    page.reads.day = () => assert.fail('validation rejection must not reload the saved document');
+    await page.save();
+    assert.equal(page.saveError, message);
+    assert.equal(session.text, text);
+    assert.equal(session.baseline, 'baseline');
+    assert.equal(session.baseVersion, 'v1');
+    assert.equal(session.isDirty(), true);
+    assert.equal(page.documents.saving, false);
+  }
+});
 
 test('session keeps pending editor changes dirty even before a snapshot arrives', () => {
   const { session } = subject();

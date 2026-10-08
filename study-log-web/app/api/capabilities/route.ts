@@ -1,3 +1,4 @@
+import packageInfo from "../../../package.json";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
@@ -21,6 +22,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       instanceId: instance.id,
       apiContractVersion: 1,
+      serverVersion: packageInfo.version,
       aiConfiguration: { provider, templates },
       features: {
         aiWriting: { supported: true, configured: provider.configured && templates.generation.configured },

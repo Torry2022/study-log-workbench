@@ -1,7 +1,7 @@
 {
   "name": "study-log-desktop",
   "productName": "学习日志工作台",
-  "version": "0.1.0",
+  "version": "0.1.0-rc.4",
   "private": true,
   "description": "本地学习日志工作台",
   "author": "Study Log Workbench contributors",
@@ -13,7 +13,7 @@
     "appId": "org.studylog.workbench.desktop",
     "asar": true,
     "directories": { "output": "../../.local/electron-dist" },
-    "files": ["history.html", "history.mjs", "history-preload.cjs", "server-connection.mjs", "connection.html", "connection.css", "connection.mjs", "connection-preload.cjs", "titlebar.html", "titlebar.css", "titlebar.mjs", "titlebar-preload.cjs", "main.mjs", "preload.cjs", "settings.html", "settings.css", "settings.mjs", "settings-preload.cjs", "package.json"],
+    "files": ["updates.mjs", "history.html", "history.mjs", "history-preload.cjs", "server-connection.mjs", "connection.html", "connection.css", "connection.mjs", "connection-preload.cjs", "titlebar.html", "titlebar.css", "titlebar.mjs", "titlebar-preload.cjs", "main.mjs", "preload.cjs", "settings.html", "settings.css", "settings.mjs", "settings-preload.cjs", "package.json"],
     "extraResources": [{ "from": "../../.local/electron-payload", "to": "payload", "filter": ["**/*", "!启动学习日志.vbs", "!使用说明.txt", "!docs/windows-portable.md", "!ops/desktop/launcher.mjs", "!ops/desktop/index.html", "!ops/desktop/ui.*"] }, { "from": "../../.local/electron-icon.png", "to": "icon.png" }, { "from": "../../docs/windows-desktop.md", "to": "使用说明.md" }],
     "win": { "target": [{ "target": "nsis", "arch": ["x64"] }], "icon": "../../.local/electron-icon.ico" },
     "nsis": { "oneClick": false, "perMachine": false, "allowElevation": false, "allowToChangeInstallationDirectory": true, "deleteAppDataOnUninstall": false },

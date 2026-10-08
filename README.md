@@ -63,7 +63,7 @@ node ops/run-web.mjs start "D:\workbench-instance" 3560
 
 示例实例路径应尚不存在，或使用已初始化的有效实例。初始化不会在终端打印密码；在实例 `.env` 中查看 `APP_PASSWORD`，访问 `http://127.0.0.1:3560/study-log`。不要提交实例、环境文件、归档或签名材料。其他系统及 Docker 源码构建见[开发部署说明](docs/deployment.md)。
 
-源码按 `study-log-web/`、`study-log-mcp/`、`study-log-harmony/` 和 `ops/` 组织。参考[架构](docs/architecture.md)、[接口契约](docs/api-contract.md)和[设计规范](DESIGN.md)；许可证见 [LICENSE](LICENSE)，依赖声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+源码按 `study-log-web/`、`study-log-mcp/`、`study-log-harmony/` 和 `ops/` 组织。参考[架构](docs/architecture.md)、[接口契约](docs/api-contract.md)、[配套发布流程](docs/releasing.md)和[设计规范](DESIGN.md)；许可证见 [LICENSE](LICENSE)，依赖声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 ## 当前边界
 

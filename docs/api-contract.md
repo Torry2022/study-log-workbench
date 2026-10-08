@@ -7,7 +7,8 @@
 - `POST /api/auth/login` 接收 `{password}`；正确返回 `{ok:true}` 并设置 HttpOnly、SameSite=Lax 会话Cookie；错误/畸形密码返回401，不回显输入。
 - `POST /api/auth/app-login` 接收同样参数，返回 `{ok:true,token,expiresAt}`；后续用 `Authorization: Bearer …`。Cookie与App Token有不同受众，不互相替用。
 - `GET /api/auth/me` 返回认证状态。`POST /api/auth/logout` 清除当前浏览器Cookie，不撤销其他已签发Token。
-- `GET /api/capabilities` 需要认证，返回持久 `instanceId`、`apiContractVersion:1`、`aiConfiguration` 和 `features`。`aiWriting`、`aiHighlighting`、`aiNoteExtraction`、`aiTaxonomy`、`rag` 均已实现，`supported` 为 true；各项 `configured` 由实例模型、对应模板及问答所需 MCP 配置分别决定，不代表上游服务连通或结果质量。
+- `GET /api/capabilities` 需要认证，返回持久 `instanceId`、`apiContractVersion:1`、`serverVersion`（服务端产品版本）、`aiConfiguration` 和 `features`。`aiWriting`、`aiHighlighting`、`aiNoteExtraction`、`aiTaxonomy`、`rag` 均已实现，`supported` 为 true；各项 `configured` 由实例模型、对应模板及问答所需 MCP 配置分别决定，不代表上游服务连通或结果质量。
+- `serverVersion` 从服务端包版本读取，仅用于展示，不替代 `apiContractVersion` 兼容检查；旧服务器可能不返回此字段，客户端应显示“未提供”，不能猜测版本。
 - 认证有效期7天。过期、错误签名、额外分段或错误受众不能访问受保护API。Cookie Secure由实例配置明确指定，本地HTTP初始化默认false；HTTPS部署应设true。
 
 配置及初始化错误不得包含密码、密钥或资料正文。实例身份不随服务重启改变。

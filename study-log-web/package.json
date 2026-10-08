@@ -1,6 +1,6 @@
 {
   "name": "study-log-web",
-  "version": "0.1.0-dev",
+  "version": "0.1.0-rc.4",
   "private": true,
   "engines": {
     "node": ">=22.13.0"

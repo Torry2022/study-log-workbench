@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { normalizeOrigin, checkCapabilities, connectServer } from './server-connection.mjs';
+import { checkForUpdate, parseVersion } from './updates.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repository = path.resolve(here, '../..');
@@ -225,6 +226,38 @@ async function settings(kind = 'model') {
 
 const reportError = error => dialog.showMessageBox(win && !win.isDestroyed() ? win : undefined,
   { type: 'error', title: '学习日志工作台', message: '操作未完成', detail: error.message, buttons: ['知道了'] });
+async function about() {
+  const owner = win, view = workspaceView;
+  const mode = active.mode;
+  let serverVersion = '未提供（旧版服务器）';
+  try {
+    const result = await view.webContents.executeJavaScript(`fetch('/study-log/api/capabilities', {signal: AbortSignal.timeout(5000)}).then(async r => { if (!r.ok) throw Error(); return (await r.json()).serverVersion; })`);
+    if (parseVersion(result)) serverVersion = result;
+  } catch { serverVersion = '暂时无法读取'; }
+  if (owner !== win || owner.isDestroyed()) return;
+  await dialog.showMessageBox(owner, { title: '关于学习日志工作台', message: '学习日志工作台',
+    detail: `桌面版本：${app.getVersion()}\n${mode === 'remote' ? '服务器' : '本地服务'}版本：${serverVersion}\n\n${mode === 'remote' ? '服务器更新后，重新打开即可加载新版网页。桌面菜单等功能随安装包更新。' : '网页和本地服务随安装包一起更新。升级保留资料与设置。'}`,
+    buttons: ['关闭'] });
+}
+let checkingUpdate = false;
+async function checkUpdates() {
+  if (checkingUpdate) return;
+  checkingUpdate = true;
+  const owner = win, item = titleMenu.getMenuItemById('check-updates');
+  item.enabled = false; item.label = '正在检查更新…';
+  try {
+    const update = await checkForUpdate(app.getVersion());
+    if (owner !== win || owner.isDestroyed()) return;
+    const result = await dialog.showMessageBox(owner, { title: '检查更新',
+      message: update ? `发现新版本 ${update.version}` : '当前没有可用更新',
+      detail: update ? `当前桌面版本：${app.getVersion()}\n\n${update.notes}\n\n打开发布页面后下载安装包；安装前请保存内容并正常关闭应用。` : `桌面版本：${app.getVersion()}\n${parseVersion(app.getVersion()).pre.length ? '当前包含预发布版本。' : '当前只检查正式版本。'}\n此检查仅针对 Windows 桌面端，服务器由实例维护者更新。`,
+      buttons: update ? ['查看版本说明与下载', '稍后'] : ['知道了'], cancelId: update ? 1 : 0 });
+    if (update && result.response === 0) await shell.openExternal(update.url);
+  } catch {
+    if (owner === win && !owner.isDestroyed()) await dialog.showMessageBox(owner, { type: 'warning', title: '检查更新', message: '暂时无法检查更新',
+      detail: '请检查网络连接后重试，也可以稍后到项目的 GitHub 发布页面查看。', buttons: ['知道了'] });
+  } finally { checkingUpdate = false; item.enabled = true; item.label = '检查更新…'; }
+}
 function menu() {
   titleMenu = Menu.buildFromTemplate([
     { label: '文件', submenu: [
@@ -243,7 +276,8 @@ function menu() {
     { label: '编辑', submenu: [{ role: 'undo', label: '撤销' }, { role: 'redo', label: '重做' }, { type: 'separator' },
       { role: 'cut', label: '剪切' }, { role: 'copy', label: '复制' }, { role: 'paste', label: '粘贴' }, { role: 'selectAll', label: '全选' }] },
     { label: '视图', submenu: [{ role: 'resetZoom', label: '实际大小' }, { role: 'zoomIn', label: '放大' }, { role: 'zoomOut', label: '缩小' }] },
-    { label: '帮助', submenu: [{ label: '关于学习日志工作台', click: () => void dialog.showMessageBox(win, { title: '关于学习日志工作台', message: '学习日志工作台', detail: `版本 ${app.getVersion()}`, buttons: ['关闭'] }) }] }
+    { label: '帮助', submenu: [{ label: '检查更新…', id: 'check-updates', click: () => void checkUpdates() },
+      { type: 'separator' }, { label: '关于学习日志工作台', click: () => void about().catch(reportError) }] }
   ]);
   Menu.setApplicationMenu(titleMenu);
   win.setMenuBarVisibility(false);

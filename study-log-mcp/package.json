@@ -1,6 +1,6 @@
 {
   "name": "study-log-mcp",
-  "version": "0.1.0-rc.6",
+  "version": "0.1.0-rc.7",
   "private": true,
   "description": "Read-only retrieval for one explicitly configured Markdown study-log instance.",
   "type": "module",

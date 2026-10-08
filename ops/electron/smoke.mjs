@@ -24,6 +24,9 @@ const passed = [];
 const start = async () => {
   application = await electron.launch({ executablePath, args, env, timeout:60000 });
   const page = await workspacePage(application);
+  // Exercise the desktop workflow independently of the monitor under the cursor.
+  await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1280, 800));
+  await expect.poll(() => page.evaluate(() => innerWidth)).toBe(1280);
   // Electron's will-prevent-unload handler owns this dialog; Playwright must not
   // auto-dismiss a Chromium dialog that Electron has already replaced.
   page.on('dialog', () => {});

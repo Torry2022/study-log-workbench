@@ -1,6 +1,6 @@
 {
   "name": "study-log-workbench",
-  "version": "0.1.0-rc.6",
+  "version": "0.1.0-rc.7",
   "private": true,
   "license": "MIT",
   "engines": { "node": ">=22.13.0" },

@@ -21,7 +21,7 @@
   min-width: 0;
 }
 
-.sidebar-filter-heading {
+.sidebar-heading.sidebar-filter-heading {
   height: 32px;
   min-height: 32px;
   gap: 4px;
@@ -30,6 +30,8 @@
 .sidebar-filter-heading > .section-title {
   min-width: 0;
   gap: 8px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .sidebar-filter-heading-actions {

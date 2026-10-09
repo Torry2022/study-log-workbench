@@ -193,11 +193,21 @@ export function useLogWorkspace(active: boolean, beforeLeave?: RefObject<() => P
     if (saved.date === currentSelection.current.date) setDay(saved);
     setListRevision(value => value + 1);
   }, []);
+  const acceptDeleted = useCallback((deleted: DayEntry) => {
+    if (deleted.date === currentSelection.current.date) {
+      const next = { ...currentSelection.current, month: "", date: "", heading: "" };
+      currentSelection.current = next;
+      setSelection(next); setDay(null); setDays([]); setMonths([]); monthsRef.current = [];
+      writeLocation(next, true);
+      setNavigationRevision(value => value + 1);
+    }
+    setListRevision(value => value + 1);
+  }, []);
   return {
     months, days, day: day?.date === selection.date ? day : null, selection, selectMonth, selectDate, selectView, selectNote, selectStatsMonth, selectRagSession, replaceRagSession, scrollTarget, navigationRevision,
     navigationLoading: loading.months || loading.days,
     navigationError: errors.months || errors.days,
-    acceptSaved,
+    acceptSaved, acceptDeleted,
     loading: loading.day || (!selection.month && loading.months) || (!selection.date && loading.days),
     error: errors.months || errors.days || errors.day,
     retry: () => setRevision(value => value + 1)

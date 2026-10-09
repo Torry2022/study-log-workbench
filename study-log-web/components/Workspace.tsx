@@ -170,7 +170,7 @@ export function Workspace() {
     setDeleting(true); setOperationError("");
     try {
       const { day } = await requestJson<{ day: DayEntry }>("/api/logs/day", { method: "DELETE", body: JSON.stringify({ date, baseVersion: version }) });
-      acceptExternal(day); setMode("preview");
+      draft.acceptExternal(day); logs.acceptDeleted(day); void favorites.reload(); setMode("preview");
     } catch (error) { if (!(error instanceof Error && error.name === "AbortError")) setOperationError(error instanceof Error ? error.message : "删除失败，请重试"); }
     finally { setDeleting(false); }
   };

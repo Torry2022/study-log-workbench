@@ -14,7 +14,7 @@
     "asar": true,
     "directories": { "output": "../../.local/electron-dist" },
     "files": ["updates.mjs", "history.html", "history.mjs", "history-preload.cjs", "server-connection.mjs", "connection.html", "connection.css", "connection.mjs", "connection-preload.cjs", "titlebar.html", "titlebar.css", "titlebar.mjs", "titlebar-preload.cjs", "main.mjs", "preload.cjs", "settings.html", "settings.css", "settings.mjs", "settings-preload.cjs", "package.json"],
-    "extraResources": [{ "from": "../../.local/electron-payload", "to": "payload", "filter": ["**/*", "!启动学习日志.vbs", "!使用说明.txt", "!docs/windows-portable.md", "!ops/desktop/launcher.mjs", "!ops/desktop/index.html", "!ops/desktop/ui.*"] }, { "from": "../../.local/electron-icon.png", "to": "icon.png" }, { "from": "../../docs/windows-desktop.md", "to": "使用说明.md" }, { "from": "../../study-log-web/public/scrollbars", "to": "scrollbars" }],
+    "extraResources": [{ "from": "../../.local/electron-payload", "to": "payload", "filter": ["**/*", "!启动学习日志.vbs", "!使用说明.txt", "!docs/windows-portable.md", "!ops/desktop/launcher.mjs", "!ops/desktop/index.html", "!ops/desktop/ui.*"] }, { "from": "../../.local/electron-icon.png", "to": "icon.png" }, { "from": "../../docs/windows-desktop.md", "to": "使用说明.md" }, { "from": "../../study-log-web/public/scrollbars", "to": "scrollbars" }, { "from": "../../study-log-web/public/ui", "to": "ui" }],
     "win": { "target": [{ "target": "nsis", "arch": ["x64"] }], "icon": "../../.local/electron-icon.ico" },
     "nsis": { "oneClick": false, "perMachine": false, "allowElevation": false, "allowToChangeInstallationDirectory": true, "deleteAppDataOnUninstall": false },
     "artifactName": "study-log-desktop-${version}-${arch}-setup.${ext}"

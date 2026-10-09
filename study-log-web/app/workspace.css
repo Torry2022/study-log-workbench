@@ -53,51 +53,6 @@
   opacity: 1;
 }
 
-.button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  border: 0;
-  border-radius: var(--radius-md);
-  font-size: 14px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.button {
-  min-height: 40px;
-  padding: 0 16px;
-}
-
-.button.secondary {
-  background: var(--canvas);
-  color: var(--ink);
-  border: 1px solid var(--hairline);
-}
-
-.button.ghost {
-  background: transparent;
-  color: var(--body);
-}
-
-.button.icon-only {
-  width: 40px;
-  padding: 0;
-  background: var(--surface-soft);
-  color: var(--body);
-  border: 1px solid var(--hairline);
-}
-
-.button.icon-only:hover {
-  background: var(--surface-card);
-  color: var(--ink);
-}
-
-.button.full {
-  width: 100%;
-}
-
 .app-shell {
   min-height: 100svh;
   display: grid;

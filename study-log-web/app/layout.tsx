@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
+import "../public/ui/theme.css";
+import "../public/ui/controls.css";
 import "./globals.css";
 import "../public/scrollbars/overlay-scrollbars.css";
 import "./login.css";

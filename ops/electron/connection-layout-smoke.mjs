@@ -19,7 +19,7 @@ let app=await launch(profile);
 try{
  const page=await chooser(app);assert.equal(await app.evaluate(({nativeTheme})=>nativeTheme.themeSource),'system');await expect(page.locator('#root')).not.toHaveValue('');
  assert.equal(await fs.stat(path.join(profile,'instance')).catch(()=>null),null,'no instance created before choice');
- await pick(app,page,{canceled:false,filePaths:[invalidRoot]});await expect(page.locator('#notice')).toContainText('不是可用');await expect(page.locator('#root')).toHaveValue(path.join(profile,'instance'));assert.equal(await fs.readFile(path.join(invalidRoot,'keep.txt'),'utf8'),'synthetic unrelated file');
+ await pick(app,page,{canceled:false,filePaths:[invalidRoot]});await expect(page.locator('#notice')).toHaveText('此文件夹已有其他文件。请选择空文件夹，或原有学习记录的保存位置。');await expect(page.locator('#root')).toHaveValue(path.join(profile,'instance'));assert.equal(await fs.readFile(path.join(invalidRoot,'keep.txt'),'utf8'),'synthetic unrelated file');
  await pick(app,page,{canceled:false,filePaths:[selectedRoot]});await expect(page.locator('#root')).toHaveValue(selectedRoot);assert.deepEqual(await fs.readdir(selectedRoot),[],'picker does not initialize directory');
  await pick(app,page,{canceled:true,filePaths:[]});await expect(page.locator('#root')).toHaveValue(selectedRoot);
  for(const theme of ['light','dark']){await app.evaluate(({nativeTheme},theme)=>nativeTheme.themeSource=theme,theme);await page.emulateMedia({colorScheme:theme});await expect.poll(()=>page.evaluate(()=>matchMedia('(prefers-color-scheme: dark)').matches)).toBe(theme==='dark');

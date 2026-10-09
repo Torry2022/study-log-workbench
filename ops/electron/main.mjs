@@ -9,6 +9,18 @@ import { checkForUpdate, parseVersion } from './updates.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repository = path.resolve(here, '../..');
+const uiAssets = app.isPackaged ? path.join(process.resourcesPath, 'ui') : path.join(repository, 'study-log-web/public/ui');
+const sharedUiCss = (await Promise.all(['theme.css', 'controls.css'].map(name => fs.readFile(path.join(uiAssets, name), 'utf8')))).join('\n');
+async function loadDesktopPage(window, file, options) {
+  await window.loadFile(path.join(here, file), options);
+  await window.webContents.insertCSS(sharedUiCss);
+  await window.webContents.executeJavaScript(`(() => {
+    const media = matchMedia('(prefers-color-scheme: dark)');
+    const update = () => document.documentElement.dataset.theme = media.matches ? 'dark' : 'light';
+    update();
+    ${file === 'titlebar.html' ? '' : "media.addEventListener('change', update);"}
+  })()`);
+}
 // Workspace scrolling belongs to the Web app. Native HTML dialogs reuse its assets.
 const scrollbarAssets = app.isPackaged ? path.join(process.resourcesPath, 'scrollbars') : path.join(repository, 'study-log-web/public/scrollbars');
 const overlayCss = await fs.readFile(path.join(scrollbarAssets, 'overlay-scrollbars.css'), 'utf8');
@@ -168,10 +180,10 @@ async function connection(message = '') {
   const updateBackground = () => current.setBackgroundColor(nativeTheme.shouldUseDarkColors ? '#151412' : '#faf9f5');
   nativeTheme.on('updated', updateBackground);
   current.once('closed', () => nativeTheme.removeListener('updated', updateBackground));
-  current.once('ready-to-show', () => current.show());
   current.webContents.on('will-navigate', e => e.preventDefault()); current.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   current.on('closed', () => { connectionWindow = null; if (!current.submitted && !win) { quitting = true; app.quit(); } });
-  await current.loadFile(path.join(here, 'connection.html'));
+  await loadDesktopPage(current, 'connection.html');
+  current.show();
   if (message) current.webContents.send('connection:notice', message);
 }
 async function openConnection(target) {
@@ -290,7 +302,7 @@ async function settings(kind = 'model') {
     if (settingsWindow === current) settingsWindow = null;
     if (!settingsWindow && !finishing && !pendingAction && !owner.isDestroyed()) { owner.focus(); workspaceView?.webContents.focus(); }
   });
-  await current.loadFile(path.join(here, kind === 'history' ? 'history.html' : 'settings.html'));
+  await loadDesktopPage(current, kind === 'history' ? 'history.html' : 'settings.html');
   if (current.isDestroyed()) return;
   const height = await current.webContents.executeJavaScript('Math.ceil(document.querySelector("main").getBoundingClientRect().height)');
   if (current.isDestroyed()) return;
@@ -473,7 +485,7 @@ async function openWorkspace(root, createDefault = false, remote = null) {
     if (manager.state === 'failed' && !finishing) void reportError(new Error(manager.issue));
   });
   menu();
-  await current.loadFile(path.join(here, 'titlebar.html'), { query: { icon: pathToFileURL(app.isPackaged ? path.join(process.resourcesPath, 'icon.png') : path.join(repository, '.local/electron-icon.png')).href } });
+  await loadDesktopPage(current, 'titlebar.html', { query: { icon: pathToFileURL(app.isPackaged ? path.join(process.resourcesPath, 'icon.png') : path.join(repository, '.local/electron-icon.png')).href } });
   await content.loadURL(workspaceUrl());
   if (remote) { savedPreferences = { ...savedPreferences, mode: 'remote', remote }; await savePreferences(); }
   if (savedSize?.maximized === true) current.maximize();

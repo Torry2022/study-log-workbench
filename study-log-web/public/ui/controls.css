@@ -1,0 +1,86 @@
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 0;
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.button {
+  min-height: 40px;
+  padding: 0 16px;
+}
+
+.button.primary {
+  background: var(--primary);
+  color: white;
+}
+
+.button.primary:hover {
+  background: var(--primary-active);
+}
+
+.button.secondary {
+  background: var(--canvas);
+  color: var(--ink);
+  border: 1px solid var(--hairline);
+}
+
+.button.danger {
+  background: var(--canvas);
+  color: var(--error);
+  border: 1px solid color-mix(in srgb, var(--error) 34%, var(--hairline));
+}
+
+.button.danger:hover {
+  background: color-mix(in srgb, var(--error) 10%, var(--canvas));
+  border-color: color-mix(in srgb, var(--error) 48%, var(--hairline));
+}
+
+.button.secondary-on-dark {
+  background: var(--surface-dark-elevated);
+  color: var(--on-dark);
+  border: 1px solid rgba(250, 249, 245, 0.12);
+}
+
+.button.ghost {
+  background: transparent;
+  color: var(--body);
+}
+
+.button.icon-only {
+  width: 40px;
+  padding: 0;
+  background: var(--surface-soft);
+  color: var(--body);
+  border: 1px solid var(--hairline);
+}
+
+.button.icon-only:hover {
+  background: var(--surface-card);
+  color: var(--ink);
+}
+
+.button.full {
+  width: 100%;
+}

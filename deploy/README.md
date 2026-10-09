@@ -2,13 +2,13 @@
 
 此目录是服务器使用者的部署入口，部署附件包含 `compose.yaml`、`.env.example`、本说明和 `RELEASE-NOTES.md`，不需要源码、Node 或 npm。需要 Docker Engine 与 Docker Compose 2.24 或以上；当前支持 Linux amd64。三个镜像共用同一发布版本。
 
-当前配套版本为 **`0.1.0-rc.7`（Linux amd64）**。三个公开 ACR 镜像已发布并验证匿名拉取，请使用同版本部署附件与镜像。版本范围见 [版本说明](RELEASE-NOTES.md)。镜像前缀也可换成自己的兼容镜像仓库。
+当前配套版本为 **`0.1.0-rc.8`（Linux amd64）**。三个公开 ACR 镜像已发布并验证匿名拉取，请使用同版本部署附件与镜像。版本范围见 [版本说明](RELEASE-NOTES.md)。镜像前缀也可换成自己的兼容镜像仓库。
 
-源码当前准备 rc.8 候选，尚未发布镜像；直接部署请使用下面的 rc.7 附件，不用当前源码的 rc.8 示例拉取未发布镜像。
+旧版本部署请使用对应版本的附件，避免混用不同版本的镜像与配置。
 
 ## 获取部署文件
 
-下载 [0.1.0-rc.7 服务器部署附件](https://github.com/Torry2022/study-log-workbench-public/releases/download/v0.1.0-rc.7/study-log-server-0.1.0-rc.7.zip)，在[预发布页面](https://github.com/Torry2022/study-log-workbench-public/releases/tag/v0.1.0-rc.7)取得 SHA-256 校验文件；也可从源码仓同版本 `deploy/` 目录取得上述四个文件。附件与同版本 ACR 镜像配套。无需下载 Windows 安装包、鸿蒙调试包或源码依赖，也无需创建自己的 ACR 仓库。
+下载 [0.1.0-rc.8 服务器部署附件](https://github.com/Torry2022/study-log-workbench-public/releases/download/v0.1.0-rc.8/study-log-server-0.1.0-rc.8.zip)，在[预发布页面](https://github.com/Torry2022/study-log-workbench-public/releases/tag/v0.1.0-rc.8)取得 SHA-256 校验文件；也可从源码仓同版本 `deploy/` 目录取得上述四个文件。附件与同版本 ACR 镜像配套。无需下载 Windows 安装包、鸿蒙调试包或源码依赖，也无需创建自己的 ACR 仓库。
 
 本文命令在你自己的 Linux 服务器上执行。准备 Docker Engine、Docker Compose 2.24 或以上及一个专用保存文件夹；使用已有服务器即可，无需为本项目另买服务器。先完成下面的本机检查，再配置公网访问，不接管其他网站或服务。
 

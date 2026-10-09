@@ -4,8 +4,13 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { createRequire } from "node:module";
 import { initialize, withInstanceLock } from "./instance.mjs";
+
+const require = createRequire(new URL("../study-log-web/package.json", import.meta.url));
+const { unified } = await import(pathToFileURL(require.resolve("unified")).href);
+const remarkParse = (await import(pathToFileURL(require.resolve("remark-parse")).href)).default;
 
 test("instance prompts are neutral editable copies and reinitialization preserves user templates", async t => {
   const root = await fixture(t);
@@ -83,4 +88,29 @@ test("web launcher rejects malformed identities before starting the server", asy
   const result = spawnSync(process.execPath, [fileURLToPath(new URL("./run-web.mjs", import.meta.url)), "dev", root, "3569"], { encoding: "utf8", timeout: 3000 });
   assert.equal(result.status, 1);
   assert.match(result.stderr, /工作台标识无效/);
+});
+test("new workspaces get one editable Shanghai-dated welcome log without recreating it", async t => {
+  const root = await fixture(t);
+  await initialize(root);
+  const data = path.join(root, 'data');
+  const files = (await fs.readdir(data)).filter(name => name.endsWith('_学习日志.md'));
+  assert.equal(files.length, 1);
+  const file = path.join(data, files[0]);
+  const content = await fs.readFile(file, 'utf8');
+  const date = content.match(/^## (\d{4}-\d{2}-\d{2})\n\n/)[1];
+  assert.equal(date, new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()));
+  assert.equal(files[0], `${date.slice(0, 7)}_学习日志.md`);
+  const example = await fs.readFile(new URL('./welcome-log.md', import.meta.url), 'utf8');
+  assert.equal(content, `## ${date}\n\n${example}`);
+  const headings = unified().use(remarkParse).parse(content).children.filter(node => node.type === 'heading');
+  assert.deepEqual(headings.map(node => node.depth), [2, 3, 3, 4, 3, 3, 3]);
+  const identity = await fs.readFile(path.join(data, '.instance.json'));
+  const credentials = await fs.readFile(path.join(root, '.env'));
+  await fs.writeFile(file, `## ${date}\n\n我改写了示例。\n`);
+  await initialize(root);
+  assert.equal(await fs.readFile(file, 'utf8'), `## ${date}\n\n我改写了示例。\n`);
+  await fs.unlink(file); await initialize(root);
+  assert.deepEqual((await fs.readdir(data)).filter(name => name.endsWith('_学习日志.md')), []);
+  assert.deepEqual(await fs.readFile(path.join(data, '.instance.json')), identity);
+  assert.deepEqual(await fs.readFile(path.join(root, '.env')), credentials);
 });

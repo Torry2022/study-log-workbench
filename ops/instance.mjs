@@ -51,11 +51,12 @@ export async function withInstanceLock(data, operation) {
 }
 
 async function writeNew(file, contents) {
-  try { await fs.writeFile(file, contents, { flag: "wx", mode: 0o600 }); }
+  try { await fs.writeFile(file, contents, { flag: "wx", mode: 0o600 }); return true; }
   catch (error) {
     if (error.code !== "EEXIST") throw error;
     const stat = await fs.lstat(file);
     if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("工作台配置必须是普通文件");
+    return false;
   }
 }
 
@@ -176,7 +177,7 @@ export async function initialize(root) {
       await assertNoLinks(path.join(root, name));
       await fs.mkdir(path.join(root, name), { recursive: true, mode: 0o700 });
     }
-    await writeNew(identityFile, JSON.stringify({ schemaVersion: 1, id: crypto.randomUUID() }, null, 2) + "\n");
+    const created = await writeNew(identityFile, JSON.stringify({ schemaVersion: 1, id: crypto.randomUUID() }, null, 2) + "\n");
     const prompts = path.join(data, "prompts");
     await assertNoLinks(prompts);
     await fs.mkdir(prompts, { recursive: true, mode: 0o700 });
@@ -194,6 +195,13 @@ export async function initialize(root) {
       `SESSION_SECRET=${crypto.randomBytes(36).toString("base64url")}`,
       "COOKIE_SECURE=false", "CHAT_API_URL=", "CHAT_MODEL=", "CHAT_API_KEY=", ""
     ].join("\n"));
+    if (created) {
+      const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+      const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+      const date = `${values.year}-${values.month}-${values.day}`;
+      const welcome = await fs.readFile(new URL("./welcome-log.md", import.meta.url), "utf8");
+      await writeNew(path.join(data, `${date.slice(0, 7)}_学习日志.md`), `## ${date}\n\n${welcome}`);
+    }
     return { initialized: true, credentialsFile: envFile };
   });
 }

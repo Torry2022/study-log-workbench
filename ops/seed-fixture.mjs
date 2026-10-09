@@ -4,9 +4,15 @@ import { initialize, withInstanceLock } from "./instance.mjs";
 
 const root = process.argv[2];
 if (!root || !path.isAbsolute(root)) throw new Error("Provide an absolute NEW synthetic instance directory");
+const existing = await fs.readdir(root).catch(error => { if (error.code === "ENOENT") return []; throw error; });
+if (existing.length) throw new Error("Synthetic fixtures require a new empty directory");
 await initialize(root);
 const data = path.join(root, "data");
 await withInstanceLock(data, async () => {
+  // Only this newly created synthetic directory is cleared before fixed-date fixtures.
+  const examples = (await fs.readdir(data)).filter(name => name.endsWith("_学习日志.md"));
+  if (examples.length !== 1) throw new Error("Expected exactly one new welcome log");
+  await fs.unlink(path.join(data, examples[0]));
   const fence = "```";
   const january = [
     "## 2026-01-15", "", "### 1. 并发控制", "", "这是用于验收的合成学习资料。**状态必须与当前请求对应。**", "",

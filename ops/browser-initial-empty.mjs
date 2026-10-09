@@ -14,6 +14,8 @@ const browser=await chromium.launch();
 const results=[];
 try{
  await manager.select({root,create:true,password});
+ const data=path.join(root,'data'),examples=(await fs.readdir(data)).filter(name=>name.endsWith('_学习日志.md'));
+ assert.equal(examples.length,1);await fs.unlink(path.join(data,examples[0]));
  const running=await manager.start();
  const context=await browser.newContext();
  const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));

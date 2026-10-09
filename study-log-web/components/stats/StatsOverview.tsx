@@ -151,7 +151,7 @@ export function StatsOverview({
       <div className="stats-review-toolbar">
         <div>
           <h2>{selectedMonth || "月度复盘"}</h2>
-          <p>按日志日志与日志小节回看本月学习结构。</p>
+          <p>按记录天数与日志小节回看本月学习结构。</p>
         </div>
         <div className="stats-review-actions">
           <label className="stats-month-select">
@@ -174,7 +174,7 @@ export function StatsOverview({
 
       <section className="stats-metric-strip" aria-label="月度复盘摘要">
         <div><span>记录天数</span><strong>{stats?.dayCount || 0}</strong>{stats?.comparison ? <Delta value={(stats?.dayCount || 0) - stats.comparison.dayCount} suffix=" 天" /> : <small>暂无上月数据</small>}</div>
-        <div><span>日志小节</span><strong>{stats?.topicCount || 0}</strong>{stats?.comparison ? <Delta value={(stats?.topicCount || 0) - stats.comparison.topicCount} suffix=" 个" /> : <small>按三级标题计数</small>}</div>
+        <div><span>日志小节</span><strong>{stats?.topicCount || 0}</strong>{stats?.comparison && <Delta value={(stats?.topicCount || 0) - stats.comparison.topicCount} suffix=" 个" />}<small>按三级标题计数</small></div>
         <div><span>活跃领域</span><strong>{activeDomains}</strong>{stats?.comparison ? <Delta value={activeDomains - previousActiveDomains} /> : <small>不含“其他”</small>}</div>
         <div><span>未分类标签</span><strong>{stats?.unclassifiedTags.length || 0}</strong><small>{stats?.unclassifiedTags.length ? "建议整理映射" : "分类口径完整"}</small></div>
       </section>
@@ -229,7 +229,7 @@ export function StatsOverview({
                 {activeSegment && <div className="stats-donut-tooltip"><i style={{ background: activeSegment.color }} /><strong>{activeSegment.domain}</strong><span>{activeSegment.count} 个 · {activeSegment.percentage}% · {activeSegment.activeDays} 天</span></div>}
               </figure>
             </div>
-          ) : <WorkspaceState kind="empty" title="本月暂无可统计的小节" layout="compact" className="stats-empty compact" />}
+          ) : <WorkspaceState kind="empty" title="本月暂无可统计的小节" description={stats?.dayCount ? "普通段落会计入记录天数，三级标题会计入小节数量。" : undefined} layout="compact" className="stats-empty compact" />}
         </section>
 
         <section className="stats-section stats-ranking-section">

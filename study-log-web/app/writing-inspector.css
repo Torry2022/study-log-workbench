@@ -1,7 +1,7 @@
 /* Layout and controls follow the theme-aware inspector. */
 .public-reading-shell .workspace.with-writing { grid-template-columns: 260px minmax(0, 1fr) var(--inspector-width, 52px); }
 .public-reading-shell .workspace.with-writing.sidebar-collapsed { grid-template-columns: 52px minmax(0, 1fr) var(--inspector-width, 52px); }
-.writing-inspector { position: sticky; top: 0; align-self: start; height: calc(100svh - 64px); max-height: calc(100svh - 64px); min-width: 0; border-left: 1px solid var(--hairline); background: var(--canvas); color: var(--body); }
+.writing-inspector { position: sticky; top: 0; align-self: start; height: calc(100svh - var(--inspector-topbar-visible, 64px)); max-height: calc(100svh - var(--inspector-topbar-visible, 64px)); min-width: 0; border-left: 1px solid var(--hairline); background: var(--canvas); color: var(--body); }
 .writing-inspector:not(.expanded) { background: var(--surface-soft); }
 .writing-inspector-content:not([hidden]) { height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr); }
 .writing-inspector-heading { display: grid; grid-template-columns: minmax(0, 1fr) 38px; align-items: center; gap: 8px; padding: 14px; border-bottom: 1px solid var(--hairline); }

@@ -76,6 +76,21 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, module
   const lastAiRequest = useRef(0);
   const resizeCleanup = useRef<(() => void) | null>(null);
   const hasInspector = Boolean(inspector) && view === "log" && !readingMode;
+  useEffect(() => {
+    if (!hasInspector || !active) return;
+    const inspectorElement = writingPanel.current;
+    const topbar = inspectorElement?.closest(".app-shell")?.querySelector(".topbar");
+    if (!inspectorElement || !topbar) return;
+    const updateHeight = () => {
+      // The desktop topbar scrolls away; subtract only its still-visible portion.
+      const visible = Math.max(0, Math.min(window.innerHeight, topbar.getBoundingClientRect().bottom));
+      inspectorElement.style.setProperty("--inspector-topbar-visible", `${visible}px`);
+    };
+    updateHeight();
+    window.addEventListener("scroll", updateHeight, { passive: true });
+    window.addEventListener("resize", updateHeight);
+    return () => { window.removeEventListener("scroll", updateHeight); window.removeEventListener("resize", updateHeight); };
+  }, [hasInspector, active]);
   const [helpOpen, setHelpOpen] = useState(false);
   const [newDateFocus, setNewDateFocus] = useState(0);
   const shortcutPending = useRef(false);

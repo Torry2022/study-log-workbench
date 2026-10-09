@@ -23,7 +23,7 @@ export function HelpDialog({ onClose }: { onClose: () => void }) {
       <div className="help-dialog-content">
         <section><h3>常用操作</h3><div className="help-action-grid">
           <article><strong>记录与保存</strong><p>点击“今天”或选择日期新建日志，在源码中输入并保存。日期由系统维护，正文使用三级及以下标题，也可以只写普通段落。无需配置模型即可记录和搜索。</p></article>
-          <article><strong>阅读与整理</strong><p>使用浏览、源码或分屏切换查看方式。大纲用于定位标题；已保存的三级标题可收藏、分组。随记可以独立记录想法，也可以从材料中提取并审阅。</p></article>
+          <article><strong>阅读与整理</strong><p>使用浏览、源码或分屏切换查看方式。鼠标三击普通正文可切到源码并延续阅读位置。大纲用于定位标题；已保存的三级标题可收藏、分组。随记可以独立记录想法，也可以从材料中提取并审阅。</p></article>
           <article><strong>搜索与问答</strong><p>顶部搜索查找日志标题和正文，H3 按钮切换为只搜小节标题。左栏搜索筛选当前月份的日期。问答需要配置模型，来源条目可返回日志。</p></article>
           <article><strong>历史与备份</strong><p>“日志历史版本”找回某一天之前保存的内容。完整备份另行保存全部学习记录、附件和配置，两者不能互相替代。本地与服务器上的记录不会自动同步。</p></article>
         </div></section>

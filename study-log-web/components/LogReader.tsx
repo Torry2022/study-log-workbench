@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { BookOpen, ChevronLeft, ChevronRight, CornerUpLeft, DatabaseBackup, Edit3, Eye, FileText, LayoutList, Link2, Maximize2, Minimize2, MoreHorizontal, PanelRightOpen, RefreshCw, Save, Star, Trash2, Upload, X } from "lucide-react";
 import { MarkdownPreview, type InternalLinkTarget } from "./MarkdownPreview";
@@ -164,6 +164,15 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
   function changeMode(next: WorkspaceMode) {
     if (next === mode) return;
     position.capture(mode); restorePending.current = true; editing.onMode(next);
+  }
+  function handlePreviewClick(event: MouseEvent<HTMLDivElement>) {
+    if (event.detail !== 3 || event.button !== 0 || event.defaultPrevented || !active || mode !== "preview" || loading || error || !editorReady || editing.locked) return;
+    if ("pointerType" in event.nativeEvent && event.nativeEvent.pointerType !== "mouse") return;
+    const target = event.target;
+    if (!(target instanceof Element) || !target.closest(".markdown-preview") || target.closest("a, button, input, textarea, select, img, pre, code, .mermaid-block")) return;
+    event.preventDefault();
+    changeMode("source");
+    if (reading) onReading(false);
   }
   function changeReading(value: boolean) { position.capture(mode); restorePending.current = true; onReading(value); }
   function jumpToOutline(item: MarkdownHeading) {
@@ -336,7 +345,7 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
     {attachments.status && <div className="editor-attachment-status" role={attachments.failed ? "alert" : "status"}>{attachments.status}</div>}
     {editing.error && <AppFeedback message={editing.error} tone="error" onDismiss={editing.onDismissError} action={editing.conflict ? { label: "重新读取", onClick: editing.onReload } : undefined} />}
     {active && editing.saved && !editing.dirty && !editing.error && <AppFeedback message="已保存" tone="success" onDismiss={() => {}} />}
-    <div className="reader-preview-pane" style={{ display: mode === "source" ? "none" : undefined }}>
+    <div className="reader-preview-pane" onClick={handlePreviewClick} style={{ display: mode === "source" ? "none" : undefined }}>
     {loading || error || !content.trim() ? <div className={`preview-workspace${(loading || error) && mode === "preview" ? " has-outline" : ""}`}><div className="preview-pane">
       {loading ? <WorkspaceState kind="loading" title={`正在加载 ${date}`} className="preview-loading" /> : error ? <WorkspaceState kind="error" title="日志加载失败" description={error} className="preview-empty" actions={<button className="button secondary" type="button" onClick={onRetry}><RefreshCw size={15} />重新加载</button>} /> : <WorkspaceState kind="empty" icon={FileText} title={date ? "暂无正文" : hasLogs ? "未选择日志" : "暂无学习日志"} description={date ? "切换到“源码”，写下这一天的学习内容。" : hasLogs ? "选择一个日期，查看当天的学习内容。" : "点击“今天”，记下今天学到的内容。"} layout="module" className="log-empty-state" />}
     </div></div> : <div className={`preview-workspace${headings.length && mode === "preview" ? " has-outline" : ""}`}>

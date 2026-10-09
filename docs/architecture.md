@@ -289,3 +289,5 @@ rc.6 打包入口可接收新的绝对输出目录，payload、安装包与构�
 
 
 共享使用帮助由 Web 的 HelpDialog 提供，桌面网页与窄屏设置入口均使用它；Windows 原生帮助菜单经 preload 只派发打开事件。WorkspaceChrome 处理跨模块快捷键，LogReader／LogEditor 处理阅读及编辑命令，BackToTop 处理返回顶部，业务均调用原有导航、草稿保护和插入流程。全局按键通过 workspace-shortcuts 排除模态弹窗、组合输入、重复及已处理事件；普通方向键另排除输入与操作控件。跨模块新建日期明确展开日志侧栏，避免沿用旧模块的折叠状态。详见[帮助与快捷键记录](help-and-shortcuts-2026-10-09.md)。
+
+日志鼠标三击正文切源码由共享 LogReader 处理，沿用 changeMode、useReadingPosition 和 LogEditor 焦点机制。排除代码、链接、图片、表单及图表；只改变模式，不写入或重载正文。手势不加入 MarkdownPreview，避免影响问答及随记等复用渲染场景；Windows 没有专属处理。验证见[三击切换记录](preview-edit-2026-10-09.md)。

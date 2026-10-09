@@ -1,5 +1,7 @@
 "use client";
 
+import { workspaceShortcutBlocked } from "@/lib/workspace-shortcuts";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ConfirmationOptions } from "@/components/ConfirmDialog";
 import { ApiRequestError, requestJson } from "@/lib/client-http";
@@ -91,7 +93,7 @@ export function useNotes({ active, visible, routeNoteId = "", routeToken = 0, on
   useEffect(() => {
     if (!active || !visible || !editorOpen) return;
     const save = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.isComposing || event.altKey || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "s") return;
+      if (workspaceShortcutBlocked(event) || event.altKey || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "s") return;
       event.preventDefault(); void saveDraft();
     };
     window.addEventListener("keydown", save); return () => window.removeEventListener("keydown", save);

@@ -45,6 +45,7 @@ import { assertEditableDayBody, toEditableDayBody } from "@/lib/day-content";
 import type { StatsEntry } from "@/lib/stats-types";
 import type { WorkspaceMode } from "./LogReader";
 import "@/app/editing-workspace.css";
+import { workspaceShortcutBlocked } from "@/lib/workspace-shortcuts";
 
 export function Workspace() {
   const { active, logout } = useSession();
@@ -147,7 +148,7 @@ export function Workspace() {
   useEffect(() => {
     if (!active || !logView) return;
     const save = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.isComposing || !(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== "s") return;
+      if (workspaceShortcutBlocked(event) || !(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== "s") return;
       event.preventDefault(); if (!backupOpen && !deleting && (draft.dirty || (logs.day && !logs.day.exists))) void draft.save();
     };
     window.addEventListener("keydown", save);
@@ -243,6 +244,7 @@ export function Workspace() {
     theme={theme} themePreference={preference} onTheme={chooseTheme}
     onMonth={month => { clearSearch(); logs.selectMonth(month); }} onDate={selectSidebarDate} onRetry={logs.retry}
     onSearchChange={clearSearch} onSearchSelect={async result => { if (!(await selectDate(result.date))) return false; setMode("preview"); setReading(false); setSearchSelection(result); return true; }}
+    onNewQuestion={async () => { if (!(await logs.selectView("qa"))) return false; clearSearch(); setReading(false); return rag.newSession(); }}
     onNewDate={date => { void logs.selectDate(date).then(accepted => { if (accepted) setMode("source"); }); }} onLogout={() => void exit()}>
     {navigationError && <AppFeedback message={navigationError} tone="error" onDismiss={() => setNavigationError("")} />}
     {(exporting.status || exporting.error || exporting.busy) && <AppFeedback message={exporting.error || exporting.status || "正在准备导出…"} tone={exporting.error ? "error" : exporting.status ? "warning" : "info"} onDismiss={exporting.dismiss} action={exporting.busy ? { label: "取消导出", onClick: exporting.cancel } : undefined} />}

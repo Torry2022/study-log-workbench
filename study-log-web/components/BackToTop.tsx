@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowUp } from "lucide-react";
 import type { WorkspaceView } from "@/hooks/use-log-workspace";
 import "@/app/back-to-top.css";
+import { isEditingTarget, workspaceShortcutBlocked } from "@/lib/workspace-shortcuts";
 
 export function BackToTop({ view, active }: { view: WorkspaceView; active: boolean }) {
   const control = useRef<HTMLDivElement>(null);
@@ -44,6 +45,15 @@ export function BackToTop({ view, active }: { view: WorkspaceView; active: boole
     });
     if (window.scrollY > 0) window.scrollTo({ top: 0, behavior });
   };
+  useEffect(() => {
+    if (!active) return;
+    const keydown = (event: KeyboardEvent) => {
+      if (workspaceShortcutBlocked(event) || isEditingTarget(event.target) || !event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.key !== "ArrowUp") return;
+      event.preventDefault(); top();
+    };
+    window.addEventListener("keydown", keydown);
+    return () => window.removeEventListener("keydown", keydown);
+  }, [active, view]);
   return <div ref={control} className={`back-to-top-control${active && state.visible ? " is-visible" : ""}`} style={{ right: state.right }} aria-hidden={!active || !state.visible}>
     <svg className="back-to-top-progress" viewBox="0 0 48 48" aria-hidden="true">
       <rect className="back-to-top-progress-track" x="1.5" y="1.5" width="45" height="45" rx="11" pathLength="100" />

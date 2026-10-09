@@ -286,3 +286,6 @@ rc.6 打包入口可接收新的绝对输出目录，payload、安装包与构�
 侧栏导航标题复用 SidebarFilterHeading：标题保持单行且不参与横向压缩；标题与操作组的 4px 间距用联合类选择器覆盖通用 sidebar-heading 的 10px 间距，避免 220px 侧栏预留滚动槽后挤压标题。重置筛选及收起按钮保留既有位置和行为，不通过缩小字体或移除图标解决换行。
 
 统计保持原有日块与 H3 小节计数：有上月比较时仍显示三级标题计数说明；只有普通段落的月份计入记录天数，并在小节空状态说明两者的区别。复用 StatsOverview 与 WorkspaceState，不新增计数规则或必填标题。
+
+
+共享使用帮助由 Web 的 HelpDialog 提供，桌面网页与窄屏设置入口均使用它；Windows 原生帮助菜单经 preload 只派发打开事件。WorkspaceChrome 处理跨模块快捷键，LogReader／LogEditor 处理阅读及编辑命令，BackToTop 处理返回顶部，业务均调用原有导航、草稿保护和插入流程。全局按键通过 workspace-shortcuts 排除模态弹窗、组合输入、重复及已处理事件；普通方向键另排除输入与操作控件。跨模块新建日期明确展开日志侧栏，避免沿用旧模块的折叠状态。详见[帮助与快捷键记录](help-and-shortcuts-2026-10-09.md)。

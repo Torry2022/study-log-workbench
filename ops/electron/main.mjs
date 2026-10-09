@@ -362,7 +362,7 @@ function menu() {
     { label: '编辑', submenu: [{ role: 'undo', label: '撤销' }, { role: 'redo', label: '重做' }, { type: 'separator' },
       { role: 'cut', label: '剪切' }, { role: 'copy', label: '复制' }, { role: 'paste', label: '粘贴' }, { role: 'selectAll', label: '全选' }] },
     { label: '视图', submenu: [{ role: 'resetZoom', label: '实际大小' }, { role: 'zoomIn', label: '放大' }, { role: 'zoomOut', label: '缩小' }] },
-    { label: '帮助', submenu: [{ label: '检查更新…', id: 'check-updates', click: () => void checkUpdates() },
+    { label: '帮助', submenu: [{ label: '使用帮助', click: () => workspaceView?.webContents.send('workbench:help') }, { type: 'separator' }, { label: '检查更新…', id: 'check-updates', click: () => void checkUpdates() },
       { type: 'separator' }, { label: '关于学习日志工作台', click: () => void about().catch(reportError) }] }
   ]);
   Menu.setApplicationMenu(titleMenu);

@@ -30,6 +30,7 @@ import { AppFeedback } from "./AppFeedback";
 import "@/app/feedback.css";
 import type { ExportScope } from "@/hooks/use-export";
 import "@/app/reader.css";
+import { isEditingTarget, workspaceShortcutBlocked } from "@/lib/workspace-shortcuts";
 
 export type WorkspaceMode = "preview" | "source" | "split";
 interface Editing {
@@ -61,6 +62,19 @@ interface Props {
 }
 
 export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, editing, search, favorites, exporting, active, navigationRevision, day, date, heading, scrollTarget, loading, error, theme, reading, onReading, onRetry, onNavigate }: Props) {
+  useEffect(() => {
+    if (!active || editing.mode !== "preview" || editing.busy || loading) return;
+    const keydown = (event: KeyboardEvent) => {
+      if (workspaceShortcutBlocked(event) || isEditingTarget(event.target) || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+      if (event.target instanceof Element && event.target.closest('button, a, [role="menu"], [role="listbox"]')) return;
+      const previous = ["ArrowLeft", "ArrowUp"].includes(event.key), next = ["ArrowRight", "ArrowDown"].includes(event.key);
+      if (!previous && !next) return;
+      const target = previous ? navigation?.previousDate : navigation?.nextDate;
+      if (target) { event.preventDefault(); void onNavigate(target); }
+    };
+    window.addEventListener("keydown", keydown);
+    return () => window.removeEventListener("keydown", keydown);
+  }, [active, editing.mode, editing.busy, loading, navigation?.previousDate, navigation?.nextDate, onNavigate]);
   const content = useMemo(() => editing.documentDate === date ? editing.body : day ? toEditableDayBody(day.date, day.content) : "", [editing.documentDate, editing.body, date, day]);
   const headings = useMemo(() => buildMarkdownOutline(content), [content]);
   const [outlineOpen, setOutlineOpen] = useState(false);
@@ -335,7 +349,7 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
       onPasteCapture={event => { const files = imageFiles(event.clipboardData.files); if (files.length) { event.preventDefault(); void attachments.upload(files); } }}
       onDropCapture={event => { const files = imageFiles(event.dataTransfer.files); if (files.length) { event.preventDefault(); void attachments.upload(files); } }}
       onDragOver={event => { if (Array.from(event.dataTransfer.items).some(item => item.type.startsWith("image/"))) event.preventDefault(); }}>
-      {editorReady ? <LogEditor date={date} value={editing.body} active={active && !editing.locked && mode !== "preview"} onChange={editing.onChange} onSave={editing.onSave} onUpdate={attachments.update} onView={view => { editorView.current = view; }}
+      {editorReady ? <LogEditor date={date} value={editing.body} active={active && !editing.locked && mode !== "preview"} onChange={editing.onChange} onSave={editing.onSave} onInternalLink={() => { if (!editing.busy && !attachments.busy) openLink(); }} onUpdate={attachments.update} onView={view => { editorView.current = view; }}
         tools={<MarkdownEditMenu disabled={!active || editing.locked || attachments.busy} onCommand={command => { if (editorView.current) applyMarkdownEdit(editorView.current, command); }} onInternalLink={openLink} onImage={() => imageInput.current?.click()} />}
       /> : <WorkspaceState kind={error ? "error" : loading ? "loading" : "empty"} title={error ? "日志加载失败" : loading ? `正在加载 ${date}` : "未选择日志"} description={error || (loading ? undefined : hasLogs ? "选择一个日期，查看当天的学习内容。" : "点击“今天”，记下今天学到的内容。")} className="source-empty" actions={error ? <button className="button secondary" type="button" onClick={onRetry}><RefreshCw size={15} />重新加载</button> : undefined} />}
     </div></div>

@@ -6,3 +6,5 @@ window.addEventListener('DOMContentLoaded', () => {
   new MutationObserver(update).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   update();
 });
+
+ipcRenderer.on("workbench:help", () => window.dispatchEvent(new Event("study-log:help")));

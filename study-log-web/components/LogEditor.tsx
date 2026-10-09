@@ -18,6 +18,7 @@ interface Props {
   active: boolean;
   onChange: (value: string) => void;
   onSave: () => void;
+  onInternalLink?: () => void;
   onView?: (view: EditorView | null) => void;
   onUpdate?: (update: ViewUpdate) => void;
   tools?: ReactNode;
@@ -86,13 +87,14 @@ const basicSetup = {
   searchKeymap: false
 };
 
-export function LogEditor({ date, value, active, onChange, onSave, onView, onUpdate, tools }: Props) {
+export function LogEditor({ date, value, active, onChange, onSave, onInternalLink, onView, onUpdate, tools }: Props) {
   const editorView = useRef<EditorView | null>(null);
-  const callbacks = useRef({ active, onChange, onSave, onView });
-  callbacks.current = { active, onChange, onSave, onView };
+  const callbacks = useRef({ active, onChange, onSave, onInternalLink, onView });
+  callbacks.current = { active, onChange, onSave, onInternalLink, onView };
 
   const editorExtensions = useMemo<Extension[]>(() => {
     const shortcutKeymap: KeyBinding[] = [
+      { key: "Mod-Shift-k", run: () => { if (callbacks.current.active) callbacks.current.onInternalLink?.(); return true; } },
       {
         key: "Mod-s",
         run: () => {

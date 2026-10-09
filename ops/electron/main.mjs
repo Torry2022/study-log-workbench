@@ -29,7 +29,22 @@ let savedPreferences = {}, active = { mode: 'local' };
 const workspaceUrl = () => active.mode === 'remote' ? active.origin + '/study-log' : manager.url;
 const remotePartition = target => 'persist:remote-' + crypto.createHash('sha256').update(target.origin + ':' + target.instanceId).digest('hex').slice(0, 24);
 async function savePreferences() { await atomicPrivateFile(preferences, JSON.stringify(savedPreferences, null, 2)); }
-let win, quitting = false, finishing = false, nextRoot = null, pendingAction = null, settingsWindow = null;
+let win, quitting = false, finishing = false, nextRoot = null, pendingAction = null, settingsWindow = null, sessionEnding = false;
+// Windows does not guarantee before-quit/close on shutdown or log-off.
+// Start draining as soon as the OS announces session end; startup recovery covers
+// the case where Windows terminates us before the asynchronous drain finishes.
+app.on('browser-window-created', (_event, window) => {
+  const endSession = () => {
+    if (sessionEnding) return;
+    sessionEnding = true; nextConnection = null; nextRoot = null; pendingAction = null; reopenAfterExit = false;
+    void (finishing ? Promise.resolve() : savePreferences().catch(() => {})).then(() => manager.operation(() => manager.shutdown())).finally(() => {
+      quitting = true; app.exit(0);
+    });
+  };
+  // Keep the existing unsaved-draft decision while Windows still permits it.
+  window.on('query-session-end', () => app.quit());
+  window.on('session-end', endSession);
+});
 
 function trusted(event) {
   try {
@@ -273,7 +288,7 @@ async function settings(kind = 'model') {
   current.show();
 }
 
-const reportError = error => dialog.showMessageBox(win && !win.isDestroyed() ? win : undefined,
+const reportError = error => sessionEnding ? Promise.resolve() : dialog.showMessageBox(win && !win.isDestroyed() ? win : undefined,
   { type: 'error', title: '学习日志工作台', message: '操作未完成', detail: error.message, buttons: ['知道了'] });
 async function about() {
   const owner = win, view = workspaceView;
@@ -333,6 +348,7 @@ function menu() {
 }
 
 async function finishWindow() {
+  if (sessionEnding) return;
   if (finishing) { closeAfterTransition = true; return; }
   finishing = true;
   await savePreferences().catch(reportError);

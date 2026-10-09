@@ -59,7 +59,7 @@ export async function packageWindows(output, { cache = path.join(repository, ".l
     await fs.copyFile(path.join(repository, "ops", name), path.join(output, "ops", name));
   }
   await fs.mkdir(path.join(output, "ops", "desktop"));
-  for (const name of ["worker.mjs", "security.mjs", "manager.mjs", "launcher.mjs", "index.html", "ui.js", "ui.css"]) {
+  for (const name of ["worker.mjs", "security.mjs", "recovery.mjs", "manager.mjs", "launcher.mjs", "index.html", "ui.js", "ui.css"]) {
     await fs.copyFile(path.join(repository, "ops", "desktop", name), path.join(output, "ops", "desktop", name));
   }
   await fs.copyFile(path.join(repository, "LICENSE"), path.join(output, "LICENSE"));

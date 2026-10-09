@@ -6,14 +6,19 @@ import { pathToFileURL } from "node:url";
 // This private inherited IPC channel is never exposed over HTTP. Windows signals
 // sent by child.kill terminate immediately; invoke the service's own cleanup here.
 if (!process.send) throw new Error("Desktop workers require an inherited IPC channel");
-let close, stopping, requested = false;
+let close, stopping, requested = false, activated = false;
 const stop = () => {
+  if (!activated) process.exit(0);
   requested = true;
   if (!close) return;
   return stopping ??= Promise.resolve().then(close).catch(() => process.exit(1));
 };
 process.on("message", message => { if (message?.type === "stop") void stop(); });
 process.once("disconnect", () => void stop());
+// Register the worker in the owner's durable record before it can write data.
+await new Promise(resolve => process.on("message", message => {
+  if (message?.type === "start" && !activated) { activated = true; resolve(); }
+}));
 try {
   const [kind, location] = process.argv.slice(2);
   if (kind === "web") {

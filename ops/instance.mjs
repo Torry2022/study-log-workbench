@@ -16,7 +16,7 @@ export async function assertNoLinks(target) {
   }
 }
 
-export async function acquireInstanceLock(data, operation = "maintenance") {
+export async function acquireInstanceLock(data, operation = "maintenance", desktop = undefined) {
   if (!data || !path.isAbsolute(data)) throw new Error("运行锁需要明确的数据绝对路径");
   await assertNoLinks(data);
   if (!(await fs.stat(data)).isDirectory()) throw new Error("学习记录保存路径必须是目录");
@@ -30,7 +30,7 @@ export async function acquireInstanceLock(data, operation = "maintenance") {
   const ownerFile = path.join(lock, "owner.json"), ownerId = crypto.randomUUID();
   // A failed owner write leaves the new lock for inspection: never remove a
   // directory whose ownership could not be fully established.
-  await fs.writeFile(ownerFile, JSON.stringify({ ownerId, operation, pid: process.pid, startedAt: new Date().toISOString() }), { flag: "wx", mode: 0o600 });
+  await fs.writeFile(ownerFile, JSON.stringify({ ownerId, operation, pid: process.pid, startedAt: new Date().toISOString(), ...(desktop ? { desktop } : {}) }), { flag: "wx", mode: 0o600 });
   let released = false;
   return async () => {
     if (released) return;

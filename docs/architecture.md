@@ -14,7 +14,7 @@
 
 `AuthGate`负责认证生命周期，`LoginScreen`仅持有密码、提交中和错误状态。认证过期保留工作区组件实例并隐藏内容；重新认证后恢复，主动退出则卸载清理。共享JSON请求在会话变化时取消，并在解析响应后检查取消状态，避免不遵守取消的旧响应回灌。业务模块从会话上下文读取活动状态，并分别验证草稿与流的生命周期。
 
-`ops/instance.mjs` 负责实例初始化。它只操作显式传入的绝对目录，识别已有身份，使用独占创建保留原配置。`ops/run-web.mjs`读取选定实例环境，强制数据根为该实例的data目录；它与standalone入口`ops/serve.mjs`共用服务监督器，持有含随机归属的运行锁直到子进程正常退出。异常停止保留锁，维护只释放自己拥有的锁。Linux 真实 SIGTERM、子进程异步收尾及问答长流期间停机已有[具名验证](deployment.md#验证范围)，维护限制见[维护边界](maintenance.md)。
+`ops/instance.mjs` 负责实例初始化。它只操作显式传入的绝对目录，识别已有身份，使用独占创建保留原配置。`ops/run-web.mjs`读取选定实例环境，强制数据根为该实例的data目录；它与standalone入口`ops/serve.mjs`共用服务监督器，持有含随机归属的运行锁直到子进程正常退出。异常停止保留锁，维护只释放自己拥有的锁。Windows 桌面端通过 `ops/desktop/recovery.mjs` 在再次打开时检查本机启动周期、保存位置、数据身份、父子进程创建时间和未完成写入，满足条件时串行留存旧状态并恢复；其他运行入口不自动恢复。Electron 接入 Windows 会话结束事件，服务启动前持久化子进程归属。Linux 真实 SIGTERM、子进程异步收尾及问答长流期间停机已有[具名验证](deployment.md#验证范围)，维护限制见[维护边界](maintenance.md)。
 
 默认模板维护同样由 `ops/instance.mjs` 负责：初始化、`runService` 和 `DesktopManager.start` 在持有实例锁、启动服务子进程前调用 `upgradeDefaultPrompts`。本轮识别 rc.5 标注与提取模板各自的 LF／CRLF 精确历史摘要；先持久化原文件备份，再校验源文件未变并原子替换。定制内容不覆盖，维护失败不阻断基础服务，记录与备份保存在实例 prompts 目录并进入完整归档。Windows 打包与 web/tools 镜像沿用现有文件清单包含此实现，不另设端侧升级器。详见[模板升级](ai-configuration.md#内置默认模板升级)。
 

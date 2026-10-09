@@ -9,6 +9,7 @@ import { initialize, acquireInstanceLock, assertNoLinks, upgradeDefaultPrompts }
 import { validateServiceEnvironment } from "../service.mjs";
 import { backupInstance, verifyArchive, restoreInstance } from "../archive.mjs";
 import { atomicPrivateFile, privateDirectory, privateFile, runtimeEnvironment } from "./security.mjs";
+import { desktopOwnership, registerDesktopWorker, recoverDesktopLock } from "./recovery.mjs";
 
 const worker = fileURLToPath(new URL("./worker.mjs", import.meta.url));
 const inside = (root, value) => { const relative = path.relative(root, value); return !relative || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative)); };
@@ -34,6 +35,7 @@ function launch(kind, location, env, options) {
     child.on("message", message => { if (message?.type === "ready") resolve(); });
     ended.then(() => reject(new Error(`${kind === "web" ? "工作台" : "检索服务"}启动失败，请检查端口、目录和安装包`)));
   });
+  ready.catch(() => {});
   const stop = async () => {
     if (child.connected) child.send({ type: "stop" }, () => {});
     const result = await ended;
@@ -93,6 +95,8 @@ export class DesktopManager {
   }
   async select({ root, create = false, password }) {
     if (this.state !== "stopped") throw new Error("请先停止当前工作台");
+    root = await this.rootPath(root);
+    if (!create) await recoverDesktopLock(path.join(root, "data"));
     const inspected = await this.inspect(root);
     root = inspected.root;
     if (inspected.kind !== (create ? "new" : "existing")) throw new Error(inspected.message || (create ? "创建学习记录需要空文件夹；此处已有记录，请直接打开。" : "此文件夹尚无学习记录，请先创建。"));
@@ -156,7 +160,8 @@ export class DesktopManager {
     if (this.state !== "stopped") throw new Error(this.issue || "工作台正在操作中");
     const env = await this.readEnvironment();
     const webPort = await availablePort(this.ports.web), mcpPort = await availablePort(this.ports.mcp);
-    const release = await acquireInstanceLock(path.join(this.root, "data"), "desktop-services");
+    const data = path.join(this.root, "data");
+    const release = await acquireInstanceLock(data, "desktop-services", await desktopOwnership(data));
     this.release = release; this.state = "starting"; this.issue = "";
     const common = { ...env, NODE_ENV: "production", LOG_ROOT: path.join(this.root, "data"), INDEX_ROOT: path.join(this.root, "index"),
       BACKUP_ROOT: path.join(this.root, "backups"), COOKIE_SECURE: "false", NEXT_TELEMETRY_DISABLED: "1" };
@@ -165,9 +170,11 @@ export class DesktopManager {
     try {
       await upgradeDefaultPrompts(path.join(this.root, "data"));
       const mcp = launch("mcp", this.mcpRoot, { ...common, MCP_HTTP_PORT: String(mcpPort), MCP_HTTP_TOKEN: token }, this.workerOptions);
-      this.processes.push(mcp); await mcp.ready;
+      this.processes.push(mcp);
+      await registerDesktopWorker(data, mcp.child.pid); mcp.child.send({ type: "start" }); await mcp.ready;
       const web = launch("web", this.webRoot, { ...common, PORT: String(webPort), HOSTNAME: "127.0.0.1", STUDY_LOG_MCP_URL: `http://127.0.0.1:${mcpPort}/mcp`, STUDY_LOG_MCP_TOKEN: token }, this.workerOptions);
-      this.processes.push(web); await web.ready;
+      this.processes.push(web);
+      await registerDesktopWorker(data, web.child.pid); web.child.send({ type: "start" }); await web.ready;
       this.state = "running"; this.url = `http://127.0.0.1:${webPort}/study-log`;
       for (const service of this.processes) service.ended.then(() => {
         if (this.state === "running") {

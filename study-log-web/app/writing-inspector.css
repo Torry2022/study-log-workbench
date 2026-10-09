@@ -14,6 +14,14 @@
 .writing-inspector .inspector-rail { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 14px 7px; }
 .writing-inspector .inspector-resizer { position: absolute; top: 0; bottom: 0; left: -4px; z-index: 5; width: 8px; cursor: col-resize; touch-action: none; }
 .writing-inspector .inspector-resizer:hover, .writing-inspector .inspector-resizer:focus-visible { border-left: 2px solid var(--primary); }
+@media (min-width: 1181px) and (max-width: 1279px) {
+  .public-reading-shell .workspace.with-writing { grid-template-columns: 220px minmax(0, 1fr) var(--inspector-width, 52px); }
+  .public-reading-shell .workspace.with-writing.sidebar-collapsed { grid-template-columns: 52px minmax(0, 1fr) var(--inspector-width, 52px); }
+}
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .date-create button svg { display: none; }
+  .date-create button { padding-inline: 8px; }
+}
 @media (min-width: 1024px) and (max-width: 1180px) {
   .public-reading-shell .workspace.with-writing { grid-template-columns: 220px minmax(0, 1fr) 52px; }
   .public-reading-shell .workspace.with-writing.writing-expanded { grid-template-columns: 220px minmax(0, 1fr); }

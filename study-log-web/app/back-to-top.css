@@ -1,0 +1,10 @@
+.back-to-top-control { position: fixed; bottom: 24px; z-index: 49; width: 48px; height: 48px; opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(6px) scale(.96); transition: right 180ms ease, opacity 140ms ease, transform 140ms ease, visibility 0s linear 140ms; }
+.back-to-top-control.is-visible { opacity: .9; visibility: visible; pointer-events: auto; transform: translateY(0) scale(1); transition-delay: 0s; }
+.back-to-top-progress { position: absolute; z-index: 1; inset: 0; width: 48px; height: 48px; overflow: visible; pointer-events: none; }
+.back-to-top-progress rect { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.back-to-top-progress-track { stroke: var(--hairline); }
+.back-to-top-progress-value { stroke: var(--primary); stroke-dasharray: 100; stroke-linecap: round; transition: stroke-dashoffset 100ms linear; }
+.back-to-top-button { position: absolute; top: 1.5px; left: 1.5px; width: 45px; height: 45px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 11px; background: var(--surface-soft); color: var(--body); box-shadow: var(--shadow-soft); }
+.back-to-top-button:hover { background: var(--canvas); color: var(--primary-active); }
+@media (max-width: 1023px) { .back-to-top-control { right: 14px !important; bottom: calc(var(--mobile-bottom-occupied, 64px) + var(--mobile-viewport-bottom, 0px) + 14px); z-index: 58; } }
+@media (prefers-reduced-motion: reduce) { .back-to-top-control, .back-to-top-progress-value { transition: none; } }

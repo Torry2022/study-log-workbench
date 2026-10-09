@@ -6,6 +6,7 @@ import type { WorkspaceView } from "@/hooks/use-log-workspace";
 import type { DaySummary, MonthSummary } from "@/lib/types";
 import { withBasePath } from "@/lib/base-path";
 import { useMobileViewport } from "@/hooks/use-mobile-viewport";
+import { BackToTop } from "./BackToTop";
 import { WorkspaceState } from "./WorkspaceState";
 import { DateJump } from "./DateJump";
 import { SidebarFilterPopover } from "./SidebarFilterPopover";
@@ -289,6 +290,7 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, module
           }} />}
       </aside>}
     </section>
+    <BackToTop view={view} active={active && !drawerOpen} />
     <nav className="mobile-bottom-nav" aria-label="主要功能" inert={drawerOpen}>
       <button className={view === "log" ? "active" : ""} type="button" aria-current={view === "log" ? "page" : undefined} onClick={() => void switchView("log")}><FileText size={20} /><span>日志</span></button>
       <button className={view === "notes" ? "active" : ""} type="button" aria-current={view === "notes" ? "page" : undefined} onClick={() => void switchView("notes")}><Lightbulb size={20} /><span>随记</span></button>

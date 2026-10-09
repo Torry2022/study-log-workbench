@@ -1,0 +1,9 @@
+html.overlay-scrollbars-ready, .overlay-scrollbars-ready body, .overlay-scrollbars-ready body * { scrollbar-gutter: auto !important; scrollbar-width: none !important; }
+.overlay-scrollbars-ready ::-webkit-scrollbar, html.overlay-scrollbars-ready::-webkit-scrollbar { width: 0 !important; height: 0 !important; }
+.overlay-scrollbars { position: fixed; inset: 0; z-index: 2147483646; pointer-events: none; }
+.overlay-scrollbar { position: fixed; pointer-events: auto; touch-action: none; border-radius: 8px; background: transparent; }
+.overlay-scrollbar[hidden] { display: none; }
+.overlay-scrollbar-thumb { border-radius: 8px; background: var(--muted-soft, var(--muted, #8e8b82)); opacity: .48; }
+.overlay-scrollbar:hover .overlay-scrollbar-thumb, .overlay-scrollbar:focus-visible .overlay-scrollbar-thumb { opacity: .85; }
+.overlay-scrollbar:focus-visible { outline: 1px solid var(--primary, #cc785c); }
+@media (forced-colors: active) { .overlay-scrollbar-thumb { background: ButtonText; } }

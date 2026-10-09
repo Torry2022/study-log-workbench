@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
+import Script from "next/script";
 import "./globals.css";
+import "../public/scrollbars/overlay-scrollbars.css";
 import "./login.css";
 import "katex/dist/katex.min.css";
 
@@ -33,7 +35,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitializer }} />
       </head>
-      <body>{children}</body>
+      <body>{children}<Script src="/study-log/scrollbars/overlay-scrollbars.js" strategy="afterInteractive" /></body>
     </html>
   );
 }

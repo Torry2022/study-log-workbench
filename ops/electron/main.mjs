@@ -9,6 +9,16 @@ import { checkForUpdate, parseVersion } from './updates.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repository = path.resolve(here, '../..');
+// Workspace scrolling belongs to the Web app. Native HTML dialogs reuse its assets.
+const scrollbarAssets = app.isPackaged ? path.join(process.resourcesPath, 'scrollbars') : path.join(repository, 'study-log-web/public/scrollbars');
+const overlayCss = await fs.readFile(path.join(scrollbarAssets, 'overlay-scrollbars.css'), 'utf8');
+const overlayScript = await fs.readFile(path.join(scrollbarAssets, 'overlay-scrollbars.js'), 'utf8');
+app.on('web-contents-created', (_event, contents) => {
+  contents.on('dom-ready', () => {
+    if (!contents.getURL().startsWith('file:')) return;
+    void contents.insertCSS(overlayCss).then(() => contents.executeJavaScript(overlayScript)).catch(() => {});
+  });
+});
 // Acceptance runs explicitly isolate preferences and data from everyday use.
 if (process.env.STUDY_LOG_DESKTOP_PROFILE) {
   if (!path.isAbsolute(process.env.STUDY_LOG_DESKTOP_PROFILE)) throw Error('Desktop profile must be absolute');

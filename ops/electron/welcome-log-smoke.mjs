@@ -9,7 +9,8 @@ const er = createRequire(new URL('./package.json', import.meta.url));
 const { _electron: electron, chromium, expect } = require('@playwright/test');
 const evidence = path.resolve('.local', `welcome-log-${Date.now()}`); await fs.mkdir(evidence);
 const env = { ...process.env, STUDY_LOG_DESKTOP_PROFILE: await fs.mkdtemp(path.join(os.tmpdir(), 'welcome-log-')) }; delete env.ELECTRON_RUN_AS_NODE;
-const app = await electron.launch({ executablePath: er('electron'), args: [path.resolve('ops/electron')], env });
+const executablePath = process.argv[2] || er('electron');
+const app = await electron.launch({ executablePath, args: process.argv[2] ? [] : [path.resolve('ops/electron')], env });
 const rows = [], errors = [];
 async function check(page, name) {
   page.on('pageerror', error => errors.push(error.message));
@@ -49,7 +50,7 @@ try {
     await web.goto(new URL('/study-log', web.url()).href); await expect(web.locator('.reader .workspace-state-title').filter({ visible: true })).toHaveText('暂无学习日志');
     rows.push({ editedSavedReadBack: true, deletedEmptyState: true });
   } finally { await browser.close(); }
-  assert.deepEqual(errors, []); await fs.writeFile(path.join(evidence, 'report.json'), JSON.stringify({ passed: true, rows }, null, 2)); console.log(evidence);
+  assert.deepEqual(errors, []); await fs.writeFile(path.join(evidence, 'report.json'), JSON.stringify({ passed: true, executablePath, packaged: !!process.argv[2], rows }, null, 2)); console.log(evidence);
 } catch (error) { console.error(error); throw error; }
 finally {
   const ended = app.waitForEvent('close', { timeout: 60000 }); await app.evaluate(({ BrowserWindow, dialog }) => { dialog.showMessageBoxSync = () => 1; BrowserWindow.getAllWindows().reverse().forEach(w => w.close()); }); await ended;

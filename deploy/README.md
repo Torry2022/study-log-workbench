@@ -4,6 +4,8 @@
 
 当前配套版本为 **`0.1.0-rc.7`（Linux amd64）**。三个公开 ACR 镜像已发布并验证匿名拉取，请使用同版本部署附件与镜像。版本范围见 [版本说明](RELEASE-NOTES.md)。镜像前缀也可换成自己的兼容镜像仓库。
 
+源码当前准备 rc.8 候选，尚未发布镜像；直接部署请使用下面的 rc.7 附件，不用当前源码的 rc.8 示例拉取未发布镜像。
+
 ## 获取部署文件
 
 下载 [0.1.0-rc.7 服务器部署附件](https://github.com/Torry2022/study-log-workbench-public/releases/download/v0.1.0-rc.7/study-log-server-0.1.0-rc.7.zip)，在[预发布页面](https://github.com/Torry2022/study-log-workbench-public/releases/tag/v0.1.0-rc.7)取得 SHA-256 校验文件；也可从源码仓同版本 `deploy/` 目录取得上述四个文件。附件与同版本 ACR 镜像配套。无需下载 Windows 安装包、鸿蒙调试包或源码依赖，也无需创建自己的 ACR 仓库。

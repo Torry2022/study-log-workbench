@@ -13,3 +13,11 @@
 - 删除合成示例后确认空状态未增加根页面溢出，420px 手机抽屉保持视口高度；无页面异常。代表性的 Electron 深色收起与 Chromium 浅色展开截图已核看。证据 `.local/inspector-scroll-1791546527876/report.json`。
 
 本批仅修正共享网页的右栏尺寸；未打包、推送、发布、部署或覆盖日常安装。当前已安装包仍是本修正前的本地包，重新打包安装后才能获得修正。
+
+## 后续授权覆盖安装
+
+维护者随后授权覆盖安装。从 `2c49051` 重新生成 Windows 包，沿用本地 rc.8 版本，不改公开附件。安装包位于 `.local/inspector-install-20261009/desktop/study-log-desktop-0.1.0-rc.8-x64-setup.exe`，SHA-256 为 `f33fcd3446eeacec764669e4b3de9ed9765c40cabe96732bb13c563cb4bfb3c6`。
+
+独立脚本支持传入打包 EXE，最终程序的 64 组滚动检查、空状态和手机抽屉通过，证据 `.local/inspector-scroll-1791546717281/report.json`；包内 Web BUILD_ID 与本次生产构建一致。
+
+确认维护者正常退出后，NSIS 覆盖 `D:\Software\study-log-desktop` 返回 0。安装前后 12 个学习记录与配置文件哈希全部一致；安装后的 `app.asar` 与候选一致，Web BUILD_ID 与本次构建一致。没有推送、公开发布或操作服务器。

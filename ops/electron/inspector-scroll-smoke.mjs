@@ -9,7 +9,8 @@ const er = createRequire(new URL('./package.json', import.meta.url));
 const { _electron: electron, chromium, expect } = require('@playwright/test');
 const env = { ...process.env, STUDY_LOG_DESKTOP_PROFILE: await fs.mkdtemp(path.join(os.tmpdir(), 'inspector-scroll-')) }; delete env.ELECTRON_RUN_AS_NODE;
 const evidence = path.resolve('.local', `inspector-scroll-${Date.now()}`); await fs.mkdir(evidence);
-const app = await electron.launch({ executablePath: er('electron'), args: [path.resolve('ops/electron')], env });
+const executablePath = process.argv[2] || er('electron');
+const app = await electron.launch({ executablePath, args: process.argv[2] ? [] : [path.resolve('ops/electron')], env });
 const errors = [], rows = [];
 async function check(page, entry) {
   page.on('pageerror', error => errors.push(error.message));
@@ -55,7 +56,7 @@ try {
     assert.ok(await web.locator('.writing-inspector').evaluate(e => Math.abs(e.getBoundingClientRect().bottom-innerHeight)<=1));
     await web.screenshot({path:path.join(evidence,'mobile.png')});
   } finally { await browser.close(); }
-  assert.deepEqual(errors, []); await fs.writeFile(path.join(evidence,'report.json'),JSON.stringify({passed:true,rows,emptyNoOverflow:true,mobileDrawer:true},null,2)); console.log(evidence);
+  assert.deepEqual(errors, []); await fs.writeFile(path.join(evidence,'report.json'),JSON.stringify({passed:true,executablePath,packaged:!!process.argv[2],rows,emptyNoOverflow:true,mobileDrawer:true},null,2)); console.log(evidence);
 } finally {
   const ended = app.waitForEvent('close',{timeout:60000}); await app.evaluate(({BrowserWindow,dialog}) => {dialog.showMessageBoxSync=()=>1;BrowserWindow.getAllWindows().reverse().forEach(w=>w.close());}); await ended;
 }

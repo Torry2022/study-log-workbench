@@ -46,4 +46,6 @@ Docker Desktop 4.66.1 原先启动报 Inference manager 无法处理 `dockerInfe
 
 公开问题报告记录了同类故障：[Docker Desktop issue #460](https://github.com/docker/desktop-feedback/issues/460)。本机恢复已验证，但没有据此确认 Docker 已永久修复。原运行目录仍保留在本机，恢复记录在 `.local/docker-runtime-preservation-20261009.json` 与 `.local/docker-runtime-preservation-second-20261009.json`，不包含用户正文或凭据。
 
-构建前只读盘点：35 张镜像，Docker 报告镜像占用 18.56 GB、构建缓存 16.79 GB（其中独占 14.5 GB），没有容器和数据卷。镜像与缓存共享层，不能将两项直接相加或等同虚拟磁盘大小。缓存时间与近期反复构建相符，是本次占用增长的主要已知来源。证据：`.local/docker-disk-inventory-20261009.txt`、`.local/docker-build-cache-20261009.txt`。尚未执行清理；后续仅按确认的过期公开版标签或构建缓存清理，保留当前发布、候选及个人版镜像。
+构建前只读盘点：35 张镜像，Docker 报告镜像占用 18.56 GB、构建缓存 16.79 GB（其中独占 14.5 GB），没有容器和数据卷。镜像与缓存共享层，不能将两项直接相加或等同虚拟磁盘大小。缓存时间与近期反复构建相符，是本次占用增长的主要已知来源。证据：`.local/docker-disk-inventory-20261009.txt`、`.local/docker-build-cache-20261009.txt`。
+
+维护者确认继续后，重新盘点并执行 `docker buildx prune --filter 'until=24h' --force`，只清理超过 24 小时未使用的构建缓存，报告回收 4.899 GB。清理前缓存为 18.44 GB，清理后为 13.55 GB；所有镜像标签与 ID 核对一致，当前发布、候选和个人版镜像均保留。没有删除容器或数据卷，也未压缩 WSL 虚拟磁盘，不将缓存回收量描述为 Windows 磁盘立即缩小。证据：`.local/docker-cache-cleanup-20261009.log`、清理前后的镜像清单。

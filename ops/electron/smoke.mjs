@@ -99,6 +99,15 @@ try {
   await expect.poll(async () => await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length), { timeout:60000 }).toBe(1);
   page = await workspacePage(application);
   page.on('dialog', () => {});
+  // Opening another data directory creates a new window at its default size.
+  // Restore the desktop viewport before exercising its desktop-only exit button.
+  await application.evaluate(({ BrowserWindow }) => {
+    const window = BrowserWindow.getAllWindows()[0];
+    window.setSize(1280, 800);
+    const [width] = window.getContentSize();
+    if (width !== 1280) window.setSize(1280 + (1280 - width), 800);
+  });
+  await expect.poll(() => page.evaluate(() => innerWidth)).toBe(1280);
   await expect(page.locator('.workspace')).toBeVisible({ timeout:60000 });
   await expect(page.locator('.markdown-preview')).toContainText('桌面合成记录');
   await expect(page.getByRole('button', { name:'保存', exact:true }).filter({ visible:true })).toBeDisabled();

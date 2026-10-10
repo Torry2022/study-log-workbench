@@ -29,6 +29,10 @@ async function exercise(page, name) {
     await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
     const trigger = page.getByRole('button', { name: '使用帮助', exact: true });
     await trigger.click(); await expect(help).toBeVisible();
+    for (const [level, label] of [[3, '三级标题'], [4, '四级标题'], [5, '五级标题'], [6, '六级标题']]) {
+      const row = help.locator('dl > div').filter({ hasText: `Ctrl + Alt + ${level}` });
+      await expect(row).toContainText(label);
+    }
     await expect(help.getByRole('button', { name: '关闭帮助' })).toBeFocused();
     await page.keyboard.press('Tab'); await expect(help.getByRole('button', { name: '关闭帮助' })).toBeFocused();
     await page.keyboard.press('Control+Alt+q'); await page.keyboard.press('Control+Shift+F');
@@ -43,7 +47,23 @@ async function exercise(page, name) {
   await page.keyboard.press('Control+Shift+F'); const search = page.getByRole('combobox', { name: '搜索全部日志' }); await expect(search).toBeFocused();
   await search.fill('没有匹配的合成词'); await page.keyboard.press('ArrowRight'); assert.ok(page.url().includes('2026-06-01')); await search.fill('');
   await page.getByRole('button', { name: '源码', exact: true }).filter({ visible: true }).click();
-  const editor = page.locator('.cm-content'); await editor.click(); await page.keyboard.press('Control+End'); await page.keyboard.insertText('\n\n未保存快捷键草稿');
+  const editor = page.locator('.cm-content'); await editor.click();
+  const original = await editor.innerText();
+  await page.keyboard.press('Control+Home');
+  for (const level of [4, 5, 6, 3]) {
+    await page.keyboard.press(`Control+Alt+${level}`);
+    await expect(editor.locator('.cm-line').first()).toHaveText(`${'#'.repeat(level)} 合成学习记录 2026-06-01`);
+  }
+  await page.getByRole('button', { name: '编辑 Markdown', exact: true }).click();
+  await page.getByRole('button', { name: '四级标题', exact: true }).click();
+  await expect(editor.locator('.cm-line').first()).toHaveText('#### 合成学习记录 2026-06-01');
+  await page.keyboard.press('Control+Alt+3');
+  await page.keyboard.press('Control+End'); await page.keyboard.insertText('\n\n');
+  await page.keyboard.press('Control+Alt+6'); await page.keyboard.insertText('空行标题');
+  await expect(editor.locator('.cm-line').last()).toHaveText('###### 空行标题');
+  await page.keyboard.press('Control+A'); await page.keyboard.insertText(original);
+  await page.keyboard.press('Control+End'); await page.keyboard.insertText('\n\n未保存快捷键草稿');
+  rows.push({ name, headingShortcuts: [3, 4, 5, 6], blankHeading: true });
   await page.keyboard.press('Control+Shift+K'); await expect(page.getByRole('dialog', { name: '插入内部链接' })).toBeVisible();
   await page.keyboard.press('Control+Alt+q'); await expect(page.locator('.view-log')).toBeVisible();
   await page.keyboard.press('Escape'); await expect(page.getByRole('dialog', { name: '插入内部链接' })).toHaveCount(0);

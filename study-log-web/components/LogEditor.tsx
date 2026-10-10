@@ -118,11 +118,11 @@ export function LogEditor({ date, value, active, onChange, onSave, onInternalLin
         key: "Mod-`",
         run: (view) => toggleInlineMarkdown(view, "`", "代码")
       },
-      {
-        key: "Ctrl-Alt-3",
-        mac: "Mod-Alt-3",
-        run: (view) => toggleHeadingLevel(view, 3)
-      },
+      ...[3, 4, 5, 6].map((level): KeyBinding => ({
+        key: `Ctrl-Alt-${level}`,
+        mac: `Mod-Alt-${level}`,
+        run: (view) => toggleHeadingLevel(view, level)
+      })),
       {
         key: "Tab",
         run: indentMore

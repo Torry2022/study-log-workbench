@@ -10,6 +10,7 @@ study-log-web/test-results/
 study-log-web/playwright-report/
 !ops/
 !ops/instance.mjs
+!ops/welcome-log.md
 !ops/service.mjs
 !ops/serve.mjs
 !ops/archive.mjs

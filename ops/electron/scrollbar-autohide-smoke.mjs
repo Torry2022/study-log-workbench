@@ -61,7 +61,7 @@ async function check(page,label,rootCheck=true){
  }
  rows.push({label,idle:true,scroll:true,hover:true,drag:true,keyboard:true,root:rootCheck,reservedWidth:0});
 }
-const app=await electron.launch({executablePath:er('electron'),args:[path.resolve('ops/electron')],env});
+const app=await electron.launch({executablePath:process.argv[2] || er('electron'),args:process.argv[2] ? [] : [path.resolve('ops/electron')],env});
 const processRef=app.process();
 let browser;
 try{
@@ -82,7 +82,7 @@ try{
   await check(dialog,file,false);
   await dialog.getByRole('button',{name:'取消',exact:true}).click();await expect.poll(()=>dialog.isClosed()).toBe(true);
  }
- await fs.writeFile(path.join(evidence,'report.json'),JSON.stringify({passed:true,reducedMotion:true,rows},null,2));
+ await fs.writeFile(path.join(evidence,'report.json'),JSON.stringify({passed:true,packaged:!!process.argv[2],reducedMotion:true,rows},null,2));
  console.log(evidence);
 }finally{
  if(browser)await browser.close();

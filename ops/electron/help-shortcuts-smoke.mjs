@@ -9,7 +9,7 @@ const er = createRequire(new URL('./package.json', import.meta.url));
 const { _electron: electron, chromium, expect } = require('@playwright/test');
 const evidence = path.resolve('.local', `help-shortcuts-${Date.now()}`); await fs.mkdir(evidence);
 const env = { ...process.env, STUDY_LOG_DESKTOP_PROFILE: await fs.mkdtemp(path.join(os.tmpdir(), 'help-shortcuts-')) }; delete env.ELECTRON_RUN_AS_NODE;
-const app = await electron.launch({ executablePath: er('electron'), args: [path.resolve('ops/electron')], env });
+const app = await electron.launch({ executablePath: process.argv[2] || er('electron'), args: process.argv[2] ? [] : [path.resolve('ops/electron')], env });
 const rows = [], errors = [];
 const blur = page => page.evaluate(() => document.activeElement?.blur());
 async function exercise(page, name) {
@@ -106,7 +106,7 @@ try {
     await web.keyboard.press('Escape'); await blur(web); await web.keyboard.press('Control+Alt+n'); await expect(web.getByLabel('新建指定日期')).toBeFocused();
     rows.push({ mobileHelpAndShortcuts: true });
   } finally { await browser.close(); }
-  assert.deepEqual(errors, []); await fs.writeFile(path.join(evidence, 'report.json'), JSON.stringify({ passed: true, rows }, null, 2)); console.log(evidence);
+  assert.deepEqual(errors, []); await fs.writeFile(path.join(evidence, 'report.json'), JSON.stringify({ passed: true, packaged: !!process.argv[2], rows }, null, 2)); console.log(evidence);
 } catch (error) {
   console.error(error);
   for (const p of app.context().pages().filter(p => /^http/.test(p.url()))) await p.screenshot({ path: path.join(evidence, 'failure.png') }).catch(() => {});

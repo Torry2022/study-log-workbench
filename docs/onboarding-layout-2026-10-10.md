@@ -11,3 +11,5 @@ Web 类型检查及生产构建通过，Windows 内嵌构建 ID 为 `IsOxcgd1Z6x
 Linux amd64 web 镜像重新构建，配套 Compose 六组基础流程通过，证据 `.local/public-rebuild-b27-20261010141639479/report.json`。web 镜像已上传并使用空认证配置匿名拉取，摘要为 `sha256:c34465d6af58f6d354dc421f4c77d612f9328af016d2a8d4a45954b1b68239cd`。mcp 与 tools 没有代码变化，保持此前 rc.9 摘要。
 
 维护者明确要求“将rc.9换成改后的版本”，因此本次为同版本替换例外。旧附件与验证证据保留在 `.local/release-rc9-20261010/`；原标签对象为 `3a2e0c99f365545e28d388a86272a974af2e5fae`，原产品提交 `daa2b1ca46aafd09bdefbcfe6b742270052cc710` 仍保留在主线历史。新候选与校验位于 `.local/release-rc9-onboarding-20261010/`。本次没有覆盖日常安装，也没有改写现有学习记录。
+
+源码已提交并推送，rc.9 标签现指向 `f4fc60ecbf308461c28dbc65768c6f008e7f3438`。原 Release 的 Windows 安装包、服务器 ZIP 及校验文件已替换，三个公开附件重新下载后与本地 SHA-256 一致，证据 `.local/release-rc9-onboarding-20261010/public-verification.json`。Windows 安装包摘要为 `08c80b5b58d169470ff62ae304abb6a789f23530b008d306679d6c2d377445b7`，服务器 ZIP 为 `99b6fd80d4aadc1f900a8d470e4cb5f63733f8c4486d6f855eadbaa096e2ccc7`。实际更新检查仍能从 rc.8 找到 rc.9；已安装 rc.9 因版本号相同不会提示这次替换，需要手动下载并覆盖安装。

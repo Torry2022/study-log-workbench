@@ -11,6 +11,7 @@ type WorkspaceStateProps = {
   layout?: WorkspaceStateLayout;
   icon?: LucideIcon;
   actions?: ReactNode;
+  children?: ReactNode;
   className?: string;
 };
 
@@ -21,6 +22,7 @@ export function WorkspaceState({
   layout = "panel",
   icon,
   actions,
+  children,
   className = ""
 }: WorkspaceStateProps) {
   const Icon = icon ?? (kind === "loading" ? LoaderCircle : kind === "error" ? CircleAlert : Inbox);
@@ -40,6 +42,7 @@ export function WorkspaceState({
       <div className="workspace-state-body">
         {layout === "compact" ? <div className="workspace-state-heading">{heading}</div> : heading}
         {description && <span className="workspace-state-description">{description}</span>}
+        {children}
         {actions && <div className="workspace-state-actions">{actions}</div>}
       </div>
     </div>

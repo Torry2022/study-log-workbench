@@ -57,6 +57,12 @@
   min-height: clamp(340px, 48vh, 540px);
 }
 
+.rag-example-question {
+  max-width: 100%;
+  white-space: normal;
+  line-height: 1.5;
+}
+
 .rag-message-list {
   display: grid;
   gap: 0;

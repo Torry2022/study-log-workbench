@@ -65,7 +65,8 @@ export function FavoritesModule({ favorites, active = true, onOpen, onOpenLog }:
             <button className="favorite-group-button" type="button" disabled={favorites.busy} onClick={() => setGroupId(favorite.id)} aria-label={`选择 ${favorite.headingText} 的收藏分组`}>分组</button>
             <button className="favorite-remove" type="button" disabled={favorites.busy} aria-label={`取消收藏 ${favorite.headingText}`} onClick={event => { const rect = event.currentTarget.getBoundingClientRect(); setRemove({ favorite, top: rect.top + rect.height / 2, left: rect.left - 8 }); }}><X size={13} strokeWidth={2} /></button>
           </div>)}</div>
-        </section>)}</div> : <WorkspaceState kind="empty" icon={Star} title={favorites.favorites.length ? "没有符合条件的收藏" : "暂无收藏"} description={!favorites.favorites.length ? "在日志目录中点亮小节旁的星标，方便以后回看。" : favorites.filters.headingsOnly ? favorites.filters.ignoreCase ? "试试其他标题关键词，或调整筛选条件。" : "搜索已区分大小写，也可以关闭 Aa 再查找。" : favorites.filters.ignoreCase ? "试试其他关键词，或调整月份筛选。" : "搜索已区分大小写，也可以关闭 Aa 再查找。"} layout="module" className="favorites-empty-state" />}
+        </section>)}</div> : <WorkspaceState kind="empty" icon={Star} title={favorites.favorites.length ? "没有符合条件的收藏" : "暂无收藏"} description={!favorites.favorites.length ? "打开一篇已保存的日志，在目录中点亮三级标题小节旁的星标。收藏后可以在这里回看和分组，也可以用使用示例日志试一试。" : favorites.filters.headingsOnly ? favorites.filters.ignoreCase ? "试试其他标题关键词，或调整筛选条件。" : "搜索已区分大小写，也可以关闭 Aa 再查找。" : favorites.filters.ignoreCase ? "试试其他关键词，或调整月份筛选。" : "搜索已区分大小写，也可以关闭 Aa 再查找。"} layout="module" className="favorites-empty-state"
+          actions={!favorites.favorites.length && onOpenLog ? <button className="button secondary" type="button" onClick={onOpenLog}><FileText size={15} />前往日志</button> : undefined} />}
       </>}
     </div></div>
     {groupId && <FavoriteGroupDialog favoriteId={groupId} favorites={favorites} onClose={() => setGroupId("")} />}

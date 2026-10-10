@@ -1,4 +1,20 @@
 /* Mature notes workspace styles, extracted from the frozen Web baseline. */
+.notes-empty-example {
+  width: 100%;
+  margin-top: 8px;
+  padding: 16px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+  text-align: left;
+  color: var(--body);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.notes-empty-example small { display: block; color: var(--muted); margin-bottom: 8px; }
+.notes-empty-example strong { color: var(--ink); }
+.notes-empty-example p { margin: 8px 0 0; }
+
 .notes-search {
   position: relative;
   display: flex;

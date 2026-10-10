@@ -224,9 +224,12 @@ export function RagWorkspace({
             kind="empty"
             icon={MessageSquareText}
             title={noLogs ? "暂无可参考的日志" : "关于日志，你想了解什么？"}
-            description={noLogs ? "保存学习日志后，可以在这里提问并回看相关内容。" : "输入问题，回答会附上相关日志，方便回看。"}
+            description={noLogs ? "保存学习日志后，可以在这里提问并回看相关内容。" : "输入问题，回答会附上相关日志。也可以选择一个示例问题，修改后再发送。"}
             layout="module"
             className="rag-empty"
+            actions={noLogs ? onOpenLog && <button className="button secondary" type="button" onClick={onOpenLog}>前往日志</button> : !question.trim() && <div className="workspace-state-actions" role="group" aria-label="示例问题">
+              {["帮我回顾最近记录的主要内容。", "哪些记录讨论了同一个主题？", "我记录过哪些尚未解决的问题？"].map(example => <button className="button secondary rag-example-question" type="button" key={example} disabled={generating} onClick={() => { onQuestionChange(example); textareaRef.current?.focus(); }}>{example}</button>)}
+            </div>}
           />
         ) : (
           <div className="rag-message-list">

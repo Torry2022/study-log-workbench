@@ -181,6 +181,8 @@ export function StatsOverview({
         <div><span>未分类标签</span><strong>{classificationReady ? stats?.unclassifiedTags.length || 0 : "—"}</strong><small>{!classificationReady ? "分类为可选整理" : stats?.unclassifiedTags.length ? "有新主题可整理" : "已有主题均已分类"}</small></div>
       </section>
 
+      <p className="stats-count-explanation">小节按三级标题计数，数量不代表掌握程度。使用示例日志同样参与统计，可编辑或删除。</p>
+
       <section className="stats-section stats-heatmap-section">
         <div className="stats-section-heading">
           <div><h3>学习日历</h3><p>颜色深浅表示当日日志小节数量；点击日期查看小节。</p></div>

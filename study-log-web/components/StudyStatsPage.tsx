@@ -43,7 +43,7 @@ export function StudyStatsPage({ stats, onOpenEntry, onOpenLog }: Props) {
         {stats.loading || (!stats.monthlyStats && !stats.statsError && !stats.taxonomyError) ? <WorkspaceState kind="loading" title="正在加载统计数据" className="stats-empty" /> : stats.statsError ?
           <WorkspaceState kind="error" title={stats.statsError} className="stats-empty" actions={<button type="button" className="button secondary" onClick={stats.refreshStats}>重试</button>} /> :
           !stats.monthlyStats ? <WorkspaceState kind="error" title="暂时无法读取统计数据" className="stats-empty" actions={<button type="button" className="button secondary" onClick={() => void stats.reloadTaxonomy()}>重试</button>} /> :
-          !stats.months.length ? <WorkspaceState kind="empty" icon={BarChart3} title="暂无统计数据" description="记录日志后，可以查看学习记录的数量和主题分布。" layout="module" /> : <StatsOverview key={stats.selectedMonth} months={monthOptions} selectedMonth={stats.selectedMonth} stats={stats.monthlyStats}
+          !stats.months.length ? <WorkspaceState kind="empty" icon={BarChart3} title="暂无统计数据" description="保存日志后，按日期统计记录天数，按三级标题统计小节与主题。数量不代表掌握程度；无需配置模型即可查看基础统计。" layout="module" actions={onOpenLog ? <button className="button secondary" type="button" onClick={onOpenLog}><FileText size={15} />前往日志</button> : undefined} /> : <StatsOverview key={stats.selectedMonth} months={monthOptions} selectedMonth={stats.selectedMonth} stats={stats.monthlyStats}
             classificationReady={stats.monthlyStats.classificationReady !== false}
             busy={stats.busy || stats.loading} onMonthChange={month => void stats.changeMonth(month)} onRefresh={stats.refreshStats}
             onOpenManager={stats.showManager} onOpenEntry={entry => { void onOpenEntry?.(entry); }} />}

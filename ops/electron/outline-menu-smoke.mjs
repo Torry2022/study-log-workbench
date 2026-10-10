@@ -12,7 +12,8 @@ const evidence = path.resolve('.local', `outline-menu-${Date.now()}`);
 await fs.mkdir(evidence);
 const env = { ...process.env, STUDY_LOG_DESKTOP_PROFILE: await fs.mkdtemp(path.join(os.tmpdir(), 'outline-menu-')) };
 delete env.ELECTRON_RUN_AS_NODE;
-const app = await electron.launch({ executablePath: er('electron'), args: [path.resolve('ops/electron')], env });
+const executablePath = process.argv[2] || er('electron');
+const app = await electron.launch({ executablePath, args: process.argv[2] ? [] : [path.resolve('ops/electron')], env });
 const childProcess = app.process(), rows = [], errors = [];
 
 async function closeGeometry(page) {
@@ -152,7 +153,7 @@ try {
     await check(web, 'browser');
   } finally { await browser.close(); }
   assert.deepEqual(errors, []);
-  await fs.writeFile(path.join(evidence, 'report.json'), JSON.stringify({ passed: true, packaged: false, rows }, null, 2));
+  await fs.writeFile(path.join(evidence, 'report.json'), JSON.stringify({ passed: true, executablePath, packaged: !!process.argv[2], rows }, null, 2));
   console.log(evidence);
 } finally {
   if (childProcess.exitCode === null) {

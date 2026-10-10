@@ -45,23 +45,23 @@ Windows 桌面端既可本地使用，也可连接服务器。本地学习记录
 
 这是单使用者工作台，不提供多用户账号、公共云服务或自动跨设备同步。源码按 MIT 许可开放；当前仍为试用阶段。
 
-当前预发布版本为 rc.8，Windows 安装包和配套服务器镜像已发布。变更与实际验证范围见[发布记录](docs/release-rc8-2026-10-09.md)。
+当前预发布版本为 rc.9，Windows 安装包和配套服务器镜像已发布。变更与实际验证范围见[发布记录](docs/release-rc9-2026-10-10.md)。
 
 ### Windows：安装后开始记录
 
-当前源码新建工作台时会提供一篇可编辑、可删除的使用示例，介绍基本操作和推荐 Markdown；已有工作台不会被补入。此改动随下一候选版提供，当前 rc.8 安装包尚不包含。
+新建工作台时会提供一篇可编辑、可删除的使用示例，介绍基本操作和推荐 Markdown；已有工作台不会被补入，删除示例后也不会重新生成。
 
-网页与 Windows 的其他模块也有起步引导：随记展示一条不保存的写法示例，收藏引导你标记日志小节，问答示例只填入输入框，确认发送后才开始回答。统计按已有日志计算，数量不代表掌握程度。这些引导不会自动创建随记、收藏或问答历史，随下一候选版提供。
+网页与 Windows 的其他模块也有起步引导：随记展示一条不保存的写法示例，收藏引导你标记日志小节，问答示例只填入输入框，确认发送后才开始回答。统计按已有日志计算，数量不代表掌握程度。这些引导不会自动创建随记、收藏或问答历史。
 
 1. 安装桌面试用包，首次打开选择“本地使用”，确认保存位置。
 2. 点击“今天”，写下学习内容并保存；关闭应用会正常停止本地服务。
 3. 需要 AI 时再到“文件 → 模型设置…”配置。需要独立备份时使用“文件 → 创建完整备份…”。
 
-无需安装 Node、Docker 或另开浏览器。下载 [Windows x64 安装包](https://github.com/Torry2022/study-log-workbench-public/releases/download/v0.1.0-rc.8/study-log-desktop-0.1.0-rc.8-x64-setup.exe)，或查看[预发布说明与 SHA-256 校验文件](https://github.com/Torry2022/study-log-workbench-public/releases/tag/v0.1.0-rc.8)。安装包尚未签名；也可按[桌面构建说明](docs/windows-desktop.md#开发与验收)自行构建。此前的[浏览器本地包](docs/windows-portable.md)仍保留，但不是首选入口。
+无需安装 Node、Docker 或另开浏览器。下载 [Windows x64 安装包](https://github.com/Torry2022/study-log-workbench-public/releases/download/v0.1.0-rc.9/study-log-desktop-0.1.0-rc.9-x64-setup.exe)，或查看[预发布说明与 SHA-256 校验文件](https://github.com/Torry2022/study-log-workbench-public/releases/tag/v0.1.0-rc.9)。安装包尚未签名；也可按[桌面构建说明](docs/windows-desktop.md#开发与验收)自行构建。此前的[浏览器本地包](docs/windows-portable.md)仍保留，但不是首选入口。
 
 ### 服务器：使用预构建镜像
 
-准备自己的 Linux amd64 主机及 Docker Compose，下载[服务器部署配置包](https://github.com/Torry2022/study-log-workbench-public/releases/download/v0.1.0-rc.8/study-log-server-0.1.0-rc.8.zip)（或使用 `deploy/` 中的文件），按[部署指南](deploy/README.md)完成初始化和启动。使用公开 ACR 镜像无需阿里云账号，也无需在服务器安装 Node 或构建源码。
+准备自己的 Linux amd64 主机及 Docker Compose，下载[服务器部署配置包](https://github.com/Torry2022/study-log-workbench-public/releases/download/v0.1.0-rc.9/study-log-server-0.1.0-rc.9.zip)（或使用 `deploy/` 中的文件），按[部署指南](deploy/README.md)完成初始化和启动。使用公开 ACR 镜像无需阿里云账号，也无需在服务器安装 Node 或构建源码。
 
 镜像、Compose 示例和[版本说明](deploy/RELEASE-NOTES.md)配套使用；不要混用版本。首次先验证本机访问，再按需配置模型、HTTPS 和其他客户端。域名及服务器由部署者自行准备，本项目不提供公共服务地址，也不修改其他应用的配置。
 

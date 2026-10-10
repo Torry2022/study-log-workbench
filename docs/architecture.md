@@ -1,5 +1,7 @@
 # 架构
 
+rc.9 配套交付已验证共享资源进入 Windows payload 与服务器镜像：Web／MCP 版本一致，Web／tools 的初始化、示例及模板与源码字节一致，共享 UI 与悬浮滚动资源随最终包交付。网页与 Windows 仍复用同一业务实现；没有为安装版另写一套界面。见[配套验证记录](release-rc9-2026-10-10.md)。
+
 `LogEditor` 将 Ctrl + Alt + 3／4／5／6 绑定到已有 `toggleHeadingLevel`，共享网页与 Windows 沿用同一编辑命令；`HelpDialog` 分别列出四种级别。原有编辑菜单、正文标题限制与日期标题职责不变，见[标题快捷键记录](heading-shortcuts-2026-10-10.md)。
 
 共享 `public/scrollbars/overlay-scrollbars.js/css` 按原滚动容器分别维护停滚1秒的隐藏计时器，仅控制覆盖层手柄透明度；移除容器时清理计时器。悬停、拖动及键盘焦点保留可见性，鼠标焦点不妨碍自动隐藏。浏览器、Windows 网页及原生设置窗口共用资源，不改变滚动归属、布局或返回顶部规则。见[自动隐藏记录](scrollbar-autohide-2026-10-10.md)。

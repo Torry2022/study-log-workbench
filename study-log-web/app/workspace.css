@@ -995,3 +995,122 @@
   .public-reading-shell .mobile-overlay-backdrop { top: 0; }
   .public-reading-shell .sidebar-section.grow { grid-template-rows: none; }
 }
+
+/* Compact log date navigation, migrated from the personal Web workspace. */
+.sidebar-days-end-marker {
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+
+.compact-day-navigator {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 25;
+  width: 236px;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-6px);
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease,
+    visibility 0s linear 140ms;
+}
+
+.compact-day-navigator.visible {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+  transition-delay: 0s;
+}
+
+.compact-day-navigator-bar {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 4px;
+  min-height: 52px;
+  padding: 6px 4px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+  box-shadow: 0 1px 3px rgba(20, 20, 19, 0.08);
+}
+
+.compact-day-navigator-bar button {
+  min-width: 0;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--body);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.compact-day-navigator-bar button:hover:not(:disabled),
+.compact-day-navigator-bar button[aria-expanded="true"] {
+  background: var(--surface-card);
+  color: var(--ink);
+}
+
+.compact-day-navigator-bar button:disabled {
+  color: var(--muted-soft);
+}
+
+.compact-day-navigator-bar .compact-day-current {
+  gap: 4px;
+  justify-content: flex-start;
+  padding: 0 4px;
+  overflow: hidden;
+  font-size: 14px;
+}
+
+.compact-day-current span {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-day-current > svg:first-child {
+  color: var(--primary);
+}
+
+.compact-day-chevron {
+  flex: 0 0 auto;
+  color: var(--muted-soft);
+  transition: transform 140ms ease;
+}
+
+.compact-day-current[aria-expanded="true"] .compact-day-chevron {
+  transform: rotate(180deg);
+}
+
+.compact-day-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 8px;
+  left: 8px;
+  display: grid;
+  gap: 8px;
+  max-height: calc(100svh - 76px);
+  padding: 8px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  background: var(--canvas);
+  box-shadow: var(--popover-shadow);
+}
+
+.compact-day-list {
+  max-height: calc(100svh - 136px);
+}

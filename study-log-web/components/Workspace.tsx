@@ -227,6 +227,7 @@ export function Workspace() {
     }
   };
   return <><WorkspaceChrome active={active} months={logs.months} days={logs.days}
+    dayOperationBusy={draft.busy || deleting}
     openAiRequest={openAiRequest}
     moduleSidebar={logs.selection.view === "favorites" ? { title: <><Star size={15} /><span>收藏导航</span></>, label: "筛选收藏", icon: <Star size={18} />, filtered: favorites.filters.group !== "all" || favorites.filters.month !== "all", onReset: () => favorites.filter({ group: "all", month: "all" }) }
       : logs.selection.view === "notes" ? { title: <><Lightbulb size={15} /><span>随记</span></>, label: "年份和标签", icon: <Tag size={18} />, filtered: notes.yearFilter !== "all" || notes.tagFilter !== "all", onReset: notes.clearFilters, railActionBefore: <button className="sidebar-rail-button" type="button" title="新建随记" aria-label="新建随记" disabled={notes.saving} onClick={() => void notesWithExtraction.openNew()}><Plus size={18} /></button> }

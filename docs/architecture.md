@@ -1,5 +1,7 @@
 # 架构
 
+`WorkspaceChrome` 使用共享 `CompactDayNavigator`，按日期列表末端标记判断浮框显隐，按实际侧栏宽度定位；复用同一列表、搜索状态和 `selectSidebarDate`，不另设日期加载或草稿事务。Windows 直接复用网页实现，见[悬浮导航记录](compact-day-navigation-2026-10-10.md)。
+
 三模块首次使用区继续使用 `WorkspaceState`，仅按无已有内容状态添加 `workspace-onboarding` 样式，筛选无结果仍用原空状态。收藏的三步说明为静态内容，问答用途卡片仍调用原问题填入入口；没有另建桌面引导实现或教学状态存储。见[起步布局记录](onboarding-layout-2026-10-10.md)。
 
 rc.9 配套交付已验证共享资源进入 Windows payload 与服务器镜像：Web／MCP 版本一致，Web／tools 的初始化、示例及模板与源码字节一致，共享 UI 与悬浮滚动资源随最终包交付。网页与 Windows 仍复用同一业务实现；没有为安装版另写一套界面。见[配套验证记录](release-rc9-2026-10-10.md)。

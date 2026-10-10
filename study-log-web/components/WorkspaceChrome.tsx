@@ -9,6 +9,7 @@ import { useMobileViewport } from "@/hooks/use-mobile-viewport";
 import { HelpDialog } from "./HelpDialog";
 import { workspaceShortcutBlocked } from "@/lib/workspace-shortcuts";
 import { BackToTop } from "./BackToTop";
+import { CompactDayNavigator } from "./CompactDayNavigator";
 import { WorkspaceState } from "./WorkspaceState";
 import { DateJump } from "./DateJump";
 import { SidebarFilterPopover } from "./SidebarFilterPopover";
@@ -34,6 +35,7 @@ export interface WorkspaceChromeProps {
   days: DaySummary[];
   selectedMonth: string;
   selectedDate: string;
+  dayOperationBusy?: boolean;
   dayQuery: string;
   onDayQueryChange: (value: string) => void;
   selectedLogLabel?: string;
@@ -64,8 +66,9 @@ const themes = [
 
 /** Presentation and navigation only; authentication and document state belong to Workspace. */
 export function WorkspaceChrome({ active, view, onView, moduleNavigation, moduleSidebar, ragNavigation, inspector, openAiRequest = 0, inspectorTab, onInspectorTab, months, days, selectedMonth, selectedDate, dayQuery: query, onDayQueryChange: setQuery, selectedLogLabel, loading, error,
-  theme, themePreference = "system", readingMode = false, onMonth, onDate, onNewDate, onNewQuestion, onTheme, onLogout, onRetry, onSearchSelect, onSearchChange, children }: WorkspaceChromeProps) {
+  theme, themePreference = "system", readingMode = false, dayOperationBusy = false, onMonth, onDate, onNewDate, onNewQuestion, onTheme, onLogout, onRetry, onSearchSelect, onSearchChange, children }: WorkspaceChromeProps) {
   const [compact, setCompact] = useState(false);
+  const [compactDateSelection, setCompactDateSelection] = useState(0);
   const [sidebarPreferences, setSidebarPreferences] = useState<Partial<Record<WorkspaceView, boolean>>>({});
   const collapsed = sidebarPreferences[view] ?? false;
   const setCollapsed = (value: boolean) => setSidebarPreferences(current => ({ ...current, [view]: value }));
@@ -108,6 +111,7 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, module
   const returnFocus = useRef<HTMLElement | null>(null);
   const monthHeading = useRef<HTMLDivElement>(null);
   const dateSearch = useRef<HTMLInputElement>(null);
+  const datesEnd = useRef<HTMLSpanElement>(null);
   const keyboardOpen = useMobileViewport(compact);
   const drawerOpen = compact && panel !== null;
   const effectiveCollapsed = !compact && collapsed;
@@ -260,8 +264,23 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, module
     const accepted = await onDate(date, heading, headingIndex);
     if (accepted === false) return false;
     setQuery("");
+    setCompactDateSelection(value => value + 1);
     if (compact) setPanel(null);
     return true;
+  }
+  const dateIndex = filteredDays.findIndex(day => day.date === selectedDate);
+  function renderDayList() {
+    return <>
+      {loading && <WorkspaceState kind="loading" title="正在读取日志目录" layout="compact" />}
+      {error && <WorkspaceState kind="error" title="日志目录加载失败" description={error} layout="compact" actions={<button className="button secondary" type="button" onClick={onRetry}>重试</button>} />}
+      {!loading && !error && !filteredDays.length && <WorkspaceState kind="empty" title={query ? "没有符合条件的日志" : months.length ? "本月暂无日志" : "暂无学习日志"} layout="compact" />}
+      {!loading && !error && filteredDays.map(day => <div key={day.date} className={`day-item${day.date === selectedDate ? " active" : ""}`} onClick={() => void selectSidebarDate(day.date)}>
+        <button className="day-item-open" type="button" aria-current={day.date === selectedDate ? "date" : undefined} onClick={event => { event.stopPropagation(); void selectSidebarDate(day.date); }}>
+          <span className="day-date">{query.trim() ? day.date : day.date.slice(5)}</span><span className="sr-only">打开该日志</span>
+        </button>
+        <div className="day-tags">{day.headings.length ? day.headings.map((heading, index) => <button type="button" className="day-tag interactive" key={`${index}:${heading}`} title={`定位到“${heading}”`} onClick={event => { event.stopPropagation(); void selectSidebarDate(day.date, heading, index); }}>{heading}</button>) : <span className="day-tag muted">未命名</span>}</div>
+      </div>)}
+    </>;
   }
   const logDateCreation = <>
 <button className="button secondary full" type="button" onClick={() => { onNewDate(todayInShanghai()); if (compact) setPanel(null); }}><Plus size={15} />今天</button>
@@ -322,17 +341,13 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, module
             {!compact && logDateCreation}
             <div className="sidebar-search"><Search size={14} /><input ref={dateSearch} value={query} onChange={event => setQuery(event.target.value)} placeholder="按标签定位日期" aria-label="按日期标签搜索日期" />{query && <button className="sidebar-search-clear" type="button" onClick={() => { setQuery(""); dateSearch.current?.focus(); }} aria-label="清空日期搜索"><X size={13} /></button>}</div>
             <div className="day-list" aria-busy={loading}>
-              {loading && <WorkspaceState kind="loading" title="正在读取日志目录" layout="compact" />}
-              {error && <WorkspaceState kind="error" title="日志目录加载失败" description={error} layout="compact" actions={<button className="button secondary" type="button" onClick={onRetry}>重试</button>} />}
-              {!loading && !error && !filteredDays.length && <WorkspaceState kind="empty" title={query ? "没有符合条件的日志" : months.length ? "本月暂无日志" : "暂无学习日志"} layout="compact" />}
-              {!loading && !error && filteredDays.map(day => <div key={day.date} className={`day-item${day.date === selectedDate ? " active" : ""}`} onClick={() => void selectSidebarDate(day.date)}>
-                <button className="day-item-open" type="button" aria-current={day.date === selectedDate ? "date" : undefined} onClick={event => { event.stopPropagation(); void selectSidebarDate(day.date); }}>
-                  <span className="day-date">{query.trim() ? day.date : day.date.slice(5)}</span><span className="sr-only">打开该日志</span>
-                </button>
-                <div className="day-tags">{day.headings.length ? day.headings.map((heading, index) => <button type="button" className="day-tag interactive" key={`${index}:${heading}`} title={`定位到“${heading}”`} onClick={event => { event.stopPropagation(); void selectSidebarDate(day.date, heading, index); }}>{heading}</button>) : <span className="day-tag muted">未命名</span>}</div>
-              </div>)}
+              {renderDayList()}
+              <span className="sidebar-days-end-marker" ref={datesEnd} aria-hidden="true" />
             </div>
           </div>
+          {active && !compact && !effectiveCollapsed && !readingMode && <CompactDayNavigator sidebar={sidebar} marker={datesEnd} selectedDate={selectedDate}
+            previousDate={dateIndex > 0 ? filteredDays[dateIndex - 1].date : null} nextDate={dateIndex >= 0 ? filteredDays[dateIndex + 1]?.date || null : null}
+            busy={dayOperationBusy || loading} query={query} onQuery={setQuery} onDate={date => selectSidebarDate(date)} selectionRevision={compactDateSelection}>{renderDayList()}</CompactDayNavigator>}
         </>}
       </aside>
       <section className="reader reader-preview" inert={drawerOpen}>{children}</section>

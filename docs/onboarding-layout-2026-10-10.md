@@ -13,3 +13,7 @@ Linux amd64 web 镜像重新构建，配套 Compose 六组基础流程通过，�
 维护者明确要求“将rc.9换成改后的版本”，因此本次为同版本替换例外。旧附件与验证证据保留在 `.local/release-rc9-20261010/`；原标签对象为 `3a2e0c99f365545e28d388a86272a974af2e5fae`，原产品提交 `daa2b1ca46aafd09bdefbcfe6b742270052cc710` 仍保留在主线历史。新候选与校验位于 `.local/release-rc9-onboarding-20261010/`。本次没有覆盖日常安装，也没有改写现有学习记录。
 
 源码已提交并推送，rc.9 标签现指向 `f4fc60ecbf308461c28dbc65768c6f008e7f3438`。原 Release 的 Windows 安装包、服务器 ZIP 及校验文件已替换，三个公开附件重新下载后与本地 SHA-256 一致，证据 `.local/release-rc9-onboarding-20261010/public-verification.json`。Windows 安装包摘要为 `08c80b5b58d169470ff62ae304abb6a789f23530b008d306679d6c2d377445b7`，服务器 ZIP 为 `99b6fd80d4aadc1f900a8d470e4cb5f63733f8c4486d6f855eadbaa096e2ccc7`。实际更新检查仍能从 rc.8 找到 rc.9；已安装 rc.9 因版本号相同不会提示这次替换，需要手动下载并覆盖安装。
+
+## 后续授权覆盖安装
+
+维护者确认正常退出后，备份13个原有记录、配置及历史文件，共11986字节；安装包哈希与发布校验值一致。覆盖原目录 `D:\Software\study-log-desktop`，安装程序返回0，启动前后13个文件哈希均不变，208个资源与最终候选一致，实际 Web 构建为 `IsOxcgd1Z6xc3OWaT9XSb`。已重新打开原工作台，启动完成后页面返回 HTTP 200。证据 `.local/release-rc9-onboarding-20261010/install-report.json`。这次覆盖没有改写原有日志、随记或配置。

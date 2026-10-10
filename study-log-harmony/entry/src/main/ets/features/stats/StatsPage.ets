@@ -209,8 +209,9 @@ export struct StatsPage {
   private metricDescription(kind: string): string {
     if (!this.data.stats) return '';
     const delta = this.metricDelta(kind);
+    if ((kind === 'domains' || kind === 'unclassified') && this.data.stats.stats.classificationReady === false) return '分类为可选整理';
     if (kind === 'unclassified') {
-      return this.data.stats.stats.unclassifiedTags.length > 0 ? '建议整理映射' : '分类口径完整';
+      return this.data.stats.stats.unclassifiedTags.length > 0 ? '有新主题可整理' : '已有主题均已分类';
     }
     if (!this.data.stats.stats.comparison) return kind === 'topics' ? '按三级标题计数' :
       (kind === 'domains' ? '不含“其他”' : '暂无上月数据');
@@ -357,7 +358,7 @@ export struct StatsPage {
       }
       .alignItems(HorizontalAlign.Start)
       .layoutWeight(1)
-      Text(this.metricValue(kind).toString())
+      Text((kind === 'domains' || kind === 'unclassified') && this.data.stats?.stats.classificationReady === false ? '—' : this.metricValue(kind).toString())
         .fontFamily(workspaceLatinSerifFamily(this.workspaceBreakpoint))
         .fontSize(30)
         .fontColor($r('app.color.ink'))
@@ -600,9 +601,14 @@ export struct StatsPage {
             .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(10)
             Column({ space: 14 }) {
               SectionHeading({ title: '领域占比', description: '按日志小节数量计算，而非按正文长度计算' })
+              if (this.data.stats!.stats.classificationReady === false) {
+                Text('尚未整理学习领域。配置模型后可在分类管理中让 AI 整理，其他统计无需分类即可查看。')
+                  .fontSize(12).fontColor($r('app.color.muted'))
+              } else {
               ForEach(this.data.stats!.stats.domainCounts, (domain: DomainCount, index: number) => {
                 this.domainRow(domain, index)
               }, (domain: DomainCount) => domain.domain)
+              }
             }
             .width('100%').padding(14).alignItems(HorizontalAlign.Start)
             .backgroundColor($r('app.color.surface_soft'))

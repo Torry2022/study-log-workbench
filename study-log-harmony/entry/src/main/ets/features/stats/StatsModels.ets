@@ -40,6 +40,7 @@ export interface StatsEntry {
 export interface UnclassifiedTag { tag: string; count: number; }
 
 export interface MonthlyStats {
+  classificationReady?: boolean;
   month: string;
   previousMonth: string;
   dayCount: number;

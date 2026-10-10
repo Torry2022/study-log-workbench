@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ApiRequestError, requestJson } from "@/lib/client-http";
+import { taxonomyMapping } from "@/lib/stats-tags";
 import { todayInShanghai } from "@/lib/study-date";
 import type { ConfirmationOptions } from "@/components/ConfirmDialog";
 import type { MonthSummary } from "@/lib/types";
@@ -125,7 +126,7 @@ export function useStats(options: Options) {
       setSavedTaxonomy(payload.taxonomy);
       setTaxonomy(previous => same(previous, submitted) ? payload.taxonomy : { ...previous, version: payload.taxonomy.version, updatedAt: payload.taxonomy.updatedAt });
       setCatalog(previous => previous.map(item => ({ ...item,
-        domain: Object.hasOwn(payload.taxonomy.mappings, item.tag) ? payload.taxonomy.mappings[item.tag] : "其他", explicitlyMapped: Object.hasOwn(payload.taxonomy.mappings, item.tag) })));
+        domain: taxonomyMapping(payload.taxonomy.mappings, item.tag) ?? "其他", explicitlyMapped: taxonomyMapping(payload.taxonomy.mappings, item.tag) !== undefined })));
       setFeedback("领域映射已保存"); setStatsRevision(value => value + 1);
     } catch (error) {
       if (operation.current !== controller || controller.signal.aborted || (error instanceof Error && error.name === "AbortError")) return;

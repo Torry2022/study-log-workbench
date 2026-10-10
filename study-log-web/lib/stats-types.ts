@@ -16,6 +16,7 @@ export interface DomainCount {
 export interface StatsEntry { date: string; rawHeading: string; headingText: string; headingIndex: number; tag: string; domain: string }
 export interface StatsDayActivity { date: string; topicCount: number; tags: string[]; domains: string[] }
 export interface MonthlyStats {
+  classificationReady?: boolean;
   month: string; previousMonth: string; dayCount: number; technicalDayCount: number; topicCount: number; total: number;
   comparison: { dayCount: number; technicalDayCount: number; topicCount: number; activeDomains: number } | null;
   domainCounts: DomainCount[]; tags: TagCount[]; topTags: TagCount[]; unclassifiedTags: { tag: string; count: number }[];

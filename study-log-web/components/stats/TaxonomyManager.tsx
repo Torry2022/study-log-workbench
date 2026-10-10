@@ -4,6 +4,7 @@ import { ArrowLeft, LockKeyhole, Save, Search, Sparkles, Trash2 } from "lucide-r
 import { FormEvent, useMemo, useState } from "react";
 import { WorkspaceState } from "../WorkspaceState";
 import { FeatureAvailability } from "../FeatureAvailability";
+import { taxonomyMapping } from "@/lib/stats-tags";
 import type { Taxonomy, TaxonomyCatalogItem } from "@/lib/stats-types";
 import type { TaxonomySuggestionsController } from "@/hooks/use-taxonomy-suggestions";
 
@@ -42,8 +43,8 @@ export function TaxonomyManager({
   const suggestions = useMemo(() => new Map(ai.review?.suggestions.map(item => [item.tag, item]) || []), [ai.review]);
 
   const rows = useMemo(() => catalog.map((item) => {
-    const currentExplicit = Object.hasOwn(taxonomy.mappings, item.tag) ? taxonomy.mappings[item.tag] : undefined;
-    const savedExplicit = Object.hasOwn(savedTaxonomy.mappings, item.tag) ? savedTaxonomy.mappings[item.tag] : undefined;
+    const currentExplicit = taxonomyMapping(taxonomy.mappings, item.tag);
+    const savedExplicit = taxonomyMapping(savedTaxonomy.mappings, item.tag);
     const currentDomain = currentExplicit || "其他";
     const dirty = currentExplicit !== savedExplicit;
     const rowStatus = suggestions.has(item.tag) ? "suggested" : dirty ? "dirty" : currentExplicit ? "mapped" : "unclassified";
@@ -60,6 +61,10 @@ export function TaxonomyManager({
       return true;
     });
   }, [domain, month, query, rows, status]);
+
+  const pendingRows = filteredRows.filter(row => taxonomyMapping(savedTaxonomy.mappings, row.tag) === undefined);
+  const established = taxonomy.domains.some(item => item !== "其他") || Object.keys(taxonomy.mappings).length > 0;
+  const editable = ai.configured || established;
 
   function updateMapping(tag: string, mappedDomain: string) {
     onTaxonomyChange({ ...taxonomy, mappings: { ...taxonomy.mappings, [tag]: mappedDomain } });
@@ -89,40 +94,43 @@ export function TaxonomyManager({
     <div className="taxonomy-manager">
       <header className="taxonomy-manager-header">
         <button className="button secondary" disabled={busy} onClick={onBack}><ArrowLeft size={15} />月度复盘</button>
-        <div><h2>分类管理</h2><p>统一维护全部历史小标签的领域口径。</p></div>
+        <div><h2>分类管理</h2><p>让 AI 整理学习领域，审核后保存；已有分类可继续手动完善。</p></div>
         <div className="taxonomy-manager-actions">
-          <button className="button secondary" disabled={busy || ai.phase !== "idle" || !ai.configured || Boolean(ai.inputProblem) || filteredRows.length === 0 || filteredRows.length > 200}
-            onClick={() => void ai.request(filteredRows)}><Sparkles size={15} />{ai.phase === "requesting" ? "分类中" : `AI 分类建议 (${filteredRows.length})`}</button>
-          <button className="button primary" disabled={busy || ai.phase === "applying"} onClick={onSave}><Save size={15} />保存映射</button>
+          <button className="button secondary" disabled={busy || ai.phase !== "idle" || !ai.configured || Boolean(ai.inputProblem) || pendingRows.length === 0 || pendingRows.length > 200}
+            onClick={() => void ai.request(pendingRows)}><Sparkles size={15} />{ai.phase === "requesting" ? "分类中" : `AI 整理分类 (${pendingRows.length})`}</button>
+          {established && <button className="button primary" disabled={busy || ai.phase !== "idle" || Boolean(ai.review)} onClick={onSave}><Save size={15} />保存映射</button>}
         </div>
       </header>
 
       <div className="taxonomy-ai-status" aria-live="polite">
         {ai.configurationLoading && <p>正在读取 AI 配置…</p>}
-        {!ai.configured && !ai.configurationLoading && <FeatureAvailability title="暂时无法获取分类建议" description="可以继续手动调整和保存分类。" messages={ai.configurationError ? [ai.configurationError] : ai.configurationMessages} busy={ai.configurationLoading} onCheck={() => void ai.refreshConfiguration()} />}
+        {!ai.configured && !ai.configurationLoading && <FeatureAvailability title="暂时无法获取分类建议" description={established ? "已有分类仍可手动调整和保存。" : "配置模型后，可由 AI 整理学习领域。记录天数、小节数量、学习日历和高频主题仍可查看。"} messages={ai.configurationError ? [ai.configurationError] : ai.configurationMessages} busy={ai.configurationLoading} onCheck={() => void ai.refreshConfiguration()} />}
         {ai.inputProblem && <p>{ai.inputProblem}</p>}
-        {filteredRows.length > 200 && <p>本次最多处理 200 个标签，请缩小筛选范围。</p>}
+        {pendingRows.length > 200 && <p>本次最多处理 200 个标签，请缩小筛选范围。</p>}
         {ai.status && <p>{ai.status}</p>}
         {ai.versionChanged && <button type="button" className="button secondary" disabled={busy || ai.phase !== "idle"} onClick={onReload}>重新读取分类</button>}
         {ai.phase !== "idle" && <button type="button" className="button secondary" onClick={ai.cancel}>取消分类请求</button>}
+        {ai.configured && !established && <p>点击“AI 整理分类”，根据已有小节提出领域和归类；审核后保存。</p>}
+        {ai.configured && established && !pendingRows.length && <p>所选主题已有分类；可直接手动调整，AI 不会覆盖已有映射。</p>}
         {ai.review && <>
           {ai.review.warnings.map(message => <p key={message}>{message}</p>)}
           <div className="taxonomy-ai-review-actions">
-            <span>请核对建议领域；应用到草稿后仍需手动保存。</span>
+            <span>请核对建议领域，可调整或取消采纳；应用到草稿后可以新增、删除领域及调整归类，再保存。</span>
             <button type="button" className="button secondary" disabled={busy || ai.phase !== "idle" || !ai.review.suggestions.some(item => item.selected)} onClick={() => void ai.apply()}>应用建议到草稿</button>
             <button type="button" className="button secondary" disabled={ai.phase !== "idle"} onClick={ai.discard}>放弃建议</button>
           </div>
         </>}
       </div>
 
-      <section className="taxonomy-domain-band">
+      {editable && <>
+      {established && <section className="taxonomy-domain-band">
         <div className="taxonomy-domain-list">
           {taxonomy.domains.map((item) => (
             <span key={item} className="taxonomy-domain-chip">{item}{BUILT_IN_DOMAINS.has(item) ? <LockKeyhole size={12} aria-label="内置领域" /> : <button type="button" disabled={busy} onClick={() => void removeDomain(item)} aria-label={`删除领域 ${item}`}><Trash2 size={12} /></button>}</span>
           ))}
         </div>
         <form onSubmit={addDomain} className="taxonomy-domain-form"><input name="domain" placeholder="新增自定义领域" disabled={busy} /><button className="button secondary" type="submit" disabled={busy}>添加</button></form>
-      </section>
+      </section>}
 
       <div className="taxonomy-filter-bar">
         <label className="taxonomy-search"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索标签或原始标题" /></label>
@@ -147,7 +155,7 @@ export function TaxonomyManager({
                   <label><input type="checkbox" aria-label={`采纳建议 ${row.tag}`} checked={suggestions.get(row.tag)!.selected} disabled={ai.phase !== "idle"}
                     onChange={event => ai.editSuggestion(row.tag, { selected: event.target.checked })} />采纳</label>
                   <select aria-label={`建议领域 ${row.tag}`} disabled={ai.phase !== "idle"} value={suggestions.get(row.tag)!.domain}
-                    onChange={event => ai.editSuggestion(row.tag, { domain: event.target.value })}>{taxonomy.domains.map(item => <option key={item} value={item}>{item}</option>)}</select>
+                    onChange={event => ai.editSuggestion(row.tag, { domain: event.target.value })}>{ai.review.domains.map(item => <option key={item} value={item}>{item}</option>)}</select>
                   {suggestions.get(row.tag)!.confidence && <small>置信度：{({ high: "高", medium: "中", low: "低" })[suggestions.get(row.tag)!.confidence!]}</small>}
                 </div> : "—"}</td>}
                 <td><span className={`taxonomy-row-status ${row.rowStatus}`}>{row.rowStatus === "suggested" ? "AI 建议" : row.rowStatus === "dirty" ? "待保存" : row.rowStatus === "mapped" ? "显式映射" : "未分类"}</span></td>
@@ -158,6 +166,7 @@ export function TaxonomyManager({
         </table>
         {!filteredRows.length && <WorkspaceState kind="empty" title={catalog.length ? "没有符合条件的标签" : "暂无可分类的小节"} description={catalog.length ? "试试其他关键词，或调整筛选条件。" : "日志中的三级标题会成为小节，可在这里归入不同主题。"} layout="compact" className="stats-empty compact" />}
       </div>
+      </>}
     </div>
   );
 }

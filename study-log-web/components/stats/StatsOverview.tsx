@@ -16,6 +16,7 @@ type StatsOverviewProps = {
   selectedMonth: string;
   stats: MonthlyStats | null;
   busy: boolean;
+  classificationReady: boolean;
   onMonthChange: (month: string) => void;
   onRefresh: () => void;
   onOpenManager: () => void;
@@ -83,6 +84,7 @@ export function StatsOverview({
   selectedMonth,
   stats,
   busy,
+  classificationReady,
   onMonthChange,
   onRefresh,
   onOpenManager,
@@ -175,8 +177,8 @@ export function StatsOverview({
       <section className="stats-metric-strip" aria-label="月度复盘摘要">
         <div><span>记录天数</span><strong>{stats?.dayCount || 0}</strong>{stats?.comparison ? <Delta value={(stats?.dayCount || 0) - stats.comparison.dayCount} suffix=" 天" /> : <small>暂无上月数据</small>}</div>
         <div><span>日志小节</span><strong>{stats?.topicCount || 0}</strong>{stats?.comparison && <Delta value={(stats?.topicCount || 0) - stats.comparison.topicCount} suffix=" 个" />}<small>按三级标题计数</small></div>
-        <div><span>活跃领域</span><strong>{activeDomains}</strong>{stats?.comparison ? <Delta value={activeDomains - previousActiveDomains} /> : <small>不含“其他”</small>}</div>
-        <div><span>未分类标签</span><strong>{stats?.unclassifiedTags.length || 0}</strong><small>{stats?.unclassifiedTags.length ? "建议整理映射" : "分类口径完整"}</small></div>
+        <div><span>活跃领域</span><strong>{classificationReady ? activeDomains : "—"}</strong>{classificationReady && stats?.comparison ? <Delta value={activeDomains - previousActiveDomains} /> : <small>{classificationReady ? "不含“其他”" : "尚未整理领域"}</small>}</div>
+        <div><span>未分类标签</span><strong>{classificationReady ? stats?.unclassifiedTags.length || 0 : "—"}</strong><small>{!classificationReady ? "分类为可选整理" : stats?.unclassifiedTags.length ? "有新主题可整理" : "已有主题均已分类"}</small></div>
       </section>
 
       <section className="stats-section stats-heatmap-section">
@@ -214,7 +216,7 @@ export function StatsOverview({
       <div className="stats-analysis-grid">
         <section className="stats-section stats-domain-section">
           <div className="stats-section-heading"><div><h3>领域占比</h3><p>按日志小节数量计算，点击扇区查看明细。</p></div></div>
-          {stats?.topicCount ? (
+          {!classificationReady ? <WorkspaceState kind="empty" title="尚未整理学习领域" description="配置模型后，可在分类管理中让 AI 整理领域；其他统计无需分类即可查看。" layout="compact" className="stats-empty compact" /> : stats?.topicCount ? (
             <div className="stats-donut-layout">
               <figure className="stats-donut" onMouseLeave={() => setActiveDomain(null)}>
                 <svg viewBox="0 0 120 120" role="group" aria-label={`${selectedMonth} 领域占比`}>
@@ -233,7 +235,7 @@ export function StatsOverview({
         </section>
 
         <section className="stats-section stats-ranking-section">
-          <div className="stats-section-heading"><div><h3>高频标签</h3><p>归一化后的三级标题标签频度。</p></div></div>
+          <div className="stats-section-heading"><div><h3>高频标签</h3><p>按三级标题统计主题频次，保留括号中的内容。</p></div></div>
           <div className="stats-topic-ranking">
             {stats?.topTags.map((item, index) => (
               <button key={item.tag} type="button" onClick={() => chooseTag(item)} className={drilldown?.kind === "tag" && drilldown.value === item.tag ? "active" : ""}>

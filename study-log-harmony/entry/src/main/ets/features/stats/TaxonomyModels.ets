@@ -33,10 +33,11 @@ export interface TaxonomySuggestion extends TaxonomySuggestionResultItem {
 }
 
 export interface TaxonomySuggestionResponse {
+  proposedDomains?: string[];
   suggestions: TaxonomySuggestionResultItem[];
   warnings: string[];
   snapshotVersion: string | null;
 }
 
 export interface TaxonomySuggestionRequestItem { tag: string; sources: string[]; }
-export interface TaxonomySuggestionRequest { items: TaxonomySuggestionRequestItem[]; }
+export interface TaxonomySuggestionRequest { mode: string; items: TaxonomySuggestionRequestItem[]; }

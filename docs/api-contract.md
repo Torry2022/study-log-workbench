@@ -112,7 +112,9 @@
 
 `POST /api/notes/batch` 接收 `{notes:[{clientId,title,body,insight,sources,tags,recordedAt}]}`，每批1–20条、请求4 MiB；返回 `{notes:StudyNote[]}`，与输入顺序一致。全批校验后统一写入。相同 UUID 与相同规范化业务内容重试返回原记录，不重复备份；同 UUID 不同内容返回409 `NOTE_CONFLICT`。跨年份失败走随记存储的回滚/恢复标记，不宣称多文件原子事务。客户端应核对返回记录身份后清稿，未确认时保留原批次重试。
 
-`POST /api/taxonomy/suggest` 接收 `{items:[{tag,sources?}]}`，最多200个标签，按50个分批请求；仅从实例已保存领域中选择，返回 `{suggestions,warnings,model,snapshotVersion}`。只有“其他”领域时不请求模型。建议不写分类；客户端核验快照后审核应用到草稿，再调用既有版本化分类保存接口。
+`POST /api/taxonomy/suggest` 接收 `{mode?:"organize",items:[{tag,sources?}]}`，最多200个主题，按50个分批请求。公开版客户端使用 `organize`：服务端排除已有精确或继承映射，优先复用现有领域，允许根据主题提出最多8个新领域（名称1–40字符）；分批时携带前批领域，避免重复建立。返回 `{proposedDomains,suggestions,warnings,model,snapshotVersion}`，无对应有效建议的领域不返回。空分类可直接请求；全部已有分类则不调用模型。建议不写分类，客户端核验快照后审核，仅把已采纳归类使用的新领域合入草稿，再调用既有版本化保存接口。未配置模型返回现有503配置错误，不会生成或写入空分类。省略 `mode` 的旧客户端仍按已保存领域获取建议，仅“其他”时不调用模型。
+
+统计主题保留标题括号内容，省略小节序号和多余空白。完整键优先；缺少完整键时兼容旧版去括号映射，读取不改写旧分类文件。`MonthlyStats.classificationReady` 为可选追加布尔字段，本版服务端始终返回；为false时显示未整理领域，记录天数、小节计数、日历和主题频次照常可用。
 
 ## 日块备份
 

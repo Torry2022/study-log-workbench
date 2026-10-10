@@ -200,3 +200,38 @@ test('taxonomy suggestion application rechecks the server and preserves the loca
   assert.equal(c.suggestions.length, 1);
   assert.match(c.suggestionMessage, /版本已变化/);
 });
+
+test('first AI organization proposes domains, allows review, and persists only selected domains on save', async () => {
+  let server = initial(); let writes = 0;
+  const catalog = [{ tag: '读书(历史)', sources: [], months: [], count: 1 }, { tag: '读书(心理学)', sources: [], months: [], count: 1 }];
+  const c = await controller({ get: async () => ({ taxonomy: server, catalog }),
+    post: async (_path, body) => { assert.equal(body.mode, 'organize'); return { snapshotVersion: null,
+      proposedDomains: ['人文', '心理'], warnings: [], suggestions: [{ tag: catalog[0].tag, domain: '人文' }, { tag: catalog[1].tag, domain: '心理' }] }; },
+    put: async (_path, body) => { writes++; server = { ...body, version: 'v1', updatedAt: null }; return { taxonomy: server }; }
+  });
+  await c.load(); await c.requestSuggestions(c.catalog);
+  assert.equal(c.suggestions.length, 2); assert.equal(c.hasChanges(), false); assert.equal(writes, 0);
+  c.updateSuggestion(catalog[1].tag, '心理', false);
+  assert.equal(await c.applySuggestions(), true);
+  assert.deepEqual(Array.from(c.taxonomy.domains), ['人文', '其他']);
+  assert.equal(c.taxonomy.mappings[catalog[1].tag], undefined); assert.equal(writes, 0);
+  c.addDomain('技术'); c.updateMapping(catalog[1].tag, '技术');
+  assert.equal(await c.save(), true); assert.equal(writes, 1);
+});
+
+test('later organization protects exact and inherited mappings and preserves proposed domains across login', async () => {
+  const saved = { domains: ['阅读', '其他'], mappings: { '读书': '阅读', '保留': '其他' }, updatedAt: null, version: 'v1' };
+  const catalog = ['读书(历史)', '保留', '排错'].map(tag => ({ tag, sources: [], months: [], count: 1 }));
+  let calls = 0;
+  const c = await controller({ get: async () => ({ taxonomy: saved, catalog }), post: async (_path, body) => {
+    calls++; assert.deepEqual(Array.from(body.items).map(item => item.tag), ['排错']);
+    return { snapshotVersion: 'v1', proposedDomains: ['实践'], warnings: [], suggestions: [{ tag: '排错', domain: '实践' }] };
+  } });
+  await c.load(); await c.requestSuggestions(catalog);
+  const draft = { taxonomy: c.taxonomy, baseVersion: 'v1', suggestions: c.suggestions, suggestedDomains: c.suggestedDomains };
+  c.discardSuggestions(); c.restoreDraft(draft);
+  assert.ok(c.suggestionDomains().includes('实践'));
+  assert.equal(await c.applySuggestions(), true);
+  assert.equal(c.taxonomy.mappings['读书'], '阅读'); assert.equal(c.taxonomy.mappings['保留'], '其他');
+  assert.equal(c.taxonomy.mappings['排错'], '实践'); assert.equal(calls, 1);
+});

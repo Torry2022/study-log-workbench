@@ -156,6 +156,53 @@ test("taxonomy inputs, malformed AI output and cancellation are bounded and prod
   assert.deepEqual(JSON.parse(await fs.readFile(taxonomyFile, "utf8")).mappings, {});
 });
 
+test("organize starts from Other, proposes bounded domains and never writes before review", async t => {
+  const { data, state } = await fixture(t);
+  state.respond = () => ({ domains: ["阅读", "技术", "unused", "", "x".repeat(41)], suggestions: [
+    { tag: "读书(历史)", domain: "阅读" }, { tag: "排错", domain: "技术" },
+    { tag: "invented", domain: "阅读" }, { tag: "读书(历史)", domain: "unlisted" }
+  ] });
+  const result = await taxonomy.suggestTaxonomy({ mode: "organize", items: [{ tag: "读书(历史)" }, { tag: "排错" }] });
+  assert.deepEqual(result.proposedDomains, ["阅读", "技术"]);
+  assert.equal(result.suggestions.length, 2);
+  assert.deepEqual(JSON.parse(state.requests[0].messages[1].content).domains, ["其他"]);
+  assert.deepEqual(await fs.readdir(data), ["prompts"]);
+  delete process.env.CHAT_API_KEY;
+  await assert.rejects(taxonomy.suggestTaxonomy({ mode: "organize", items: [{ tag: "排错" }] }), config.ChatConfigurationError);
+});
+
+test("organize protects exact and legacy saved mappings, reuses proposed domains across batches", async t => {
+  const { state, setTaxonomy, taxonomyFile } = await fixture(t);
+  await setTaxonomy(["旧领域", "其他"], { "读书": "旧领域", "保留": "其他" });
+  const original = await fs.readFile(taxonomyFile, "utf8");
+  state.respond = sent => {
+    const payload = JSON.parse(sent.messages[1].content);
+    assert.ok(!payload.items.some(item => ["读书(历史)", "保留"].includes(item.tag)));
+    if (state.requests.length === 2) assert.ok(payload.domains.includes("新领域"));
+    return { domains: ["新领域"], suggestions: payload.items.map(item => ({ tag: item.tag, domain: "新领域" })) };
+  };
+  const result = await taxonomy.suggestTaxonomy({ mode: "organize", items: [
+    { tag: "读书(历史)" }, { tag: "保留" }, ...Array.from({ length: 51 }, (_, i) => ({ tag: `T${i}` }))
+  ] });
+  assert.equal(result.suggestions.length, 51); assert.deepEqual(result.proposedDomains, ["新领域"]);
+  assert.equal(await fs.readFile(taxonomyFile, "utf8"), original);
+  const calls = state.requests.length;
+  const none = await taxonomy.suggestTaxonomy({ mode: "organize", items: [{ tag: "读书(心理学)" }] });
+  assert.deepEqual(none.suggestions, []); assert.equal(state.requests.length, calls);
+});
+
+test("organize ignores excessive and malformed domain proposals, supports zero results", async t => {
+  const { state } = await fixture(t);
+  state.respond = () => ({ domains: Array.from({ length: 10 }, (_, i) => `D${i}`), suggestions: [{ tag: "x", domain: "D9" }] });
+  const input = { mode: "organize", items: [{ tag: "x" }] };
+  const result = await taxonomy.suggestTaxonomy(input);
+  assert.deepEqual(result.suggestions, []); assert.deepEqual(result.proposedDomains, []); assert.ok(result.warnings.length);
+  state.respond = () => ({ domains: {}, suggestions: [] });
+  await assert.rejects(taxonomy.suggestTaxonomy(input), error => error.code === "AI_INVALID_RESPONSE");
+  state.respond = () => ({ domains: [], suggestions: [] });
+  assert.deepEqual((await taxonomy.suggestTaxonomy(input)).suggestions, []);
+});
+
 test("both authenticated routes enforce stream limits, safe errors and real service contracts", async t => {
   const { state, setTaxonomy } = await fixture(t);
   let authorized = false;

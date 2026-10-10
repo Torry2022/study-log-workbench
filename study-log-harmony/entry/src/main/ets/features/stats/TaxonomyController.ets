@@ -15,6 +15,7 @@ export class TaxonomyController {
   conflict: boolean = false;
   errorMessage: string = '';
   suggestions: TaxonomySuggestion[] = [];
+  suggestedDomains: string[] = [];
   suggestionBusy: boolean = false;
   suggestionMessage: string = '';
   suggestionError: boolean = false;
@@ -46,6 +47,7 @@ export class TaxonomyController {
 
   restoreDraft(draft: PreservedTaxonomyDraft): void {
     this.taxonomy = this.copy(draft.taxonomy);
+    this.suggestedDomains = draft.suggestedDomains || [];
     this.suggestions = draft.suggestions.map((item: TaxonomySuggestion): TaxonomySuggestion =>
       ({ tag: item.tag, domain: item.domain, confidence: item.confidence, selected: item.selected }));
     const versionChanged = this.savedTaxonomy.version !== draft.baseVersion;
@@ -72,6 +74,7 @@ export class TaxonomyController {
     this.suggestionRevision++;
     this.suggestionBusy = false;
     this.suggestions = [];
+    this.suggestedDomains = [];
     this.suggestionSnapshot = undefined;
     this.suggestionMessage = '';
     this.suggestionError = false;
@@ -81,9 +84,10 @@ export class TaxonomyController {
 
   async requestSuggestions(items: TaxonomyCatalogItem[]): Promise<void> {
     if (this.loading || this.busy || this.loadFailed || this.conflict || this.suggestionBusy ||
-      this.hasChanges() || !this.savedTaxonomy.domains.some((domain: string) => domain !== '其他')) {
-      this.suggestionMessage = '请先保存自定义领域及当前分类修改'; this.suggestionError = true; this.changed(); return;
+      this.hasChanges()) {
+      this.suggestionMessage = '请先保存当前分类修改'; this.suggestionError = true; this.changed(); return;
     }
+    items = items.filter((item: TaxonomyCatalogItem) => !this.explicitMapping(item));
     if (items.length < 1 || items.length > 200) {
       this.suggestionMessage = '请通过筛选将本次标签范围控制在 1 至 200 个'; this.suggestionError = true; this.changed(); return;
     }
@@ -91,6 +95,7 @@ export class TaxonomyController {
     const snapshot = this.copy(this.savedTaxonomy);
     this.suggestionBusy = true;
     this.suggestions = [];
+    this.suggestedDomains = [];
     this.suggestionSnapshot = undefined;
     this.suggestionMessage = '';
     this.suggestionError = false;
@@ -99,7 +104,7 @@ export class TaxonomyController {
       const requested = items.map((item: TaxonomyCatalogItem) => item.tag);
       const requestItems: TaxonomySuggestionRequestItem[] = items.map((item: TaxonomyCatalogItem): TaxonomySuggestionRequestItem =>
         ({ tag: item.tag, sources: item.sources.slice(0, 4) }));
-      const request: TaxonomySuggestionRequest = { items: requestItems };
+      const request: TaxonomySuggestionRequest = { mode: 'organize', items: requestItems };
       const response = await this.transport.post<TaxonomySuggestionResponse>('/taxonomy/suggest',
         request);
       if (revision !== this.suggestionRevision) return;
@@ -108,8 +113,9 @@ export class TaxonomyController {
         this.suggestionMessage = '分类版本已变化，本次建议未载入；请重新读取后再请求';
         this.suggestionError = true; return;
       }
+      this.suggestedDomains = response.proposedDomains || [];
       this.suggestions = response.suggestions.filter((item: TaxonomySuggestionResultItem) =>
-        requested.includes(item.tag) && snapshot.domains.includes(item.domain))
+        requested.includes(item.tag) && (snapshot.domains.includes(item.domain) || this.suggestedDomains.includes(item.domain)))
         .map((item: TaxonomySuggestionResultItem): TaxonomySuggestion => ({ tag: item.tag, domain: item.domain,
           confidence: item.confidence, selected: true }));
       this.suggestionSnapshot = this.suggestions.length > 0 ? snapshot : undefined;
@@ -126,7 +132,7 @@ export class TaxonomyController {
   }
 
   updateSuggestion(tag: string, domain: string, selected: boolean): void {
-    if (this.suggestionBusy || !this.suggestionSnapshot || !this.suggestionSnapshot.domains.includes(domain)) return;
+    if (this.suggestionBusy || !this.suggestionSnapshot || !this.suggestionDomains().includes(domain)) return;
     this.suggestions = this.suggestions.map((item: TaxonomySuggestion) => item.tag === tag ?
       { tag: item.tag, domain: domain, confidence: item.confidence, selected: selected } : item);
     this.changed();
@@ -151,9 +157,13 @@ export class TaxonomyController {
       }
       const next = this.copy(this.taxonomy);
       const choices = this.suggestions.filter((item: TaxonomySuggestion) => item.selected);
-      choices.forEach((item: TaxonomySuggestion) => next.mappings[item.tag] = item.domain);
+      choices.forEach((item: TaxonomySuggestion) => {
+        next.mappings[item.tag] = item.domain;
+        if (!next.domains.includes(item.domain)) next.domains.splice(next.domains.indexOf('其他'), 0, item.domain);
+      });
       this.taxonomy = next;
       this.suggestions = [];
+      this.suggestedDomains = [];
       this.suggestionSnapshot = undefined;
       this.suggestionMessage = `已应用 ${choices.length} 条建议到草稿，请点击“保存映射”`;
       return true;
@@ -167,6 +177,19 @@ export class TaxonomyController {
       if (revision === this.suggestionRevision) { this.suggestionBusy = false; this.changed(); }
     }
   }
+
+  suggestionDomains(): string[] { return this.taxonomy.domains.concat(this.suggestedDomains.filter((domain: string) => !this.taxonomy.domains.includes(domain))); }
+
+  explicitMapping(item: TaxonomyCatalogItem): string | undefined {
+    if (Object.keys(this.taxonomy.mappings).includes(item.tag)) return this.taxonomy.mappings[item.tag];
+    let legacy = item.tag;
+    let next = legacy.replace(/[（(][^()（）]*[）)]/g, '').trim();
+    while (next !== legacy) { legacy = next; next = legacy.replace(/[（(][^()（）]*[）)]/g, '').trim(); }
+    legacy = legacy.replace(/\s+/g, ' ');
+    return Object.keys(this.taxonomy.mappings).includes(legacy) ? this.taxonomy.mappings[legacy] : undefined;
+  }
+
+  classificationAvailable(): boolean { return this.taxonomy.domains.some((domain: string) => domain !== '其他') || Object.keys(this.taxonomy.mappings).length > 0; }
 
   updateMapping(tag: string, domain: string): void {
     if (this.busy || this.loading) return;

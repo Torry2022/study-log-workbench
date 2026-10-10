@@ -2,7 +2,7 @@ import { listMonths, listSavedDayContents } from "./log-store.ts";
 import { findRootAtxHeadings } from "./day-content.ts";
 import { todayInShanghai } from "./study-date.ts";
 import { readTaxonomy, TaxonomyInputError } from "./taxonomy-store.ts";
-import { headingTextOf, normalizeHeading } from "./stats-tags.ts";
+import { headingTextOf, normalizeHeading, taxonomyMapping } from "./stats-tags.ts";
 import type { MonthlyStats, StatsEntry, Taxonomy, TaxonomyCatalogItem } from "./stats-types.ts";
 
 const OTHER_DOMAIN = "其他";
@@ -21,7 +21,7 @@ export function parseStatsDays(blocks: ReadonlyArray<{ date: string; content: st
 }
 async function readAllParsedDays(): Promise<ParsedDay[]> { return parseStatsDays(await listSavedDayContents()); }
 function resolveTagDomain(tag: string, taxonomy: Taxonomy, validDomains: Set<string>): string {
-  const domain = Object.hasOwn(taxonomy.mappings, tag) ? taxonomy.mappings[tag] : OTHER_DOMAIN;
+  const domain = taxonomyMapping(taxonomy.mappings, tag) ?? OTHER_DOMAIN;
   return validDomains.has(domain) ? domain : OTHER_DOMAIN;
 }
 function previousMonthOf(month: string): string {
@@ -98,7 +98,7 @@ export function calculateMonthlyStats(days: ParsedDay[], month: string, taxonomy
   const validDomains = new Set(taxonomy.domains);
 
   const unclassifiedTags = [...current.tagCounts.entries()]
-    .filter(([tag]) => !Object.hasOwn(taxonomy.mappings, tag))
+    .filter(([tag]) => taxonomyMapping(taxonomy.mappings, tag) === undefined)
     .map(([tag, count]) => ({ tag, count }))
     .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag, "zh-CN"));
 
@@ -137,6 +137,7 @@ export function calculateMonthlyStats(days: ParsedDay[], month: string, taxonomy
     .sort((a, b) => b.count - a.count || a.domain.localeCompare(b.domain, "zh-CN"));
 
   return {
+    classificationReady: taxonomy.domains.some(domain => domain !== OTHER_DOMAIN) || Object.keys(taxonomy.mappings).length > 0,
     month,
     previousMonth,
     dayCount: current.days.length,
@@ -193,7 +194,7 @@ export function calculateTaxonomyCatalog(days: ParsedDay[], taxonomy: Taxonomy):
       tag,
       count,
       domain: resolveTagDomain(tag, taxonomy, validDomains),
-      explicitlyMapped: Object.hasOwn(taxonomy.mappings, tag),
+      explicitlyMapped: taxonomyMapping(taxonomy.mappings, tag) !== undefined,
       sources: [...(sources.get(tag) || new Set<string>())].sort((a, b) => a.localeCompare(b, "zh-CN")).slice(0, 8),
       months: [...(months.get(tag) || new Set<string>())].sort((a, b) => b.localeCompare(a))
     }))

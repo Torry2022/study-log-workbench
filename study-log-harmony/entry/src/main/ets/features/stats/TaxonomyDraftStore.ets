@@ -7,6 +7,7 @@ export interface PreservedTaxonomyDraft {
   taxonomy: Taxonomy;
   baseVersion: string | null;
   domainDraft: string;
+  suggestedDomains?: string[];
   suggestions: TaxonomySuggestion[];
 }
 

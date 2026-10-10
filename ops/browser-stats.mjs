@@ -23,6 +23,15 @@ try {
     const response = await page.request.put(`${base}/api/logs/day`, { data: { date, content, baseVersion: current.day.version } });
     assert.equal(response.status(), 200);
   }
+  // Existing manual classifications remain usable without a model; a new empty
+  // classification is now AI-led instead of asking users to build a taxonomy.
+  const taxonomy = (await (await page.request.get(`${base}/api/taxonomy`)).json()).taxonomy;
+  if (!taxonomy.domains.some(item => item !== "其他")) {
+    const seeded = await page.request.put(`${base}/api/taxonomy`, { data: {
+      domains: [domain, "其他"], mappings: {}, baseVersion: taxonomy.version
+    } });
+    assert.equal(seeded.status(), 200);
+  }
   await page.reload();
   await expect(page.locator(".stats-review-toolbar h2")).toHaveText("2026-08");
   await expect(page.locator(".stats-metric-strip > div").nth(0).locator("strong")).toHaveText("2");
@@ -106,22 +115,22 @@ try {
   await page.locator(".stats-review-actions").getByRole("button", { name: "刷新", exact: true }).click();
   await requested;
   await page.evaluate(() => {
-    const url = new URL(location.href); url.searchParams.set("view", "stats"); url.searchParams.set("month", "2026-10");
+    const url = new URL(location.href); url.searchParams.set("view", "stats"); url.searchParams.set("month", "2026-07");
     history.pushState({ studyLogIndex: (history.state?.studyLogIndex || 0) + 1 }, "", url); window.dispatchEvent(new PopStateEvent("popstate"));
   });
-  await expect(page.locator(".stats-review-toolbar h2")).toHaveText("2026-10");
+  await expect(page.locator(".stats-review-toolbar h2")).toHaveText("2026-07");
   await expect(page.locator(".stats-metric-strip > div").nth(1).locator("strong")).toHaveText("0");
   release(); await page.unroute("**/api/stats?month=2026-08");
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-  await expect(page.locator(".stats-review-toolbar h2")).toHaveText("2026-10");
+  await expect(page.locator(".stats-review-toolbar h2")).toHaveText("2026-07");
   await page.getByRole("button", { name: "日志", exact: true }).filter({ visible: true }).click();
   await expect.poll(() => new URL(page.url()).searchParams.get("view")).toBe("log");
   await page.goBack();
-  await expect(page.locator(".stats-review-toolbar h2")).toHaveText("2026-10");
+  await expect(page.locator(".stats-review-toolbar h2")).toHaveText("2026-07");
   await page.goForward();
   await expect.poll(() => new URL(page.url()).searchParams.get("view")).toBe("log");
   await page.getByRole("button", { name: "统计", exact: true }).filter({ visible: true }).click();
-  await expect(page.locator(".stats-review-toolbar h2")).toHaveText("2026-10");
+  await expect(page.locator(".stats-review-toolbar h2")).toHaveText("2026-07");
   await page.goto(`${base}?view=stats&month=2026-08`);
   await expect(page.locator(".stats-review-toolbar h2")).toHaveText("2026-08");
   await page.route("**/api/stats?month=2026-08", route => route.abort("failed"));

@@ -36,11 +36,13 @@ test("statistics count authoritative AST days and topics exactly, including prev
   await fs.writeFile(path.join(root, "2026_学习日志.md"), "## 2026-01-04\n### outside source");
   await save(null);
   const result = await stats.getMonthlyStats("2026-01");
+  assert.equal(result.classificationReady, true);
   assert.equal(result.dayCount, 3); assert.equal(result.technicalDayCount, 2); assert.equal(result.topicCount, 5); assert.equal(result.total, 5);
   assert.equal(result.previousMonth, "2025-12");
   assert.deepEqual(result.comparison, { dayCount: 1, technicalDayCount: 1, topicCount: 2, activeDomains: 1 });
-  const alpha = result.tags.find(item => item.tag === "Alpha");
-  assert.equal(alpha.count, 2); assert.equal(alpha.percentage, 40); assert.equal(alpha.activeDays, 1); assert.equal(alpha.previousCount, 1); assert.equal(alpha.delta, 1);
+  const alpha = result.tags.find(item => item.tag === "Alpha(detail)");
+  assert.equal(alpha.count, 1); assert.equal(alpha.percentage, 20); assert.equal(alpha.activeDays, 1); assert.equal(alpha.previousCount, 0); assert.equal(alpha.delta, 1);
+  assert.equal(result.tags.find(item => item.tag === "Alpha(other)").domain, "Custom");
   assert.deepEqual(alpha.dates, ["2026-01-01"]);
   assert.deepEqual(result.days.map(day => day.topicCount), [4, 0, 1]);
   assert.deepEqual(result.entries.map(entry => entry.headingIndex), [0, 1, 2, 3, 0]);
@@ -54,6 +56,7 @@ test("statistics count authoritative AST days and topics exactly, including prev
 test("empty months, legitimate calendar bounds and AST pseudo-headings have explicit semantics", async t => {
   await fixture(t);
   const empty = await stats.getMonthlyStats("2026-03");
+  assert.equal(empty.classificationReady, false);
   assert.equal(empty.dayCount, 0); assert.equal(empty.topicCount, 0); assert.equal(empty.comparison, null); assert.deepEqual(empty.tags, []);
   for (const month of ["2026-00", "2026-13", "26-01", "2026-1", "2026-01/path"]) await assert.rejects(stats.getMonthlyStats(month), taxonomy.TaxonomyInputError);
   const parsed = stats.parseStatsDays([{ date: "2026-01-01", content: "## 2026-01-01\n~~~md\n### fake\n~~~\n\n    ### indented code\n\n   ### actual\n#### child" }]);
@@ -63,8 +66,8 @@ test("empty months, legitimate calendar bounds and AST pseudo-headings have expl
 
 test("topic normalization preserves numerical technical names and explicit grouping behavior", () => {
   for (const name of ["3D", "2026计划", "3.14 release", "C++", "HTTP/2"]) assert.equal(normalizeHeading(name), name);
-  assert.equal(normalizeHeading("### 1. Alpha(one(nested))"), "Alpha");
-  assert.equal(normalizeHeading("2、 Alpha（注释）"), "Alpha");
+  assert.equal(normalizeHeading("### 1. Alpha(one(nested))"), "Alpha(one(nested))");
+  assert.equal(normalizeHeading("2、 Alpha（注释）"), "Alpha（注释）");
   assert.equal(headingTextOf("1.2. Alpha(detail)"), "Alpha(detail)");
 });
 
@@ -75,9 +78,10 @@ test("catalog spans source months, reports explicit mappings, and contains no bu
   assert.ok(catalog.every(item => item.domain === "其他" && !item.explicitlyMapped));
   await save(null);
   catalog = await stats.getTaxonomyCatalog();
-  const alpha = catalog.find(item => item.tag === "Alpha");
-  assert.equal(alpha.count, 3); assert.equal(alpha.explicitlyMapped, true); assert.equal(alpha.domain, "Custom");
-  assert.deepEqual(alpha.months, ["2026-01", "2025-12"]); assert.equal(alpha.sources.length, 3);
+  const alpha = catalog.find(item => item.tag === "Alpha(detail)");
+  assert.equal(alpha.count, 1); assert.equal(alpha.explicitlyMapped, true); assert.equal(alpha.domain, "Custom");
+  assert.deepEqual(alpha.months, ["2026-01"]); assert.equal(alpha.sources.length, 1);
+  assert.equal(catalog.filter(item => item.tag.startsWith("Alpha")).length, 3);
 });
 
 test("taxonomy version conflicts serialize creation and modification without overwriting other clients", async t => {
@@ -96,13 +100,27 @@ test("taxonomy version conflicts serialize creation and modification without ove
   await assert.rejects(save(null), taxonomy.TaxonomyConflictError);
 });
 
+test("full titles can override inherited legacy grouping without rewriting source or other mappings", async t => {
+  const { file, data } = await fixture(t);
+  const source = await fs.readFile(path.join(data, "2026-01_学习日志.md"), "utf8");
+  const first = await save(null);
+  const raw = await fs.readFile(file, "utf8");
+  await stats.getTaxonomyCatalog(); assert.equal(await fs.readFile(file, "utf8"), raw);
+  await save(first.version, ["Custom", "Another"], { Alpha: "Custom", "Alpha(detail)": "Another" });
+  const catalog = await stats.getTaxonomyCatalog();
+  assert.equal(catalog.find(item => item.tag === "Alpha(detail)").domain, "Another");
+  assert.equal(catalog.find(item => item.tag === "Alpha(other)").domain, "Custom");
+  assert.equal(catalog.find(item => item.tag === "Alpha(old)").domain, "Custom");
+  assert.equal(await fs.readFile(path.join(data, "2026-01_学习日志.md"), "utf8"), source);
+});
+
 test("custom domains persist and deleting one remaps its tags to Other without restoring private defaults", async t => {
   await fixture(t);
   const created = await save(null, [" Software ", "Software", "其他", "My Domain"], { "Alpha(note)": "Software", Beta: "My Domain", constructor: "Software", "组会": "其他" });
   assert.deepEqual(created.domains, ["Software", "My Domain", "其他"]);
-  assert.equal(created.mappings.Alpha, "Software");
+  assert.equal(created.mappings["Alpha(note)"], "Software");
   const deleted = await save(created.version, ["My Domain"], created.mappings);
-  assert.equal(deleted.mappings.Alpha, "其他");
+  assert.equal(deleted.mappings["Alpha(note)"], "其他");
   assert.deepEqual((await taxonomy.readTaxonomy()).domains, ["My Domain", "其他"]);
   const result = await stats.getMonthlyStats("2026-01");
   assert.ok(!result.unclassifiedTags.some(item => item.tag === "Alpha" || item.tag === "组会"));

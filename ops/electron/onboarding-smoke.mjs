@@ -97,6 +97,7 @@ async function check(page, entry) {
 }
 try {
   const page = await workspacePage(app);
+  await expect(page.locator('.reader-toolbar-log h2').filter({ visible:true })).toHaveText(/^\d{4}-\d{2}-\d{2}$/);
   const exampleDate = await page.locator('.reader-toolbar-log h2').filter({ visible:true }).innerText();
   // Native draft confirmation is covered by the lifecycle suite; do not let an
   // unattended navigation failure leave a modal blocking this isolated runner.
@@ -110,7 +111,9 @@ try {
     await context.addCookies(cookies.map(cookie => ({ name:cookie.name, value:cookie.value, url:new URL(page.url()).origin, httpOnly:true, sameSite:'Lax' })));
     const web = await context.newPage(); await web.goto(page.url()); await check(web, 'browser');
     await web.evaluate(async date => {
-      const { day } = await (await fetch(`/study-log/api/logs/day?date=${date}`)).json();
+      const read = await fetch(`/study-log/api/logs/day?date=${date}`);
+      if (!read.ok) throw Error(`Synthetic log read: ${read.status}`);
+      const { day } = await read.json();
       const response = await fetch('/study-log/api/logs/day', { method:'DELETE', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ date, baseVersion:day.version }) });
       if (!response.ok) throw Error(`Synthetic log deletion: ${response.status}`);
     }, exampleDate);

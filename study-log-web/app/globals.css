@@ -193,6 +193,82 @@ html.reading-mode-transition::view-transition-new(root) {
   margin-top: 8px;
 }
 
+/* First-use guidance has its own reading hierarchy; filtered empty states stay compact. */
+.workspace-state.workspace-onboarding {
+  padding: 48px 32px;
+  text-align: left;
+}
+.workspace-onboarding .workspace-state-body {
+  width: min(100%, 640px);
+  max-width: 640px;
+  justify-items: start;
+  gap: 16px;
+}
+.workspace-onboarding .workspace-state-icon {
+  width: 40px;
+  height: 40px;
+  padding: 8px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  color: var(--primary);
+  background: var(--surface-soft);
+}
+.workspace-onboarding .workspace-state-title {
+  color: var(--ink);
+  font-size: 22px;
+  line-height: 1.4;
+}
+.workspace-onboarding .workspace-state-description {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.7;
+  max-width: 560px;
+}
+.workspace-onboarding .workspace-state-actions {
+  width: 100%;
+  justify-content: flex-start;
+  margin-top: 8px;
+}
+.onboarding-steps {
+  width: 100%;
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  border-top: 1px solid var(--hairline);
+}
+.onboarding-steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+.onboarding-steps li > svg { flex-shrink: 0; margin-top: 2px; color: var(--primary); }
+.onboarding-steps strong { color: var(--ink); font-size: 14px; font-weight: 500; }
+.onboarding-steps p { margin: 4px 0 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.onboarding-questions {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.workspace-onboarding .onboarding-questions .rag-example-question {
+  display: grid;
+  justify-items: start;
+  align-content: start;
+  gap: 8px;
+  height: auto;
+  padding: 16px;
+  text-align: left;
+}
+.onboarding-questions strong { font-size: 14px; font-weight: 500; }
+.onboarding-questions span { font-size: 13px; font-weight: 400; color: var(--muted); line-height: 1.6; }
+@media (max-width: 640px) {
+  .workspace-state.workspace-onboarding { padding: 32px 16px; }
+  .workspace-onboarding .workspace-state-title { font-size: 18px; }
+  .onboarding-questions { grid-template-columns: 1fr; }
+}
+
 @keyframes workspace-state-spin {
   to { transform: rotate(360deg); }
 }

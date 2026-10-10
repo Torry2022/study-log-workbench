@@ -223,12 +223,16 @@ export function RagWorkspace({
           <WorkspaceState
             kind="empty"
             icon={MessageSquareText}
-            title={noLogs ? "暂无可参考的日志" : "关于日志，你想了解什么？"}
-            description={noLogs ? "保存学习日志后，可以在这里提问并回看相关内容。" : "输入问题，回答会附上相关日志。也可以选择一个示例问题，修改后再发送。"}
+            title={noLogs ? "从第一篇日志开始，积累可提问的经历" : "从一个问题，找回自己的学习经历"}
+            description={noLogs ? "保存学习日志后，让 AI 帮你回顾内容、串起相关主题，回答中的来源可以带你回到原文。" : "让 AI 帮你回顾、关联与理解已有记录，沿着回答中的来源继续阅读。选一个问题，修改后再发送。"}
             layout="module"
-            className="rag-empty"
-            actions={noLogs ? onOpenLog && <button className="button secondary" type="button" onClick={onOpenLog}>前往日志</button> : !question.trim() && <div className="workspace-state-actions" role="group" aria-label="示例问题">
-              {["帮我回顾最近记录的主要内容。", "哪些记录讨论了同一个主题？", "我记录过哪些尚未解决的问题？"].map(example => <button className="button secondary rag-example-question" type="button" key={example} disabled={generating} onClick={() => { onQuestionChange(example); textareaRef.current?.focus(); }}>{example}</button>)}
+            className="rag-empty workspace-onboarding"
+            actions={noLogs ? onOpenLog && <button className="button primary" type="button" onClick={onOpenLog}>前往日志</button> : !question.trim() && <div className="onboarding-questions" role="group" aria-label="示例问题">
+              {[
+                { label: "回顾收获", question: "帮我回顾最近记录的主要内容。" },
+                { label: "串起主题", question: "哪些记录讨论了同一个主题？" },
+                { label: "接着探索", question: "我记录过哪些尚未解决的问题？" }
+              ].map(example => <button className="button secondary rag-example-question" type="button" key={example.question} disabled={generating} onClick={() => { onQuestionChange(example.question); textareaRef.current?.focus(); }}><strong>{example.label}</strong><span>{example.question}</span></button>)}
             </div>}
           />
         ) : (

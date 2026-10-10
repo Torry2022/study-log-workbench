@@ -15,14 +15,17 @@ try{
  const rows=[];
  for(const mode of ['浏览','源码']){
   await page.locator('.reader-toolbar-log .view-mode-button').filter({hasText:mode}).click();
-  await expect(page.getByRole('button',{name:'更多操作',exact:true})).toBeVisible();
-  await page.getByRole('button',{name:'更多操作',exact:true}).click();
-  const menu=page.locator('.log-toolbar-popover');await expect(menu).toBeVisible();
-  await expect(menu.getByRole('button',{name:'大纲',exact:true})).toBeVisible();
-  await expect(menu.getByRole('button',{name:'AI 工具',exact:true})).toBeVisible();
-  for(const button of await menu.locator('button:visible').all())assert.equal(await button.locator('svg').count(),1,'menu actions use icon and text');
-  await page.screenshot({path:path.join(evidence,`${mode}-more.png`)});
-  await page.getByRole('button',{name:'更多操作',exact:true}).press('Escape');
+  const more=page.getByRole('button',{name:'更多操作',exact:true});
+  if(mode==='浏览')await expect(more).toBeHidden();
+  else{
+   await more.click();
+   const menu=page.locator('.log-toolbar-popover');await expect(menu).toBeVisible();
+   await expect(menu.getByRole('button',{name:'大纲',exact:true})).toBeVisible();
+   await expect(menu.getByRole('button',{name:'AI 工具',exact:true})).toHaveCount(0);
+   for(const button of await menu.locator('button:visible').all())assert.equal(await button.locator('svg').count(),1,'menu actions use icon and text');
+   await page.screenshot({path:path.join(evidence,`${mode}-more.png`)});
+   await more.press('Escape');
+  }
   if(mode==='源码'){
    const inset=await page.locator('.editor-date-line').evaluate(line=>{const a=line.getBoundingClientRect(),b=line.querySelector('.markdown-edit-trigger').getBoundingClientRect();return {top:b.top-a.top,bottom:a.bottom-b.bottom,height:b.height};});
    assert.ok(inset.top>=6&&inset.bottom>=6&&inset.height===30,JSON.stringify(inset));
@@ -46,10 +49,16 @@ try{
     rows.push({mode,expanded,window:width,...row});
     const icons=await page.locator('.reader-toolbar-log').evaluate(e=>[...e.querySelectorAll('.day-toolbar-actions > .button, .day-toolbar-actions .export-menu > .button, .view-mode-button, .day-nav-button')].filter(button=>button.getClientRects().length&&getComputedStyle(button).display!=='none'&&(parseFloat(getComputedStyle(button).fontSize)===0||button.closest('.log-toolbar-more'))).map(button=>({name:button.getAttribute('aria-label')||button.title,width:button.getBoundingClientRect().width,height:button.getBoundingClientRect().height})));
     for(const icon of icons)assert.ok(Math.abs(icon.width-icon.height)<1,JSON.stringify({window:width,mode,expanded,icon}));
-    await expect(page.getByRole('button',{name:'更多操作',exact:true})).toBeVisible();
-    await page.getByRole('button',{name:'更多操作',exact:true}).click();
-    for(const [headerSelector,menuSelector] of [['.log-action-refresh','.log-overflow-refresh'],['.log-action-backup','.log-overflow-backup'],['.log-action-delete','.log-overflow-delete']])assert.notEqual(await page.locator('.reader-toolbar-log '+headerSelector).isVisible(),await page.locator('.log-toolbar-popover '+menuSelector).isVisible(),JSON.stringify({width,mode,expanded,headerSelector}));
-    await page.getByRole('button',{name:'更多操作',exact:true}).press('Escape');
+    if(await more.isVisible()){
+     await more.click();
+     await expect(page.locator('.log-toolbar-popover').getByRole('button',{name:'AI 工具',exact:true})).toHaveCount(0);
+     for(const [headerSelector,menuSelector] of [['.log-action-refresh','.log-overflow-refresh'],['.log-action-backup','.log-overflow-backup'],['.log-action-delete','.log-overflow-delete']])assert.notEqual(await page.locator('.reader-toolbar-log '+headerSelector).isVisible(),await page.locator('.log-toolbar-popover '+menuSelector).isVisible(),JSON.stringify({width,mode,expanded,headerSelector}));
+     assert.ok(await page.locator('.log-toolbar-popover button:visible').count(),'more menu must have an action');
+     await more.press('Escape');
+    }else{
+     assert.equal(mode,'浏览');
+     for(const selector of ['.log-action-refresh','.log-action-backup','.log-action-delete'])await expect(page.locator('.reader-toolbar-log '+selector)).toBeVisible();
+    }
     assert.equal(row.overlap,false,JSON.stringify(rows.at(-1)));assert.equal(row.overflow,false,JSON.stringify(rows.at(-1)));
     assert.ok(row.height<105,'toolbar must remain a single row: '+JSON.stringify(rows.at(-1)));
     const visible=row.labels.filter(v=>v!==null);let compact=false;for(const label of visible){if(!label)compact=true;else assert.equal(compact,false,'lower-priority text survived before higher priority: '+JSON.stringify(rows.at(-1)));}

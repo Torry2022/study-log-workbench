@@ -784,6 +784,7 @@
 .log-toolbar-popover { min-width: 180px; max-height: min(480px, 70vh); overflow-y: auto; scrollbar-gutter: stable; }
 .log-overflow-export button { width: 100%; }
 .log-toolbar-popover .danger { color: var(--error); }
+.log-toolbar-more:not(.has-log-menu-actions) { display: none; }
 .reader-toolbar-log .log-toolbar-more > .button { width: 40px; min-width: 40px; height: 40px; padding: 0; }
 .log-toolbar-popover button { align-items: center; gap: 8px; }
 .log-toolbar-popover button:not(.log-overflow-refresh, .log-overflow-backup, .log-overflow-delete) { display: flex; }
@@ -874,6 +875,7 @@
   }
 
   @container reader-workspace (max-width: 850px) {
+    .reader-toolbar-log .log-toolbar-more { display: block; }
     .reader-toolbar-log .log-action-delete { display: none; }
     .log-overflow-delete { display: flex; }
   }

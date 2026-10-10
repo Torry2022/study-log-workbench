@@ -78,6 +78,7 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
   const content = useMemo(() => editing.documentDate === date ? editing.body : day ? toEditableDayBody(day.date, day.content) : "", [editing.documentDate, editing.body, date, day]);
   const headings = useMemo(() => buildMarkdownOutline(content), [content]);
   const [outlineOpen, setOutlineOpen] = useState(false);
+  const [inlineOutlineVisible, setInlineOutlineVisible] = useState(false);
   const [favoriteGroup, setFavoriteGroup] = useState("");
   const [favoriteFeedback, setFavoriteFeedback] = useState<{ id: string; title: string; kind: "added" | "remove"; top: number; left: number } | null>(null);
   const favoriteEpoch = useRef(0);
@@ -103,6 +104,7 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
   const actions = useRef<HTMLElement>(null);
   const [activeHeading, setActiveHeading] = useState("");
   const outline = useRef<HTMLElement>(null);
+  const inlineOutline = useRef<HTMLElement>(null);
   const toolbar = useRef<HTMLDivElement>(null);
   const editorView = useRef<EditorView | null>(null);
   const imageInput = useRef<HTMLInputElement>(null);
@@ -124,6 +126,16 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
   const exportScopes = [{ scope: "day" as const, label: "当前日志", disabled: !ready }, { scope: "file" as const, label: "当前源文件", disabled: !ready }, { scope: "all" as const, label: "全部日志", disabled: !hasLogs }];
   const editorReady = Boolean(date && editing.documentDate === date);
   const mode = !date || reading ? "preview" : editing.mode;
+  useEffect(() => {
+    const element = inlineOutline.current;
+    const update = () => setInlineOutlineVisible(Boolean(active && element?.getClientRects().length));
+    update();
+    if (!active || !element) return;
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [active, ready, mode, reading, headings.length]);
+  useEffect(() => { if (inlineOutlineVisible) setOutlineOpen(false); }, [inlineOutlineVisible]);
   // Validate the destination once against the saved document at navigation time.
   // Editing a heading afterwards must not turn a successful navigation into an error.
   useEffect(() => {
@@ -223,6 +235,7 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
       const reader = element.closest<HTMLElement>(".reader");
       reader?.style.setProperty("--reader-toolbar-height", `${element.offsetHeight}px`);
       reader?.style.setProperty("--reader-toolbar-bottom", `${element.getBoundingClientRect().bottom}px`);
+      if (!toolbarMenuTrigger.current?.getClientRects().length) setToolbarMenuOpen(false);
     };
     const observer = new ResizeObserver(update);
     observer.observe(element); update();
@@ -285,8 +298,8 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
       <button className="day-nav-button" type="button" disabled={!navigation.nextDate || editing.busy} title="下一篇" aria-label="下一篇" onClick={() => navigation.nextDate && void onNavigate(navigation.nextDate)}>下一篇<ChevronRight size={14} /></button>
     </>}
   </div>;
-  const renderOutline = (popup: boolean) => <nav className="preview-outline" aria-label="当前日志大纲" ref={popup ? outline : undefined} role={popup ? "dialog" : undefined} aria-modal={popup ? true : undefined}>
-    {popup && <button className="mobile-outline-close" type="button" aria-label="关闭大纲" onClick={() => setOutlineOpen(false)}><X size={18} /></button>}
+  const renderOutline = (popup: boolean) => <nav className="preview-outline" aria-label="当前日志大纲" ref={popup ? outline : inlineOutline} role={popup ? "dialog" : undefined} aria-modal={popup ? true : undefined}>
+    {popup && <button className="button icon-only mobile-outline-close" type="button" aria-label="关闭大纲" onClick={() => setOutlineOpen(false)}><X size={18} /></button>}
     <div className="preview-outline-inner"><div className="preview-outline-title">目录</div><div className="preview-outline-list">
       {headings.map(item => <div className={`outline-row${item.id === activeHeading ? " active" : ""}`} key={item.id} style={{ "--outline-indent": `${Math.max(0, item.level - (headings[0]?.level || 3)) * 12}px` } as CSSProperties}>
         <button className="outline-item" type="button" title={item.text} aria-current={item.id === activeHeading ? "location" : undefined} onClick={() => jumpToOutline(item)}>{item.text}</button>
@@ -314,13 +327,12 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
           <ExportMenu scopes={exportScopes} onExport={exporting.run} busy={exporting.busy} disabled={!active || !hasLogs} />
           <button className="button secondary log-action-backup" type="button" aria-label="日志历史版本" title="历史版本" disabled={!date || editing.busy} onClick={editing.onBackups}><DatabaseBackup size={15} />历史版本</button>
           <button className="button danger toolbar-danger-action log-action-delete" type="button" aria-label="删除当前日志" title="删除" disabled={!day?.exists || editing.busy} onClick={editing.onDelete}><Trash2 size={15} />删除</button>
-          <div className="log-toolbar-more export-menu" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setToolbarMenuOpen(false); }} onKeyDown={event => { if (event.key === "Escape" && toolbarMenuOpen) { event.preventDefault(); event.stopPropagation(); setToolbarMenuOpen(false); toolbarMenuTrigger.current?.focus(); } }}>
+          <div className={`log-toolbar-more export-menu${!inlineOutlineVisible || mode !== "preview" || navigation?.onReturnNotes ? " has-log-menu-actions" : ""}`} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setToolbarMenuOpen(false); }} onKeyDown={event => { if (event.key === "Escape" && toolbarMenuOpen) { event.preventDefault(); event.stopPropagation(); setToolbarMenuOpen(false); toolbarMenuTrigger.current?.focus(); } }}>
             <button ref={toolbarMenuTrigger} className="button secondary" type="button" title="更多日志操作" aria-label="更多操作" aria-expanded={toolbarMenuOpen} aria-controls="log-toolbar-popover" onClick={() => setToolbarMenuOpen(value => !value)}><MoreHorizontal size={18} /></button>
             {toolbarMenuOpen && <div id="log-toolbar-popover" className="export-popover log-toolbar-popover" role="group" aria-label="更多日志操作" onClick={event => { if (event.target instanceof Element && event.target.closest("button")) { toolbarMenuTrigger.current?.focus({ preventScroll: true }); setToolbarMenuOpen(false); } }}>
               <div className="log-overflow-navigation">{dayNavigator()}</div>
               {navigation?.onReturnNotes && <button type="button" onClick={navigation.onReturnNotes}><CornerUpLeft size={15} />返回随记</button>}
-              <button type="button" disabled={!headings.length || !ready} onClick={() => setOutlineOpen(true)}><LayoutList size={15} />大纲</button>
-              {onOpenAi && <button type="button" disabled={!date} onClick={onOpenAi}><PanelRightOpen size={15} />AI 工具</button>}
+              {!inlineOutlineVisible && <button type="button" disabled={!headings.length || !ready} onClick={() => setOutlineOpen(true)}><LayoutList size={15} />大纲</button>}
               {mode !== "preview" && <>
                 <button type="button" disabled={!editorReady || attachments.busy || editing.busy} onClick={openLink}><Link2 size={15} />内部链接</button>
                 <button type="button" disabled={!editorReady || attachments.busy || editing.busy} onClick={() => imageInput.current?.click()}><Upload size={15} />插入图片</button>
@@ -376,7 +388,7 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
         <button type="button" disabled={!navigation?.nextDate || editing.busy} onClick={() => { setActionsOpen(false); if (navigation?.nextDate) void onNavigate(navigation.nextDate); }}><ChevronRight size={18} />下一篇</button>
         {mode !== "preview" && <button type="button" disabled={!editorReady || attachments.busy || editing.busy} onClick={() => { setActionsOpen(false); openLink(); }}><Link2 size={18} />内部链接</button>}
         <button type="button" disabled={!date || editing.busy} onClick={() => { setActionsOpen(false); editing.onReload(); }}><RefreshCw size={18} />刷新</button>
-        <button type="button" disabled={!headings.length || !ready} onClick={() => { setActionsOpen(false); editing.onMode("preview"); setOutlineOpen(true); }} aria-label="打开日志大纲"><LayoutList size={18} />大纲</button>
+        {!inlineOutlineVisible && <button type="button" disabled={!headings.length || !ready} onClick={() => { setActionsOpen(false); editing.onMode("preview"); setOutlineOpen(true); }} aria-label="打开日志大纲"><LayoutList size={18} />大纲</button>}
         {onOpenAi && <button type="button" onClick={() => { setActionsOpen(false); onOpenAi(); }}><PanelRightOpen size={18} />AI 工具</button>}
         <button type="button" disabled={!editorReady || mode === "preview" || attachments.busy || editing.busy} onClick={() => { setActionsOpen(false); imageInput.current?.click(); }}><Upload size={18} />插入图片</button>
         <button type="button" disabled={!editing.dirty || editing.busy} onClick={() => { setActionsOpen(false); editing.onDiscard(); }}><Eye size={18} />放弃修改</button>

@@ -7,6 +7,13 @@
   const entries = new Map(); let frame = 0, scan = true, dragging = false;
   const queue = (rescan = false) => { scan ||= rescan; if (!frame) frame = requestAnimationFrame(update); };
   const observer = new ResizeObserver(() => queue());
+  function reveal(element) {
+    for (const entry of entries.get(element) || []) {
+      clearTimeout(entry.hideTimer);
+      entry.bar.classList.add('scrolling');
+      entry.hideTimer = setTimeout(() => entry.bar.classList.remove('scrolling'), 1000);
+    }
+  }
   function add(element) {
     const bars = ['y', 'x'].map(axis => {
       const bar = document.createElement('div'); bar.className = `overlay-scrollbar ${axis}`;
@@ -17,25 +24,27 @@
       const position = axis === 'y' ? 'scrollTop' : 'scrollLeft';
       bar.addEventListener('pointerdown', event => {
         if (event.button !== 0) return;
-        event.preventDefault(); bar.focus({preventScroll:true});
+        event.preventDefault(); bar.classList.add('pointer-focused'); bar.focus({preventScroll:true});
         const rect = bar.getBoundingClientRect(), length = axis === 'y' ? rect.height : rect.width;
         const extent = axis === 'y' ? element.scrollHeight - element.clientHeight : element.scrollWidth - element.clientWidth;
         const thumbLength = axis === 'y' ? thumb.offsetHeight : thumb.offsetWidth;
         const coord = e => axis === 'y' ? e.clientY : e.clientX;
         if (event.target !== thumb) element[position] = (coord(event) - (axis === 'y' ? rect.top : rect.left) - thumbLength / 2) / (length - thumbLength) * extent;
-        const start = coord(event), initial = element[position]; dragging = true; bar.setPointerCapture(event.pointerId);
+        const start = coord(event), initial = element[position]; dragging = true; bar.classList.add('dragging'); bar.setPointerCapture(event.pointerId);
         const move = e => { element[position] = initial + (coord(e) - start) / (length - thumbLength) * extent; queue(); };
-        const end = () => { dragging = false; bar.removeEventListener('pointermove', move); bar.removeEventListener('lostpointercapture', end); queue(true); };
+        const end = () => { dragging = false; bar.classList.remove('dragging'); reveal(element); bar.removeEventListener('pointermove', move); bar.removeEventListener('lostpointercapture', end); queue(true); };
         bar.addEventListener('pointermove', move); bar.addEventListener('lostpointercapture', end, {once:true}); queue();
       });
       bar.addEventListener('keydown', event => {
+        bar.classList.remove('pointer-focused');
         const extent = axis === 'y' ? element.scrollHeight - element.clientHeight : element.scrollWidth - element.clientWidth;
         const page = axis === 'y' ? element.clientHeight : element.clientWidth;
         const values = {ArrowUp:-40,ArrowLeft:-40,ArrowDown:40,ArrowRight:40,PageUp:-page,PageDown:page,Home:-extent,End:extent};
         if (!(event.key in values)) return; event.preventDefault(); element[position] += values[event.key]; queue();
       });
+      bar.addEventListener('blur', () => bar.classList.remove('pointer-focused'));
       bar.addEventListener('wheel', event => { element.scrollBy({top:event.deltaY,left:event.deltaX}); event.preventDefault(); }, {passive:false});
-      return {bar, thumb, axis};
+      return {bar, thumb, axis, hideTimer: 0};
     });
     entries.set(element, bars); observer.observe(element);
   }
@@ -49,7 +58,7 @@
         const style = getComputedStyle(element);
         if (/auto|scroll/.test(style.overflowX + style.overflowY)) found.add(element);
       }
-      for (const [element,bars] of entries) if (!found.has(element) || !element.isConnected) { bars.forEach(({bar})=>bar.remove()); observer.unobserve(element); entries.delete(element); }
+      for (const [element,bars] of entries) if (!found.has(element) || !element.isConnected) { bars.forEach(({bar,hideTimer})=>{clearTimeout(hideTimer);bar.remove();}); observer.unobserve(element); entries.delete(element); }
       for (const element of found) if (element && !entries.has(element)) add(element);
     }
     for (const [element,bars] of entries) {
@@ -77,7 +86,7 @@
     }
   }
   new MutationObserver(records=>{if(records.some(r=>!layer.contains(r.target) && !(r.type==='childList' && [...r.addedNodes,...r.removedNodes].every(n=>n===layer))))queue(true);}).observe(document.body,{subtree:true,childList:true,attributes:true,characterData:true});
-  document.addEventListener('scroll',()=>queue(),true);window.addEventListener('resize',()=>queue(true));
+  document.addEventListener('scroll',event=>{reveal(event.target===document?document.scrollingElement:event.target);queue();},true);window.addEventListener('resize',()=>queue(true));
   document.addEventListener('load',()=>queue(true),true);document.fonts.ready.then(()=>queue(true));
   document.addEventListener('transitionend',()=>queue(true),true); observer.observe(document.body);queue(true);
 })();

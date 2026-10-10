@@ -82,8 +82,9 @@ try{
  }
  await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setContentSize(1230,780));
  await page.locator('.reader-toolbar-stats').getByRole('button',{name:'日志',exact:true}).click();
- await page.getByRole('button',{name:'今天',exact:true}).click();await expect(page.locator('.cm-content')).toBeVisible();
- await page.locator('.cm-content').click();await page.keyboard.insertText('### 合成记录\n\n'+('保留条件与上下文的短记录。\n\n').repeat(60));
+ await page.getByRole('button',{name:'今天',exact:true}).click();
+ await page.locator('.reader-toolbar-log').getByRole('button',{name:'源码',exact:true}).click();await expect(page.locator('.cm-content')).toBeVisible();
+ await page.locator('.cm-content').click();await page.keyboard.press('Control+A');await page.keyboard.insertText('### 合成记录\n\n'+('保留条件与上下文的短记录。\n\n').repeat(60));
  const saved=page.waitForResponse(r=>r.url().endsWith('/api/logs/day')&&r.request().method()==='PUT');
  await page.locator('.reader-toolbar-log').getByRole('button',{name:'保存',exact:true}).click();assert.equal((await saved).status(),200);
  await page.locator('.cm-scroller').evaluate(e=>e.scrollTop=500);await page.evaluate(()=>window.scrollTo(0,300));

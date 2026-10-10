@@ -3,7 +3,9 @@ html.overlay-scrollbars-ready, .overlay-scrollbars-ready body, .overlay-scrollba
 .overlay-scrollbars { position: fixed; inset: 0; z-index: 2147483646; pointer-events: none; }
 .overlay-scrollbar { position: fixed; pointer-events: auto; touch-action: none; border-radius: 8px; background: transparent; }
 .overlay-scrollbar[hidden] { display: none; }
-.overlay-scrollbar-thumb { border-radius: 8px; background: var(--muted-soft, var(--muted, #8e8b82)); opacity: .48; }
-.overlay-scrollbar:hover .overlay-scrollbar-thumb, .overlay-scrollbar:focus-visible .overlay-scrollbar-thumb { opacity: .85; }
-.overlay-scrollbar:focus-visible { outline: 1px solid var(--primary, #cc785c); }
+.overlay-scrollbar-thumb { border-radius: 8px; background: var(--muted-soft, var(--muted, #8e8b82)); opacity: 0; transition: opacity 160ms ease; }
+.overlay-scrollbar.scrolling .overlay-scrollbar-thumb { opacity: .48; }
+.overlay-scrollbar:hover .overlay-scrollbar-thumb, .overlay-scrollbar:focus-visible:not(.pointer-focused) .overlay-scrollbar-thumb, .overlay-scrollbar.dragging .overlay-scrollbar-thumb { opacity: .85; }
+.overlay-scrollbar:focus-visible:not(.pointer-focused) { outline: 1px solid var(--primary, #cc785c); }
 @media (forced-colors: active) { .overlay-scrollbar-thumb { background: ButtonText; } }
+@media (prefers-reduced-motion: reduce) { .overlay-scrollbar-thumb { transition: none; } }

@@ -8,7 +8,7 @@ const update = () => {
 };
 form.oninput = update;
 form.onchange = update;
-document.querySelector('#cancel').onclick = () => window.close();
+document.querySelector('#cancel').onclick = () => window.modelSettings.cancel();
 try {
   const config = await window.modelSettings.read();
   fields.apiUrl.value = config.apiUrl;

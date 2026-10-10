@@ -127,6 +127,10 @@ function connectionTrusted(event) {
   return connectionWindow && event.sender === connectionWindow.webContents && event.senderFrame === connectionWindow.webContents.mainFrame
     && event.senderFrame.url === pathToFileURL(path.join(here, 'connection.html')).href;
 }
+ipcMain.handle('connection:cancel', event => {
+  if (!connectionTrusted(event)) throw Error('无效窗口');
+  connectionWindow.close();
+});
 ipcMain.handle('connection:pick-directory', async event => {
   if (!connectionTrusted(event) || finishing || pendingAction || nextConnection) return { error: '请等待当前操作完成。' };
   const current = connectionWindow;
@@ -274,6 +278,14 @@ ipcMain.handle('settings:save', async (event, value) => {
 ipcMain.handle('history:read', event => {
   if (!settingsTrusted(event, 'history.html')) throw Error('无效窗口');
   return manager.historyConfiguration();
+});
+ipcMain.handle('settings:cancel', event => {
+  if (!settingsTrusted(event)) throw Error('无效窗口');
+  settingsWindow.close();
+});
+ipcMain.handle('history:cancel', event => {
+  if (!settingsTrusted(event, 'history.html')) throw Error('无效窗口');
+  settingsWindow.close();
 });
 ipcMain.handle('history:save', async (event, value) => {
   if (!settingsTrusted(event, 'history.html') || finishing || pendingAction) throw Error('当前无法保存');

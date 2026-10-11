@@ -291,3 +291,17 @@ test('accepted session navigation discards the composer before loading while ret
   page.data.openSession('history');
   assert.equal(page.data.question, 'draft during failed load');
 });
+
+test('final sources may arrive after deltas and an abstention clears candidate citations', async () => {
+ const Controller=await loadController();const controller=new Controller({},view());
+ controller.messages=[{id:'answer',role:'assistant',content:'',citations:[]}];
+ const event=(name,data)=>controller.consumeEvent(`event: ${name}\ndata: ${JSON.stringify(data)}\n\n`);
+ event('delta',{text:'本次未找到能回答这个问题的记录。'});
+ assert.equal(controller.messages[0].content,'本次未找到能回答这个问题的记录。');
+ event('sources',{citations:[]});
+ event('done',{answer:'本次未找到能回答这个问题的记录。',citations:[]});
+ assert.equal(controller.receivedDone,true);assert.equal(controller.messages[0].citations.length,0);
+ const citation={sourceId:'S1',date:'2026-09-01',heading:'合成'};
+ event('delta',{text:'新回答[S1]'});event('sources',{citations:[citation]});event('done',{answer:'新回答[S1]',citations:[citation]});
+ assert.equal(controller.messages[0].content,'新回答[S1]');assert.equal(controller.messages[0].citations[0].date,'2026-09-01');
+});

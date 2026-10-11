@@ -144,7 +144,7 @@ test('large comparison bypasses Jev in the real query pipeline while continuing 
  for(const key of ['RAG_AGENT_ENABLED','RAG_AGENT_TOOL_CALLING_VERIFIED','RAG_JEV_ENABLED','RAG_JEV_PROVIDER','TYPESAFE_API_KEY'])old[key]=process.env[key];
  Object.assign(process.env,{RAG_AGENT_ENABLED:'true',RAG_AGENT_TOOL_CALLING_VERIFIED:'true',RAG_JEV_ENABLED:'true',RAG_JEV_PROVIDER:'typesafe',TYPESAFE_API_KEY:'synthetic'});
  let judgeCalls=0;
- globalThis.fetch=(url,init)=>{if(String(url).startsWith('https://api.typesafe.ai')){judgeCalls++;throw Error('Unexpected judge call');}return originalFetch(url,init);};
+ globalThis.fetch=(url,init)=>{if(String(url).startsWith('https://api.typesafe.ai')){judgeCalls++;return Promise.resolve(Response.json({error:'synthetic unavailable'},{status:503}));}return originalFetch(url,init);};
  const server=http.createServer(async(req,res)=>{
   let raw='';for await(const chunk of req)raw+=chunk;
   const body=JSON.parse(raw);res.setHeader('content-type','text/event-stream');
@@ -158,6 +158,10 @@ test('large comparison bypasses Jev in the real query pipeline while continuing 
   const blocks=raw.trim().split('\n\n');const last=JSON.parse(blocks.at(-1).split('\n')[1].slice(6));
   assert.match(blocks.at(-1),/^event: done/);assert.equal(judgeCalls,0);
   assert.equal(last.diagnostics.agent.judgeSkipped,'outside_short_evidence_scope');assert.equal(last.diagnostics.agent.judgeUnavailable,undefined);assert.equal(last.diagnostics.agent.stopReason,'sufficient_evidence');
+  const short=await new Response(createRagQueryStream({question:'Alpha为什么？',mode:'logs_only',history:[]},{chat,lightChat:chat,mcp},new AbortController().signal)).text();
+  const shortBlocks=short.trim().split('\n\n'),shortDone=JSON.parse(shortBlocks.at(-1).split('\n')[1].slice(6));
+  assert.match(shortBlocks.at(-1),/^event: done/);assert.equal(judgeCalls,1);assert.equal(shortDone.diagnostics.agent.judgeUnavailable,true);
+  assert.equal(shortDone.diagnostics.agent.judgeSkipped,undefined);assert.equal(shortDone.answer,'合成比较[S1]');
  }finally {
   server.closeAllConnections();await new Promise(r=>server.close(r));globalThis.fetch=originalFetch;
   for(const [key,value]of Object.entries(old)){if(value===undefined)delete process.env[key];else process.env[key]=value;}

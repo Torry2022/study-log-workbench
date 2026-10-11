@@ -3,7 +3,7 @@ import { AiChatError } from "./ai-chat.ts";
 import type { ChatConfig } from "./ai-config.ts";
 import type { McpConfig } from "./mcp-config.ts";
 import { McpRetrievalError } from "./mcp-client.ts";
-import { buildRagMessages, normalizeRagAnswer } from "./rag-answer.ts";
+import { buildRagMessages, normalizeRagAnswer, createRagAnswerOutput, NO_LOG_EVIDENCE } from "./rag-answer.ts";
 import { contextualizeRagQuestion, planRagRetrievalWithFallback } from "./rag-planning.ts";
 import { streamRagAnswer } from "./rag-stream.ts";
 import type { RagAnswerMode, RagCitation, RagDiagnostics, RagHistoryMessage } from "./rag-types.ts";
@@ -85,23 +85,26 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
         diagnostics.timings.retrievalMs = elapsed(); diagnostics.retrievalMode = "bounded_evidence";
         const citations: RagCitation[] = retrieved.contexts.map(({ sourceId, date, month, fileName, heading, headingIndex, chunkId, contentHash, excerpt }) => ({ sourceId, date, month, fileName, heading, headingIndex, chunkId, contentHash, excerpt }));
         diagnostics.sourceCount = citations.length;
-        // Keep the old client limit without discarding evidence before synthesis.
-        // Large runs publish their actual cited subset only once the answer is known.
-        if (citations.length <= 30) send("sources", { citations });
+        // Candidate retrieval hits are internal; publish only final, used sources.
         if (!citations.length && input.mode === "logs_only") {
           diagnostics.status = "no_evidence"; diagnostics.timings.totalMs = Math.round(performance.now() - started);
-          send("done", { answer: run.limited || run.coverage.some(scope => scope.status === "partial" || scope.status === "failed") ? "本次未能完整读取相关记录，目前没有足够依据回答。可以缩小日期范围后重试。" : "当前日志中没有找到足够依据来回答这个问题。", citations: [], diagnostics }); close(); return;
+          send("sources", { citations: [] });
+          send("done", { answer: run.limited || run.coverage.some(scope => scope.status === "partial" || scope.status === "failed") ? "本次未能完整读取相关记录，目前没有足够依据回答。可以缩小日期范围后重试。" : NO_LOG_EVIDENCE, citations: [], diagnostics }); close(); return;
         }
         signal.throwIfAborted(); stage = "answering"; stageStart = performance.now();
         send("status", { stage, message: "正在生成回答" });
-        const answer = await streamRagAnswer(config.chat, buildRagMessages(input.question, input.history, retrieved.contexts, input.mode, run.report() + (referenced ? `\n用户指向历史来源：${referenced.date} ${referenced.heading || ""}。已重新读取当前原文；历史摘录和编号不可视为当前事实。` : "")), delta => {
+        const output = createRagAnswerOutput(input.mode, delta => {
           if (diagnostics.timings.firstTokenMs === null) diagnostics.timings.firstTokenMs = Math.round(performance.now() - started);
           send("delta", { text: delta });
-        }, { signal });
+        });
+        try {
+          await streamRagAnswer(config.chat, buildRagMessages(input.question, input.history, retrieved.contexts, input.mode, run.report() + (referenced ? `\n用户指向历史来源：${referenced.date} ${referenced.heading || ""}。已重新读取当前原文；历史摘录和编号不可视为当前事实。` : "")), delta => output.push(delta), { signal });
+        } finally { output.flush(); }
         diagnostics.timings.generationMs = elapsed(); diagnostics.timings.totalMs = Math.round(performance.now() - started);
-        const normalized = normalizeRagAnswer(answer, citations, input.mode);
+        if (output.noEvidence) diagnostics.status = "no_evidence";
+        const normalized = normalizeRagAnswer(output.answer, output.noEvidence ? [] : citations, input.mode);
         if (normalized.citations.length > 30) throw new AiChatError("RAG_CITATION_LIMIT", "回答引用较多，请缩小日期范围后重试；本次回答未保存");
-        if (citations.length > 30) send("sources", { citations: normalized.citations });
+        send("sources", { citations: normalized.citations });
         send("done", { ...normalized, diagnostics });
       } catch (error) {
         if (!external.aborted) {

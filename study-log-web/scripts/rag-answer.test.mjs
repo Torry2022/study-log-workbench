@@ -105,3 +105,27 @@ test('a bounded abstention needs no citation, but added factual claims still do'
   assert.equal(normalizeRagAnswer(abstention + '\n\n## 通用知识补充\n这是通用知识。', [], 'logs_and_general').groundingWarning, undefined);
   assert.ok(normalizeRagAnswer(abstention + '\n实验确定因为温度不足而失败，需要提高水温并延长光照来解决。', []).groundingWarning);
 });
+
+test('abstention output survives every chunk boundary and never trims partial or general answers', async () => {
+ const {createRagAnswerOutput,NO_LOG_EVIDENCE}=await import('../lib/rag-answer.ts');
+ const raw='  '+NO_LOG_EVIDENCE+'\n无关解释[S1]';
+ for(let boundary=0;boundary<=raw.length;boundary++){
+  let actual='';const output=createRagAnswerOutput('logs_only',text=>{actual+=text;});
+  output.push(raw.slice(0,boundary));output.push(raw.slice(boundary));output.flush();
+  assert.equal(actual,NO_LOG_EVIDENCE);assert.equal(output.noEvidence,true);
+ }
+ for(const [mode,raw]of [['logs_only','部分有依据[S2]。'+NO_LOG_EVIDENCE],['logs_only','本次未找到'],['logs_only','`'+NO_LOG_EVIDENCE+'` 是一句示例。']]){
+  let actual='';const output=createRagAnswerOutput(mode,text=>{actual+=text;});
+  for(const c of raw)output.push(c);output.flush();assert.equal(actual,raw);assert.equal(output.noEvidence,false);
+ }
+});
+
+test('abstention retains general knowledge after its heading across all stream boundaries', async () => {
+ const {createRagAnswerOutput,NO_LOG_EVIDENCE}=await import('../lib/rag-answer.ts');
+ const raw=NO_LOG_EVIDENCE+'\n无关来源[S2]\n## 通用知识补充\n通用说明';
+ for(let split=0;split<=raw.length;split++){
+  let actual='';const output=createRagAnswerOutput('logs_and_general',text=>{actual+=text;});
+  output.push(raw.slice(0,split));output.push(raw.slice(split));output.flush();
+  assert.equal(actual,NO_LOG_EVIDENCE+'\n\n## 通用知识补充\n通用说明');assert.equal(output.answer,actual);assert.equal(output.noEvidence,true);
+ }
+});

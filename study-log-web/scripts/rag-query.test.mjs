@@ -53,7 +53,7 @@ const input = { question: "原文哪里提到合成证据？", history: [], mode
 test("query emits sources/delta/done with source hashes and no persisted history", async t => {
   const { state, config } = await fixture(t);
   const values = await events(query.createRagQueryStream(input, config, new AbortController().signal));
-  assert.deepEqual(values.map(item => item.event), ["status", "status", "sources", "status", "delta", "done"]);
+  assert.deepEqual(values.map(item => item.event), ["status", "status", "status", "delta", "sources", "done"]);
   assert.equal(values.at(-1).data.answer, "合成回答[S1]");
   assert.equal(values.at(-1).data.citations[0].contentHash, "a".repeat(64));
   assert.equal(values.at(-1).data.citations[0].headingIndex, null);
@@ -137,4 +137,24 @@ test("actual route streams local MCP and provider calls end to end", async t => 
   const values = await events(response.body); assert.equal(values.at(-1).event, "done", JSON.stringify(values));
   assert.equal(values.at(-1).data.answer, "第二项[S1]，S1 说明第二项[S1]；S2 说明第一项[S2]。");
   assert.deepEqual(values.at(-1).data.citations.map(item => item.heading), ["第2项", "第1项"]);
+});
+
+test('explicit abstention suppresses unrelated follow-up text and candidates in both stream and final result', async t => {
+ const {state,config}=await fixture(t);state.answer=answer.NO_LOG_EVIDENCE+'\n无关材料[S1]';
+ let values=await events(query.createRagQueryStream(input,config,new AbortController().signal));
+ assert.equal(values.filter(x=>x.event==='delta').map(x=>x.data.text).join(''),answer.NO_LOG_EVIDENCE);
+ assert.deepEqual(values.find(x=>x.event==='sources').data.citations,[]);
+ assert.equal(values.at(-1).data.answer,answer.NO_LOG_EVIDENCE);assert.equal(values.at(-1).data.diagnostics.status,'no_evidence');
+ assert.equal(values.at(-1).data.groundingWarning,undefined);
+ state.broken=true;
+ values=await events(query.createRagQueryStream(input,config,new AbortController().signal));
+ assert.equal(values.at(-1).event,'error');assert.ok(!values.some(x=>x.event==='done'));
+});
+
+test('general mode preserves its supplement but cannot attach rejected log sources', async t => {
+ const {state,config}=await fixture(t);
+ state.answer=answer.NO_LOG_EVIDENCE+'\n无关材料[S1]\n## 通用知识补充\n一般说明。';
+ const values=await events(query.createRagQueryStream({...input,mode:'logs_and_general'},config,new AbortController().signal));
+ assert.equal(values.at(-1).data.answer,answer.NO_LOG_EVIDENCE+'\n\n## 通用知识补充\n一般说明。');assert.deepEqual(values.at(-1).data.citations,[]);
+ assert.equal(values.at(-1).data.groundingWarning,undefined);
 });

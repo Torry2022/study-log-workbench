@@ -34,24 +34,33 @@ export class EvidenceRun {
   limited = false;
   private retainedChars = 0;
   private completeDays = new Map<string, DaySection[]>();
-  stopReason?: "tool_budget" | "repeated_query" | "no_new_evidence" | "step_limit" | "tool_failure" | "evidence_limit" | "sufficient_evidence" | "no_more_leads";
+  private dayVersions = new Map<string, string>();
+  sourceChanged = false;
+  stopReason?: "tool_budget" | "repeated_query" | "no_new_evidence" | "step_limit" | "tool_failure" | "evidence_limit" | "sufficient_evidence" | "no_more_leads" | "source_changed";
   readonly requests = new Set<string>();
   readonly signal: AbortSignal;
   constructor(signal: AbortSignal) { this.signal = signal; }
   take(name: string, args: unknown): boolean {
     this.signal.throwIfAborted();
+    if (this.sourceChanged) return false;
     const key = JSON.stringify([name, args]);
     if (this.calls >= 8 || this.requests.has(key)) { this.limited = true; this.stopReason = this.calls >= 8 ? "tool_budget" : "repeated_query"; return false; }
     this.calls++; this.requests.add(key); return true;
   }
   add(items: RagRetrievedContext[]): number {
+    if (this.sourceChanged) return 0;
     let added = 0;
     for (const item of items) {
       const sameDay = this.contexts.filter(old => old.date === item.date && old.fileName === item.fileName);
-      // Never silently combine changed day snapshots within a run.
-      if (sameDay.some(old => old.chunkId === item.chunkId && old.contentHash !== item.contentHash)) { this.limited = true; continue; }
-      if (this.contexts.some(old => old.fileName === item.fileName && old.chunkId === item.chunkId && old.contentHash === item.contentHash)) continue;
       const dayKey = JSON.stringify([item.fileName, item.date]);
+      const version = item.dayContentHash || (new RegExp(`^${item.date}:range:\\d+$`).test(item.chunkId) ? item.contentHash : undefined);
+      // Never silently combine changed day snapshots within a run.
+      if (version && this.dayVersions.has(dayKey) && this.dayVersions.get(dayKey) !== version ||
+        sameDay.some(old => old.chunkId === item.chunkId && old.contentHash !== item.contentHash && (!version || old.dayContentHash !== version))) {
+        this.sourceChanged = true; this.limited = true; this.stopReason = "source_changed"; return added;
+      }
+      if (version) this.dayVersions.set(dayKey, version);
+      if (this.contexts.some(old => old.fileName === item.fileName && old.chunkId === item.chunkId && old.contentHash === item.contentHash)) continue;
       const sections = completeDaySections(item);
       if (sections && sections.every(section => sameDay.some(old => !old.truncated && sameSection(section, old)))) continue;
       if (!item.truncated && sameDay.some(old => old.chunkId === `${item.date}:range:0` && !old.truncated) &&
@@ -64,7 +73,7 @@ export class EvidenceRun {
     return added;
   }
   report(): string {
-    return JSON.stringify({ scopes: this.coverage, limited: this.limited, stopReason: this.stopReason,
+    return JSON.stringify({ scopes: this.coverage, limited: this.limited, sourceChanged: this.sourceChanged, stopReason: this.stopReason,
       retainedDates: [...new Set(this.contexts.map(item => item.date))], truncatedSources: this.contexts.filter(item => item.truncated).map(item => item.sourceId),
       instruction: "search 仅表示相关性检索，不证明全库穷尽。partial/failed 或 limited 时必须说明材料范围，不得声称完整总结或不存在相关记录。sufficient_evidence/no_more_leads 仅为取证模型的停止判断，不是程序证明材料完整。天数仅表示日志日块数量，不代表学习次数或掌握程度。" });
   }

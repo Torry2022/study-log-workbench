@@ -38,6 +38,8 @@ HTTP 默认监听 `127.0.0.1:3020`，端点为 `/mcp`。所有 HTTP 入口（包
 
 基础检索保留 BM25F 标题权重、H3 切片、相邻片段合并和去重；可使用日期范围、字面连续文本匹配，以及 `relevance`、`timeline_summary`、`comparison` 策略。`retrieve_contexts` 返回 `{contexts,retrieval,context}`，其中来源含日期、真实文件名、标题位置及内容哈希；`retrieval.mode` 区分字面、关键词回退和混合检索，`reason` 说明回退原因。
 
+`retrieve_contexts` 和 `read_log_range` 的每个片段还返回 `dayContentHash`：对应完整原始日块的 SHA-256，与片段自身 `contentHash` 分开。调用者可据此检查先搜索、再读原文期间是否发生修改；不同标题/块标识也应绑定同一日块版本。旧客户端可忽略该新增字段。当前 Web 在版本不一致时终止问答并请用户重新提问，不混合两版正文；与旧 MCP 对接时该字段仍可省略，只保留原有同块哈希及分页游标保护，不能宣称跨读取方式版本一致。
+
 明确字面条件没有命中时返回空结果，不再改用相关性结果冒充命中。`read_log_range` 接收 `dateFrom/dateTo`、可选 `cursor` 和 `maxChars`（1000—30000），每页最多 20 个片段。`coverage` 返回 `revision/totalDays/completedDates/nextCursor`；游标绑定日期范围内的原文版本，内容改变后旧游标报错。它与 top-K 相关性搜索不同，适用于整月或跨月总结；服务端调用者必须保留部分读取和失败状态。
 
 向量检索可选，必须同时填写 `EMBEDDING_API_KEY`、完整 `EMBEDDING_API_URL`、`EMBEDDING_MODEL`，并按模型填写 `EMBEDDING_DIMENSIONS`（默认 1024）。使用 OpenAI 兼容 embeddings JSON 协议，最多每批 10 个切片；语义 top 100 与关键词结果通过 RRF 合并。URL、模型不设供应商默认值，不读取聊天 key 或其他历史配置。

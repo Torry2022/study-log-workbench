@@ -53,7 +53,7 @@ test('new context, repeated titles, code headings and changed text are retained 
   evidence.add(await read.search('Alpha', {}).then(result => result.contexts));
   assert.equal(evidence.contexts.length, count);
   const changed = structuredClone(selected.contexts[0]);
-  changed.contentHash = 'a'.repeat(64); changed.content = 'Alpha无需核对地址。';
+  changed.contentHash = 'a'.repeat(64); changed.dayContentHash = 'b'.repeat(64); changed.content = 'Alpha无需核对地址。';
   evidence.add([changed]);
   assert.equal(evidence.limited, true);
   assert.ok(!evidence.contexts.some(item => item.content === changed.content));
@@ -69,14 +69,17 @@ test('partial range fragments and truncated search results cannot prove a whole 
   assert.ok(evidence.contexts.some(item => item.content.includes('末尾不能丢')));
 });
 
-test('new or changed headings and empty sections are not silently discarded', async () => {
+test('changed headings stop the run and same-version empty sections are not silently discarded', async () => {
   const date = '2026-08-04', file = '2026-08_学习日志.md';
   const initial = parseDayBlocks(`## ${date}\n\n### Alpha\n\n共同正文。`, file);
-  for (const body of ['### Beta\n\n共同正文。', '### Alpha\n\n共同正文。\n\n### 新标题']) {
-    const evidence = run();
-    evidence.add((await readers(initial).search('Alpha', {})).contexts);
-    await collectRagEvidence('', range(date), evidence, config, readers(parseDayBlocks(`## ${date}\n\n${body}`, file)));
-    assert.equal(evidence.contexts.length, 2);
-    assert.ok(evidence.contexts[1].content.includes(body));
-  }
+  const evidence = run();
+  evidence.add((await readers(initial).search('Alpha', {})).contexts);
+  await collectRagEvidence('', range(date), evidence, config, readers(parseDayBlocks(`## ${date}\n\n### Beta\n\n共同正文。`, file)));
+  assert.equal(evidence.contexts.length, 1); assert.equal(evidence.sourceChanged, true);
+  const body = '### Alpha\n\n共同正文。\n\n### 新标题';
+  const read = readers(parseDayBlocks(`## ${date}\n\n${body}`, file)), unchanged = run();
+  unchanged.add((await read.search('Alpha', { maxChunks: 1 })).contexts);
+  await collectRagEvidence('', range(date), unchanged, config, read);
+  assert.equal(unchanged.sourceChanged, false); assert.equal(unchanged.contexts.length, 2);
+  assert.ok(unchanged.contexts[1].content.includes(body));
 });

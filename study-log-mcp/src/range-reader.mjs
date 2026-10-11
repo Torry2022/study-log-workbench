@@ -25,7 +25,7 @@ export function readLogRange(blocks, { dateFrom, dateTo, cursor, maxChars = 3000
     if (!content) { completedDates.push(day.date); index++; offset = 0; continue; }
     const end = offset + content.length;
     contexts.push({ sourceId: `S${contexts.length + 1}`, date: day.date, month: day.month, fileName: day.fileName,
-      heading: null, headingIndex: null, chunkId: `${day.date}:range:${offset}`, contentHash: hash(day.content),
+      heading: null, headingIndex: null, chunkId: `${day.date}:range:${offset}`, contentHash: hash(day.content), dayContentHash: hash(day.content),
       content, excerpt: content.slice(0, 200), truncated: end < day.content.length || offset > 0, score: 1 });
     totalChars += content.length;
     if (end < day.content.length) { offset = end; break; }

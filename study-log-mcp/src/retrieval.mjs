@@ -116,6 +116,7 @@ export class KeywordRetriever {
     );
     const filteredBlocks = filterBlocksByDateRange(blocks, options);
     const literalQuery = options.matchMode === "literal" ? String(options.literalQuery || input || "").trim() : "";
+    const days = new Map(filteredBlocks.map(block => [JSON.stringify([block.fileName, block.date]), block]));
     let ranked;
     let retrieval;
     if (literalQuery) {
@@ -153,6 +154,7 @@ export class KeywordRetriever {
         chunkId: chunk.id,
         chunkIds: merged.chunkIds,
         contentHash: hash(merged.content),
+        dayContentHash: hash(days.get(JSON.stringify([chunk.fileName, chunk.date])).content),
         contentHashes: merged.contentHashes,
         date: chunk.date,
         month: chunk.month,

@@ -25,6 +25,7 @@ export interface RagCitation {
 }
 
 export interface RagRetrievedContext extends RagCitation {
+  dayContentHash?: string;
   content: string;
   truncated: boolean;
   score: number;

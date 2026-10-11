@@ -72,6 +72,7 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
         send("status", { stage, message: "正在检索日志" });
         const run = new EvidenceRun(signal);
         await collectRagEvidence(query, planned.plan, run, config.mcp);
+        if (run.sourceChanged) throw new McpRetrievalError("MCP_SOURCE_CHANGED", "读取期间日志发生了修改，请重新提问以读取最新内容");
         if (referenced && run.contexts.some(item => item.fileName !== referenced.fileName)) { run.contexts = []; run.limited = true; }
         if (run.coverage.length && run.coverage.every(scope => scope.status === "failed")) throw new McpRetrievalError("MCP_RANGE_FAILED", "无法读取所选日期的日志，请检查检索服务版本或重试");
         const boundedJevInput = isBoundedJevInput(input.question, run.contexts);
@@ -99,6 +100,7 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
         }
         await compactEvidence(run, input.question, config.lightChat);
         diagnostics.coverage = run.coverage; diagnostics.toolCalls = run.calls;
+        if (run.sourceChanged) throw new McpRetrievalError("MCP_SOURCE_CHANGED", "读取期间日志发生了修改，请重新提问以读取最新内容");
         const retrieved = { contexts: run.contexts };
         diagnostics.timings.retrievalMs = elapsed(); diagnostics.retrievalMode = "bounded_evidence";
         const citations: RagCitation[] = retrieved.contexts.map(({ sourceId, date, month, fileName, heading, headingIndex, chunkId, contentHash, excerpt }) => ({ sourceId, date, month, fileName, heading, headingIndex, chunkId, contentHash, excerpt }));

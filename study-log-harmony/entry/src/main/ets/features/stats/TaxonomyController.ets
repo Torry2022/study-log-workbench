@@ -165,7 +165,7 @@ export class TaxonomyController {
       this.suggestions = [];
       this.suggestedDomains = [];
       this.suggestionSnapshot = undefined;
-      this.suggestionMessage = `已应用 ${choices.length} 条建议到草稿，请点击“保存映射”`;
+      this.suggestionMessage = `已应用 ${choices.length} 条建议到草稿，请点击“保存分类”`;
       return true;
     } catch (error) {
       if (revision === this.suggestionRevision) {
@@ -285,7 +285,7 @@ export class TaxonomyController {
       }
       if (error instanceof ApiError && error.statusCode === 409) this.conflict = true;
       this.errorMessage = this.conflict ? '分类已被其他客户端修改，当前修改已保留。重新读取后再编辑。' :
-        (error instanceof ApiError ? error.message : '保存映射失败，当前修改已保留');
+        (error instanceof ApiError ? error.message : '保存分类失败，当前修改已保留');
       return false;
     } finally {
       if (revision === this.revision) { this.busy = false; this.changed(); }

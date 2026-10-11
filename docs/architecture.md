@@ -1,5 +1,7 @@
 # 架构
 
+鸿蒙删除完成先清空 `LogSession` 当前选择，再由既有 `LogNavigationController` 读取剩余日期；已消费的恢复草稿不再参与刷新选日。`LogAiController` 保留请求正文缩进并将未改动结果作为正常结束；编辑器标题快捷键复用共享格式转换。原生引导仅填入问题或解释既有操作，不创建示例数据。见[鸿蒙同步记录](harmony-parity-2026-10-11.md)。
+
 `LogReader` 的编辑操作溢出菜单与标题栏共用容器宽度规则；大纲只服务浏览预览，内嵌目录可见时隐藏重复入口。分屏监听预览容器和 CodeMirror scrollDOM，以实际滚动范围按比例双向同步并过滤回传事件，离开分屏时清理。网页与 Windows 复用同一实现，见[交互修正](log-editing-interactions-2026-10-11.md)。
 
 `WorkspaceChrome` 使用共享 `CompactDayNavigator`，按日期列表末端标记判断浮框显隐，按实际侧栏宽度定位；复用同一列表、搜索状态和 `selectSidebarDate`，不另设日期加载或草稿事务。Windows 直接复用网页实现，见[悬浮导航记录](compact-day-navigation-2026-10-10.md)。

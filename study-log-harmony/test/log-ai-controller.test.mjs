@@ -10,6 +10,37 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
+test('zero highlights preserve indented source and close a previous review', async () => {
+  let submitted;
+  const c = await controller({ post: async (_path, request) => {
+    submitted = request.content;
+    return { result: { content: request.content, warnings: [] } };
+  } });
+  c.reviewOpen = true; c.highlighted = 'old'; c.highlightDate = 'old';
+  const body = '    code\n\n普通记录';
+  await c.highlight('2026-02-05', body);
+  assert.equal(submitted, `## 2026-02-05\n\n${body}\n`);
+  assert.equal(c.reviewOpen, false);
+  assert.equal(c.highlighted, '');
+  assert.equal(c.highlightDate, '');
+  assert.match(c.message, /原文保持不变/);
+});
+
+test('changed highlights still require review and disposed responses cannot reopen it', async () => {
+  const pending = deferred();
+  const c = await controller({ post: () => pending.promise });
+  const task = c.highlight('2026-02-05', '普通记录');
+  c.dispose();
+  pending.resolve({ result: { content: '## 2026-02-05\n\n**普通记录**', warnings: [] } });
+  await task;
+  assert.equal(c.reviewOpen, false);
+  const active = await controller({ post: async () => ({ result: { content: '## 2026-02-05\n\n**普通记录**', warnings: [] } }) });
+  await active.highlight('2026-02-05', '普通记录');
+  assert.equal(active.reviewOpen, true);
+  assert.equal(active.originalDraft, '普通记录');
+  assert.equal(active.highlighted, '**普通记录**');
+});
+
 async function controller(transport) {
   const source = await readFile(new URL('../entry/src/main/ets/features/logs/LogAiController.ets', import.meta.url), 'utf8');
   const code = ts.transpileModule(source, { compilerOptions: {

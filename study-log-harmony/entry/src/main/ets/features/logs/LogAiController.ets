@@ -98,18 +98,23 @@ export class LogAiController {
   async highlight(date: string, body: string): Promise<void> {
     if (!date || !body.trim() || this.busy) return;
     const revision = ++this.revision;
-    this.busy = true; this.message = '';
+    this.busy = true; this.message = ''; this.reviewOpen = false;
+    this.highlighted = ''; this.highlightDate = ''; this.originalDraft = '';
     try {
-      const content = `## ${date}\n\n${body.trim()}\n`;
+      const content = `## ${date}\n\n${body}\n`;
       const request: HighlightRequest = { date, content };
       const response = await this.transport.post<HighlightResponse>('/ai/bold-highlights', request);
       if (revision !== this.revision) return;
       if (!response.result || typeof response.result.content !== 'string') throw new Error('标注响应格式异常');
+      this.message = (response.result.warnings || []).join('\n');
+      if (response.result.content.trimEnd() === content.trimEnd()) {
+        this.message = this.message || '本次没有新增重点标注，原文保持不变。';
+        return;
+      }
       this.originalDraft = body;
       this.highlighted = response.result.content.replace(/^##\s+\d{4}-\d{2}-\d{2}[^\S\r\n]*\r?\n/, '')
         .replace(/^\r?\n+/, '').trimEnd();
       this.highlightDate = date;
-      this.message = (response.result.warnings || []).join('\n');
       this.reviewOpen = true;
     } catch (error) {
       if (revision === this.revision) this.message = error instanceof ApiError ? error.message :

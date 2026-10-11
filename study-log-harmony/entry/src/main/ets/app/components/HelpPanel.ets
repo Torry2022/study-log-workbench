@@ -85,7 +85,7 @@ export struct HelpPanel {
       this.helpShortcut('Ctrl + Z / Ctrl + Shift + Z', '撤销 / 重做', '编辑器内')
       this.helpShortcut('Ctrl + B / I / `', '加粗 / 斜体 / 行内代码', '日志编辑器内')
       this.helpShortcut('Ctrl + K / Ctrl + Shift + K', '插入链接 / 内部链接', '日志编辑器内')
-      this.helpShortcut('Ctrl + Alt + 3', '切换三级标题', '日志编辑器内')
+      this.helpShortcut('Ctrl + Alt + 3 / 4 / 5 / 6', '切换三级至六级标题', '日志编辑器内')
       this.helpShortcut('Tab / Shift + Tab', '缩进 / 取消缩进', '日志编辑器内')
       this.helpShortcut('Ctrl + Alt + G', '跳转行号', '日志编辑器内')
     }.width('100%').alignItems(HorizontalAlign.Start)

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EditorState, EditorSelection } from '@codemirror/state';
 import { history, undo, redo } from '@codemirror/commands';
-import { formatMarkdown } from '../src/markdown-menu.js';
+import { formatMarkdown, toggleHeading } from '../src/markdown-menu.js';
 
 function editor(text, from, to) {
   const view = { compositionStarted: false, composing: false,
@@ -31,4 +31,22 @@ test('formatting refuses initial IME composition and read-only sessions', () => 
   view.state = EditorState.create({doc: '只读', extensions: [EditorState.readOnly.of(true)]});
   assert.equal(formatMarkdown(view, 'h3'), false);
   assert.equal(formatMarkdown(null, 'h3'), false);
+});
+
+test('all four heading levels switch, toggle and undo through the shared format command', () => {
+  for (const level of [3, 4, 5, 6]) {
+    const view = editor('### 标题', 4, 6);
+    toggleHeading(view, level);
+    assert.equal(view.state.doc.toString(), level === 3 ? '标题' : '#'.repeat(level) + ' 标题');
+    undo(view); assert.equal(view.state.doc.toString(), '### 标题');
+  }
+});
+
+test('heading shortcut inserts on empty lines and respects input guards', () => {
+  const view = editor('', 0, 0);
+  toggleHeading(view, 6); assert.equal(view.state.doc.toString(), '###### ');
+  view.composing = true; assert.equal(toggleHeading(view, 4), false);
+  view.composing = false;
+  view.state = EditorState.create({doc: '只读', extensions: [EditorState.readOnly.of(true)]});
+  assert.equal(toggleHeading(view, 3), false);
 });

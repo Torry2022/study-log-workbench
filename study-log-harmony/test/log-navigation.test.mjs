@@ -28,6 +28,12 @@ test('month initialization restores only the matching instance draft date throug
   page.initialDraft = { namespace:'synthetic', date:'2026-01-15' }; await nav.loadMonths();
   assert.equal(nav.month,'2026-01'); assert.deepEqual(opened,['2026-01-15']); assert.equal(nav.monthsLoading,false);
 });
+
+test('consumed restored draft is not selected again on later month refreshes', async () => {
+  const { page, nav, opened } = subject({ months: async () => ({ months: [{ id:'2026-02' }] }), days: async () => ({ days: [{ date:'2026-02-01' }] }) });
+  page.initialDraft = { namespace:'synthetic', date:'2026-01-15' }; page.restoredDraftApplied = true;
+  await nav.loadMonths(); assert.deepEqual(opened, ['2026-02-01']);
+});
 test('failed cross-month list keeps previous selection and its retry targets the original requested day', async () => {
   let fail=true; const { page, nav, opened, notices } = subject({ days: async () => { if(fail)throw new Error('offline'); return { days:[{date:'2026-01-15'}] }; } });
   const previous=nav.days; await nav.loadDays('2026-01','2026-01-15');

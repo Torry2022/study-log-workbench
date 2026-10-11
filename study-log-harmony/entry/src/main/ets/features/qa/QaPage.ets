@@ -139,6 +139,15 @@ export struct QaPage {
     }, 0);
   }
 
+  private useExampleQuestion(question: string): void {
+    if (this.data.sending || this.data.question.trim() || this.composingQuestion) return;
+    this.data.question = question;
+    this.onDraftChange(true);
+    this.setComposerHidden(false);
+    this.getUIContext().getFocusController().requestFocus('qa_question_input');
+    this.scheduleQuestionCaret(question.length);
+  }
+
   private editFailedQuestion(id: string): void {
     const attempt = this.data.failedAttempt;
     if (!attempt || attempt.answerId !== id || this.data.sending) return;
@@ -281,12 +290,21 @@ export struct QaPage {
                   onRetry: () => this.data.openSession(this.data.failedSessionId) })
               }.width('100%').height('100%').padding({ bottom: this.composerHeight })
             } else if (this.data.messages.length === 0) {
-              Column() {
-                EmptyState({ symbol: $r('sys.symbol.message'), title: '关于日志，你想了解什么？', description: '输入问题，回答会附上相关日志，方便回看。' })
+              Column({ space: 12 }) {
+                EmptyState({ embedded: true, symbol: $r('sys.symbol.message'), title: '关于日志，你想了解什么？', description: '从已有记录中回顾收获、查找线索。也可以选择下面的问题，修改后再发送。' })
+                ForEach(['帮我回顾最近记录的主要内容。', '哪些记录讨论了同一个主题？', '我记录过哪些尚未解决的问题？'], (question: string) => {
+                  Button(question, { type: ButtonType.Normal })
+                    .fontSize(13).fontColor($r('app.color.body')).backgroundColor($r('app.color.surface_soft'))
+                    .padding({ left: 16, right: 16, top: 10, bottom: 10 }).borderRadius(8)
+                    .border({ width: 1, color: $r('app.color.hairline') })
+                    .enabled(!this.data.sending && !this.data.question.trim())
+                    .onClick(() => this.useExampleQuestion(question))
+                })
               }
               .width('100%')
               .height('100%')
-              .padding({ bottom: this.composerHeight })
+              .justifyContent(FlexAlign.Center)
+              .padding({ left: 24, right: 24, bottom: this.composerHeight })
             } else {
               MarkdownReader({
                 onWorkspaceKey: (event: KeyEvent) => this.onWorkspaceKey(event),

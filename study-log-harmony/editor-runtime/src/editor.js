@@ -8,7 +8,7 @@ import { search, searchKeymap, openSearchPanel, highlightSelectionMatches } from
 import { tags } from '@lezer/highlight';
 import { createSearchPanel } from './search-panel.js';
 import { serializeContinuation, deserializeContinuation } from './continuation-state.js';
-import { formatMarkdown } from './markdown-menu.js';
+import { formatMarkdown, toggleHeading } from './markdown-menu.js';
 
 let view, documentKey = '', revision = 0, timer, pending = false;
 let bookmarkSequence = 0;
@@ -96,21 +96,14 @@ function wrap(marker, fallback) {
     head:from + insert.length - (marked ? 0 : marker.length) }, userEvent:'input' });
   return true;
 }
-function heading() {
-  const selection = view.state.selection.main;
-  const first = view.state.doc.lineAt(selection.from), last = view.state.doc.lineAt(selection.to);
-  const insert = view.state.sliceDoc(first.from, last.to).split('\n').map(line =>
-    line.startsWith('### ') ? line.slice(4) : '### ' + line.replace(/^#{1,6}\s+/, '')).join('\n');
-  view.dispatch({ changes:{ from:first.from, to:last.to, insert }, userEvent:'input' });
-  return true;
-}
 const shortcuts = [
   { key:'Mod-Shift-z', run:redo },
   { key:'Mod-s', run:() => action('save') },
   { key:'Mod-b', run:() => wrap('**', '加粗文本') }, { key:'Mod-i', run:() => wrap('*', '斜体文本') },
   { key:'Mod-`', run:() => wrap('`', '代码') }, { key:'Mod-k', run:() => { wrapLink(); return true; } },
   { key:'Mod-Shift-k', run:() => action('internalLink') },
-  { key:'Ctrl-Alt-3', run:heading }, { key:'Tab', run:indentMore }, { key:'Shift-Tab', run:indentLess },
+  ...[3, 4, 5, 6].map(level => ({ key:`Ctrl-Alt-${level}`, run:() => toggleHeading(view, level) })),
+  { key:'Tab', run:indentMore }, { key:'Shift-Tab', run:indentLess },
   { key:'Mod-Shift-f', run:() => action('globalSearch') }
 ];
 function wrapLink() {

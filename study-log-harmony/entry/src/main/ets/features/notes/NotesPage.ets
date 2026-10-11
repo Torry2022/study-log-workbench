@@ -515,8 +515,9 @@ export struct NotesPage {
               LoadFailure({ title: '随记读取失败', message: this.data.errorMessage, onRetry: () => this.load() })
             } else {
               EmptyState({ symbol: $r('sys.symbol.lightbulb'),
-                title: this.query ? '没有匹配的随记' : '暂无随记',
-                description: this.query ? '试试其他关键词。' : '随手记下学习中的问题、想法或收获。' })
+                title: this.query || this.navigationYear !== 'all' || this.navigationTag !== 'all' ? '没有匹配的随记' : '暂无随记',
+                description: this.query || this.navigationYear !== 'all' || this.navigationTag !== 'all' ?
+                  '试试其他关键词，或调整年份和标签。' : '点击“新建随记”，单独记下值得回看的想法。例如：读完一节后先合上书，试着用自己的话解释。' })
             }
           }.width('100%').height(Math.max(0, this.noteViewportHeight - this.listHeaderHeight))
         }

@@ -72,3 +72,12 @@ test('right-edge swipe opens the outline on a wide reader but not outside the lo
  page.outlineOpen=false;page.selectedTab=()=>1;page.handleOutlinePanStart(start);
  assert.equal(page.outlineGestureActive,false);
 });
+
+function headings(text) { const {page}=subject(); page.previewText=text; return Array.from(page.outlineHeadings(),h=>h.text); }
+test('outline permits three-space headings but excludes indented code',()=>{
+  assert.deepEqual(headings('   ### 合法\n    ### 代码\n\t### 代码\n### C#\n### 标题 ###'),['合法','C#','标题']);
+});
+test('outline fence closes only with matching marker and sufficient length',()=>{
+  assert.deepEqual(headings('````md\n### 示例\n```\n### 仍在代码\n~~~~\n### 仍在代码\n````\n### 正文'),['正文']);
+  assert.deepEqual(headings('~~~\n### 示例\n~~~ text\n### 示例\n~~~\n### 正文'),['正文']);
+});

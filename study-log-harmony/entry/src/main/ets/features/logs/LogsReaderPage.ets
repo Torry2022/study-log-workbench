@@ -258,7 +258,7 @@ export struct LogsReaderPage {
   private bindNavigation(): void {
     this.logNavigation.bind(this.reads, {
       lifecycle: () => this.lifecycle,
-      restoreDate: () => this.initialDraft?.namespace === activeInstance.namespace ? this.initialDraft.date : '',
+      restoreDate: () => !this.restoredDraftApplied && this.initialDraft?.namespace === activeInstance.namespace ? this.initialDraft.date : '',
       beforeRead: () => appFeedback.dismissScope('log-read'),
       readingStarted: (months: boolean) => { this.readFailed = false; if (months) this.errorMessage = ''; },
       beforeChange: async () => { this.documents.dayLoadRevision++; await this.coverLogDocument(); },
@@ -334,7 +334,7 @@ export struct LogsReaderPage {
         new DesktopMenuEntry('export-day', '导出当前日志', ready && !!this.session.day?.exists),
         new DesktopMenuEntry('export-file', '导出当前源文件', ready && !!this.session.day?.exists),
         new DesktopMenuEntry('export-all', '导出全部日志', logActive && !this.exportBusy),
-        new DesktopMenuEntry('backup', '备份与恢复', ready && !!this.session.day?.exists)
+        new DesktopMenuEntry('backup', '日志历史版本', ready && !!this.session.day?.exists)
       ];
       if (menu === '编辑') return [
         new DesktopMenuEntry('undo', '撤销', editing, false, 'Ctrl+Z'),
@@ -625,7 +625,7 @@ export struct LogsReaderPage {
     const compactHeading = 32 + this.headerDateWidth + 80 + 24;
     const compact = compactHeading + 32 + 126 + 80 + 7 * 8;
     const fullHeading = 32 + this.headerDateWidth + toolbarActionsWidth(['上一篇', '下一篇']) + 24;
-    const documentActions = toolbarActionsWidth(['刷新', '导出', '备份', '删除']);
+    const documentActions = toolbarActionsWidth(['刷新', '导出', '历史版本', '删除']);
     const editorActions = this.sourceMode || this.splitMode ?
       toolbarActionsWidth(['内部链接', '插入图片', '放弃修改', '查找替换']) + 8 : 0;
     const full = fullHeading + 3 * toolbarActionWidth('浏览') + 6 + documentActions +
@@ -657,7 +657,7 @@ export struct LogsReaderPage {
     required += toolbarActionWidth('保存中') - 40;
     if (group === 'save') return this.headerWidth >= required + 12;
     const actions = ['refresh', 'export', 'backup', 'delete'];
-    const labels = ['刷新中', '导出', '备份', '删除'];
+    const labels = ['刷新中', '导出', '历史版本', '删除'];
     for (let index = 0; index < actions.length; index++) {
       if (this.documentActionsInHeader(actions[index])) required += toolbarActionWidth(labels[index]) - 40;
       if (group === actions[index]) return this.headerWidth >= required + 12;
@@ -689,15 +689,24 @@ export struct LogsReaderPage {
   private outlineHeadings(): LogOutlineHeading[] {
     const headings: LogOutlineHeading[] = [];
     const used: Map<string, number> = new Map<string, number>();
-    let inFence = false;
+    let fenceMarker = '';
+    let fenceLength = 0;
     (this.sourceMode ? this.session.text : this.previewText).split('\n').forEach((line: string) => {
-      if (/^\s*(```|~~~)/.test(line)) {
-        inFence = !inFence;
+      const fence = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+      if (fenceMarker) {
+        if (fence && fence[1][0] === fenceMarker && fence[1].length >= fenceLength && !fence[2].trim()) {
+          fenceMarker = '';
+        }
         return;
       }
-      if (inFence) return;
-      const match = /^(#{2,6})\s+(.+?)\s*#*\s*$/.exec(line.trim());
+      if (fence && (fence[1][0] !== '`' || !fence[2].includes('`'))) {
+        fenceMarker = fence[1][0];
+        fenceLength = fence[1].length;
+        return;
+      }
+      const match = /^ {0,3}(#{2,6})[ \t]+(.+?)\s*$/.exec(line);
       if (!match) return;
+      match[2] = match[2].replace(/[ \t]+#+[ \t]*$/, '');
       const title = match[2]
         .replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1')
         .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
@@ -1046,7 +1055,7 @@ export struct LogsReaderPage {
     this.reads.invalidate();
     this.refreshNavigation(day.date);
     this.backupOpen = false;
-    appFeedback.show('备份已恢复', 'success');
+    appFeedback.show('历史版本已恢复', 'success');
   }
 
   private async openLink(): Promise<void> {
@@ -1358,19 +1367,26 @@ export struct LogsReaderPage {
   }
 
   private async acceptDeletedDay(day: DayEntry, date: string): Promise<void> {
+    const lifecycle = this.lifecycle;
+    const revision = this.documents.dayLoadRevision;
     const body = this.bodyFromDay(day);
     if (this.editor.ready && this.editor.documentKey === date) {
       await this.editor.replace(body, true);
     }
-    if (date !== this.session.selectedDate) return;
+    if (lifecycle !== this.lifecycle || revision !== this.documents.dayLoadRevision || date !== this.session.selectedDate) return;
     this.session.commitDocument(day, body);
-    this.previewText = body;
+    this.session.clearDocument();
+    this.restoredDraftApplied = true;
+    this.previewText = '';
+    this.readerReady = false;
+    this.renderedPreviewDate = '';
+    this.logNavigation.days = this.logNavigation.days.filter((item: DaySummary) => item.date !== date);
     this.reportDraft();
     this.sourceMode = false;
     this.splitMode = false;
     this.reads.invalidate();
-    this.refreshNavigation(date);
     appFeedback.show('日志已删除', 'success');
+    await this.loadMonths();
   }
 
   private async deleteDay(date: string, version: string): Promise<void> {
@@ -1648,7 +1664,7 @@ export struct LogsReaderPage {
             () => this.discardDraft())
         }
         if (!this.documentActionsInHeader('backup')) {
-          this.desktopMoreItem($r('app.media.database_backup'), '备份', !!this.session.day && !this.documents.saving,
+          this.desktopMoreItem($r('app.media.database_backup'), '历史版本', !!this.session.day && !this.documents.saving,
             () => this.backupOpen = true)
         }
         if (!this.documentActionsInHeader('delete')) {
@@ -1768,7 +1784,7 @@ export struct LogsReaderPage {
           () => this.insertImages())
         this.moreAction($r('app.media.eye'), '放弃修改', this.editorReady && this.session.isDirty(),
           () => this.discardDraft())
-        this.moreAction($r('app.media.database_backup'), '备份', !!this.session.day && !this.documents.saving,
+        this.moreAction($r('app.media.database_backup'), '历史版本', !!this.session.day && !this.documents.saving,
           () => this.backupOpen = true)
       }.width('100%')
       Button({ type: ButtonType.Normal }) {
@@ -1876,14 +1892,14 @@ export struct LogsReaderPage {
         .hitTestBehavior(this.documentActionsInHeader('export') ? HitTestMode.Default : HitTestMode.None)
         .accessibilityLevel(this.documentActionsInHeader('export') ? 'auto' : 'no-hide-descendants')
       Column() {
-        ToolbarAction({ label: '备份', icon: $r('app.media.database_backup'), iconSize: 15,
+        ToolbarAction({ label: '历史版本', icon: $r('app.media.database_backup'), iconSize: 15,
           showLabel: this.showToolbarLabels('backup'),
           available: !!this.session.day && !this.documents.saving && !this.deleting,
           onAction: () => this.backupOpen = true })
-      }.width(this.desktopActionSlotWidth('backup', '备份')).clip(true)
+      }.width(this.desktopActionSlotWidth('backup', '历史版本')).clip(true)
         .margin({ left: (this.headerWidth < 440 ? 4 : 8) *
-          (this.desktopActionSlotPresence('backup', '备份') - 1) })
-        .opacity(this.desktopActionSlotPresence('backup', '备份'))
+          (this.desktopActionSlotPresence('backup', '历史版本') - 1) })
+        .opacity(this.desktopActionSlotPresence('backup', '历史版本'))
         .hitTestBehavior(this.documentActionsInHeader('backup') ? HitTestMode.Default : HitTestMode.None)
         .accessibilityLevel(this.documentActionsInHeader('backup') ? 'auto' : 'no-hide-descendants')
       Column() {
@@ -2289,7 +2305,7 @@ export struct LogsReaderPage {
 
   private beginToolbarMotion(width: number): number[][] {
     const actions = ['refresh', 'export', 'backup', 'delete'];
-    const labels = ['刷新中', '导出', '备份', '删除'];
+    const labels = ['刷新中', '导出', '历史版本', '删除'];
     const originalWidths = actions.map((action: string, index: number) =>
       this.desktopActionSlotWidth(action, labels[index]));
     this.toolbarActionWidths = originalWidths;

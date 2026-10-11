@@ -90,7 +90,7 @@ export struct TaxonomyManagerPage {
   private statusLabel(status: string): string {
     if (status === 'suggested') return 'AI 建议';
     if (status === 'dirty') return '待保存';
-    if (status === 'mapped') return '显式映射';
+    if (status === 'mapped') return '已分类';
     return '未分类';
   }
 
@@ -127,7 +127,7 @@ export struct TaxonomyManagerPage {
 
   private removeDomain(domain: string): void {
     if (domain === '其他' || this.data.busy) return;
-    AlertDialog.show({ message: `删除领域“${domain}”？使用该领域的映射将归入“其他”。`,
+    AlertDialog.show({ message: `删除领域“${domain}”？该领域下的主题将归入“其他”。`,
       primaryButton: { value: '取消', action: () => {} },
       secondaryButton: { value: '删除', fontColor: $r('app.color.error'), action: () => {
         if (!this.alive) return;
@@ -142,7 +142,7 @@ export struct TaxonomyManagerPage {
     if (!this.alive) return;
     if (saved) {
       this.clearDraft();
-      this.onSaved(); this.showToast('领域映射已保存', 'success');
+      this.onSaved(); this.showToast('分类已保存', 'success');
     }
   }
 
@@ -246,7 +246,7 @@ export struct TaxonomyManagerPage {
             .fontColor($r('app.color.ink'))
           Text('由 AI 整理学习领域，审核后保存').fontSize(11).fontColor($r('app.color.muted'))
         }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-        Button(this.data.busy ? '保存中' : '保存映射', { type: ButtonType.Normal })
+        Button(this.data.busy ? '保存中' : '保存分类', { type: ButtonType.Normal })
           .height(38).padding({ left: 12, right: 12 }).fontSize(12).fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.on_primary')).backgroundColor($r('app.color.primary'))
           .borderRadius(8).id('taxonomy_save').enabled(!this.data.busy && !this.data.suggestionBusy &&
@@ -370,7 +370,7 @@ export struct TaxonomyManagerPage {
               }.width('100%')
               Row({ space: 8 }) {
                 AppDropdown({
-                  options: ['全部状态', '显式映射', '未分类', 'AI 建议', '待保存'],
+                  options: ['全部状态', '已分类', '未分类', 'AI 建议', '待保存'],
                   selectedIndex: ['all', 'mapped', 'unclassified', 'suggested', 'dirty'].indexOf(this.statusFilter),
                   value: this.statusFilter === 'all' ? '全部状态' : this.statusLabel(this.statusFilter),
                   icon: $r('app.media.sliders_horizontal'),
@@ -388,7 +388,7 @@ export struct TaxonomyManagerPage {
               Column() {
                 EmptyState({
                   symbol: $r('sys.symbol.magnifyingglass'),
-                  title: '没有符合条件的小标签',
+                  title: '没有符合条件的主题',
                   description: '调整筛选条件后再试'
                 })
               }.width('100%').height(240)

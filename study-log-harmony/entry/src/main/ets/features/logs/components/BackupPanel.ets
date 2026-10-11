@@ -98,12 +98,12 @@ export struct BackupPanel {
     try {
       const response = await this.repository.list(this.date, cursor);
       if (lifecycle !== this.lifecycle || revision !== this.listRevision) return;
-      if (!response.backup || !Array.isArray(response.backup.write)) throw new Error('备份列表格式异常');
+      if (!response.backup || !Array.isArray(response.backup.write)) throw new Error('历史版本列表格式异常');
       this.versions = more ? [...this.versions, ...response.backup.write] : response.backup.write;
       this.nextCursor = response.backup.nextCursor;
     } catch (error) {
       if (lifecycle === this.lifecycle && revision === this.listRevision) {
-        this.listError = error instanceof Error ? error.message : '读取备份列表失败';
+        this.listError = error instanceof Error ? error.message : '读取历史版本列表失败';
       }
     } finally {
       if (lifecycle === this.lifecycle && revision === this.listRevision) {
@@ -255,7 +255,7 @@ export struct BackupPanel {
         if (this.loading) {
           Row({ space: 8 }) {
             LoadingProgress().width(18).height(18).color($r('app.color.primary'))
-            Text('正在读取备份').fontSize(12).fontColor($r('app.color.muted'))
+            Text('正在读取历史版本').fontSize(12).fontColor($r('app.color.muted'))
           }.width('100%')
         } else if (this.listError && this.versions.length === 0) {
           Button('读取失败，点击重试', { type: ButtonType.Normal }).height(36)
@@ -375,34 +375,34 @@ export struct BackupPanel {
   build() {
     Column({ space: 12 }) {
       if (this.breakpoint === WorkspaceBreakpoint.COMPACT) {
-        ActionPanelHeader({ title: '备份与恢复', closeLabel: '关闭备份与恢复', showDragBar: true,
+        ActionPanelHeader({ title: '日志历史版本', closeLabel: '关闭日志历史版本', showDragBar: true,
           onClose: () => { if (!this.busy()) this.onClose(); } })
       } else {
         Row({ space: 8 }) {
           Image($r('app.media.database_backup')).width(24).height(24)
             .colorFilter(iconTint($r('app.color.primary'))).margin({ right: 8 })
           Column({ space: 3 }) {
-            Text('备份与恢复').fontFamily(workspaceSerifFamily(this.breakpoint)).fontSize(24)
+            Text('日志历史版本').fontFamily(workspaceSerifFamily(this.breakpoint)).fontSize(24)
               .fontColor($r('app.color.ink'))
             Text('比较历史内容，恢复当前日志。').fontSize(11).fontColor($r('app.color.muted'))
           }.layoutWeight(1).alignItems(HorizontalAlign.Start)
-          ToolbarAction({ label: this.maximized ? '还原备份窗口' : '最大化备份窗口', showLabel: false,
+          ToolbarAction({ label: this.maximized ? '还原历史版本窗口' : '最大化历史版本窗口', showLabel: false,
             icon: this.maximized ? $r('app.media.minimize_2') : $r('app.media.maximize_2'),
             onAction: () => this.getUIContext().animateTo({ duration: 260, curve: Curve.EaseInOut }, () => {
               this.maximized = !this.maximized;
             }) })
-          ToolbarAction({ label: '关闭备份与恢复', showLabel: false, useSymbol: true,
+          ToolbarAction({ label: '关闭日志历史版本', showLabel: false, useSymbol: true,
             symbol: $r('sys.symbol.xmark'), available: !this.busy(), onAction: this.onClose })
         }.width('100%').height(48)
       }
       if (this.loading) {
         Column({ space: 8 }) {
           LoadingProgress().width(22).height(22).color($r('app.color.primary'))
-          Text('正在读取备份列表').fontSize(13).fontColor($r('app.color.muted'))
+          Text('正在读取历史版本列表').fontSize(13).fontColor($r('app.color.muted'))
         }.width('100%').layoutWeight(1).justifyContent(FlexAlign.Center)
       } else if (this.listError && this.versions.length === 0) {
         Column() {
-          LoadFailure({ title: '备份列表读取失败', message: this.listError,
+          LoadFailure({ title: '历史版本列表读取失败', message: this.listError,
             onRetry: () => this.loadVersions() })
         }.width('100%').layoutWeight(1)
       } else {

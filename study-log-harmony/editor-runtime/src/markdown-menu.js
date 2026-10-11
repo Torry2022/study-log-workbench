@@ -12,3 +12,13 @@ export function formatMarkdown(view, command) {
   view.focus();
   return true;
 }
+
+export function toggleHeading(view, level) {
+  if (!view || view.compositionStarted || view.composing || view.state.readOnly) return false;
+  const { from, to } = view.state.selection.main;
+  const first = view.state.doc.lineAt(from);
+  const last = view.state.doc.lineAt(to > from && view.state.doc.lineAt(to).from === to ? to - 1 : to);
+  const prefix = '#'.repeat(level) + ' ';
+  const sameLevel = view.state.sliceDoc(first.from, last.to).split('\n').every(line => line.startsWith(prefix));
+  return formatMarkdown(view, sameLevel ? 'paragraph' : `h${level}`);
+}

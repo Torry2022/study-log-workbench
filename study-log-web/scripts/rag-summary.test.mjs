@@ -5,6 +5,37 @@ import { EvidenceRun } from "../lib/rag-evidence.ts";
 import { compactEvidence } from "../lib/rag-evidence-summary.ts";
 import { parseRagHistory } from "../lib/rag-answer.ts";
 
+test('short rules remain verbatim between long sources, even when adjacent summaries fail', async t => {
+  let malformed = false; const requests = [];
+  const rule = '只有来源一致且用户确认才能保存；没有确认不能保存。下一步参照南渡连接检查。';
+  const server = http.createServer(async (req, res) => {
+    let raw = ''; for await (const chunk of req) raw += chunk;
+    const body = JSON.parse(raw), evidence = JSON.parse(body.messages[1].content).evidence;
+    requests.push(evidence);
+    assert.ok(body.messages[0].content.includes('规则名称'));
+    assert.ok(evidence.every(item => !item.content.includes(rule)));
+    res.setHeader('content-type','application/json');
+    res.end(JSON.stringify({choices:[{message:{content:JSON.stringify(malformed ? [] : evidence.map(item=>({sourceId:item.sourceId,content:'过程采样不能证明已经完成。'})))}}]}));
+  });
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  t.after(()=>{server.closeAllConnections();server.close();});
+  const config={baseUrl:`http://127.0.0.1:${server.address().port}`,apiKey:'synthetic',model:'mock'};
+  for (const fail of [false,true]) {
+    malformed=fail; requests.length=0;
+    const run=new EvidenceRun(new AbortController().signal);
+    run.add(['长'.repeat(26000),rule,'长'.repeat(26000),rule].map((content,index)=>({date:'2026-09-01',fileName:'synthetic.md',chunkId:`part-${index}`,contentHash:`hash-${index}`,excerpt:'原文摘录',content,truncated:false})));
+    await compactEvidence(run,'保存条件和后续步骤？',config);
+    assert.equal(requests.length,2);
+    assert.deepEqual(requests.flat().map(item=>item.sourceId),['S1','S3']);
+    for(const index of [1,3]) {
+      assert.equal(run.contexts[index].content,rule); assert.equal(run.contexts[index].truncated,false);
+      assert.equal(run.contexts[index].contentHash,`hash-${index}`); assert.equal(run.contexts[index].excerpt,'原文摘录');
+    }
+    assert.equal(run.limited,fail);
+    assert.ok(run.contexts.reduce((sum,item)=>sum+item.content.length,0)<=30000);
+  }
+});
+
 test("batch synthesis keeps original source identity and marks failed compression as partial", async t => {
   let malformed = false;
   const server = http.createServer(async (req, res) => {

@@ -66,6 +66,7 @@ try {
     results.push(result);
     await fs.writeFile(path.join(root, "report.json"), JSON.stringify({ results, budget: proxy.report(), reasoningEffort: manifest.reasoningEffort || "provider_default", jev: jevReport() }, null, 2));
     console.log(JSON.stringify({ id: entry.id, route, event: result.event, calls: result.calls, elapsedMs: result.elapsedMs }));
+    if (result.rejectedRequests.length) throw Error("Evaluation stopped on proxy rejection; do not count partial compaction as quality success");
     if (result.event === "error") throw Error("Evaluation stopped on error; inspect private report before another paid request");
     if (route === "jev" && !result.diagnostics?.agent?.judgment) throw Error("Jev was not evaluated; stop rather than count fallback as success");
   }

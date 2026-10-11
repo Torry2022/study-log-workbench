@@ -1,0 +1,16 @@
+[
+  {"id":"lookup","question":"哪里提到过 Agent？","expected":{"route":"search","dates":"none"}},
+  {"id":"month-summary","question":"总结2026年九月的学习记录。","expected":{"route":"summary","dates":"logs"}},
+  {"id":"period-comparison","question":"比较2026年九月和十月的学习重点。","expected":{"route":"comparison","dates":"logs"}},
+  {"id":"implicit-comparison","question":"2026年九月和十月的做法有什么变化？","expected":{"route":"comparison","dates":"logs"}},
+  {"id":"event-date","question":"我如何理解2026年9月15日发布的那项技术？","expected":{"route":"search","dates":"events"}},
+  {"id":"mixed-dates","question":"找出2026年十月日志里提到2026年九月发布事件的记录。","expected":{"route":"search","dates":"both"}},
+  {"id":"source-followup","question":"刚才第二条来源具体怎么说？","context":"上一轮回答列出两条日志来源，来源指针均可用。","expected":{"route":"source","dates":"none"}},
+  {"id":"new-topic","question":"哪里记录过二分查找？","context":"上一轮比较了九月与十月的部署记录。","expected":{"route":"search","dates":"none"}},
+  {"id":"ambiguous-followup","question":"那段时间有什么变化？","expected":{"route":"clarify","dates":"uncertain"}},
+  {"id":"multiple-days","question":"回顾2026年10月1日、2日和3日分别学了什么。","expected":{"route":"summary","dates":"logs"}},
+  {"id":"concept-comparison","question":"我的日志里如何区分乐观锁与悲观锁？","expected":{"route":"comparison","dates":"none"}},
+  {"id":"single-day","question":"总结2026年10月3日的学习内容。","expected":{"route":"summary","dates":"logs"}},
+  {"id":"negated-comparison","question":"不用比较九月和十月，只总结2026年十月。","expected":{"route":"summary","dates":"logs"}},
+  {"id":"no-date-filter","question":"不限日志日期，找出提到2026年9月15日发布事件的记录。","expected":{"route":"search","dates":"events"}}
+]

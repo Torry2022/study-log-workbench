@@ -33,7 +33,7 @@ async function fixture(t) {
       if (!body.stream) {
         if (state.semanticFailure) { res.writeHead(500); res.end("synthetic-private-provider-body"); return; }
         const contextualizing = body.messages[0].content.includes("独立查询");
-        return reply({ choices: [{ message: { content: JSON.stringify(contextualizing ? { query: "原文哪里提到合成证据？" } : { strategy: "timeline_summary", dateFrom: null, dateTo: null }) }, finish_reason: "stop" }] });
+        return reply({ choices: [{ message: { content: JSON.stringify(contextualizing ? { query: state.rewritten || "原文哪里提到合成证据？" } : { strategy: "timeline_summary", dateFrom: null, dateTo: null }) }, finish_reason: "stop" }] });
       }
       res.setHeader("content-type", "text/event-stream");
       res.end(`data: ${JSON.stringify({ choices: [{ delta: { content: state.answer || "合成回答[S1]" } }] })}\n\n${state.broken ? "" : "data: [DONE]\n\n"}`);
@@ -48,6 +48,45 @@ async function fixture(t) {
 async function events(stream) {
   return (await new Response(stream).text()).trim().split("\n\n").filter(Boolean).map(block => ({ event: block.split("\n")[0].slice(7), data: JSON.parse(block.split("\n").slice(1).join("\n").slice(6)) }));
 }
+
+test("followup matrix: source pointers cannot silently fall back to unrelated retrieval", async t => {
+  const { state, config } = await fixture(t);
+  for (const history of [[], [{ role: "assistant", content: "旧客户端回答[S1]" }]]) {
+    const result = await events(query.createRagQueryStream({ question: "刚才第二条来源具体怎么说？", history, mode: "logs_only" }, config, new AbortController().signal));
+    assert.equal(result.at(-1).event, "done");
+    assert.match(result.at(-1).data.answer, /无法确定/);
+    assert.deepEqual(result.at(-1).data.citations, []);
+  }
+  assert.equal(state.requests.length, 0);
+});
+
+test("routing matrix: invalid explicit dates request correction without unbounded retrieval", async t => {
+  const { state, config } = await fixture(t);
+  for (const question of ["总结2026年2月30日", "总结2026年13月", "总结2026年2月28日至30日"]) {
+    const result = await events(query.createRagQueryStream({ question, history: [{ role: "user", content: "之前的问题" }], mode: "logs_only" }, config, new AbortController().signal));
+    assert.equal(result.at(-1).event, "done");
+    assert.match(result.at(-1).data.answer, /日期似乎有误/);
+  }
+  assert.equal(state.requests.length, 0);
+});
+
+test("followup matrix: rewriting cannot add old dates to new literal lookups or event-date questions", async t => {
+  const { state, config } = await fixture(t);
+  state.rewritten = "2026年九月哪里提到过合成证据？";
+  for (const [question, expectedFrom, expectedLiteral] of [
+    ["哪里提到过`新主题`？", undefined, "新主题"],
+    ["2026年十月哪里提到过`新主题`？", "2026-10-01", "新主题"],
+    ["2026年十月哪里提到过`2026年2月30日`？", "2026-10-01", "2026年2月30日"],
+    ["我记录过2025年九月发布的模型吗？", undefined, undefined]
+  ]) {
+    const before = state.requests.length;
+    const result = await events(query.createRagQueryStream({ question, history: [{ role: "user", content: "九月学了什么？" }], mode: "logs_only" }, config, new AbortController().signal));
+    assert.equal(result.at(-1).event, "done");
+    const tool = state.requests.slice(before).find(item => item.method === "tools/call");
+    assert.equal(tool.params.arguments.dateFrom, expectedFrom);
+    assert.equal(tool.params.arguments.literalQuery, expectedLiteral);
+  }
+});
 const input = { question: "原文哪里提到合成证据？", history: [], mode: "logs_only" };
 
 test("query emits sources/delta/done with source hashes and no persisted history", async t => {

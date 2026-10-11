@@ -36,9 +36,23 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
       try {
         signal.throwIfAborted();
         let query = input.question;
+        const original = planRagRetrieval(input.question);
+        if (original.invalidDate) {
+          diagnostics.timings.totalMs = Math.round(performance.now() - started);
+          send("sources", { citations: [] });
+          send("done", { answer: "问题中的日期似乎有误，请检查月份和天数后再提问。", citations: [], diagnostics });
+          close(); return;
+        }
         const referenceNumber = input.question.match(/(?:刚才|上(?:一|个)(?:次|回答)?|第)\s*(?:的)?\s*(?:第)?([一二三四五六七八九十]|\d+)\s*(?:条|个)?来源/);
         const referenceIndex = referenceNumber ? (/^\d+$/.test(referenceNumber[1]) ? Number(referenceNumber[1]) : "一二三四五六七八九十".indexOf(referenceNumber[1]) + 1) - 1 : -1;
         const referenced = [...input.history].reverse().find(message => message.role === "assistant")?.sourceRefs?.[referenceIndex];
+        if (referenceNumber && !referenced) {
+          // A missing source pointer is not permission to search for a different source.
+          diagnostics.timings.totalMs = Math.round(performance.now() - started);
+          send("sources", { citations: [] });
+          send("done", { answer: "无法确定你指的是哪条来源。请打开对应的日志，或补充日期和小节标题后再提问。", citations: [], diagnostics });
+          close(); return;
+        }
         if (input.history.length && !referenced) {
           send("status", { stage, message: "正在理解问题" });
           try { query = await contextualizeRagQuestion(input.question, input.history, signal, config.lightChat); diagnostics.contextualized = query !== input.question; }
@@ -51,7 +65,6 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
           ? await planRagRetrievalWithFallback(query, signal, new Date(), config.lightChat)
           : { plan: planRagRetrieval(query), planner: "rules" as const };
         // Rewriting may resolve pronouns but cannot erase original explicit constraints.
-        const original = planRagRetrieval(input.question);
         if (original.dateFrom || original.matchMode || original.eventDates) planned.plan = original;
         if (referenced) planned.plan = { strategy: "timeline_summary", dateFrom: referenced.date, dateTo: referenced.date };
         diagnostics.timings.planningMs = elapsed(); diagnostics.retrievalPlanner = planned.planner; diagnostics.retrievalStrategy = planned.plan.strategy;

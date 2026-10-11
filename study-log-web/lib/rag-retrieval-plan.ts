@@ -2,6 +2,7 @@ import { isValidLogDate, todayInShanghai } from "./study-date.ts";
 import type { RagRetrievalStrategy } from "./rag-types.ts";
 
 export interface RagRetrievalPlan {
+  invalidDate?: boolean;
   ranges?: Array<{ dateFrom: string; dateTo: string }>;
   eventDates?: boolean;
   dateFrom?: string;
@@ -163,13 +164,16 @@ export function planRagRetrieval(query: string, now = new Date()): RagRetrievalP
   // Only discard an explicit rejected operation followed by a replacement request.
   // Negation inside a topic (e.g. “为什么不能重试”) is still searchable content.
   const activeText = query.replace(/^(?:不用|不要|无需)比较[^，,；;。]+[，,；;。]\s*(?=只(?:总结|回顾|查找|搜索))/, "");
-  const active = activeText.normalize("NFKC");
+  const literalQuery = extractLiteralLookup(activeText);
+  // Quoted lookup text is content, not an independent calendar constraint.
+  const active = (literalQuery ? activeText.replace(/`[^`\n]+`|“[^”\n]+”|‘[^’\n]+’|"[^"\n]+"|'[^'\n]+'/g, "") : activeText).normalize("NFKC");
   const withoutEvents = active.replace(/(?:20\d{2}[-/]\d{1,2}(?:[-/]\d{1,2})?|(?:20\d{2}年)?(?:[一二三四五六七八九十]+|\d{1,2})月(?:(?:[一二三四五六七八九十]+|\d{1,2})日)?)(?=\s*(?:正式|首次)?(?:发布|推出|发生|上线|举办|版本))/g, "");
   // Resolve calendar months in code, including an omitted year in “九月和十月”.
-  let year = Number(withoutEvents.match(/(20\d{2})年/)?.[1] || chinaToday(now).getUTCFullYear());
+  const replacedYears = [...new Set([...query.slice(0, query.length - activeText.length).matchAll(/(20\d{2})年/g)].map(match => match[1]))];
+  let year = Number(withoutEvents.match(/(20\d{2})年/)?.[1] || (replacedYears.length === 1 ? replacedYears[0] : undefined) || chinaToday(now).getUTCFullYear());
   // Enumerations inherit the named month: “10月1日、2日和3日”.
   // Require 日 on abbreviated items so ordinary numbers are not treated as dates.
-  const expandedDays = withoutEvents.replace(/((20\d{2})年(\d{1,2})月\d{1,2}日)((?:\s*(?:、|和|与|及)\s*\d{1,2}日)+)/g,
+  const expandedDays = withoutEvents.replace(/((20\d{2})年(\d{1,2})月\d{1,2}日)((?:\s*(?:、|和|与|及|至|到|~|—|-)\s*\d{1,2}日)+)/g,
     (_full, first, namedYear, month, rest: string) => first + rest.replace(/\d{1,2}日/g, day => `${namedYear}年${month}月${day}`));
   const value = expandedDays.replace(/(?:(20\d{2})年)?([一二三四五六七八九十]+|\d{1,2})月(?!\d|[一二三四五六七八九十]+日)/g, (full, namedYear, monthText) => {
     const month = parseDayCount(monthText);
@@ -177,9 +181,9 @@ export function planRagRetrieval(query: string, now = new Date()): RagRetrievalP
     if (namedYear) year = Number(namedYear);
     return `${year}年${month}月`;
   });
-  const literalQuery = extractLiteralLookup(activeText);
   const today = chinaToday(now);
   let range: Pick<RagRetrievalPlan, "dateFrom" | "dateTo"> = {};
+  let invalidDate = false;
 
   const explicitRange = explicitDateRange(value);
   const explicitDay = value.match(/(20\d{2})[-年/](\d{1,2})[-月/](\d{1,2})日?/);
@@ -188,12 +192,15 @@ export function planRagRetrieval(query: string, now = new Date()): RagRetrievalP
 
   if (explicitRange) {
     range = explicitRange;
+    invalidDate = !range.dateFrom;
   } else if (explicitDay) {
     const date = explicitDate(Number(explicitDay[1]), Number(explicitDay[2]), Number(explicitDay[3]));
     if (date) range = { dateFrom: date, dateTo: date };
+    else invalidDate = true;
   } else if (explicitMonth) {
     const month = Number(explicitMonth[2]);
     if (month >= 1 && month <= 12) range = monthRange(Number(explicitMonth[1]), month);
+    else invalidDate = true;
   } else if (recentDays || value.includes("最近")) {
     const days = Math.min(Math.max(parseDayCount(recentDays?.[1] || "") || 7, 1), 366);
     range = { dateFrom: toIsoDate(shiftDays(today, -(days - 1))), dateTo: toIsoDate(today) };
@@ -217,25 +224,34 @@ export function planRagRetrieval(query: string, now = new Date()): RagRetrievalP
     Boolean(range.dateFrom || range.dateTo) && /(?:学了什么|学了哪些|学习内容|主要学习|总结|回顾|概览|大致学|分别.{0,8}(?:什么|哪些))/.test(value);
   const strategy = literalQuery ? "relevance" : comparison ? "comparison" : timelineSummary ? "timeline_summary" : "relevance";
   const plan = withStrategyLimits(strategy, range);
+  if (invalidDate) plan.invalidDate = true;
   if (literalQuery) Object.assign(plan, { matchMode: "literal", literalQuery });
   if (withoutEvents !== active) plan.eventDates = true;
   // Separate explicit scopes must not silently include days between them.
   const days = [...value.matchAll(/(20\d{2})[-年/](\d{1,2})[-月/](\d{1,2})日?/g)];
   const months = [...value.matchAll(/(20\d{2})[-年/](\d{1,2})月?(?![-/\d])/g)];
-  const connectsRange = (matches: RegExpMatchArray[]) => matches.slice(1).some((match, index) => {
-    const previous = matches[index];
-    return /^\s*(?:至|到|~|—|-)\s*$/.test(value.slice(previous.index! + previous[0].length, match.index));
-  });
-  if (days.length > 1 && !connectsRange(days)) {
+  const groupedRanges = (matches: RegExpMatchArray[], ranges: Array<{ dateFrom: string; dateTo: string }>) => {
+    const groups: typeof ranges = [];
+    ranges.forEach((range, index) => {
+      const previous = matches[index - 1];
+      const connector = previous ? value.slice(previous.index! + previous[0].length, matches[index].index) : "";
+      if (previous && /^\s*(?:至|到|~|—|-)\s*$/.test(connector)) {
+        const group = groups[groups.length - 1];
+        group.dateFrom = [group.dateFrom, range.dateFrom].sort()[0];
+        group.dateTo = [group.dateTo, range.dateTo].sort().at(-1)!;
+      } else groups.push({ ...range });
+    });
+    return groups.filter((range, index) => groups.findIndex(other => other.dateFrom === range.dateFrom && other.dateTo === range.dateTo) === index);
+  };
+  if (days.length > 1) {
     const dates = days.map(day => explicitDate(Number(day[1]), Number(day[2]), Number(day[3])));
-    if (dates.every(Boolean)) plan.ranges = [...new Set(dates as string[])].sort().map(date => ({ dateFrom: date, dateTo: date }));
+    if (dates.every(Boolean)) plan.ranges = groupedRanges(days, (dates as string[]).map(date => ({ dateFrom: date, dateTo: date }))).sort((a, b) => a.dateFrom.localeCompare(b.dateFrom));
+    else plan.invalidDate = true;
   } else if (!days.length && months.length > 1) {
     const ranges = months.map(month => Number(month[2]) >= 1 && Number(month[2]) <= 12 ? monthRange(Number(month[1]), Number(month[2])) : null);
     if (ranges.every(Boolean)) {
       const valid = ranges as Array<{ dateFrom: string; dateTo: string }>;
-      plan.ranges = connectsRange(months)
-        ? [{ dateFrom: valid.map(item => item.dateFrom).sort()[0], dateTo: valid.map(item => item.dateTo).sort().at(-1)! }]
-        : valid;
+      plan.ranges = groupedRanges(months, valid);
     }
   }
   if (plan.ranges?.length) {

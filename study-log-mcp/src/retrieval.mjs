@@ -1,5 +1,6 @@
 import { RRF_K, MIN_RELATIVE_FUSION_SCORE, MIN_CONTEXT_CHARS, DEFAULT_CONTEXT_CHARS, MAX_CONTEXT_CHARS, hash, makeSnippet, tokenizeOccurrences, countTerms, buildLexicalCorpus, lexicalScore, normalizeDate, filterBlocksByDateRange, normalizeStrategy, sectionKey, mergeSectionMatches, rankLiteralSections, orderMatchesForStrategy, normalizedContent, isNearDuplicateContent, buildSectionChunks } from "./retrieval-core.mjs";
 import { SourceError } from "./paths.mjs";
+import { parseSections } from "./markdown-source.mjs";
 import { cosineSimilarity } from "./retrieval-core.mjs";
 import { EmbeddingClient, RerankClient, ProviderError, checkCancelled } from "./providers.mjs";
 import { VectorIndex, IndexError } from "./vector-index.mjs";
@@ -175,6 +176,14 @@ export class KeywordRetriever {
       totalChars += content.length;
       selectedContents.push({ normalized: normalizedContent(merged.content), terms: new Set(tokenizeOccurrences(merged.content)) });
       if (truncated) break;
+    }
+
+    for (const context of contexts) {
+      const day = days.get(JSON.stringify([context.fileName, context.date]));
+      const sections = parseSections(day);
+      context.dayFullyProvided = sections.length > 0 && sections.every(section => contexts.some(item =>
+        item.fileName === context.fileName && item.date === context.date && !item.truncated &&
+        item.headingIndex === section.headingIndex && item.heading === section.heading && item.content === section.body));
     }
 
     return {

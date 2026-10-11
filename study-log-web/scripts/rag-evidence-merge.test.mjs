@@ -15,6 +15,22 @@ const readers = blocks => ({
 const run = () => new EvidenceRun(new AbortController().signal);
 const range = date => ({ strategy: 'timeline_summary', dateFrom: date, dateTo: date });
 
+test('complete supplied days disable reads while missing, legacy and compressed evidence remains readable', async () => {
+  const blocks = parseDayBlocks('## 2026-09-01\n\n### Alpha\n\nAlpha需要核对地址。', '2026-09_学习日志.md');
+  const evidence = run();
+  await collectRagEvidence('Alpha', {strategy:'relevance'}, evidence, config, readers(blocks));
+  assert.deepEqual(evidence.availableReadDates(), []);
+  evidence.contexts[0].content = '压缩后的概述';
+  assert.deepEqual(evidence.availableReadDates(), ['2026-09-01']);
+  const legacy = run(); legacy.add(evidence.contexts.map(item => ({...item, dayFullyProvided:undefined})));
+  assert.deepEqual(legacy.availableReadDates(), ['2026-09-01']);
+  const missing = run();
+  await collectRagEvidence('Alpha', {strategy:'relevance'}, missing, config, readers(parseDayBlocks(blocks[0].content+'\n\n### Beta\n\n别的小节。', '2026-09_学习日志.md')));
+  assert.deepEqual(missing.availableReadDates(), ['2026-09-01']);
+  missing.take('read_log_range', {dateFrom:'2026-09-01',dateTo:'2026-09-01'});
+  assert.deepEqual(missing.availableReadDates(), []);
+});
+
 test('actual MCP short cases do not duplicate section and complete day sources in either read order', async () => {
   for (const entry of linkedCases) {
     const blocks = parseDayBlocks(`## ${entry.date}\n\n### 实践记录\n\n${entry.content}\n\n## ${entry.ruleDate}\n\n### ${entry.rule}\n\n${entry.guidance}`, `${entry.date.slice(0,7)}_学习日志.md`);

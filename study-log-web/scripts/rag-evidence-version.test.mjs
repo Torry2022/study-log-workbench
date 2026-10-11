@@ -47,7 +47,19 @@ test('optional revision metadata is validated while old MCP responses remain acc
     assert.throws(() => validateRetrievedContexts(changed), { code: 'MCP_INVALID_RESPONSE' });
   }
   delete raw.contexts[0].dayContentHash;
+  delete raw.contexts[0].dayFullyProvided;
   assert.equal(validateRetrievedContexts(raw).contexts[0].dayContentHash, undefined);
+});
+
+test('day completeness metadata requires a boolean and a validated day version', async () => {
+  const raw = await new KeywordRetriever().retrieveContexts(blocks('Alpha先核对地址。'), 'Alpha');
+  assert.equal(validateRetrievedContexts(raw).contexts[0].dayFullyProvided, true);
+  for (const value of [null, 1, 'true']) {
+    const changed = structuredClone(raw); changed.contexts[0].dayFullyProvided = value;
+    assert.throws(() => validateRetrievedContexts(changed), { code: 'MCP_INVALID_RESPONSE' });
+  }
+  delete raw.contexts[0].dayContentHash;
+  assert.throws(() => validateRetrievedContexts(raw), { code: 'MCP_INVALID_RESPONSE' });
 });
 
 test('different merged fragments of an unchanged day do not produce a false source-change error', async () => {
@@ -66,7 +78,7 @@ test('different merged fragments of an unchanged day do not produce a false sour
 test('actual query stops after source modification during Agent read, without final answer or retry', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'rag-version-'));
   const data = path.join(root, 'data'); await fs.mkdir(data);
-  const log = path.join(data, file); await fs.writeFile(log, blocks('Alpha先核对地址。')[0].content);
+  const log = path.join(data, file); await fs.writeFile(log, blocks('Alpha先核对地址。\n\n### 其他\n\n另一个尚未命中的小节。')[0].content);
   const service = await startHttpServer({ logRoot: data, indexRoot: path.join(root, 'index'), port: 0, token: 'synthetic', retrieval: { embedding: { apiKey: '' }, reranker: { apiKey: '' }, rerankEnabled: false } });
   const old = Object.fromEntries(['RAG_AGENT_ENABLED','RAG_AGENT_TOOL_CALLING_VERIFIED','RAG_JEV_ENABLED'].map(key => [key, process.env[key]]));
   Object.assign(process.env, { RAG_AGENT_ENABLED: 'true', RAG_AGENT_TOOL_CALLING_VERIFIED: 'true', RAG_JEV_ENABLED: 'false' });

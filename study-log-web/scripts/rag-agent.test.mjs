@@ -34,14 +34,14 @@ test("SDK tool loop uses exact configured endpoint and real read-only MCP, stopp
   });
   const run = new EvidenceRun(new AbortController().signal);
   const usage = await supplementEvidence("Alpha为什么？", { strategy: "relevance", dateFrom: "2026-09-01", dateTo: "2026-09-01" }, run, mcp, model, value => statuses.push(value));
-  assert.equal(requests.length, 2); assert.equal(run.calls, 2); assert.equal(run.contexts.length, 1);
-  assert.equal(run.stopReason, "no_new_evidence"); assert.equal(run.contexts[0].heading, "Alpha");
+  assert.equal(requests.length, 2); assert.equal(run.calls, 1); assert.equal(run.contexts.length, 1);
+  assert.equal(run.stopReason, "tool_failure"); assert.equal(run.contexts[0].heading, "Alpha");
   assert.equal(usage.usage.inputTokens, 20); assert.ok(statuses.every(value => !value.includes("内部文本")));
   const nextState = JSON.parse(requests[1].messages.find(message => message.role === "user").content);
   assert.ok(nextState.previousReads.length > 0);
   assert.ok(Array.isArray(nextState.previousReads[0]));
   assert.equal(nextState.remainingDecisions, 1);
-  assert.deepEqual(nextState.availableReadDates, ['2026-09-01']);
+  assert.deepEqual(nextState.availableReadDates, []);
   assert.deepEqual(nextState.lastTool, { name: "search", addedSourceIds: ["S1"], stopped: false });
   assert.equal(nextState.evidence[0].truncated, false);
   assert.ok(nextState.evidence.some(item => item.content.includes("Alpha")));

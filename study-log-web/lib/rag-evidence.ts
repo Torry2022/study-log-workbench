@@ -40,6 +40,14 @@ export class EvidenceRun {
   readonly requests = new Set<string>();
   readonly signal: AbortSignal;
   constructor(signal: AbortSignal) { this.signal = signal; }
+  availableReadDates(): string[] {
+    return [...new Set(this.contexts.map(item => item.date))].filter(date => {
+      if ([...this.requests].some(request => { const [name, args] = JSON.parse(request); return name === "read_log_range" && args.dateFrom <= date && args.dateTo >= date; })) return false;
+      const items = this.contexts.filter(item => item.date === date);
+      // A server completeness claim only applies while every supplied body remains intact.
+      return !items.every(item => item.dayFullyProvided === true && !item.truncated && hash(item.content) === item.contentHash);
+    });
+  }
   take(name: string, args: unknown): boolean {
     this.signal.throwIfAborted();
     if (this.sourceChanged) return false;

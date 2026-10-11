@@ -29,8 +29,7 @@ export async function supplementEvidence(question: string, plan: RagRetrievalPla
   let answer: string | undefined;
   type FinishInput = { reason: "sufficient_evidence" | "no_more_leads"; answer?: string };
   let lastTool: { name: string; addedSourceIds: string[]; stopped: boolean } | undefined;
-  const availableReadDates = () => [...new Set(run.contexts.map(item => item.date))].filter(date =>
-    ![...run.requests].some(request => { const [name, args] = JSON.parse(request); return name === "read_log_range" && args.dateFrom <= date && args.dateTo >= date; }));
+  const availableReadDates = () => run.availableReadDates();
   const state = () => JSON.stringify({ question, constraints: plan, coverage: run.report(),
     remainingDecisions: 2 - steps, lastTool, availableReadDates: availableReadDates(),
     ...(answerContext ? { answerMode: answerContext.mode, history: answerContext.history.slice(-8) } : {}),

@@ -7,6 +7,19 @@ function block(date, body) {
   return parseDayBlocks(`## ${date}\n\n${body}`, `${date.slice(0, 7)}_学习日志.md`)[0];
 }
 
+test('day completeness requires every original section including preamble, with intact bodies', async () => {
+  const retriever = new KeywordRetriever();
+  const complete = await retriever.retrieveContexts([block('2026-09-01', 'Alpha前言。\n\n### Alpha\n\nAlpha正文。')], 'Alpha');
+  assert.equal(complete.contexts.length, 2);
+  assert.ok(complete.contexts.every(item => item.dayFullyProvided === true));
+  const missing = await retriever.retrieveContexts([block('2026-09-01', '独立前言。\n\n### Alpha\n\nAlpha正文。')], 'Alpha');
+  assert.ok(missing.contexts.every(item => item.dayFullyProvided === false));
+  const emptyHeading = await retriever.retrieveContexts([block('2026-09-01', '### Alpha\n\nAlpha正文。\n\n### 空标题')], 'Alpha');
+  assert.ok(emptyHeading.contexts.every(item => item.dayFullyProvided === false));
+  const long = await retriever.retrieveContexts([block('2026-09-01', '### Alpha\n\nAlpha '+ '长正文。'.repeat(1000))], 'Alpha', {maxChars:1000});
+  assert.ok(long.contexts.every(item => item.dayFullyProvided === false));
+});
+
 test("word tokenization retains technical identifiers without personal topic dictionaries", () => {
   assert.ok(tokenize("归一化 检索 BM25F retain_graph=True ABC-def").includes("retain_graph"));
   assert.ok(tokenize("归一化 检索 BM25F retain_graph=True ABC-def").includes("bm25f"));

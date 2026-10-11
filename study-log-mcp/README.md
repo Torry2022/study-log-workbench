@@ -40,6 +40,8 @@ HTTP 默认监听 `127.0.0.1:3020`，端点为 `/mcp`。所有 HTTP 入口（包
 
 `retrieve_contexts` 和 `read_log_range` 的每个片段还返回 `dayContentHash`：对应完整原始日块的 SHA-256，与片段自身 `contentHash` 分开。调用者可据此检查先搜索、再读原文期间是否发生修改；不同标题/块标识也应绑定同一日块版本。旧客户端可忽略该新增字段。当前 Web 在版本不一致时终止问答并请用户重新提问，不混合两版正文；与旧 MCP 对接时该字段仍可省略，只保留原有同块哈希及分页游标保护，不能宣称跨读取方式版本一致。
 
+`retrieve_contexts` 另返回可选 `dayFullyProvided`：只有当前返回的片段覆盖该日全部原文小节（包括前言），且正文与解析结果逐节一致时才为 true。它不表示全库检索完整或问题已得到回答。Web 在内容哈希仍一致、没有截断或压缩时据此避免重复读整天；旧 MCP 不提供该字段时仍可补读。
+
 明确字面条件没有命中时返回空结果，不再改用相关性结果冒充命中。`read_log_range` 接收 `dateFrom/dateTo`、可选 `cursor` 和 `maxChars`（1000—30000），每页最多 20 个片段。`coverage` 返回 `revision/totalDays/completedDates/nextCursor`；游标绑定日期范围内的原文版本，内容改变后旧游标报错。它与 top-K 相关性搜索不同，适用于整月或跨月总结；服务端调用者必须保留部分读取和失败状态。
 
 向量检索可选，必须同时填写 `EMBEDDING_API_KEY`、完整 `EMBEDDING_API_URL`、`EMBEDDING_MODEL`，并按模型填写 `EMBEDDING_DIMENSIONS`（默认 1024）。使用 OpenAI 兼容 embeddings JSON 协议，最多每批 10 个切片；语义 top 100 与关键词结果通过 RRF 合并。URL、模型不设供应商默认值，不读取聊天 key 或其他历史配置。

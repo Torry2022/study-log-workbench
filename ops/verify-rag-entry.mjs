@@ -26,8 +26,8 @@ const model = http.createServer(async (req, res) => {
     const state = JSON.parse(body.messages.find(message => message.role === 'user').content);
     assert.equal(state.remainingDecisions, 2);
     assert.equal(state.evidence[0].truncated, false);
-    assert.deepEqual(state.availableReadDates, ['2026-09-01']);
-    assert.ok(body.tools.some(item => item.function.name === 'read'));
+    assert.deepEqual(state.availableReadDates, []);
+    assert.ok(!body.tools.some(item => item.function.name === 'read'));
     tools.push(state);
   }
   const answer = 'Alpha条件成立才适用，不适用于所有场景。[S1]';

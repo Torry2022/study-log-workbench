@@ -32,3 +32,40 @@ test("source pointers reject path traversal, mismatched dates and bad numbering 
   assert.equal(history([{ ...ref, fileName: "../secret" }, ref]).sourceRefs, undefined);
   assert.equal(history([{ ...ref, date: "2026-10-01" }]).sourceRefs, undefined);
 });
+
+test('long evidence batches bound input and final material while retaining every source and its tail', async t => {
+  const requests = [];
+  let oversized = false;
+  const server = http.createServer(async (req, res) => {
+    const chunks = []; for await (const chunk of req) chunks.push(chunk); const raw = Buffer.concat(chunks).toString('utf8');
+    const body = JSON.parse(raw), evidence = JSON.parse(body.messages[1].content).evidence;
+    requests.push(evidence);
+    assert.ok(evidence.reduce((sum, item) => sum + item.content.length, 0) <= 30000);
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(evidence.map(item => ({ sourceId: item.sourceId, content: oversized ? '长'.repeat(900) : item.content.slice(-80) }))) } }] }));
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const config = { baseUrl: `http://127.0.0.1:${server.address().port}`, apiKey: 'synthetic', model: 'mock' };
+  for (const [count, length, invalid] of [[4, 28000, false], [160, 750, false], [160, 750, true]]) {
+    oversized = invalid;
+    const run = new EvidenceRun(new AbortController().signal);
+    run.add(Array.from({ length: count }, (_, i) => {
+      const tail = `末尾条件${i}：不满足则不能保存。`;
+      return { date: '2026-10-01', fileName: 'synthetic.md', chunkId: `chunk-${i}`, contentHash: `hash-${i}`, excerpt: '原文摘录', content: '原'.repeat(length - tail.length) + tail, truncated: false };
+    }));
+    const originalCount = run.contexts.length;
+    assert.equal(originalCount, count);
+    await compactEvidence(run, '保存的条件？', config);
+    assert.equal(run.contexts.length, originalCount);
+    assert.ok(run.contexts.reduce((sum, item) => sum + item.content.length, 0) <= 30000);
+    assert.ok(run.contexts.every((item, i) => item.contentHash === `hash-${i}` && item.excerpt === '原文摘录'));
+    if (!invalid) assert.ok(run.contexts.every((item, i) => item.content.includes(`末尾条件${i}`)));
+    else assert.ok(run.contexts.every(item => item.truncated));
+    assert.equal(run.limited, invalid);
+    // Compaction cannot reset the original read budget.
+    assert.equal(run.add([{ date: '2026-10-02', fileName: 'synthetic.md', chunkId: 'extra', contentHash: 'extra', content: 'x'.repeat(20000) }]), 0);
+    assert.equal(run.stopReason, 'evidence_limit');
+  }
+  assert.ok(requests.length > 4);
+});

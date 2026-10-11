@@ -74,11 +74,13 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
         await collectRagEvidence(query, planned.plan, run, config.mcp);
         if (referenced && run.contexts.some(item => item.fileName !== referenced.fileName)) { run.contexts = []; run.limited = true; }
         if (run.coverage.length && run.coverage.every(scope => scope.status === "failed")) throw new McpRetrievalError("MCP_RANGE_FAILED", "无法读取所选日期的日志，请检查检索服务版本或重试");
+        const boundedJevInput = isBoundedJevInput(input.question, run.contexts);
+        await compactEvidence(run, input.question, config.lightChat);
         if (agentEnabled() && !planned.plan.matchMode && (planned.plan.strategy === "comparison" || !run.contexts.length || /为什么|如何|关联|矛盾|变化/.test(input.question))) {
           diagnostics.agent = { enabled: true };
           const jev = jevConfiguration();
           if (process.env.RAG_JEV_ENABLED === "true" && jev) {
-            if (!isBoundedJevInput(input.question, run.contexts)) diagnostics.agent.judgeSkipped = "outside_short_evidence_scope";
+            if (!boundedJevInput) diagnostics.agent.judgeSkipped = "outside_short_evidence_scope";
             else {
               try {
                 const judged = await judgeEvidence(input.question, run.contexts, signal, jev.apiKey, fetch, jev.provider);
@@ -88,7 +90,7 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
             }
           }
           if (diagnostics.agent.judgment?.support !== "supported" || diagnostics.agent.judgment?.conflict !== "absent") {
-            diagnostics.agent.usage = await supplementEvidence(input.question, planned.plan, run, config.mcp, createAgentModel(config.lightChat), message => send("status", { stage: "retrieving", message }));
+            diagnostics.agent.usage = await supplementEvidence(input.question, planned.plan, run, config.mcp, createAgentModel(config.lightChat), message => send("status", { stage: "retrieving", message }), config.lightChat);
           }
           diagnostics.agent.stopReason = run.stopReason;
         }

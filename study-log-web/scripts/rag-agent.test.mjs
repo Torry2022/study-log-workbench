@@ -16,10 +16,10 @@ function stream(tool, args, id = "one") {
   return new Response(chunk({ role: "assistant", content: "内部文本，不可送给用户。" }) + (tool ? chunk({ tool_calls: [{ index: 0, id, type: "function", function: { name: tool, arguments: JSON.stringify(args) } }] }) : "") +
     `data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: tool ? "tool_calls" : "stop" }], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } })}\n\ndata: [DONE]\n\n`, { headers: { "Content-Type": "text/event-stream" } });
 }
-async function fixture(t) {
+async function fixture(t, september = "## 2026-09-01\n\n### Alpha\nAlpha条件成立才适用，不适用于所有场景。") {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "rag-agent-fixture-"));
   const logRoot = path.join(root, "data"); await fs.mkdir(logRoot);
-  await fs.writeFile(path.join(logRoot, "2026-09_学习日志.md"), "## 2026-09-01\n\n### Alpha\nAlpha条件成立才适用，不适用于所有场景。");
+  await fs.writeFile(path.join(logRoot, "2026-09_学习日志.md"), september);
   await fs.writeFile(path.join(logRoot, "2026-10_学习日志.md"), Array.from({ length: 31 }, (_, index) => `## 2026-10-${String(index + 1).padStart(2, "0")}\n\n### 合成\n第${index + 1}天的材料。\n`).join("\n"));
   const service = await startHttpServer({ logRoot, indexRoot: path.join(root, "index"), port: 0, token: "synthetic", retrieval: { embedding: { apiKey: "" }, reranker: { apiKey: "" }, rerankEnabled: false } });
   t.after(async () => { await service.close(); assert.equal(path.dirname(root), path.resolve(os.tmpdir())); assert.ok(path.basename(root).startsWith("rag-agent-fixture-")); await fs.rm(root, { recursive: true, force: true }); });
@@ -36,7 +36,10 @@ test("SDK tool loop uses exact configured endpoint and real read-only MCP, stopp
   const usage = await supplementEvidence("Alpha为什么？", { strategy: "relevance", dateFrom: "2026-09-01", dateTo: "2026-09-01" }, run, mcp, model, value => statuses.push(value));
   assert.equal(requests.length, 2); assert.equal(run.calls, 2); assert.equal(run.contexts.length, 2);
   assert.equal(usage.inputTokens, 20); assert.ok(statuses.every(value => !value.includes("内部文本")));
-  assert.ok(requests[1].messages.some(message => message.role === "tool"));
+  const nextState = JSON.parse(requests[1].messages.find(message => message.role === "user").content);
+  assert.ok(nextState.previousReads.length > 0);
+  assert.ok(nextState.evidence.some(item => item.content.includes("Alpha")));
+  assert.ok(!requests[1].messages.some(message => message.role === "tool"));
   assert.ok(run.contexts.every(item => item.date === "2026-09-01"));
 });
 test("invalid tool args and nonexistent tools cannot execute reads", async t => {
@@ -181,4 +184,42 @@ test('large comparison bypasses Jev in the real query pipeline while continuing 
   server.closeAllConnections();await new Promise(r=>server.close(r));globalThis.fetch=originalFetch;
   for(const [key,value]of Object.entries(old)){if(value===undefined)delete process.env[key];else process.env[key]=value;}
  }
+});
+
+test('long-range query summarizes before Agent and preserves tail conditions into the final model', async t => {
+  const mcp = await fixture(t, '## 2026-09-01\n\n### Alpha\n' + '背景材料。'.repeat(7500) + '\n末尾约束：没有确认不能保存。');
+  const oldAgent = process.env.RAG_AGENT_ENABLED, oldVerified = process.env.RAG_AGENT_TOOL_CALLING_VERIFIED;
+  process.env.RAG_AGENT_ENABLED = 'true'; process.env.RAG_AGENT_TOOL_CALLING_VERIFIED = 'true';
+  t.after(() => { for (const [name, value] of [['RAG_AGENT_ENABLED', oldAgent], ['RAG_AGENT_TOOL_CALLING_VERIFIED', oldVerified]]) { if (value === undefined) delete process.env[name]; else process.env[name] = value; } });
+  const stages = [];
+  const server = http.createServer(async (req, res) => {
+    const chunks = []; for await (const chunk of req) chunks.push(chunk); const raw = Buffer.concat(chunks).toString('utf8');
+    const body = JSON.parse(raw);
+    if (!body.stream) {
+      stages.push('summary');
+      const { evidence } = JSON.parse(body.messages[1].content);
+      assert.ok(evidence.reduce((sum, item) => sum + item.content.length, 0) <= 30000, JSON.stringify({system:body.messages[0].content,stream:body.stream,tools:Boolean(body.tools),lengths:evidence.map(item=>item.content.length)}));
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(evidence.map(item => ({ sourceId: item.sourceId, content: item.content.slice(-60) }))) } }] }));
+    } else if (body.tools) {
+      stages.push('agent');
+      const current = JSON.parse(body.messages.find(item => item.role === 'user').content);
+      assert.ok(current.evidence.some(item => item.content.includes('没有确认不能保存')));
+      assert.ok(current.evidence.reduce((sum, item) => sum + item.content.length, 0) <= 30000);
+      res.setHeader('content-type', 'text/event-stream');
+      res.end(await stream('finish', { reason: 'sufficient_evidence' }).text());
+    } else {
+      stages.push('answer');
+      assert.match(body.messages.at(-1).content, /没有确认不能保存/);
+      res.setHeader('content-type', 'text/event-stream');
+      res.end('data: '+JSON.stringify({ choices: [{ delta: { content: '需要确认[S2]。' } }] })+'\n\ndata: [DONE]\n\n');
+    }
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const chat = { baseUrl: `http://127.0.0.1:${server.address().port}`, apiKey: 'synthetic', model: 'mock' };
+  const output = await new Response(createRagQueryStream({ question: '比较2026年九月和十月', mode: 'logs_only', history: [] }, { chat, lightChat: chat, mcp }, new AbortController().signal)).text();
+  assert.match(output, /event: done/);
+  assert.equal(stages[0], 'summary');
+  assert.deepEqual(stages.slice(-2), ['agent', 'answer']);
 });

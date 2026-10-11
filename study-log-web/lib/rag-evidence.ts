@@ -9,6 +9,7 @@ export class EvidenceRun {
   coverage: ScopeCoverage[] = [];
   calls = 0;
   limited = false;
+  private retainedChars = 0;
   stopReason?: "tool_budget" | "repeated_query" | "no_new_evidence" | "step_limit" | "tool_failure" | "evidence_limit" | "sufficient_evidence" | "no_more_leads";
   readonly requests = new Set<string>();
   readonly signal: AbortSignal;
@@ -26,7 +27,8 @@ export class EvidenceRun {
       // Never silently combine changed day snapshots within a run.
       if (sameDay.some(old => old.chunkId === item.chunkId && old.contentHash !== item.contentHash)) { this.limited = true; continue; }
       if (this.contexts.some(old => old.fileName === item.fileName && old.chunkId === item.chunkId && old.contentHash === item.contentHash)) continue;
-      if (this.contexts.length >= 160 || this.contexts.reduce((sum, old) => sum + old.content.length, 0) + item.content.length > 120000) { this.limited = true; this.stopReason = "evidence_limit"; continue; }
+      if (this.contexts.length >= 160 || this.retainedChars + item.content.length > 120000) { this.limited = true; this.stopReason = "evidence_limit"; continue; }
+      this.retainedChars += item.content.length;
       this.contexts.push({ ...item, sourceId: `S${this.contexts.length + 1}` }); added++;
     }
     return added;

@@ -65,7 +65,8 @@ export async function collectRagEvidence(query: string, plan: RagRetrievalPlan, 
           cursor = page.coverage.nextCursor || undefined;
           if (!cursor) coverage.status = page.coverage.totalDays === 0 ? "empty" : run.limited ? "partial" : "complete";
         } catch (error) { run.signal.throwIfAborted(); coverage.status = "failed"; break; }
-      } while (cursor && !run.limited);
+      // A prior search truncation is a reason to read on, not to stop pagination.
+      } while (cursor && run.stopReason !== "evidence_limit");
     } else {
       const scoped = { ...plan, ...range, ranges: undefined };
       if (!run.take("retrieve_contexts", [query, scoped])) { coverage.status = "partial"; continue; }

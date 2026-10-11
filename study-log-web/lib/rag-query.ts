@@ -76,7 +76,10 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
         if (run.coverage.length && run.coverage.every(scope => scope.status === "failed")) throw new McpRetrievalError("MCP_RANGE_FAILED", "无法读取所选日期的日志，请检查检索服务版本或重试");
         const boundedJevInput = isBoundedJevInput(input.question, run.contexts);
         await compactEvidence(run, input.question, config.lightChat);
-        if (agentEnabled() && !planned.plan.matchMode && (planned.plan.strategy === "comparison" || !run.contexts.length || /为什么|如何|关联|矛盾|变化/.test(input.question))) {
+        // Successful enumeration covers the requested scope, including confirmed empty periods.
+        // Check after compaction: a failed summary can still leave material missing.
+        const scopeFullyRead = !run.limited && run.coverage.length > 0 && run.coverage.every(scope => scope.status === "complete" || scope.status === "empty");
+        if (agentEnabled() && !scopeFullyRead && !planned.plan.matchMode && (planned.plan.strategy === "comparison" || !run.contexts.length || /为什么|如何|关联|矛盾|变化/.test(input.question))) {
           diagnostics.agent = { enabled: true };
           const jev = jevConfiguration();
           if (process.env.RAG_JEV_ENABLED === "true" && jev) {

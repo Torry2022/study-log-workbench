@@ -157,16 +157,16 @@ test('explicit finish stops the SDK loop without reading or claiming program-pro
   }
 });
 
-test('large comparison bypasses Jev in the real query pipeline while continuing Agent and final answer', async t => {
+test('complete comparisons bypass Agent and Jev while search-only questions retain the judge fallback', async t => {
  const mcp=await fixture(t),originalFetch=globalThis.fetch,old={};
  for(const key of ['RAG_AGENT_ENABLED','RAG_AGENT_TOOL_CALLING_VERIFIED','RAG_JEV_ENABLED','RAG_JEV_PROVIDER','TYPESAFE_API_KEY'])old[key]=process.env[key];
  Object.assign(process.env,{RAG_AGENT_ENABLED:'true',RAG_AGENT_TOOL_CALLING_VERIFIED:'true',RAG_JEV_ENABLED:'true',RAG_JEV_PROVIDER:'typesafe',TYPESAFE_API_KEY:'synthetic'});
- let judgeCalls=0;
+ let judgeCalls=0, agentCalls=0;
  globalThis.fetch=(url,init)=>{if(String(url).startsWith('https://api.typesafe.ai')){judgeCalls++;return Promise.resolve(Response.json({error:'synthetic unavailable'},{status:503}));}return originalFetch(url,init);};
  const server=http.createServer(async(req,res)=>{
   let raw='';for await(const chunk of req)raw+=chunk;
   const body=JSON.parse(raw);res.setHeader('content-type','text/event-stream');
-  if(body.tools)res.end(await stream('finish',{reason:'sufficient_evidence'}).text());
+  if(body.tools){agentCalls++;res.end(await stream('finish',{reason:'sufficient_evidence'}).text());}
   else res.end('data: '+JSON.stringify({choices:[{delta:{content:'合成比较[S1]'}}]})+'\n\ndata: [DONE]\n\n');
  });
  await new Promise(r=>server.listen(0,'127.0.0.1',r));
@@ -175,28 +175,35 @@ test('large comparison bypasses Jev in the real query pipeline while continuing 
   const raw=await new Response(createRagQueryStream({question:'比较2026年9月和10月',mode:'logs_only',history:[]},{chat,lightChat:chat,mcp},new AbortController().signal)).text();
   const blocks=raw.trim().split('\n\n');const last=JSON.parse(blocks.at(-1).split('\n')[1].slice(6));
   assert.match(blocks.at(-1),/^event: done/);assert.equal(judgeCalls,0);
-  assert.equal(last.diagnostics.agent.judgeSkipped,'outside_short_evidence_scope');assert.equal(last.diagnostics.agent.judgeUnavailable,undefined);assert.equal(last.diagnostics.agent.stopReason,'sufficient_evidence');
+  assert.equal(last.diagnostics.agent,undefined);assert.equal(agentCalls,0);
+  assert.ok(last.diagnostics.coverage.every(scope=>scope.status==='complete'));
+  const empty=await new Response(createRagQueryStream({question:'比较2026年8月和9月',mode:'logs_only',history:[]},{chat,lightChat:chat,mcp},new AbortController().signal)).text();
+  const emptyDone=JSON.parse(empty.trim().split('\n\n').at(-1).split('\n')[1].slice(6));
+  assert.deepEqual(emptyDone.diagnostics.coverage.map(scope=>scope.status),['empty','complete']);
+  assert.equal(emptyDone.diagnostics.agent,undefined);assert.equal(agentCalls,0);assert.equal(judgeCalls,0);
   const short=await new Response(createRagQueryStream({question:'Alpha为什么？',mode:'logs_only',history:[]},{chat,lightChat:chat,mcp},new AbortController().signal)).text();
   const shortBlocks=short.trim().split('\n\n'),shortDone=JSON.parse(shortBlocks.at(-1).split('\n')[1].slice(6));
   assert.match(shortBlocks.at(-1),/^event: done/);assert.equal(judgeCalls,1);assert.equal(shortDone.diagnostics.agent.judgeUnavailable,true);
   assert.equal(shortDone.diagnostics.agent.judgeSkipped,undefined);assert.equal(shortDone.answer,'合成比较[S1]');
+  assert.equal(agentCalls,1);
  }finally {
   server.closeAllConnections();await new Promise(r=>server.close(r));globalThis.fetch=originalFetch;
   for(const [key,value]of Object.entries(old)){if(value===undefined)delete process.env[key];else process.env[key]=value;}
  }
 });
 
-test('long-range query summarizes before Agent and preserves tail conditions into the final model', async t => {
+test('complete long-range query summarizes then answers, while failed compaction retains Agent', async t => {
   const mcp = await fixture(t, '## 2026-09-01\n\n### Alpha\n' + '背景材料。'.repeat(7500) + '\n末尾约束：没有确认不能保存。');
   const oldAgent = process.env.RAG_AGENT_ENABLED, oldVerified = process.env.RAG_AGENT_TOOL_CALLING_VERIFIED;
   process.env.RAG_AGENT_ENABLED = 'true'; process.env.RAG_AGENT_TOOL_CALLING_VERIFIED = 'true';
   t.after(() => { for (const [name, value] of [['RAG_AGENT_ENABLED', oldAgent], ['RAG_AGENT_TOOL_CALLING_VERIFIED', oldVerified]]) { if (value === undefined) delete process.env[name]; else process.env[name] = value; } });
-  const stages = [];
+  const stages = []; let failSummary = false;
   const server = http.createServer(async (req, res) => {
     const chunks = []; for await (const chunk of req) chunks.push(chunk); const raw = Buffer.concat(chunks).toString('utf8');
     const body = JSON.parse(raw);
     if (!body.stream) {
       stages.push('summary');
+      if (failSummary) { res.writeHead(503); res.end('synthetic unavailable'); return; }
       const { evidence } = JSON.parse(body.messages[1].content);
       assert.ok(evidence.reduce((sum, item) => sum + item.content.length, 0) <= 30000, JSON.stringify({system:body.messages[0].content,stream:body.stream,tools:Boolean(body.tools),lengths:evidence.map(item=>item.content.length)}));
       res.setHeader('content-type', 'application/json');
@@ -204,13 +211,12 @@ test('long-range query summarizes before Agent and preserves tail conditions int
     } else if (body.tools) {
       stages.push('agent');
       const current = JSON.parse(body.messages.find(item => item.role === 'user').content);
-      assert.ok(current.evidence.some(item => item.content.includes('没有确认不能保存')));
       assert.ok(current.evidence.reduce((sum, item) => sum + item.content.length, 0) <= 30000);
       res.setHeader('content-type', 'text/event-stream');
       res.end(await stream('finish', { reason: 'sufficient_evidence' }).text());
     } else {
       stages.push('answer');
-      assert.match(body.messages.at(-1).content, /没有确认不能保存/);
+      if (!failSummary) assert.match(body.messages.at(-1).content, /没有确认不能保存/);
       res.setHeader('content-type', 'text/event-stream');
       res.end('data: '+JSON.stringify({ choices: [{ delta: { content: '需要确认[S2]。' } }] })+'\n\ndata: [DONE]\n\n');
     }
@@ -221,5 +227,10 @@ test('long-range query summarizes before Agent and preserves tail conditions int
   const output = await new Response(createRagQueryStream({ question: '比较2026年九月和十月', mode: 'logs_only', history: [] }, { chat, lightChat: chat, mcp }, new AbortController().signal)).text();
   assert.match(output, /event: done/);
   assert.equal(stages[0], 'summary');
-  assert.deepEqual(stages.slice(-2), ['agent', 'answer']);
+  assert.ok(!stages.includes('agent')); assert.equal(stages.at(-1), 'answer');
+  const done=JSON.parse(output.trim().split('\n\n').at(-1).split('\n')[1].slice(6));
+  assert.equal(done.diagnostics.agent,undefined);
+  failSummary=true; stages.length=0;
+  const failed=await new Response(createRagQueryStream({ question: '比较2026年九月和十月', mode: 'logs_only', history: [] }, { chat, lightChat: chat, mcp }, new AbortController().signal)).text();
+  assert.match(failed,/event: done/); assert.deepEqual(stages.slice(-2),['agent','answer']);
 });

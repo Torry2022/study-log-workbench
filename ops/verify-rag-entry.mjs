@@ -15,12 +15,13 @@ const source = '## 2026-09-01\n\n### Alpha\nAlpha条件成立才适用，不适�
 const file = path.join(data, '2026-09_学习日志.md');
 await fs.writeFile(file, source, { flag: 'wx' });
 await fs.writeFile(path.join(data, '.instance.json'), JSON.stringify({ schemaVersion: 1, id: 'b0250000-0000-4000-8000-000000000001' }), { flag: 'wx' });
-const tools = [], checks = [];
+const tools = [], checks = [], calls = [];
 const model = http.createServer(async (req, res) => {
   assert.equal(req.url, '/full/custom/endpoint');
   assert.equal(req.headers.authorization, 'Bearer synthetic');
   let raw = ''; for await (const chunk of req) raw += chunk;
   const body = JSON.parse(raw);
+  if (body.stream) calls.push({ tools: Boolean(body.tools) });
   if (body.tools) {
     const state = JSON.parse(body.messages.find(message => message.role === 'user').content);
     assert.equal(state.remainingDecisions, 2);
@@ -33,7 +34,7 @@ const model = http.createServer(async (req, res) => {
   if (!body.stream) { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ choices: [{ message: { content: 'Alpha适用条件' } }] })); return; }
   res.setHeader('content-type', 'text/event-stream');
   const frame = value => `data: ${JSON.stringify(value)}\n\n`;
-  const delta = body.tools ? { tool_calls: [{ index: 0, id: 'synthetic-finish', type: 'function', function: { name: 'finish', arguments: '{"reason":"sufficient_evidence"}' } }] } : { content: answer };
+  const delta = body.tools ? { tool_calls: [{ index: 0, id: 'synthetic-finish', type: 'function', function: { name: 'finish', arguments: JSON.stringify({ reason: 'sufficient_evidence', answer }) } }] } : { content: answer };
   res.end(frame({ id: 'synthetic', object: 'chat.completion.chunk', model: 'synthetic', choices: [{ index: 0, delta, finish_reason: null }] }) + frame({ choices: [{ index: 0, delta: {}, finish_reason: body.tools ? 'tool_calls' : 'stop' }], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }) + 'data: [DONE]\n\n');
 });
 await new Promise(resolve => model.listen(0, '127.0.0.1', resolve));
@@ -49,13 +50,15 @@ try {
   assert.equal(typeof auth.token, 'string');
   for (const [question, agent] of [['Alpha的适用条件是什么？',true],['哪里提到过`Alpha`？',false],['总结2026年9月',false]]) {
     const before = tools.length;
+    const callsBefore = calls.length;
     const response = await fetch(`${base}/api/rag/query`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${auth.token}` }, body: JSON.stringify({ question, mode: 'logs_only', history: [] }) });
     assert.equal(response.status,200);
     const raw = await response.text(), blocks = raw.trim().split('\n\n');
     assert.match(blocks.at(-1),/^event: done/);
     const done = JSON.parse(blocks.at(-1).split('\n')[1].slice(6));
     assert.equal(done.citations[0].date,'2026-09-01'); assert.equal(tools.length > before,agent);
-    checks.push({ question, agent, done: true });
+    assert.equal(calls.length - callsBefore, 1, 'Sufficient evidence must need only one generating-model call');
+    checks.push({ question, agent, done: true, modelCalls: calls.length - callsBefore });
   }
   const require = createRequire(new URL('../study-log-web/package.json',import.meta.url));
   const { chromium, webkit, expect } = require('@playwright/test');

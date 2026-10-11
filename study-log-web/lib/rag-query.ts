@@ -71,6 +71,7 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
         signal.throwIfAborted(); stage = "retrieving"; stageStart = performance.now();
         send("status", { stage, message: "正在检索日志" });
         const run = new EvidenceRun(signal);
+        let directAnswer: string | undefined;
         await collectRagEvidence(query, planned.plan, run, config.mcp);
         if (run.sourceChanged) throw new McpRetrievalError("MCP_SOURCE_CHANGED", "读取期间日志发生了修改，请重新提问以读取最新内容");
         if (referenced && run.contexts.some(item => item.fileName !== referenced.fileName)) { run.contexts = []; run.limited = true; }
@@ -96,7 +97,8 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
             }
           }
           if (diagnostics.agent.judgment?.support !== "supported" || diagnostics.agent.judgment?.conflict !== "absent") {
-            diagnostics.agent.usage = await supplementEvidence(input.question, planned.plan, run, config.mcp, createAgentModel(config.lightChat), message => send("status", { stage: "retrieving", message }), config.lightChat);
+            const result = await supplementEvidence(input.question, planned.plan, run, config.mcp, createAgentModel(config.chat), message => send("status", { stage: "retrieving", message }), config.lightChat, { mode: input.mode, history: input.history });
+            diagnostics.agent.usage = result.usage; directAnswer = result.answer;
           }
           diagnostics.agent.stopReason = run.stopReason;
         }
@@ -120,7 +122,8 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
           send("delta", { text: delta });
         });
         try {
-          await streamRagAnswer(config.chat, buildRagMessages(input.question, input.history, retrieved.contexts, input.mode, run.report() + (referenced ? `\n用户指向历史来源：${referenced.date} ${referenced.heading || ""}。已重新读取当前原文；历史摘录和编号不可视为当前事实。` : "")), delta => output.push(delta), { signal });
+          if (directAnswer !== undefined) output.push(directAnswer);
+          else await streamRagAnswer(config.chat, buildRagMessages(input.question, input.history, retrieved.contexts, input.mode, run.report() + (referenced ? `\n用户指向历史来源：${referenced.date} ${referenced.heading || ""}。已重新读取当前原文；历史摘录和编号不可视为当前事实。` : "")), delta => output.push(delta), { signal });
         } finally { output.flush(); }
         diagnostics.timings.generationMs = elapsed(); diagnostics.timings.totalMs = Math.round(performance.now() - started);
         if (output.noEvidence) diagnostics.status = "no_evidence";

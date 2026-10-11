@@ -36,7 +36,7 @@ test("SDK tool loop uses exact configured endpoint and real read-only MCP, stopp
   const usage = await supplementEvidence("Alpha为什么？", { strategy: "relevance", dateFrom: "2026-09-01", dateTo: "2026-09-01" }, run, mcp, model, value => statuses.push(value));
   assert.equal(requests.length, 2); assert.equal(run.calls, 2); assert.equal(run.contexts.length, 1);
   assert.equal(run.stopReason, "no_new_evidence"); assert.equal(run.contexts[0].heading, "Alpha");
-  assert.equal(usage.inputTokens, 20); assert.ok(statuses.every(value => !value.includes("内部文本")));
+  assert.equal(usage.usage.inputTokens, 20); assert.ok(statuses.every(value => !value.includes("内部文本")));
   const nextState = JSON.parse(requests[1].messages.find(message => message.role === "user").content);
   assert.ok(nextState.previousReads.length > 0);
   assert.ok(Array.isArray(nextState.previousReads[0]));
@@ -89,6 +89,53 @@ test('ordinary fact wording can finish without extra reads, literal lookup bypas
   assert.deepEqual(empty.citations,[]);
   assert.equal(empty.answer,'本次未找到能回答这个问题的记录。');
   assert.ok(empty.diagnostics.coverage.every(scope=>scope.status==='search'));
+});
+
+test('first-step finish can answer in one primary-model call using the existing modes and citation output', async t => {
+  const mcp=await fixture(t), previous={};
+  for(const key of ['RAG_AGENT_ENABLED','RAG_AGENT_TOOL_CALLING_VERIFIED','RAG_JEV_ENABLED'])previous[key]=process.env[key];
+  Object.assign(process.env,{RAG_AGENT_ENABLED:'true',RAG_AGENT_TOOL_CALLING_VERIFIED:'true',RAG_JEV_ENABLED:'false'});
+  const calls=[]; let answer='Alpha条件成立才适用，不适用于所有场景。[S1]', interrupted=false;
+  const server=http.createServer(async(req,res)=>{
+    let raw='';for await(const chunk of req)raw+=chunk;
+    const body=JSON.parse(raw);calls.push(body);
+    assert.equal(body.model,'primary-answer-model');assert.ok(body.tools);
+    assert.ok(body.messages.some(message=>message.role==='system' && message.content.includes('来源编号')));
+    const output=await stream('finish',{reason:'sufficient_evidence',answer}).text();
+    res.setHeader('content-type','text/event-stream');res.end(interrupted ? output.replace('"finish_reason":"tool_calls"','"finish_reason":"length"') : output);
+  });
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  t.after(async()=>{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));for(const[key,value]of Object.entries(previous)){if(value===undefined)delete process.env[key];else process.env[key]=value;}});
+  const chat={baseUrl:`http://127.0.0.1:${server.address().port}`,apiKey:'synthetic',model:'primary-answer-model'};
+  for(const mode of ['logs_only','logs_and_general']){
+    calls.length=0;
+    answer='Alpha条件成立才适用，不适用于所有场景。[S1]'+(mode==='logs_and_general'?'\n\n## 通用知识补充\n理解概念时可以举例。':'');
+    const raw=await new Response(createRagQueryStream({question:'Alpha的适用条件是什么？',mode,history:[]},{chat,lightChat:{...chat,model:'light-planner-model'},mcp},new AbortController().signal)).text();
+    const terminal=raw.trim().split('\n\n').at(-1);assert.match(terminal,/^event: done/);
+    const done=JSON.parse(terminal.split('\n')[1].slice(6));
+    assert.equal(calls.length,1);assert.equal(done.answer,answer);assert.equal(done.citations[0].date,'2026-09-01');
+    assert.match(raw,/event: delta/);assert.ok(!raw.includes('内部文本'));assert.ok(!JSON.stringify(done.diagnostics).includes(answer));
+    assert.equal(JSON.parse(calls[0].messages.find(message=>message.role==='user').content).answerMode,mode);
+  }
+  interrupted=true;
+  const raw=await new Response(createRagQueryStream({question:'Alpha的适用条件是什么？',mode:'logs_only',history:[]},{chat,lightChat:chat,mcp},new AbortController().signal)).text();
+  assert.match(raw,/event: error/);assert.ok(!raw.includes('event: delta'));assert.ok(!raw.includes(answer));
+});
+
+test('a finish answer after a search cannot bypass separate final generation', async t=>{
+  const mcp=await fixture(t),run=new EvidenceRun(new AbortController().signal);let steps=0;
+  const result=await supplementEvidence('Alpha的条件？',{strategy:'relevance'},run,mcp,createAgentModel(config,async()=>++steps===1?stream('search',{query:'Alpha'}):stream('finish',{reason:'sufficient_evidence',answer:'工具中的回答不可发布[S1]'})),()=>{},undefined,{mode:'logs_only',history:[]});
+  assert.equal(steps,2);assert.equal(result.answer,undefined);assert.equal(run.stopReason,'tool_failure');assert.equal(run.calls,1);
+});
+test('search and finish in the same model step cannot deliver a pre-search answer', async t=>{
+  const mcp=await fixture(t),run=new EvidenceRun(new AbortController().signal);
+  await collectRagEvidence('Alpha',{strategy:'relevance'},run,mcp);
+  const response=()=>new Response('data: '+JSON.stringify({choices:[{index:0,delta:{tool_calls:[
+    {index:0,id:'search',type:'function',function:{name:'search',arguments:JSON.stringify({query:'Alpha'})}},
+    {index:1,id:'finish',type:'function',function:{name:'finish',arguments:JSON.stringify({reason:'sufficient_evidence',answer:'不应交付[S1]'})}}
+  ]},finish_reason:null}]})+'\n\ndata: '+JSON.stringify({choices:[{index:0,delta:{},finish_reason:'tool_calls'}]})+'\n\ndata: [DONE]\n\n',{headers:{'content-type':'text/event-stream'}});
+  const result=await supplementEvidence('Alpha条件？',{strategy:'relevance'},run,mcp,createAgentModel(config,async()=>response()),()=>{},undefined,{mode:'logs_only',history:[]});
+  assert.equal(result.answer,undefined);
 });
 test("invalid tool args and nonexistent tools cannot execute reads", async t => {
   const mcp = await fixture(t);

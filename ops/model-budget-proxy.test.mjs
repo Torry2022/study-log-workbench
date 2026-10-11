@@ -48,8 +48,9 @@ test("cancelled planner stops its upstream, preserves spending reservation and p
     assert.equal(report.records[0].usage, null);
     assert.equal(report.reservedCny, report.records.reduce((sum, record) => sum + record.reservedCny, 0));
     const ledger = (await fs.readFile(ledgerFile, "utf8")).trim().split("\n").map(row => JSON.parse(row));
-    assert.equal(ledger.length, 2);
-    assert.equal(ledger[1].cumulativeReservedCny, report.reservedCny);
+    const reservations = ledger.filter(row => row.status === "started");
+    assert.equal(reservations.length, 2);
+    assert.equal(reservations[1].cumulativeReservedCny, report.reservedCny);
   } finally {
     await proxy?.close();
     globalThis.fetch = clientFetch;
@@ -62,17 +63,21 @@ test("bounded proxy forwards completed SSE and reports interrupted upstream with
   const clientFetch = globalThis.fetch;
   try {
     for (const interrupted of [false, true]) {
-      const body = new TextEncoder().encode(`data: ${JSON.stringify({ choices: [{ delta: { content: "合成回答" } }] })}\n\n`);
+      const overhead = interrupted ? "" : `data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: "internal".repeat(100) } }] })}\n\n`.repeat(4000);
+      const body = new TextEncoder().encode(overhead + `data: ${JSON.stringify({ choices: [{ delta: { content: "合成回答" } }] })}\n\n`);
       let pull = 0;
-      globalThis.fetch = async () => new Response(new ReadableStream({
+      globalThis.fetch = async (_url, options) => {
+        assert.deepEqual(JSON.parse(options.body).thinking, { type: "disabled" });
+        return new Response(new ReadableStream({
         pull(controller) {
           if (pull++ === 0) { controller.enqueue(body); return; }
           if (interrupted) controller.error(new Error("synthetic upstream cut"));
           else { controller.enqueue(new TextEncoder().encode('data: {"choices":[],"usage":{"prompt_tokens":1}}\n\ndata: [DONE]\n\n')); controller.close(); }
         }
       }), { status: 200, headers: { "content-type": "text/event-stream" } });
+      };
       const proxy = await startBudgetProxy({ apiKey: "synthetic", apiUrl: "https://api.deepseek.com/chat/completions",
-        model: "deepseek-flash", budgetCny: 1, ledgerFile: path.join(directory, `${interrupted}.jsonl`) });
+        model: "deepseek-flash", budgetCny: 1, ledgerFile: path.join(directory, `${interrupted}.jsonl`), reasoningEffort: "none" });
       try {
         let response;
         try { response = await clientFetch(proxy.url, { method: "POST", headers: {
@@ -91,8 +96,17 @@ test("bounded proxy forwards completed SSE and reports interrupted upstream with
           assert.match(stream, /data: \[DONE\]/);
           assert.equal(proxy.report().records[0].streamFailure, false);
           assert.equal(proxy.report().records[0].usage.prompt_tokens, 1);
+          assert.ok(proxy.report().records[0].receivedBytes > 2 * 1024 * 1024);
+          assert.equal(proxy.report().records[0].streamCounts.answerChars, 4);
+          assert.equal(proxy.report().records[0].streamCounts.reasoningChars, 3200000);
         }
-        assert.equal((await fs.readFile(path.join(directory, `${interrupted}.jsonl`), "utf8")).trim().split("\n").length, 1);
+        await proxy.close();
+        const rows = (await fs.readFile(path.join(directory, `${interrupted}.jsonl`), "utf8")).trim().split("\n").map(JSON.parse);
+        assert.equal(rows.length, 2);
+        assert.equal(rows.at(-1).event, "request-finished");
+        assert.equal(rows.at(-1).failure, interrupted ? "transport_error" : null);
+        assert.ok(rows.at(-1).receivedBytes > 0);
+        assert.ok(!JSON.stringify(rows).includes("synthetic upstream cut"));
       } finally { await proxy.close(); }
     }
   } finally {
@@ -106,10 +120,15 @@ test("complete usage releases excess reservation only after durable settlement; 
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "study-log-budget-settle-"));
   const clientFetch = globalThis.fetch; let calls = 0, proxy;
   try {
-    globalThis.fetch = async () => new Response(JSON.stringify({ choices: [{ message: { content: "synthetic" } }],
-      usage: ++calls === 3 ? { prompt_tokens: 100 } : { prompt_tokens: 100, completion_tokens: 50 } }), { headers: { "Content-Type": "application/json" } });
+    globalThis.fetch = async (_url, options) => {
+      const request = JSON.parse(options.body);
+      assert.equal(request.reasoning_effort, "low");
+      assert.equal(request.max_tokens, 8192);
+      return new Response(JSON.stringify({ choices: [{ message: { content: "synthetic" } }],
+        usage: ++calls === 3 ? { prompt_tokens: 100 } : { prompt_tokens: 100, completion_tokens: 50 } }), { headers: { "Content-Type": "application/json" } });
+    };
     const ledgerFile = path.join(directory, "ledger.jsonl");
-    proxy = await startBudgetProxy({ apiKey: "synthetic", apiUrl: "https://api.deepseek.com/chat/completions", model: "deepseek-flash", budgetCny: .2, ledgerFile });
+    proxy = await startBudgetProxy({ apiKey: "synthetic", apiUrl: "https://api.deepseek.com/chat/completions", model: "deepseek-flash", budgetCny: .2, ledgerFile, reasoningEffort: "low" });
     const options = { method: "POST", headers: { Authorization: `Bearer ${proxy.token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ model: "deepseek-flash", messages: [{ role: "user", content: "synthetic" }] }) };
     for (let i = 0; i < 3; i++) { const result = await clientFetch(proxy.url, options); assert.equal(result.status, 200); await result.text(); }

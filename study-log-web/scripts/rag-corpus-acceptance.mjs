@@ -25,7 +25,7 @@ const results = [];
 const mcp = await startHttpServer({ logRoot: data, indexRoot: path.join(root, "index"), port: 0, token: "isolated-corpus", retrieval: { embedding: { apiKey: "" }, reranker: { apiKey: "" }, rerankEnabled: false } });
 let proxy;
 try {
-  proxy = await startBudgetProxy({ apiKey: process.env.DEEPSEEK_API_KEY, apiUrl: "https://api.deepseek.com/chat/completions", model: "deepseek-flash", budgetCny: budget, ledgerFile: path.join(root, "ledger.jsonl") });
+  proxy = await startBudgetProxy({ apiKey: process.env.DEEPSEEK_API_KEY, apiUrl: "https://api.deepseek.com/chat/completions", model: "deepseek-flash", budgetCny: budget, ledgerFile: path.join(root, "ledger.jsonl"), reasoningEffort: manifest.reasoningEffort });
   const chat = { baseUrl: proxy.url, apiKey: proxy.token, model: "deepseek-flash" };
   process.env.RAG_AGENT_TOOL_CALLING_VERIFIED = "true";
   process.env.RAG_JEV_ENABLED = "false";
@@ -37,7 +37,7 @@ try {
     const terminal = events.at(-1);
     const result = { ...entry, route, elapsedMs: Math.round(performance.now() - started), calls: proxy.report().records.length - before, event: terminal.event, ...terminal.data };
     results.push(result);
-    await fs.writeFile(path.join(root, "report.json"), JSON.stringify({ results, budget: proxy.report(), jev: "not run" }, null, 2));
+    await fs.writeFile(path.join(root, "report.json"), JSON.stringify({ results, budget: proxy.report(), reasoningEffort: manifest.reasoningEffort || "provider_default", jev: "not run" }, null, 2));
     console.log(JSON.stringify({ id: entry.id, route, event: result.event, calls: result.calls, elapsedMs: result.elapsedMs }));
     if (result.event === "error") throw Error("Evaluation stopped on error; inspect private report before another paid request");
   }
@@ -47,5 +47,5 @@ try {
     const current = crypto.createHash("sha256").update(await fs.readFile(item.file)).digest("hex");
     if (current !== item.sha256) throw Error("Source corpus changed during evaluation");
   }
-  await fs.writeFile(path.join(root, "report.json"), JSON.stringify({ results, budget: proxy?.report(), jev: "not run", sourceHashesUnchanged: true }, null, 2));
+  await fs.writeFile(path.join(root, "report.json"), JSON.stringify({ results, budget: proxy?.report(), reasoningEffort: manifest.reasoningEffort || "provider_default", jev: "not run", sourceHashesUnchanged: true }, null, 2));
 }

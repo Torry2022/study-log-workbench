@@ -5,7 +5,8 @@ import path from "node:path";
 
 // Acceptance-only loopback proxy. Reserve the worst-case charge before every call;
 // timed-out/failed calls keep their reservation. Never retries or logs credentials.
-export async function startBudgetProxy({ apiKey, apiUrl, model, budgetCny, ledgerFile }) {
+export async function startBudgetProxy({ apiKey, apiUrl, model, budgetCny, ledgerFile, reasoningEffort }) {
+  if (reasoningEffort !== undefined && !["low", "none"].includes(reasoningEffort)) throw new Error("Unsupported acceptance reasoning effort");
   if (!apiKey || !model || !apiUrl) throw new Error("Explicit real-model test configuration is required");
   if (!Number.isFinite(budgetCny) || budgetCny <= 0 || !ledgerFile || !path.isAbsolute(ledgerFile)) throw new Error("Explicit remaining budget and NEW absolute ledger path required");
   const target = new URL(apiUrl);
@@ -18,12 +19,17 @@ export async function startBudgetProxy({ apiKey, apiUrl, model, budgetCny, ledge
   const records = [];
   let reservedCny = 0, budgetedCny = 0;
   let inFlight = false;
+  let completion = Promise.resolve();
   const server = http.createServer(async (request, response) => {
     if (request.method !== "POST" || request.url !== "/chat/completions" || request.headers.authorization !== `Bearer ${localToken}`) {
       response.writeHead(403).end(); return;
     }
     if (inFlight) { response.writeHead(409).end(); return; }
     inFlight = true;
+    await completion;
+    let complete;
+    completion = new Promise(resolve => { complete = resolve; });
+    const started = performance.now();
     let record = null;
     const disconnected = new AbortController();
     const onClose = () => { if (!response.writableFinished) disconnected.abort(); };
@@ -40,22 +46,39 @@ export async function startBudgetProxy({ apiKey, apiUrl, model, budgetCny, ledge
       const reservation = ((bytes + 4096) * 5 + maxTokens * 20) / 1_000_000;
       if (budgetedCny + reservation > budgetCny) throw new Error("Acceptance budget exhausted before request");
       reservedCny += reservation; budgetedCny += reservation;
-      record = { request: records.length + 1, reservedCny: reservation, status: "started", usage: null, streamFailure: false };
+      record = { request: records.length + 1, reservedCny: reservation, status: "started", usage: null, streamFailure: false, receivedBytes: 0, firstByteMs: null, failure: null };
       records.push(record);
       // Persist the reservation BEFORE issuing a paid request. A process crash
       // or failed request never returns this amount to the available budget.
       await ledger.write(`${JSON.stringify({ ...record, cumulativeReservedCny: reservedCny, cumulativeBudgetedCny: budgetedCny })}\n`); await ledger.sync();
       payload.max_tokens = maxTokens;
+      if (reasoningEffort === "none") payload.thinking = { type: "disabled" };
+      else if (reasoningEffort) payload.reasoning_effort = reasoningEffort;
       if (payload.stream) payload.stream_options = { include_usage: true };
       const upstream = await fetch(target, { method: "POST", redirect: "error", headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: AbortSignal.any([disconnected.signal, AbortSignal.timeout(120_000)]) });
       record.status = String(upstream.status);
       if (!upstream.ok) { await upstream.body?.cancel(); response.writeHead(upstream.status, { "Content-Type": "application/json" }).end(JSON.stringify({ error: `Upstream HTTP ${upstream.status}` })); return; }
       response.writeHead(200, { "Content-Type": upstream.headers.get("content-type") || "application/json" });
       let collected = "";
-      for await (const chunk of upstream.body) { collected += Buffer.from(chunk).toString("utf8"); if (collected.length > 2_000_000) throw new Error("Acceptance response too large"); response.write(chunk); }
+      const decoder = new TextDecoder();
+      for await (const chunk of upstream.body) {
+        record.firstByteMs ??= Math.round(performance.now() - started);
+        record.receivedBytes += chunk.byteLength;
+        collected += decoder.decode(chunk, { stream: true });
+        if (record.receivedBytes > 16 * 1024 * 1024) { record.failure = "response_limit"; throw new Error("Acceptance response too large"); }
+        response.write(chunk);
+      }
+      collected += decoder.decode();
       if (payload.stream) {
+        record.streamCounts = { frames: 0, answerChars: 0, reasoningChars: 0 };
         for (const line of collected.split("\n")) if (line.startsWith("data: ") && line.slice(6).trim() !== "[DONE]") {
-          try { const item = JSON.parse(line.slice(6)); if (item.usage) record.usage = item.usage; } catch {}
+          try {
+            const item = JSON.parse(line.slice(6)); if (item.usage) record.usage = item.usage;
+            record.streamCounts.frames++;
+            const delta = item.choices?.[0]?.delta;
+            if (typeof delta?.content === "string") record.streamCounts.answerChars += delta.content.length;
+            if (typeof delta?.reasoning_content === "string") record.streamCounts.reasoningChars += delta.reasoning_content.length;
+          } catch {}
         }
       } else { try { record.usage = JSON.parse(collected).usage || null; } catch {} }
       const usage = record.usage;
@@ -71,12 +94,28 @@ export async function startBudgetProxy({ apiKey, apiUrl, model, budgetCny, ledge
         record.usageCeilingCny = ceiling; budgetedCny = settled;
       }
       response.end();
-    } catch {
+    } catch (error) {
+      if (record) {
+        // Whitelist transport codes only: never persist error messages, URLs or request bodies.
+        const code = error?.cause?.code || error?.code;
+        record.failure ??= disconnected.signal.aborted ? "client_cancelled" : error?.name === "TimeoutError" ? "timeout" :
+          ["UND_ERR_SOCKET", "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_HEADERS_TIMEOUT", "UND_ERR_BODY_TIMEOUT", "ECONNRESET", "ETIMEDOUT"].includes(code) ? code : "transport_error";
+      }
       if (disconnected.signal.aborted) { if (record) record.status = "cancelled"; return; }
       if (record && response.headersSent) record.streamFailure = true;
       if (response.headersSent) response.destroy();
       else response.writeHead(502, { "Content-Type": "application/json" }).end(JSON.stringify({ error: "Acceptance proxy rejected or failed the bounded request" }));
-    } finally { response.off("close", onClose); inFlight = false; }
+    } finally {
+      response.off("close", onClose);
+      inFlight = false;
+      try {
+        if (record) {
+          record.elapsedMs = Math.round(performance.now() - started);
+          await ledger.write(`${JSON.stringify({ ...record, event: "request-finished", cumulativeBudgetedCny: budgetedCny })}\n`);
+          await ledger.sync();
+        }
+      } finally { complete(); }
+    }
   });
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
   return {
@@ -84,6 +123,6 @@ export async function startBudgetProxy({ apiKey, apiUrl, model, budgetCny, ledge
     report: () => ({ budgetCny, reservedCny, budgetedCny, usageCeilingCny: records.reduce((sum, record) => sum + (record.usageCeilingCny ?? 0), 0),
       unsettledReservedCny: records.filter(record => record.usageCeilingCny === undefined).reduce((sum, record) => sum + record.reservedCny, 0),
       records, note: "reservedCny is gross historical reservation, not spending. budgetedCny combines settled usage ceilings and unresolved reservations; neither is a supplier bill." }),
-    close: async () => { await new Promise(resolve => { server.closeAllConnections(); server.close(resolve); }); await ledger.close(); }
+    close: async () => { await new Promise(resolve => { server.closeAllConnections(); server.close(resolve); }); await completion; await ledger.close(); }
   };
 }

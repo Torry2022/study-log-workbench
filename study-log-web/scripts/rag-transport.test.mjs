@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import { inspectMcpConfig, getMcpConfig } from "../lib/mcp-config.ts";
 import { retrieveStudyLogContexts, validateRetrievedContexts } from "../lib/mcp-client.ts";
-import { streamRagAnswer } from "../lib/rag-stream.ts";
+import { streamRagAnswer, MAX_RAG_STREAM_BYTES } from "../lib/rag-stream.ts";
 
 const source = () => ({ sourceId: "S1", date: "2026-08-01", month: "2026-08", fileName: "2026-08_学习日志.md", heading: null, headingIndex: null, chunkId: "synthetic-chunk", contentHash: "a".repeat(64), content: "合成日志", excerpt: "合成", truncated: false, score: 1 });
 const result = () => ({ contexts: [source()], context: { maxChunks: 8, maxChars: 12000, returnedChunks: 1, totalChars: 4, truncated: false, strategy: "relevance", matchMode: "hybrid" }, retrieval: { mode: "lexical_fallback", strategy: "relevance" } });
@@ -85,12 +85,15 @@ test("model stream handles chunked UTF-8, comments, CRLF and terminal marker wit
   assert.equal(deltas.join(""), "合成回答[S1]"); assert.equal(sent.stream, true);
 });
 
-test("model stream accepts bounded framing overhead above one MiB", async t => {
+test("model stream accepts reasoning and framing above two MiB without displaying them", async t => {
+  const reasoning = `data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: "internal".repeat(100) } }] })}\n\n`;
   const url = await server(t, async (req, res) => {
     await json(req); res.setHeader("content-type", "text/event-stream");
-    res.end(":" + "x".repeat(1024 * 1024) + "\n\n" + event("合成回答") + "data: [DONE]\n\n");
+    res.end(reasoning.repeat(4000) + event("合成回答") + "data: [DONE]\n\n");
   });
-  assert.equal(await streamRagAnswer(chat(url), [], () => {}), "合成回答");
+  const deltas = [];
+  assert.equal(await streamRagAnswer(chat(url), [], delta => deltas.push(delta)), "合成回答");
+  assert.equal(deltas.join(""), "合成回答");
 });
 
 test("model never treats truncated, malformed, filtered, empty or excessive streams as complete", async t => {
@@ -103,7 +106,7 @@ test("model never treats truncated, malformed, filtered, empty or excessive stre
     ['data: {"choices":[{"finish_reason":"content_filter"}]}\n\n', "AI_OUTPUT_INCOMPLETE"],
     ["data: [DONE]\n\n", "AI_EMPTY_RESPONSE"],
     [event("x".repeat(120001)) + "data: [DONE]\n\n", "AI_RESPONSE_TOO_LARGE"],
-    [":" + "x".repeat(2 * 1024 * 1024) + "\n", "AI_RESPONSE_TOO_LARGE"]
+    [":" + "x".repeat(MAX_RAG_STREAM_BYTES) + "\n", "AI_RESPONSE_TOO_LARGE"]
   ]) { body = value; await assert.rejects(streamRagAnswer(chat(url), [], () => {}), { code }); }
 });
 

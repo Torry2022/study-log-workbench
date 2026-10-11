@@ -11,7 +11,7 @@ import type { RagAnswerMode, RagCitation, RagDiagnostics, RagHistoryMessage } fr
 import { EvidenceRun, collectRagEvidence } from "./rag-evidence.ts";
 import { agentEnabled, createAgentModel, supplementEvidence } from "./rag-agent.ts";
 import { compactEvidence } from "./rag-evidence-summary.ts";
-import { judgeEvidence } from "./rag-jev.ts";
+import { judgeEvidence, jevConfiguration } from "./rag-jev.ts";
 import { planRagRetrieval } from "./rag-retrieval-plan.ts";
 
 export interface RagQueryInput { question: string; history: RagHistoryMessage[]; mode: RagAnswerMode }
@@ -63,9 +63,10 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
         if (run.coverage.length && run.coverage.every(scope => scope.status === "failed")) throw new McpRetrievalError("MCP_RANGE_FAILED", "无法读取所选日期的日志，请检查检索服务版本或重试");
         if (agentEnabled() && !planned.plan.matchMode && (planned.plan.strategy === "comparison" || !run.contexts.length || /为什么|如何|关联|矛盾|变化/.test(input.question))) {
           diagnostics.agent = { enabled: true };
-          if (process.env.RAG_JEV_ENABLED === "true" && process.env.TYPESAFE_API_KEY) {
+          const jev = jevConfiguration();
+          if (process.env.RAG_JEV_ENABLED === "true" && jev) {
             try {
-              const judged = await judgeEvidence(input.question, run.contexts, signal, process.env.TYPESAFE_API_KEY);
+              const judged = await judgeEvidence(input.question, run.contexts, signal, jev.apiKey, fetch, jev.provider);
               diagnostics.agent.judgment = judged.judgment;
               diagnostics.agent.judgeUsage = judged.usage;
             } catch { signal.throwIfAborted(); diagnostics.agent.judgeUnavailable = true; }

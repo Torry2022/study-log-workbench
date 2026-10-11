@@ -164,7 +164,11 @@ export function planRagRetrieval(query: string, now = new Date()): RagRetrievalP
   const withoutEvents = normalized.replace(/20\d{2}[-年/]\d{1,2}(?:[-月/]\d{1,2}日?|月)?(?=\s*(?:正式|首次)?(?:发布|推出|发生|上线|举办|版本))/g, "");
   // Resolve calendar months in code, including an omitted year in “九月和十月”.
   let year = Number(withoutEvents.match(/(20\d{2})年/)?.[1] || chinaToday(now).getUTCFullYear());
-  const value = withoutEvents.replace(/(?:(20\d{2})年)?([一二三四五六七八九十]+|\d{1,2})月(?!\d|[一二三四五六七八九十]+日)/g, (full, namedYear, monthText) => {
+  // Enumerations inherit the named month: “10月1日、2日和3日”.
+  // Require 日 on abbreviated items so ordinary numbers are not treated as dates.
+  const expandedDays = withoutEvents.replace(/((20\d{2})年(\d{1,2})月\d{1,2}日)((?:\s*(?:、|和|与|及)\s*\d{1,2}日)+)/g,
+    (_full, first, namedYear, month, rest: string) => first + rest.replace(/\d{1,2}日/g, day => `${namedYear}年${month}月${day}`));
+  const value = expandedDays.replace(/(?:(20\d{2})年)?([一二三四五六七八九十]+|\d{1,2})月(?!\d|[一二三四五六七八九十]+日)/g, (full, namedYear, monthText) => {
     const month = parseDayCount(monthText);
     if (!month || month > 12) return full;
     if (namedYear) year = Number(namedYear);
@@ -207,7 +211,7 @@ export function planRagRetrieval(query: string, now = new Date()): RagRetrievalP
   }
   const comparison = /(?:对比|比较|区别|异同|差异|\bvs\.?\b)/i.test(value);
   const timelineSummary =
-    Boolean(range.dateFrom || range.dateTo) && /(?:学了什么|学了哪些|学习内容|主要学习|总结|回顾|概览|大致学)/.test(value);
+    Boolean(range.dateFrom || range.dateTo) && /(?:学了什么|学了哪些|学习内容|主要学习|总结|回顾|概览|大致学|分别.{0,8}(?:什么|哪些))/.test(value);
   const strategy = literalQuery ? "relevance" : comparison ? "comparison" : timelineSummary ? "timeline_summary" : "relevance";
   const plan = withStrategyLimits(strategy, range);
   if (literalQuery) Object.assign(plan, { matchMode: "literal", literalQuery });

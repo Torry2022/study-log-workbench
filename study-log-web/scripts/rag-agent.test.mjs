@@ -96,6 +96,11 @@ test("31-day query supplies every day, returns a bounded cited subset and reread
   assert.equal(events.at(-1).data.citations.length, 1); assert.equal(events.at(-1).data.citations[0].date, "2026-10-31");
   assert.ok(requests[0].messages.at(-1).content.includes("第31天"));
   assert.ok(events.filter(item => item.event === "sources").every(item => item.data.citations.length <= 30));
+  answer = "三个日期的记录[S1]";
+  events = await query({ question: "2026年10月1日、2日和3日分别记录了什么？" });
+  assert.equal(events.at(-1).event, "done");
+  assert.deepEqual(events.at(-1).data.diagnostics.coverage.flatMap(scope => scope.readDates), ["2026-10-01", "2026-10-02", "2026-10-03"]);
+  assert.ok(events.at(-1).data.diagnostics.coverage.every(scope => scope.status === "complete"));
   answer = Array.from({ length: 31 }, (_, index) => `[S${index + 1}]`).join(" ");
   events = await query({ question: "总结2026年10月" });
   assert.equal(events.at(-1).event, "error"); assert.equal(events.at(-1).data.code, "RAG_CITATION_LIMIT");

@@ -2,6 +2,12 @@ import { TypeSafeClient, choice } from "@typesafe-ai/sdk";
 import type { RagRetrievedContext } from "./rag-types.ts";
 
 export type EvidenceJudgment = { support: "supported" | "missing" | "uncertain"; conflict: "present" | "absent" | "uncertain" };
+export function jevConfiguration(env: NodeJS.ProcessEnv = process.env) {
+  const provider = env.RAG_JEV_PROVIDER || "typesafe";
+  if (provider !== "typesafe" && provider !== "vercel") return undefined;
+  const apiKey = provider === "vercel" ? env.AI_GATEWAY_API_KEY : env.TYPESAFE_API_KEY;
+  return apiKey ? { apiKey, provider } as const : undefined;
+}
 export function validateEvidenceJudgment(value: unknown): EvidenceJudgment {
   const answers = (value as { answers?: Record<string, { type?: string; choice?: string; confidence?: number; probabilities?: Record<string, number> }> })?.answers;
   if (!answers || Object.keys(answers).sort().join(",") !== "conflict,support") throw new Error("Invalid judgment");
@@ -16,8 +22,8 @@ export function validateEvidenceJudgment(value: unknown): EvidenceJudgment {
 }
 /** Optional experiment; never used to authorize tools or remove contradictory evidence. */
 export async function judgeEvidence(question: string, contexts: RagRetrievedContext[], signal: AbortSignal,
-  apiKey: string, transport: typeof fetch = fetch) {
-  const client = new TypeSafeClient({ apiKey, baseURL: "https://api.typesafe.ai", defaultModel: "jev-1.13.0",
+  apiKey: string, transport: typeof fetch = fetch, provider: "typesafe" | "vercel" = "typesafe") {
+  const client = new TypeSafeClient({ apiKey, baseURL: provider === "vercel" ? "https://ai-gateway.vercel.sh/typesafe" : "https://api.typesafe.ai", defaultModel: provider === "vercel" ? "typesafe-ai/jev" : "jev-1.13.0",
     logLevel: "off", retry: { maxRetries: 0 }, timeout: 8000, fetch: transport });
   const response = await client.systemOne({ state: { question, evidence: contexts.map(({ sourceId, content }) => ({ sourceId, content: content.slice(0, 1600) })) },
     questions: {

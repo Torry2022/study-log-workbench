@@ -118,17 +118,51 @@ async function check(page, surface) {
     await expect(page.locator('.reader-outline-modal')).toHaveCount(0);
     rows.push({ surface, theme, width: 390, geometry, resizeAndDismissAndJump: true });
   }
-  // Modes without an inline outline retain their entry; opening and cancelling preserves a draft.
+  // Editing modes have no outline action and their overflow menu preserves the draft.
   await page.setViewportSize({ width: 1440, height: 900 }); await page.evaluate(() => scrollTo(0, 0));
   await page.getByRole('button', { name: '源码', exact: true }).filter({ visible: true }).click();
   await page.locator('.cm-content').press('Control+End'); await page.keyboard.insertText('\n\n未保存的大纲检查草稿。');
   const draft = await page.locator('.cm-content .cm-line').allTextContents();
   for (const mode of ['源码', '分屏']) {
     await page.getByRole('button', { name: mode, exact: true }).filter({ visible: true }).click();
-    await expect(inline).toHaveCount(0); await desktopOutline(page);
-    await page.getByRole('button', { name: '关闭大纲', exact: true }).click();
+    await expect(inline).toHaveCount(0);
+    await page.getByRole('button', { name: '更多操作', exact: true }).click();
+    await expect(page.locator('.log-toolbar-popover').getByRole('button', { name: '大纲', exact: true })).toHaveCount(0);
+    await page.keyboard.press('Escape');
     assert.deepEqual(await page.locator('.cm-content .cm-line').allTextContents(), draft);
+    await page.setViewportSize({ width: 2200, height: 900 });
+    await expect(page.getByRole('button', { name: '更多操作', exact: true })).toBeHidden();
+    await expect(page.locator('.editor-toolbar-actions')).toBeVisible();
+    await page.setViewportSize({ width: 1440, height: 900 });
   }
+  await page.locator('.cm-content').press('Control+End');
+  await page.keyboard.insertText(Array.from({ length: 70 }, (_, i) => `\n\n#### 滚动样本 ${i + 1}\n\n这一段用于检查分屏两侧滚动联动，保留完整草稿。`).join(''));
+  const scrollState = () => page.evaluate(() => {
+    const preview = document.querySelector('.mode-split > .reader-preview-pane');
+    const editor = document.querySelector('.source-workspace .cm-scroller');
+    return [preview, editor].map(el => ({ top: el.scrollTop, range: el.scrollHeight - el.clientHeight,
+      ratio: el.scrollTop / (el.scrollHeight - el.clientHeight) }));
+  });
+  for (const [selector, fraction] of [['.source-workspace .cm-scroller', 0.45], ['.mode-split > .reader-preview-pane', 0.7], ['.source-workspace .cm-scroller', 1]]) {
+    await page.locator(selector).evaluate((el, fraction) => { el.scrollTop = (el.scrollHeight - el.clientHeight) * fraction; }, fraction);
+    await expect.poll(async () => { const [preview, editor] = await scrollState(); return Math.abs(preview.ratio - editor.ratio); }).toBeLessThan(0.01);
+    const state = await scrollState();
+    assert.ok(state.every(el => el.range > 1000 && Math.abs(el.ratio - fraction) < 0.01), JSON.stringify(state));
+    rows.push({ surface, splitScroll: selector, fraction, state });
+  }
+  await page.getByRole('button', { name: '源码', exact: true }).filter({ visible: true }).click();
+  const previewTop = await page.locator('.reader-preview-pane').evaluate(el => el.scrollTop);
+  await page.locator('.cm-scroller').evaluate(el => { el.scrollTop = 0; });
+  await page.waitForTimeout(100);
+  assert.equal(await page.locator('.reader-preview-pane').evaluate(el => el.scrollTop), previewTop);
+  await page.getByRole('button', { name: '分屏', exact: true }).filter({ visible: true }).click();
+  await page.locator('.cm-scroller').evaluate(el => { el.scrollTop = (el.scrollHeight - el.clientHeight) * 0.3; });
+  await expect.poll(async () => { const [preview, editor] = await scrollState(); return Math.abs(preview.ratio - editor.ratio); }).toBeLessThan(0.01);
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.getByRole('button', { name: '更多日志操作', exact: true }).click();
+  await expect(page.getByRole('button', { name: '打开日志大纲', exact: true }).filter({visible:true})).toHaveCount(0);
+  await page.getByRole('button', { name: '关闭日志操作', exact: true }).click();
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.getByRole('button', { name: '浏览', exact: true }).filter({ visible: true }).click();
   await expect(inline).toBeVisible();
   await page.getByRole('button', { name: '进入阅读模式', exact: true }).click();

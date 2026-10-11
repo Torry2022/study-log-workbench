@@ -1,5 +1,7 @@
 # 架构
 
+`LogReader` 的编辑操作溢出菜单与标题栏共用容器宽度规则；大纲只服务浏览预览，内嵌目录可见时隐藏重复入口。分屏监听预览容器和 CodeMirror scrollDOM，以实际滚动范围按比例双向同步并过滤回传事件，离开分屏时清理。网页与 Windows 复用同一实现，见[交互修正](log-editing-interactions-2026-10-11.md)。
+
 `WorkspaceChrome` 使用共享 `CompactDayNavigator`，按日期列表末端标记判断浮框显隐，按实际侧栏宽度定位；复用同一列表、搜索状态和 `selectSidebarDate`，不另设日期加载或草稿事务。Windows 直接复用网页实现，见[悬浮导航记录](compact-day-navigation-2026-10-10.md)。
 
 三模块首次使用区继续使用 `WorkspaceState`，仅按无已有内容状态添加 `workspace-onboarding` 样式，筛选无结果仍用原空状态。收藏的三步说明为静态内容，问答用途卡片仍调用原问题填入入口；没有另建桌面引导实现或教学状态存储。见[起步布局记录](onboarding-layout-2026-10-10.md)。

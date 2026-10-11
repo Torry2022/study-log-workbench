@@ -776,6 +776,7 @@
 
 /* Keep the original progressive toolbar overflow rather than squeezing controls. */
 .log-mode-select,
+.log-overflow-secondary,
 .log-overflow-navigation,
 .log-overflow-refresh,
 .log-overflow-export,
@@ -824,6 +825,8 @@
   @container reader-workspace (max-width: 1600px) {
     .reader-toolbar-log { gap: 12px; padding: 12px 16px; }
     .reader-toolbar-log .reader-secondary-actions { display: none; }
+    .reader-toolbar-log .log-toolbar-more.has-secondary-menu-actions { display: block; }
+    .log-overflow-secondary { display: contents; }
     .reader-toolbar-log .reader-log-controls,
     .reader-toolbar-log .day-toolbar-actions { gap: 8px; }
     .reader-toolbar-log .toolbar-danger-action { margin-left: 0; }

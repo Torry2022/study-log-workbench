@@ -13,14 +13,14 @@ try{
  const page=await workspacePage(app);await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setSize(1600,900));
  await page.getByRole('button',{name:'今天',exact:true}).click();
  const rows=[];
- for(const mode of ['浏览','源码']){
+ for(const mode of ['浏览','源码','分屏']){
   await page.locator('.reader-toolbar-log .view-mode-button').filter({hasText:mode}).click();
   const more=page.getByRole('button',{name:'更多操作',exact:true});
   if(mode==='浏览')await expect(more).toBeHidden();
   else{
    await more.click();
    const menu=page.locator('.log-toolbar-popover');await expect(menu).toBeVisible();
-   await expect(menu.getByRole('button',{name:'大纲',exact:true})).toBeVisible();
+   await expect(menu.getByRole('button',{name:'大纲',exact:true})).toHaveCount(0);
    await expect(menu.getByRole('button',{name:'AI 工具',exact:true})).toHaveCount(0);
    for(const button of await menu.locator('button:visible').all())assert.equal(await button.locator('svg').count(),1,'menu actions use icon and text');
    await page.screenshot({path:path.join(evidence,`${mode}-more.png`)});
@@ -36,7 +36,7 @@ try{
   }
   for(const expanded of [false,true]){
    if(expanded)await page.getByRole('button',{name:'展开右侧栏',exact:true}).click();
-   for(const width of [1912,1600,1500,1450,1400,1350,1300,1250,1200,1150,1100,1050,1024]){
+   for(const width of [2200,1912,1600,1500,1450,1400,1350,1300,1250,1200,1150,1100,1050,1024]){
     await app.evaluate(({BrowserWindow},width)=>BrowserWindow.getAllWindows()[0].setSize(width,900),width);
     await expect.poll(()=>page.evaluate(()=>innerWidth)).toBe(width);
     // Wait for sidebar transitions to stop before comparing slot geometry.
@@ -52,11 +52,16 @@ try{
     if(await more.isVisible()){
      await more.click();
      await expect(page.locator('.log-toolbar-popover').getByRole('button',{name:'AI 工具',exact:true})).toHaveCount(0);
+     if(mode!=='浏览')await expect(page.locator('.log-toolbar-popover').getByRole('button',{name:'大纲',exact:true})).toHaveCount(0);
+     for(const label of ['内部链接','插入图片','放弃修改']){
+      if(mode==='浏览')continue;
+      assert.notEqual(await page.locator('.reader-secondary-actions').getByRole('button',{name:label,exact:true}).isVisible(),await page.locator('.log-toolbar-popover').getByRole('button',{name:label,exact:true}).isVisible(),`duplicate ${label} at ${width}`);
+     }
      for(const [headerSelector,menuSelector] of [['.log-action-refresh','.log-overflow-refresh'],['.log-action-backup','.log-overflow-backup'],['.log-action-delete','.log-overflow-delete']])assert.notEqual(await page.locator('.reader-toolbar-log '+headerSelector).isVisible(),await page.locator('.log-toolbar-popover '+menuSelector).isVisible(),JSON.stringify({width,mode,expanded,headerSelector}));
      assert.ok(await page.locator('.log-toolbar-popover button:visible').count(),'more menu must have an action');
      await more.press('Escape');
     }else{
-     assert.equal(mode,'浏览');
+     if(mode!=='浏览')await expect(page.locator('.editor-toolbar-actions')).toBeVisible();
      for(const selector of ['.log-action-refresh','.log-action-backup','.log-action-delete'])await expect(page.locator('.reader-toolbar-log '+selector)).toBeVisible();
     }
     assert.equal(row.overlap,false,JSON.stringify(rows.at(-1)));assert.equal(row.overflow,false,JSON.stringify(rows.at(-1)));

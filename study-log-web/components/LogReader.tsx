@@ -110,6 +110,7 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
   const imageInput = useRef<HTMLInputElement>(null);
   const [linkSelection, setLinkSelection] = useState<{ view: EditorView; range: InsertionRange; alias: string; document: string } | null>(null);
   const preview = useRef<HTMLElement>(null);
+  const previewPane = useRef<HTMLDivElement>(null);
   const restorePending = useRef(false);
   const [linkError, setLinkError] = useState("");
   const [missingHeading, setMissingHeading] = useState(false);
@@ -126,6 +127,32 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
   const exportScopes = [{ scope: "day" as const, label: "当前日志", disabled: !ready }, { scope: "file" as const, label: "当前源文件", disabled: !ready }, { scope: "all" as const, label: "全部日志", disabled: !hasLogs }];
   const editorReady = Boolean(date && editing.documentDate === date);
   const mode = !date || reading ? "preview" : editing.mode;
+  useEffect(() => {
+    if (!active || mode !== "split" || !editorReady) return;
+    const reader = previewPane.current, editor = editorView.current?.scrollDOM;
+    if (!reader || !editor) return;
+    let frame = 0;
+    let reflected: { element: HTMLElement; top: number } | null = null;
+    const sync = (source: HTMLElement, target: HTMLElement) => {
+      if (reflected?.element === source && Math.abs(source.scrollTop - reflected.top) < 1) return;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const sourceRange = source.scrollHeight - source.clientHeight;
+        const targetRange = target.scrollHeight - target.clientHeight;
+        if (!source.getClientRects().length || !target.getClientRects().length || sourceRange <= 0 || targetRange <= 0) return;
+        target.scrollTop = source.scrollTop / sourceRange * targetRange;
+        reflected = { element: target, top: target.scrollTop };
+      });
+    };
+    const fromReader = () => sync(reader, editor), fromEditor = () => sync(editor, reader);
+    reader.addEventListener("scroll", fromReader, { passive: true });
+    editor.addEventListener("scroll", fromEditor, { passive: true });
+    return () => {
+      cancelAnimationFrame(frame);
+      reader.removeEventListener("scroll", fromReader);
+      editor.removeEventListener("scroll", fromEditor);
+    };
+  }, [active, mode, editorReady, date]);
   useEffect(() => {
     const element = inlineOutline.current;
     const update = () => setInlineOutlineVisible(Boolean(active && element?.getClientRects().length));
@@ -211,7 +238,7 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
     return () => cancelAnimationFrame(frame);
   }, [active, mode, reading, editorReady, position.restore]);
 
-  useEffect(() => { setOutlineOpen(false); setActionsOpen(false); }, [date, reading]);
+  useEffect(() => { setOutlineOpen(false); setActionsOpen(false); }, [date, reading, mode]);
   useEffect(() => { setToolbarMenuOpen(false); }, [active, date, reading, mode]);
   useEffect(() => { setLinkError(""); }, [date]);
   useEffect(() => { if (!active) { linkRequest.current++; setOutlineOpen(false); setActionsOpen(false); } }, [active]);
@@ -327,17 +354,19 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
           <ExportMenu scopes={exportScopes} onExport={exporting.run} busy={exporting.busy} disabled={!active || !hasLogs} />
           <button className="button secondary log-action-backup" type="button" aria-label="日志历史版本" title="历史版本" disabled={!date || editing.busy} onClick={editing.onBackups}><DatabaseBackup size={15} />历史版本</button>
           <button className="button danger toolbar-danger-action log-action-delete" type="button" aria-label="删除当前日志" title="删除" disabled={!day?.exists || editing.busy} onClick={editing.onDelete}><Trash2 size={15} />删除</button>
-          <div className={`log-toolbar-more export-menu${!inlineOutlineVisible || mode !== "preview" || navigation?.onReturnNotes ? " has-log-menu-actions" : ""}`} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setToolbarMenuOpen(false); }} onKeyDown={event => { if (event.key === "Escape" && toolbarMenuOpen) { event.preventDefault(); event.stopPropagation(); setToolbarMenuOpen(false); toolbarMenuTrigger.current?.focus(); } }}>
+          <div className={`log-toolbar-more export-menu${mode === "preview" && !inlineOutlineVisible && headings.length && ready ? " has-log-menu-actions" : ""}${mode !== "preview" || navigation?.onReturnNotes ? " has-secondary-menu-actions" : ""}`} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setToolbarMenuOpen(false); }} onKeyDown={event => { if (event.key === "Escape" && toolbarMenuOpen) { event.preventDefault(); event.stopPropagation(); setToolbarMenuOpen(false); toolbarMenuTrigger.current?.focus(); } }}>
             <button ref={toolbarMenuTrigger} className="button secondary" type="button" title="更多日志操作" aria-label="更多操作" aria-expanded={toolbarMenuOpen} aria-controls="log-toolbar-popover" onClick={() => setToolbarMenuOpen(value => !value)}><MoreHorizontal size={18} /></button>
             {toolbarMenuOpen && <div id="log-toolbar-popover" className="export-popover log-toolbar-popover" role="group" aria-label="更多日志操作" onClick={event => { if (event.target instanceof Element && event.target.closest("button")) { toolbarMenuTrigger.current?.focus({ preventScroll: true }); setToolbarMenuOpen(false); } }}>
               <div className="log-overflow-navigation">{dayNavigator()}</div>
+              {mode === "preview" && !inlineOutlineVisible && headings.length > 0 && ready && <button type="button" onClick={() => setOutlineOpen(true)}><LayoutList size={15} />大纲</button>}
+              <div className="log-overflow-secondary">
               {navigation?.onReturnNotes && <button type="button" onClick={navigation.onReturnNotes}><CornerUpLeft size={15} />返回随记</button>}
-              {!inlineOutlineVisible && <button type="button" disabled={!headings.length || !ready} onClick={() => setOutlineOpen(true)}><LayoutList size={15} />大纲</button>}
               {mode !== "preview" && <>
                 <button type="button" disabled={!editorReady || attachments.busy || editing.busy} onClick={openLink}><Link2 size={15} />内部链接</button>
                 <button type="button" disabled={!editorReady || attachments.busy || editing.busy} onClick={() => imageInput.current?.click()}><Upload size={15} />插入图片</button>
                 <button type="button" disabled={!editing.dirty || editing.busy} onClick={editing.onDiscard}><Eye size={15} />放弃修改</button>
               </>}
+              </div>
               <button className="log-overflow-refresh" type="button" disabled={!date || editing.busy} onClick={editing.onReload}><RefreshCw size={15} />刷新</button>
               <div className="log-overflow-export"><ExportMenu variant="items" scopes={exportScopes.map(item => ({ ...item, label: `导出${item.label}` }))} onExport={exporting.run} busy={exporting.busy} disabled={!active || !hasLogs} /></div>
               <button className="log-overflow-backup" type="button" aria-label="日志历史版本" disabled={!date || editing.busy} onClick={editing.onBackups}><DatabaseBackup size={15} />历史版本</button>
@@ -357,7 +386,7 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
     {attachments.status && <div className="editor-attachment-status" role={attachments.failed ? "alert" : "status"}>{attachments.status}</div>}
     {editing.error && <AppFeedback message={editing.error} tone="error" onDismiss={editing.onDismissError} action={editing.conflict ? { label: "重新读取", onClick: editing.onReload } : undefined} />}
     {active && editing.saved && !editing.dirty && !editing.error && <AppFeedback message="已保存" tone="success" onDismiss={() => {}} />}
-    <div className="reader-preview-pane" onClick={handlePreviewClick} style={{ display: mode === "source" ? "none" : undefined }}>
+    <div className="reader-preview-pane" ref={previewPane} onClick={handlePreviewClick} style={{ display: mode === "source" ? "none" : undefined }}>
     {loading || error || !content.trim() ? <div className={`preview-workspace${(loading || error) && mode === "preview" ? " has-outline" : ""}`}><div className="preview-pane">
       {loading ? <WorkspaceState kind="loading" title={`正在加载 ${date}`} className="preview-loading" /> : error ? <WorkspaceState kind="error" title="日志加载失败" description={error} className="preview-empty" actions={<button className="button secondary" type="button" onClick={onRetry}><RefreshCw size={15} />重新加载</button>} /> : <WorkspaceState kind="empty" icon={FileText} title={date ? "暂无正文" : hasLogs ? "未选择日志" : "暂无学习日志"} description={date ? "切换到“源码”，写下这一天的学习内容。" : hasLogs ? "选择一个日期，查看当天的学习内容。" : "点击“今天”，记下今天学到的内容。"} layout="module" className="log-empty-state" />}
     </div></div> : <div className={`preview-workspace${headings.length && mode === "preview" ? " has-outline" : ""}`}>
@@ -388,7 +417,7 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
         <button type="button" disabled={!navigation?.nextDate || editing.busy} onClick={() => { setActionsOpen(false); if (navigation?.nextDate) void onNavigate(navigation.nextDate); }}><ChevronRight size={18} />下一篇</button>
         {mode !== "preview" && <button type="button" disabled={!editorReady || attachments.busy || editing.busy} onClick={() => { setActionsOpen(false); openLink(); }}><Link2 size={18} />内部链接</button>}
         <button type="button" disabled={!date || editing.busy} onClick={() => { setActionsOpen(false); editing.onReload(); }}><RefreshCw size={18} />刷新</button>
-        {!inlineOutlineVisible && <button type="button" disabled={!headings.length || !ready} onClick={() => { setActionsOpen(false); editing.onMode("preview"); setOutlineOpen(true); }} aria-label="打开日志大纲"><LayoutList size={18} />大纲</button>}
+        {mode === "preview" && !inlineOutlineVisible && headings.length > 0 && ready && <button type="button" onClick={() => { setActionsOpen(false); setOutlineOpen(true); }} aria-label="打开日志大纲"><LayoutList size={18} />大纲</button>}
         {onOpenAi && <button type="button" onClick={() => { setActionsOpen(false); onOpenAi(); }}><PanelRightOpen size={18} />AI 工具</button>}
         <button type="button" disabled={!editorReady || mode === "preview" || attachments.busy || editing.busy} onClick={() => { setActionsOpen(false); imageInput.current?.click(); }}><Upload size={18} />插入图片</button>
         <button type="button" disabled={!editing.dirty || editing.busy} onClick={() => { setActionsOpen(false); editing.onDiscard(); }}><Eye size={18} />放弃修改</button>

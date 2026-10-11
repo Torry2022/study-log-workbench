@@ -87,3 +87,21 @@ test("prompt uses raw logs, explicit grounding mode and supplied history without
   assert.match(buildRagMessages("问题", [], [], "logs_and_general")[0].content, /通用知识补充/);
   assert.match(buildRagMessages("问题", [], []).at(-1).content, /未检索到/);
 });
+
+test('Chinese leading dates retain original claims while advising on mismatched source days', () => {
+  const s = { ...source('S8'), date: '2026-10-08' };
+  for (const text of ['- 10月7日 发布版本[S8]', '- **2026年10月7日** 发布版本[S8]']) {
+    const result = normalizeRagAnswer(text, [s]);
+    assert.match(result.groundingWarning, /事后记录或错引/);
+    assert.equal(result.answer, text.replace('[S8]', '[S1]'));
+  }
+  assert.equal(normalizeRagAnswer('- 10月8日 发布版本[S8]', [s]).groundingWarning, undefined);
+  assert.equal(normalizeRagAnswer('```md\n10月7日 示例[S8]\n```', [s]).groundingWarning, undefined);
+});
+
+test('a bounded abstention needs no citation, but added factual claims still do', () => {
+  const abstention = '本次未找到能回答这个问题的记录。';
+  assert.equal(normalizeRagAnswer(abstention, []).groundingWarning, undefined);
+  assert.equal(normalizeRagAnswer(abstention + '\n\n## 通用知识补充\n这是通用知识。', [], 'logs_and_general').groundingWarning, undefined);
+  assert.ok(normalizeRagAnswer(abstention + '\n实验确定因为温度不足而失败，需要提高水温并延长光照来解决。', []).groundingWarning);
+});

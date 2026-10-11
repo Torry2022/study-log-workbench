@@ -6,9 +6,13 @@
 .writing-inspector-content:not([hidden]) { height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr); }
 .writing-inspector-heading { display: grid; grid-template-columns: minmax(0, 1fr) 38px; align-items: center; gap: 8px; padding: 14px; border-bottom: 1px solid var(--hairline); }
 .writing-inspector-heading strong { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; }
-.inspector-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.inspector-tabs button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 38px; padding: 8px; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--muted); font-size: 13px; }
-.inspector-tabs button.active { background: var(--surface-soft); color: var(--body); }
+.inspector-tabs { position: relative; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); min-width: 0; height: 46px; border: 1px solid var(--hairline); border-radius: var(--radius-md); background: var(--surface-soft); overflow: hidden; }
+.inspector-tabs::before { position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc((100% - 6px) / 2); border-radius: var(--radius-sm); background: var(--canvas); box-shadow: var(--shadow-soft); content: ""; pointer-events: none; transition: transform 170ms ease-out; }
+.inspector-tabs[data-mode="highlighting"]::before { transform: translateX(100%); }
+.inspector-tabs button { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; min-height: 44px; padding: 0 6px; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--muted); font-size: 13px; }
+.inspector-tabs button.active { color: var(--ink); }
+.inspector-tabs button.active svg { color: var(--primary); }
+@media (prefers-reduced-motion: reduce) { .inspector-tabs::before { transition: none; } }
 .writing-inspector .collapse-button, .writing-inspector .rail-button { display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; padding: 0; border: 0; border-radius: var(--radius-md); color: var(--muted); background: transparent; }
 .writing-inspector .collapse-button:hover, .writing-inspector .rail-button:hover, .writing-inspector .rail-button.active { color: var(--body); background: var(--surface-soft); }
 .writing-inspector .inspector-rail { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 14px 7px; }

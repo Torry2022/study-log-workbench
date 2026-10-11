@@ -794,6 +794,7 @@
 @media (min-width: 1024px) {
   .reader-toolbar-log {
     flex-wrap: wrap;
+    padding-block: 12px;
   }
 
   .reader-toolbar-log .reader-log-controls {

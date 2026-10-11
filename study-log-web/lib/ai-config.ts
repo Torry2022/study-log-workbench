@@ -1,4 +1,6 @@
 export interface ChatConfig {
+  /** Request-scoped observer; never persisted in settings. */
+  onUsage?: (usage: { inputTokens: number | null; outputTokens: number | null }) => void;
   apiKey: string;
   model: string;
   /** Complete OpenAI-compatible chat/completions endpoint; never expanded. */

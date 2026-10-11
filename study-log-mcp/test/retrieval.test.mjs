@@ -57,7 +57,7 @@ test("a single-digit percentage keeps its candidate above generic rollout notes"
   assert.ok(tokenize("５％ 灰度").includes("5%"));
 });
 
-test("literal lookup returns complete matching H3 source, merges overlaps and exposes a named fallback", async () => {
+test("literal lookup returns complete matching H3 source, merges overlaps and keeps absent literals empty", async () => {
   const retriever = new KeywordRetriever();
   const source = "开始 retain_graph=True。\n\n" + Array.from({ length: 500 }, (_, i) => `Synthetic-${i} context evidence.`).join("\n") + "\n结尾。";
   const blocks = [block("2026-01-01", `### 1. Graph\n\n${source}\n\n### Other\n\nNot part of result.`)];
@@ -70,8 +70,8 @@ test("literal lookup returns complete matching H3 source, merges overlaps and ex
   assert.equal((context.content.match(/Synthetic-250 context evidence\./g) || []).length, 1);
   assert.doesNotMatch(context.content, /Not part of result/);
   const fallback = await retriever.retrieveContexts(blocks, "Graph", { matchMode: "literal", literalQuery: "literal-absent" });
-  assert.equal(fallback.retrieval.mode, "literal_fallback_lexical_fallback"); assert.equal(fallback.retrieval.literalQuery, "literal-absent");
-  assert.ok(fallback.contexts.length > 0);
+  assert.equal(fallback.retrieval.mode, "literal"); assert.equal(fallback.retrieval.literalQuery, "literal-absent");
+  assert.equal(fallback.contexts.length, 0);
 });
 
 test("date filtering is inclusive, validated and shared by literal/keyword/related entrypoints", async () => {

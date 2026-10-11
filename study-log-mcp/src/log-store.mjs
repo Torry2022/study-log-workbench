@@ -3,6 +3,7 @@ import path from "node:path";
 import { SourceError, resolveRoots, assertSafePath, readSourceText } from "./paths.mjs";
 import { LOG_FILE_PATTERN, assertDate, assertMonth, parseDayBlocks } from "./markdown-source.mjs";
 import { HybridRetriever } from "./retrieval.mjs";
+import { readLogRange } from "./range-reader.mjs";
 export { resolveLogRoot } from "./paths.mjs";
 
 function limit(value, fallback, minimum, maximum) {
@@ -64,6 +65,8 @@ export class StudyLogStore {
     assertMonth(month);
     return (await this.readAllBlocks()).filter(block => block.month === month).sort((a, b) => b.date.localeCompare(a.date)).map(summary);
   }
+
+  async readLogRange(options) { return readLogRange(await this.readAllBlocks(), options); }
 
   async getDay(date, options = {}) {
     assertDate(date);

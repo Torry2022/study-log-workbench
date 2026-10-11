@@ -12,5 +12,7 @@
 | CodeMirror 及其依赖 | 鸿蒙日志源码编辑器 | study-log-harmony/entry/src/main/resources/rawfile/editor/LICENSES.txt |
 | Node.js 22.23.3 Windows x64 | Windows 本机包运行时 | 安装包 runtime/LICENSE，官方来源与 SHA-256 写入 package-manifest.json |
 | Electron 44.6.0 / Chromium | Windows 桌面窗口 | 桌面包 LICENSE.electron.txt、LICENSES.chromium.html；Electron 使用 MIT，Chromium 组件保留各自声明 |
+| AI SDK Core 7.0.137、OpenAI Compatible 3.0.67 及 AI SDK 配套包 | 可选问答 Agent 的模型、工具和流式运行 | Apache-2.0；服务包 node_modules/ai/LICENSE 与 node_modules/@ai-sdk/*/LICENSE |
+| TypeSafe JS SDK 0.6.0 | 可选 Jev 证据判断适配 | MIT；服务包 node_modules/@typesafe-ai/sdk/LICENSE |
 
 上述字体的 SIL Open Font License 随文件分发。网页 CSS 字体族依次为 Study Log Latin Serif、Study Log Serif、Paper Mono；正文保持系统无衬线回退。鸿蒙端按入口注册系统字体与随包字体；实际设备字形仍需单独验收。npm依赖版本由锁文件记录，其原许可证保留在软件包中。后续新增资产须同时更新本清单。

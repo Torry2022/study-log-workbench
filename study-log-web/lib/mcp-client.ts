@@ -56,7 +56,7 @@ export function validateRetrievedContexts(value: unknown, limits = { maxChunks: 
   return result;
 }
 
-export async function retrieveStudyLogContexts(input: string, options: RagRetrievalPlan = { strategy: "relevance" }, signal?: AbortSignal, config: McpConfig = getMcpConfig(), timeoutMs = 60000): Promise<RetrievedContextsResult> {
+export async function callStudyLogTool(name: "retrieve_contexts" | "read_log_range", args: Record<string, unknown>, signal?: AbortSignal, config: McpConfig = getMcpConfig(), timeoutMs = 60000): Promise<unknown> {
   const deadline = new AbortController(), timer = setTimeout(() => deadline.abort(), timeoutMs);
   const combined = signal ? AbortSignal.any([signal, deadline.signal]) : deadline.signal;
   let oversized = false;
@@ -84,15 +84,14 @@ export async function retrieveStudyLogContexts(input: string, options: RagRetrie
   try {
     combined.throwIfAborted();
     await client.connect(transport, { signal: combined, timeout: Math.min(timeoutMs, 15000) });
-    const maxChunks = Math.min(options.maxChunks ?? 8, 20), maxChars = Math.min(options.maxChars ?? 12000, 30000);
-    const result = await client.callTool({ name: "retrieve_contexts", arguments: { input, ...options, maxChunks, maxChars } }, { signal: combined, timeout: Math.min(timeoutMs, 45000) });
+    const result = await client.callTool({ name, arguments: args }, { signal: combined, timeout: Math.min(timeoutMs, 45000) });
     combined.throwIfAborted();
     if (result.isError) throw new McpRetrievalError("MCP_TOOL_FAILED", "检索服务未能完成查询，请稍后重试");
     const output = result.structuredContent;
     const block = result.content?.find(item => item.type === "text");
     let value: unknown;
     try { value = output ?? (block?.type === "text" ? JSON.parse(block.text) : null); } catch { throw invalid(); }
-    return validateRetrievedContexts(value, { maxChunks, maxChars });
+    return value;
   } catch (error) {
     if (signal?.aborted) throw new McpRetrievalError("MCP_CANCELLED", "已取消检索", 499);
     if (deadline.signal.aborted) throw new McpRetrievalError("MCP_TIMEOUT", "检索服务响应超时，请重试", 504);
@@ -100,4 +99,31 @@ export async function retrieveStudyLogContexts(input: string, options: RagRetrie
     if (error instanceof McpRetrievalError) throw error;
     throw new McpRetrievalError("MCP_UNAVAILABLE", "无法完成日志检索，请检查 MCP 配置或稍后重试");
   } finally { clearTimeout(timer); await client.close().catch(() => {}); }
+}
+
+export async function retrieveStudyLogContexts(input: string, options: RagRetrievalPlan = { strategy: "relevance" }, signal?: AbortSignal, config: McpConfig = getMcpConfig(), timeoutMs = 60000): Promise<RetrievedContextsResult> {
+  const maxChunks = Math.min(options.maxChunks ?? 8, 20), maxChars = Math.min(options.maxChars ?? 12000, 30000);
+  const { ranges: _ranges, eventDates: _events, ...filters } = options;
+  return validateRetrievedContexts(await callStudyLogTool("retrieve_contexts", { input, ...filters, maxChunks, maxChars }, signal, config, timeoutMs), { maxChunks, maxChars });
+}
+export interface RangePage extends RetrievedContextsResult {
+  coverage: { revision: string; totalDays: number; completedDates: string[]; nextCursor: string | null };
+}
+export function validateRangePage(value: unknown): RangePage {
+  const page = validateRetrievedContexts(value);
+  const coverage = (value as Record<string, unknown>).coverage;
+  if (!record(coverage) || !text(coverage.revision, 64) || !/^[a-f0-9]{64}$/.test(coverage.revision) ||
+    !integer(coverage.totalDays, 0, 1000000) || !Array.isArray(coverage.completedDates) || coverage.completedDates.length > 20 ||
+    coverage.completedDates.some(day => typeof day !== "string" || !isValidLogDate(day) || day < (page.context.dateFrom || "") || day > (page.context.dateTo || "9999")) ||
+    new Set(coverage.completedDates).size !== coverage.completedDates.length ||
+    !(coverage.nextCursor === null || typeof coverage.nextCursor === "string" && /^[a-f0-9]{64}:\d+:\d+$/.test(coverage.nextCursor) && coverage.nextCursor.startsWith(coverage.revision + ":"))) throw invalid();
+  if (page.context.truncated !== (coverage.nextCursor !== null)) throw invalid();
+  return { ...page, coverage: coverage as RangePage["coverage"] };
+}
+export async function readStudyLogRange(range: { dateFrom: string; dateTo: string; cursor?: string }, signal: AbortSignal, config: McpConfig): Promise<RangePage> {
+  const page = validateRangePage(await callStudyLogTool("read_log_range", { ...range, maxChars: 30000 }, signal, config));
+  if (page.context.dateFrom !== range.dateFrom || page.context.dateTo !== range.dateTo ||
+    page.contexts.some(item => item.date < range.dateFrom || item.date > range.dateTo) ||
+    page.coverage.completedDates.length > page.coverage.totalDays) throw invalid();
+  return page;
 }

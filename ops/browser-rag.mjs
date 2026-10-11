@@ -16,6 +16,7 @@ const uuid = () => `b0240000-${crypto.randomUUID().slice(9)}`;
 const citation = { sourceId: "S1", date, month: "2026-09", fileName: "2026-09_学习日志.md", heading: marker, headingIndex: 0, chunkId: "b24-synthetic-chunk", contentHash: "b24-synthetic-content", excerpt: "合成引用：学习记录是问答的原始依据。" };
 const longAnswer = `合成回答引用 [S1]。\n\n` + Array.from({ length: 70 }, (_, i) => `第${i + 1}段：这是用于阅读位置与历史侧栏验收的独立合成回答。`).join("\n\n");
 let streamMode = "done", streamStarted, finishStream, page, saveMode = "normal", renameFailure = false, deleteMalformed = false;
+let delayTitle = false, titleStarted, releaseTitle;
 const packet = (event, data) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 const mock = http.createServer(async (request, response) => {
   response.setHeader("Access-Control-Allow-Origin", new URL(base).origin);
@@ -56,7 +57,16 @@ try {
   // Permanent interception terminates exclusively at this process's loopback mock SSE server.
   await page.route("**/api/rag/query", route => streamMode === "401" ? route.fulfill({ status: 401, json: { error: "Unauthorized" } }) : route.continue({ url: `http://127.0.0.1:${mock.address().port}/sse` }));
   await page.route("**/api/capabilities", async route => { const response = await route.fetch(), json = await response.json(); if (response.ok()) json.features.rag = { supported: true, configured: true }; await route.fulfill({ response, json }); });
-  await page.route("**/api/rag/sessions/*/title", async route => { const url = route.request().url().replace(/\/title$/, ""); const response = await page.request.get(url); await route.fulfill({ response }); });
+  await page.route("**/api/rag/sessions/*/title", async route => {
+    const url = route.request().url().replace(/\/title$/, "");
+    if (delayTitle) {
+      delayTitle = false; titleStarted?.(); await new Promise(resolve => { releaseTitle = resolve; });
+      const before = (await (await page.request.get(url)).json()).session;
+      const response = await page.request.patch(url, { data: { mutationId: uuid(), baseVersion: before.version, title: `${prefix}延迟标题` } });
+      assert.equal(response.status(), 200); await route.fulfill({ response }); return;
+    }
+    const response = await page.request.get(url); await route.fulfill({ response });
+  });
   await page.route("**/api/rag/sessions", async route => {
     if (route.request().method() !== "POST") return route.continue();
     const body = route.request().postDataJSON(); owned.add(body.id);
@@ -75,6 +85,21 @@ try {
   const day = (await (await page.request.get(`${base}/api/logs/day?date=${date}`)).json()).day;
   if (day.exists) assert.ok(day.content.includes(marker), "Do not overwrite another fixture date");
   else assert.equal((await page.request.put(`${base}/api/logs/day`, { data: { date, baseVersion: day.version, content: `### ${marker}\n\n${citation.excerpt}` } })).status(), 200);
+  await center(); delayTitle = true;
+  const pendingTitle = new Promise(resolve => { titleStarted = resolve; });
+  await send("标题尚未返回的第一问"); await pendingTitle;
+  await expect(page).toHaveURL(/session=/);
+  const titleSession = new URL(page.url()).searchParams.get("session");
+  const nextStarted = hold(); await send("标题尚未返回时立即追问"); await nextStarted;
+  // The next model request starts before title completion, while its save rebases
+  // only the known title update instead of losing version-conflict protection.
+  releaseTitle(); finishStream(); streamMode = "done";
+  await expect.poll(async () => (await get(titleSession)).messages.length).toBe(4);
+  assert.equal((await get(titleSession)).title, `${prefix}延迟标题`);
+  await fresh(); const finished = await get(titleSession);
+  assert.equal((await page.request.delete(`${base}/api/rag/sessions/${titleSession}`, { data: { mutationId: uuid(), baseVersion: finished.version } })).status(), 200);
+  owned.delete(titleSession); await page.reload(); await center();
+  console.log("RAG delayed title does not block next generation; next save retains both answers and new title");
   const existingSessionCount = (await allSessions()).length;
   const seeded = [];
   for (let index = 0; index < 22; index++) {
@@ -117,6 +142,7 @@ try {
   await page.locator(".rag-session-main").filter({ hasText: seeded[6].title }).click(); await expect(page.locator(".sidebar.mobile-open")).toHaveCount(0); await expect.poll(() => page.evaluate(() => scrollY)).toBeLessThan(5); assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)); assert.notEqual(await page.evaluate(() => document.body.style.overflow), "hidden");
   assert.deepEqual(errors, []); console.log("Passed: RAG desktop/mobile composition, Shift+Enter, history navigation, independent scrolling and modal cleanup");
 } finally {
+  releaseTitle?.();
   finishStream?.();
   if (page) { await page.unrouteAll({ behavior: "ignoreErrors" }); for (const id of owned) { const response = await page.request.get(`${base}/api/rag/sessions/${id}`).catch(() => null); if (response?.ok()) { const session = (await response.json()).session; if (session.lastQuestion?.startsWith(prefix)) await page.request.delete(`${base}/api/rag/sessions/${id}`, { data: { mutationId: uuid(), baseVersion: session.version } }).catch(() => {}); } } }
   await browser.close(); mock.closeAllConnections(); await new Promise(resolve => mock.close(resolve));

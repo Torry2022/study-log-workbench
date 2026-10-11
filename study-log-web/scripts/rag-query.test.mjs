@@ -87,7 +87,7 @@ test("contextualization and semantic planning use light model, fallback safely a
   assert.ok(state.requests.every(item => item.model === "light-mock"));
   state.semanticFailure = true;
   const values = await events(query.createRagQueryStream({ ...input, question: "合成概念是什么？", history: [{ role: "user", content: "之前的问题" }] }, config, new AbortController().signal));
-  assert.equal(values.at(-1).event, "done"); assert.equal(values.at(-1).data.diagnostics.contextualizationFallback, true); assert.equal(values.at(-1).data.diagnostics.retrievalPlanner, "fallback");
+  assert.equal(values.at(-1).event, "done"); assert.equal(values.at(-1).data.diagnostics.contextualizationFallback, true); assert.equal(values.at(-1).data.diagnostics.retrievalPlanner, "rules");
   const controller = new AbortController(); controller.abort();
   await assert.rejects(planRagRetrievalWithFallback("概念是什么？", controller.signal, new Date(), config.lightChat), { code: "AI_CANCELLED" });
 });

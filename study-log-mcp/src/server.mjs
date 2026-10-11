@@ -23,6 +23,7 @@ export async function createRuntime(options = {}) {
       checkCancelled(signal); validateToolArguments(name, args);
       let value;
       switch (name) {
+        case "read_log_range": value = await store.readLogRange(args); break;
         case "list_months": value = { months: await store.listMonths() }; break;
         case "list_days": value = { days: await store.listDays(args.month) }; break;
         case "get_day": value = { day: await store.getDay(args.date, args) }; break;

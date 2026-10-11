@@ -2,6 +2,8 @@ import { isValidLogDate, todayInShanghai } from "./study-date.ts";
 import type { RagRetrievalStrategy } from "./rag-types.ts";
 
 export interface RagRetrievalPlan {
+  ranges?: Array<{ dateFrom: string; dateTo: string }>;
+  eventDates?: boolean;
   dateFrom?: string;
   dateTo?: string;
   strategy: RagRetrievalStrategy;
@@ -109,7 +111,7 @@ export function normalizeSemanticRetrievalPlan(value: unknown): RagRetrievalPlan
 }
 
 export function needsSemanticRetrievalPlanning(plan: RagRetrievalPlan): boolean {
-  return !plan.matchMode && !plan.dateFrom && !plan.dateTo && plan.strategy === "relevance";
+  return !plan.eventDates && !plan.matchMode && !plan.dateFrom && !plan.dateTo && plan.strategy === "relevance";
 }
 
 function extractLiteralLookup(value: string): string | null {
@@ -157,15 +159,18 @@ function explicitDateRange(value: string): Pick<RagRetrievalPlan, "dateFrom" | "
 }
 
 export function planRagRetrieval(query: string, now = new Date()): RagRetrievalPlan {
-  const value = query.normalize("NFKC");
+  // Event dates describe the subject, not when the user wrote a log.
+  const normalized = query.normalize("NFKC");
+  const withoutEvents = normalized.replace(/20\d{2}[-年/]\d{1,2}(?:[-月/]\d{1,2}日?|月)?(?=\s*(?:正式|首次)?(?:发布|推出|发生|上线|举办|版本))/g, "");
+  // Resolve calendar months in code, including an omitted year in “九月和十月”.
+  let year = Number(withoutEvents.match(/(20\d{2})年/)?.[1] || chinaToday(now).getUTCFullYear());
+  const value = withoutEvents.replace(/(?:(20\d{2})年)?([一二三四五六七八九十]+|\d{1,2})月(?!\d|[一二三四五六七八九十]+日)/g, (full, namedYear, monthText) => {
+    const month = parseDayCount(monthText);
+    if (!month || month > 12) return full;
+    if (namedYear) year = Number(namedYear);
+    return `${year}年${month}月`;
+  });
   const literalQuery = extractLiteralLookup(query);
-  if (literalQuery) {
-    return {
-      strategy: "relevance",
-      matchMode: "literal",
-      literalQuery
-    };
-  }
   const today = chinaToday(now);
   let range: Pick<RagRetrievalPlan, "dateFrom" | "dateTo"> = {};
 
@@ -203,9 +208,28 @@ export function planRagRetrieval(query: string, now = new Date()): RagRetrievalP
   const comparison = /(?:对比|比较|区别|异同|差异|\bvs\.?\b)/i.test(value);
   const timelineSummary =
     Boolean(range.dateFrom || range.dateTo) && /(?:学了什么|学了哪些|学习内容|主要学习|总结|回顾|概览|大致学)/.test(value);
-  if (timelineSummary) return withStrategyLimits("timeline_summary", range);
-  if (comparison) {
-    return withStrategyLimits("comparison", range);
+  const strategy = literalQuery ? "relevance" : comparison ? "comparison" : timelineSummary ? "timeline_summary" : "relevance";
+  const plan = withStrategyLimits(strategy, range);
+  if (literalQuery) Object.assign(plan, { matchMode: "literal", literalQuery });
+  if (withoutEvents !== normalized) plan.eventDates = true;
+  // Separate explicit scopes must not silently include days between them.
+  const days = [...value.matchAll(/(20\d{2})[-年/](\d{1,2})[-月/](\d{1,2})日?/g)];
+  const months = [...value.matchAll(/(20\d{2})[-年/](\d{1,2})月?(?![-/\d])/g)];
+  if (days.length > 1 && !/(?:至|到|~|—)/.test(value)) {
+    const dates = days.map(day => explicitDate(Number(day[1]), Number(day[2]), Number(day[3])));
+    if (dates.every(Boolean)) plan.ranges = [...new Set(dates as string[])].sort().map(date => ({ dateFrom: date, dateTo: date }));
+  } else if (!days.length && months.length > 1) {
+    const ranges = months.map(month => Number(month[2]) >= 1 && Number(month[2]) <= 12 ? monthRange(Number(month[1]), Number(month[2])) : null);
+    if (ranges.every(Boolean)) {
+      const valid = ranges as Array<{ dateFrom: string; dateTo: string }>;
+      plan.ranges = /(?:至|到|~|—)/.test(value)
+        ? [{ dateFrom: valid.map(item => item.dateFrom).sort()[0], dateTo: valid.map(item => item.dateTo).sort().at(-1)! }]
+        : valid;
+    }
   }
-  return withStrategyLimits("relevance", range);
+  if (plan.ranges?.length) {
+    plan.dateFrom = plan.ranges.map(item => item.dateFrom).sort()[0];
+    plan.dateTo = plan.ranges.map(item => item.dateTo).sort().at(-1);
+  }
+  return plan;
 }

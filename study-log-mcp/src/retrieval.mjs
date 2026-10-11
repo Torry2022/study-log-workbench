@@ -120,24 +120,7 @@ export class KeywordRetriever {
     let retrieval;
     if (literalQuery) {
       ranked = rankLiteralSections(filteredBlocks, literalQuery);
-      if (ranked.length > 0) {
-        retrieval = {
-          mode: "literal",
-          strategy: "relevance",
-          model: null,
-          dimensions: null,
-          indexUpdatedAt: null,
-          literalQuery
-        };
-      } else {
-        const fallback = await this.rankChunks(filteredBlocks, input, options);
-        ranked = fallback.ranked;
-        retrieval = {
-          ...fallback.retrieval,
-          mode: `literal_fallback_${fallback.retrieval.mode}`,
-          literalQuery
-        };
-      }
+      retrieval = { mode: "literal", strategy: "relevance", model: null, dimensions: null, indexUpdatedAt: null, literalQuery };
     } else {
       ({ ranked, retrieval } = await this.rankChunks(filteredBlocks, input, options));
     }

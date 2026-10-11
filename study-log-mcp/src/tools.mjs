@@ -9,6 +9,7 @@ const tool = (name, description, properties, required = []) => ({ name, descript
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   inputSchema: { type: "object", properties, required, additionalProperties: false } });
 export const tools = [
+  tool("read_log_range", "按日期顺序分页读取完整日块；返回日期总数、已读完日期和绑定内容版本的游标。", { dateFrom: date, dateTo: date, cursor: { type: "string", maxLength: 100 }, maxChars: integer(1000, 30000) }, ["dateFrom", "dateTo"]),
   tool("list_months", "列出原始日志月份和日期范围。", {}),
   tool("list_days", "列出指定月份原始日志的日块摘要。", { month: { type: "string", pattern: "^\\d{4}-\\d{2}$", maxLength: 7 } }, ["month"]),
   tool("get_day", "读取原始 Markdown 日块，不修改日志。", { date, maxChars: integer(1, 100000) }, ["date"]),

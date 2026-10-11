@@ -45,6 +45,7 @@ export async function requestChat(config: ChatConfig, messages: ChatMessage[], o
     let payload: unknown;
     try { payload = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks))); }
     catch { throw new AiChatError("AI_INVALID_RESPONSE", "模型服务返回了无效 JSON，请重试"); }
+    config.onUsage?.(readChatUsage((payload as { usage?: unknown })?.usage));
     const choice = (payload as { choices?: Array<{ finish_reason?: string; message?: { content?: unknown } }> } | null)?.choices?.[0];
     if (choice?.finish_reason === "length") throw new AiChatError("AI_OUTPUT_TRUNCATED", "模型输出被截断，请缩小材料范围后重试");
     const content = choice?.message?.content;
@@ -57,4 +58,10 @@ export async function requestChat(config: ChatConfig, messages: ChatMessage[], o
     if (error instanceof AiChatError) throw error;
     throw new AiChatError("AI_NETWORK_ERROR", "无法连接模型服务，请检查模型配置或稍后重试");
   } finally { clearTimeout(timer); }
+}
+
+export function readChatUsage(value: unknown): { inputTokens: number | null; outputTokens: number | null } {
+  const usage = value as { prompt_tokens?: unknown; completion_tokens?: unknown } | null;
+  const count = (n: unknown) => typeof n === "number" && Number.isSafeInteger(n) && n >= 0 ? n : null;
+  return { inputTokens: count(usage?.prompt_tokens), outputTokens: count(usage?.completion_tokens) };
 }

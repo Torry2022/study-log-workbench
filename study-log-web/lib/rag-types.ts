@@ -4,6 +4,7 @@ export type RagRetrievalStrategy = "relevance" | "timeline_summary" | "compariso
 export interface RagHistoryMessage {
   role: "user" | "assistant";
   content: string;
+  sourceRefs?: Array<Pick<RagCitation, "date" | "fileName" | "heading" | "contentHash">>;
 }
 
 export interface RagPromptMessage {
@@ -58,6 +59,10 @@ export interface RagSession extends RagSessionSummary {
 }
 
 export interface RagDiagnostics {
+  agent?: { enabled: boolean; usage?: unknown; judgment?: { support: string; conflict: string }; judgeUsage?: unknown; judgeUnavailable?: boolean };
+  coverage?: unknown;
+  toolCalls?: number;
+  usage?: Array<{ model: string; inputTokens: number | null; outputTokens: number | null }>;
   traceId: string;
   status: "completed" | "no_evidence" | "error";
   answerMode: RagAnswerMode;

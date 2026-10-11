@@ -47,6 +47,7 @@ export function useRag(options: Options) {
   const request = useRef<AbortController | null>(null);
   const loadRequest = useRef<AbortController | null>(null);
   const busy = useRef(false);
+  const titleJobs = useRef(new Map<string, Promise<{ before: string; after: RagSession } | null>>());
   const current = useRef({ session, messages, question, answerMode, unsaved });
   current.current = { session, messages, question, answerMode, unsaved };
   const loadedRoute = useRef<string | null>(null);
@@ -105,6 +106,11 @@ export function useRag(options: Options) {
   }
   async function save(snapshot: Snapshot) {
     const attempt = sequence.current;
+    // A title may finish while the next answer is being generated. Rebase only this
+    // known title-only update, never a concurrent message edit or manual rename.
+    const titleUpdate = await titleJobs.current.get(snapshot.id);
+    if (titleUpdate && titleUpdate.before === snapshot.baseVersion) snapshot = { ...snapshot, baseVersion: titleUpdate.after.version };
+    if (attempt !== sequence.current || !live.current.active) return;
     pendingSave.current = snapshot; setSaving(true); setSaveError("");
     try {
       const { id, ...body } = snapshot;
@@ -119,13 +125,18 @@ export function useRag(options: Options) {
       loadedRoute.current = result.session.id; live.current.onRoute(result.session.id);
       setSessions(list => [result.session, ...list.filter(item => item.id !== result.session.id)]);
       if (result.session.titleSource === "fallback") {
-        try {
-          const titled = await requestJson<{ session: RagSession }>(`/api/rag/sessions/${id}/title`, { method: "POST", body: JSON.stringify({ baseVersion: result.session.version }) });
-          if (attempt !== sequence.current || !live.current.active) return;
-          if (!validSession(titled.session) || titled.session.id !== id) throw new Error();
-          if (JSON.stringify(titled.session.messages) !== JSON.stringify(result.session.messages)) throw new Error("会话在标题生成期间已改变");
-          setSession(titled.session); setSessions(list => [titled.session, ...list.filter(item => item.id !== id)]);
-        } catch { if (live.current.active) setError("回答已保存，自动标题未完成；可直接重命名会话。"); }
+        const job = (async () => {
+          try {
+            const titled = await requestJson<{ session: RagSession }>(`/api/rag/sessions/${id}/title`, { method: "POST", body: JSON.stringify({ baseVersion: result.session.version }) });
+            if (!validSession(titled.session) || titled.session.id !== id || JSON.stringify(titled.session.messages) !== JSON.stringify(result.session.messages)) return null;
+            if (live.current.active) {
+              setSession(previous => previous?.id === id && previous.version === result.session.version ? titled.session : previous);
+              setSessions(list => list.map(item => item.id === id && item.version === result.session.version ? titled.session : item));
+            }
+            return { before: result.session.version, after: titled.session };
+          } catch { return null; } // An optional title must not interrupt the saved conversation.
+        })();
+        titleJobs.current.set(id, job);
       }
     } catch (failure) { setSaveError(failure instanceof Error ? failure.message : "保存历史失败，请重试"); }
     finally { setSaving(false); }
@@ -144,7 +155,7 @@ export function useRag(options: Options) {
     const update = (patch: Partial<RagChatMessage>) => { next = [...next.slice(0, -1), { ...next.at(-1)!, ...patch }]; setMessages(next); };
     let completed = false;
     try {
-      await requestRagStream({ question: text, mode: state.answerMode, history: history.map(({ role, content }) => ({ role, content })) }, controller.signal, event => {
+      await requestRagStream({ question: text, mode: state.answerMode, history: history.map(({ role, content, citations }) => ({ role, content, ...(citations?.length ? { sourceRefs: citations.map(({ date, fileName, heading, contentHash }) => ({ date, fileName, heading, contentHash })) } : {}) })) }, controller.signal, event => {
         if (attempt !== sequence.current) return;
         if (event.kind === "status") setStage(event.message);
         if (event.kind === "sources") update({ citations: event.citations });

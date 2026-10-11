@@ -1,4 +1,5 @@
 import type { RagAnswerMode, RagCitation, RagHistoryMessage, RagPromptMessage, RagRetrievedContext } from "./rag-types.ts";
+import { isValidLogDate } from "./study-date.ts";
 import { unified } from "unified";
 import remarkParse from "remark-parse";
 type ContextForPrompt = Pick<RagRetrievedContext, "sourceId" | "date" | "heading" | "content">;
@@ -7,7 +8,8 @@ export function buildRagMessages(
   question: string,
   history: RagHistoryMessage[],
   contexts: ContextForPrompt[],
-  mode: RagAnswerMode = "logs_only"
+  mode: RagAnswerMode = "logs_only",
+  coverage?: string
 ): RagPromptMessage[] {
   const evidence = contexts
     .map((item) => `[${item.sourceId}]\n日期：${item.date}${item.heading === null ? "" : `\n小节：${item.heading}`}\n内容：\n${item.content}`)
@@ -38,8 +40,10 @@ export function buildRagMessages(
         "引用只使用[S1]这样的方括号编号，不要使用[^S1]脚注、脚注定义或另列来源表。",
         "不要只在段落末尾集中堆放引用；引用应紧跟其支持的具体结论。",
         "只能使用证据中真实存在的来源编号。",
+        "可以综合全部已提供材料，但最终答案最多使用30个不同来源编号；不要为了凑引用数量丢掉对问题重要的差异、条件或否定。",
         "来源编号与各证据块绑定，不代表日期顺序；引用历史事实时须核对编号对应的日期和小节，不得按日期重新编号。",
-        "使用简洁、结构清楚的Markdown回答，不要描述检索过程。"
+        "使用简洁、结构清楚的Markdown回答，不要描述检索过程。",
+        ...(coverage ? [`程序计算的材料覆盖情况：${coverage}`] : [])
       ].join("\n")
     },
     ...history.map((item) => ({ role: item.role, content: item.content }) satisfies RagPromptMessage),
@@ -56,7 +60,13 @@ export function parseRagHistory(value: unknown): RagHistoryMessage[] {
   const history: RagHistoryMessage[] = value.filter((item) => item && typeof item === "object"
     && (item.role === "user" || item.role === "assistant") && typeof item.content === "string")
     .slice(-12)
-    .map((item) => ({ role: item.role as RagHistoryMessage["role"], content: replaceCitationLabels(item.content.slice(0, 6000), () => "").trim() }))
+    .map((item) => {
+      const refs = Array.isArray(item.sourceRefs) ? item.sourceRefs.slice(0, 30).filter((ref: Record<string, unknown>) => ref && isValidLogDate(String(ref.date)) && typeof ref.fileName === "string" && /^\d{4}(?:-\d{2})?_学习日志\.md$/.test(ref.fileName) && (ref.heading === null || typeof ref.heading === "string" && ref.heading.length <= 4000) && typeof ref.contentHash === "string" && /^[a-f0-9]{64}$/.test(ref.contentHash)).map(({ date, fileName, heading, contentHash }: { date: string; fileName: string; heading: string | null; contentHash: string }) => ({ date, fileName, heading, contentHash })) : [];
+      // Do not shift “second source” onto another source after filtering a bad pointer.
+      const validRefs = item.role === "assistant" && refs.length > 0 && refs.length === item.sourceRefs.length &&
+        refs.every((ref: { date: string; fileName: string }) => typeof ref.date === "string" && ref.fileName.startsWith(ref.date.slice(0, ref.fileName[4] === "-" ? 7 : 4)));
+      return { role: item.role as RagHistoryMessage["role"], content: replaceCitationLabels(item.content.slice(0, 6000), () => "").trim(), ...(validRefs ? { sourceRefs: refs } : {}) };
+    })
     .filter((item) => item.content.length > 0).slice(-12);
   let total = 0;
   return history.reverse().filter((item) => {

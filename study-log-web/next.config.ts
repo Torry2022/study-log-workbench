@@ -7,6 +7,11 @@ const nextConfig: NextConfig = {
   // PDF.js loads its worker and text resources relative to its installed package.
   serverExternalPackages: ["pdfjs-dist", "mammoth"],
   outputFileTracingIncludes: {
+    "/api/rag/query": [
+      "./node_modules/ai/LICENSE",
+      "./node_modules/@ai-sdk/*/LICENSE",
+      "./node_modules/@typesafe-ai/sdk/LICENSE"
+    ],
     "/api/materials/extract": [
       "./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs",
       "./node_modules/pdfjs-dist/standard_fonts/**/*",

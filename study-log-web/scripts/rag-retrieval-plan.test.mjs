@@ -74,30 +74,19 @@ test("keeps a fully qualified range", () => {
   assert.equal(plan.strategy, "comparison");
 });
 
-test("includes both explicitly named days in a comparison", () => {
-  assert.deepEqual(planRagRetrieval("对比 2026-01-14 与 2026-01-15 的备份策略记录"), {
-    dateFrom: "2026-01-14", dateTo: "2026-01-15", strategy: "comparison", maxChunks: 12, maxChars: 18000
-  });
-  assert.deepEqual(planRagRetrieval("比较 2026-01-15 和 2026-01-14 的区别"), {
-    dateFrom: "2026-01-14", dateTo: "2026-01-15", strategy: "comparison", maxChunks: 12, maxChars: 18000
-  });
-});
-
-test("includes every day in a three-date comparison", () => {
-  assert.deepEqual(planRagRetrieval("比较 2026-01-14、2026-01-15 和 2026-01-16 的备份策略"), {
-    dateFrom: "2026-01-14", dateTo: "2026-01-16", strategy: "comparison", maxChunks: 12, maxChars: 18000
-  });
-  assert.deepEqual(planRagRetrieval("比较 2026-02-01、2026-01-14 与 2026-01-16 的备份策略"), {
-    dateFrom: "2026-01-14", dateTo: "2026-02-01", strategy: "comparison", maxChunks: 12, maxChars: 18000
-  });
-  assert.deepEqual(planRagRetrieval("比较 2026-01-14 至 2026-01-15 和 2026-01-16 的备份策略"), {
-    dateFrom: "2026-01-14", dateTo: "2026-01-16", strategy: "comparison", maxChunks: 12, maxChars: 18000
-  });
+test("explicit date lists preserve separate scopes rather than filling gaps", () => {
+  for (const question of ["对比 2026-01-14 与 2026-01-15 的备份策略记录", "比较 2026-01-15 和 2026-01-14 的区别"]) {
+    assert.deepEqual(planRagRetrieval(question).ranges, ["2026-01-14", "2026-01-15"].map(date => ({ dateFrom: date, dateTo: date })));
+  }
+  const continuous = planRagRetrieval("比较 2026-01-14 至 2026-01-15 和 2026-01-16 的备份策略");
+  assert.equal(continuous.dateFrom, "2026-01-14"); assert.equal(continuous.dateTo, "2026-01-16");
+  const plan = planRagRetrieval("比较 2026-02-01、2026-01-14 与 2026-01-16 的备份策略");
+  assert.deepEqual(plan.ranges, ["2026-01-14", "2026-01-16", "2026-02-01"].map(date => ({ dateFrom: date, dateTo: date })));
+  assert.equal(plan.strategy, "comparison");
   const invalid = planRagRetrieval("比较 2026-01-14、2026-01-15 和 2026-02-30 的备份策略");
   assert.equal(invalid.dateFrom, undefined);
-  assert.equal(invalid.dateTo, undefined);
+  assert.equal(invalid.ranges, undefined);
 });
-
 
 test("routes an explicit quoted source lookup to literal raw-log retrieval", () => {
   assert.deepEqual(planRagRetrieval("我哪天写过`retain_graph=True`？"), {

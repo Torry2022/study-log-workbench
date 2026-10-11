@@ -1,4 +1,4 @@
-import { AiChatError } from "./ai-chat.ts";
+import { AiChatError, readChatUsage } from "./ai-chat.ts";
 import type { ChatConfig } from "./ai-config.ts";
 import type { RagPromptMessage } from "./rag-types.ts";
 
@@ -22,6 +22,7 @@ export async function streamRagAnswer(config: ChatConfig, messages: RagPromptMes
     if (!response.headers.get("content-type")?.toLowerCase().startsWith("text/event-stream") || !response.body) { await response.body?.cancel(); throw invalid(); }
     const reader = response.body.getReader(), decoder = new TextDecoder("utf-8", { fatal: true });
     let buffer = "", data: string[] = [], answer = "", bytes = 0, completed = false;
+    let usage: unknown;
     const dispatch = () => {
       if (!data.length || completed) { data = []; return; }
       const value = data.join("\n").trim(); data = [];
@@ -30,6 +31,7 @@ export async function streamRagAnswer(config: ChatConfig, messages: RagPromptMes
       let payload;
       try { payload = JSON.parse(value); } catch { throw invalid(); }
       if (!payload || typeof payload !== "object" || payload.error || !Array.isArray(payload.choices)) throw invalid();
+      if (payload.usage) usage = payload.usage;
       // A provider may send an empty choices array for its final usage event.
       if (!payload.choices.length) return;
       const choice = payload.choices[0];
@@ -64,6 +66,7 @@ export async function streamRagAnswer(config: ChatConfig, messages: RagPromptMes
     signal.throwIfAborted();
     if (!completed) throw new AiChatError("AI_STREAM_INTERRUPTED", "模型响应提前中断，当前内容尚未完成，请重试");
     if (!answer.trim()) throw new AiChatError("AI_EMPTY_RESPONSE", "模型没有返回有效正文，请重试");
+    config.onUsage?.(readChatUsage(usage));
     return answer.trim();
   } catch (error) {
     if (options.signal?.aborted) throw new AiChatError("AI_CANCELLED", "已取消回答", 499);

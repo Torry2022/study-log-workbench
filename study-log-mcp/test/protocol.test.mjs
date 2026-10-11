@@ -28,9 +28,10 @@ function client(era = "modern") {
 }
 function data(result) { assert.notEqual(result.isError, true, JSON.stringify(result)); return JSON.parse(result.content[0].text); }
 async function checkTools(c) {
-  const { tools } = await c.listTools(); assert.equal(tools.length, 8);
+  const { tools } = await c.listTools(); assert.equal(tools.length, 9);
   assert.ok(tools.every(tool => tool.annotations.readOnlyHint && !tool.annotations.destructiveHint));
   const call = async (name, args = {}) => data(await c.callTool({ name, arguments: args }));
+  assert.equal((await call("read_log_range", { dateFrom: "2026-01-01", dateTo: "2026-01-02" })).coverage.totalDays, 2);
   assert.equal((await call("list_months")).months[0].id, "2026-01");
   assert.equal((await call("list_days", { month: "2026-01" })).days.length, 2);
   assert.match((await call("get_day", { date: "2026-01-01" })).day.content, /SyntheticAlpha/);
@@ -47,7 +48,7 @@ async function checkTools(c) {
 }
 
 for (const era of ["modern", "legacy"]) {
-  test(`real SDK ${era} HTTP negotiates, reads all 8 tools and holds no session`, async t => {
+  test(`real SDK ${era} HTTP negotiates, reads all 9 tools and holds no session`, async t => {
     const f = await fixture(t), service = await startHttpServer(f); t.after(() => service.close());
     const c = client(era), transport = new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${service.address.port}/mcp`), { requestInit: { headers: { Authorization: `Bearer ${f.token}` } } });
     t.after(() => c.close()); await c.connect(transport); await checkTools(c);

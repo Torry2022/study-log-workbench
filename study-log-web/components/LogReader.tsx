@@ -124,8 +124,9 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
   const linkPosition = useReadingPosition({ editor: () => editorView.current, preview: () => preview.current,
     toolbarBottom: () => toolbar.current?.getBoundingClientRect().bottom || 0 });
   const ready = Boolean(day?.exists && !loading && !error);
+  const dateLabel = date || (error ? "加载失败" : loading ? "正在加载" : "未选择日期");
   const exportScopes = [{ scope: "day" as const, label: "当前日志", disabled: !ready }, { scope: "file" as const, label: "当前源文件", disabled: !ready }, { scope: "all" as const, label: "全部日志", disabled: !hasLogs }];
-  const editorReady = Boolean(date && editing.documentDate === date);
+  const editorReady = Boolean(date && editing.documentDate === date && !loading && !error);
   const mode = !date || reading ? "preview" : editing.mode;
   useEffect(() => {
     if (!active || mode !== "split" || !editorReady) return;
@@ -338,7 +339,7 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
   return <>
     <div className="reader-toolbar-container" ref={toolbar}><div className={`reader-toolbar reader-toolbar-log${reading ? " reading-active" : ""}`}>
       <div className="reading-mode-toolbar"><div className="reading-mode-identity"><BookOpen size={17} /><h2>{date}</h2></div><div className="reading-mode-actions">{dayNavigator()}{outlineButton}<button className="reading-mode-icon" type="button" aria-label="退出阅读" title="退出阅读模式" onClick={() => changeReading(false)}><Minimize2 size={17} /></button></div></div>
-      <div className="reader-log-identity"><span className="eyebrow">{day?.fileName || "学习日志"}</span><div className="reader-heading-row"><h2>{date || "未选择日期"}</h2><div className="reader-navigator-desktop">{dayNavigator()}</div></div></div>
+      <div className="reader-log-identity"><span className="eyebrow">{day?.fileName || "学习日志"}</span><div className="reader-heading-row"><h2>{dateLabel}</h2><div className="reader-navigator-desktop">{dayNavigator()}</div></div></div>
       <div className="reader-controls reader-log-controls">
         <div className="reader-secondary-actions">
           {navigation?.onReturnNotes && <button className="button secondary" type="button" onClick={navigation.onReturnNotes}><CornerUpLeft size={15} />返回随记</button>}
@@ -376,7 +377,7 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
           {saveButton()}
         </div>
       </div>
-      <div className="mobile-log-toolbar"><div className="mobile-log-identity"><strong>{date || "未选择日期"}</strong></div><div className="mobile-log-actions">{modeButtons(true)}{saveButton(true)}<button className="mobile-toolbar-icon" type="button" aria-label="更多日志操作" onClick={() => setActionsOpen(true)}><MoreHorizontal size={19} /></button></div></div>
+      <div className="mobile-log-toolbar"><div className="mobile-log-identity"><strong>{dateLabel}</strong></div><div className="mobile-log-actions">{modeButtons(true)}{saveButton(true)}<button className="mobile-toolbar-icon" type="button" aria-label="更多日志操作" onClick={() => setActionsOpen(true)}><MoreHorizontal size={19} /></button></div></div>
     </div></div>
     <div className={`reader-content editing-workspace mode-${mode}`}>
     {linkError && <div className="editor-navigation-status" role="alert">{linkError}</div>}
@@ -388,8 +389,8 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
     {active && editing.saved && !editing.dirty && !editing.error && <AppFeedback message="已保存" tone="success" onDismiss={() => {}} />}
     <div className="reader-preview-pane" ref={previewPane} onClick={handlePreviewClick} style={{ display: mode === "source" ? "none" : undefined }}>
     {loading || error || !content.trim() ? <div className={`preview-workspace${(loading || error) && mode === "preview" ? " has-outline" : ""}`}><div className="preview-pane">
-      {loading ? <WorkspaceState kind="loading" title={`正在加载 ${date}`} className="preview-loading" /> : error ? <WorkspaceState kind="error" title="日志加载失败" description={error} className="preview-empty" actions={<button className="button secondary" type="button" onClick={onRetry}><RefreshCw size={15} />重新加载</button>} /> : <WorkspaceState kind="empty" icon={FileText} title={date ? "暂无正文" : hasLogs ? "未选择日志" : "暂无学习日志"} description={date ? "切换到“源码”，写下这一天的学习内容。" : hasLogs ? "选择一个日期，查看当天的学习内容。" : "点击“今天”，记下今天学到的内容。"} layout="module" className="log-empty-state" />}
-    </div></div> : <div className={`preview-workspace${headings.length && mode === "preview" ? " has-outline" : ""}`}>
+      {loading ? <WorkspaceState kind="loading" title={date ? `正在加载 ${date}` : "正在加载日志"} className="preview-loading" /> : error ? <WorkspaceState kind="error" title="日志加载失败" description={error} className="preview-empty" actions={<button className="button secondary" type="button" onClick={onRetry}><RefreshCw size={15} />重新加载</button>} /> : <WorkspaceState kind="empty" icon={FileText} title={date ? "暂无正文" : hasLogs ? "未选择日志" : "暂无学习日志"} description={date ? "切换到“源码”，写下这一天的学习内容。" : hasLogs ? "选择一个日期，查看当天的学习内容。" : "点击“今天”，记下今天学到的内容。"} layout="module" className="log-empty-state" />}
+    </div>{(loading || error) && mode === "preview" && <nav className="preview-outline" aria-label="当前日志大纲"><div className="preview-outline-inner"><div className="preview-outline-title">目录</div><WorkspaceState kind={error ? "error" : "loading"} layout="compact" title={error ? "等待日志重新加载" : "正在加载目录"} /></div></nav>}</div> : <div className={`preview-workspace${headings.length && mode === "preview" ? " has-outline" : ""}`}>
       <div className="preview-pane"><MarkdownPreview active={active} containerRef={preview} content={content} headings={headings} themeMode={theme} textHighlight={search || undefined} onInternalLink={openInternalLink} />
         {!reading && <button className="reading-mode-entry preview-reading-mode-entry" type="button" aria-label="进入阅读模式" title="进入阅读模式" onClick={() => changeReading(true)}><Maximize2 size={18} /></button>}
       </div>{headings.length > 0 && mode === "preview" && renderOutline(false)}

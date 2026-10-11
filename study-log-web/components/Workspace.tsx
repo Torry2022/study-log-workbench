@@ -242,11 +242,13 @@ export function Workspace() {
     moduleNavigation={(onNavigate, filtersOnly) => logs.selection.view === "favorites" ? <FavoritesNavigation favorites={favorites} active={active} /> : logs.selection.view === "stats" ? <StatsNavigation stats={stats} filtersOnly={filtersOnly} onNavigate={onNavigate} /> : logs.selection.view === "notes" ? <NotesNavigation notes={notesWithExtraction} filtersOnly={filtersOnly} onNavigate={onNavigate} onExport={() => void exporting.run("notes")} exportBusy={exporting.busy} /> : null}
     selectedMonth={logs.selection.month} selectedDate={logs.selection.date} dayQuery={dayQuery} onDayQueryChange={setDayQuery}
     loading={logs.navigationLoading} error={logs.navigationError || sessionError} readingMode={reading && logView}
+    monthsLoading={logs.monthsLoading} monthsError={logs.monthsError} creationBlocked={logs.loading || Boolean(logs.error)}
+    selectedLogLabel={logs.error ? "日志加载失败" : logs.loading ? "正在加载日志" : logs.selection.date ? logs.day?.headings.join(" / ") || "未命名日志" : "未选择日志"}
     theme={theme} themePreference={preference} onTheme={chooseTheme}
     onMonth={month => { clearSearch(); logs.selectMonth(month); }} onDate={selectSidebarDate} onRetry={logs.retry}
     onSearchChange={clearSearch} onSearchSelect={async result => { if (!(await selectDate(result.date))) return false; setMode("preview"); setReading(false); setSearchSelection(result); return true; }}
     onNewQuestion={async () => { if (!(await logs.selectView("qa"))) return false; clearSearch(); setReading(false); return rag.newSession(); }}
-    onNewDate={date => { void logs.selectDate(date).then(accepted => { if (accepted) setMode("source"); }); }} onLogout={() => void exit()}>
+    onNewDate={date => { if (logs.loading || logs.error) return; void logs.selectDate(date).then(accepted => { if (accepted) setMode("source"); }); }} onLogout={() => void exit()}>
     {navigationError && <AppFeedback message={navigationError} tone="error" onDismiss={() => setNavigationError("")} />}
     {(exporting.status || exporting.error || exporting.busy) && <AppFeedback message={exporting.error || exporting.status || "正在准备导出…"} tone={exporting.error ? "error" : exporting.status ? "warning" : "info"} onDismiss={exporting.dismiss} action={exporting.busy ? { label: "取消导出", onClick: exporting.cancel } : undefined} />}
     <div className="workspace-view" hidden={logs.selection.view !== "qa"}>

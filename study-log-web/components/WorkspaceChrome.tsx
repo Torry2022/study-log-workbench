@@ -41,6 +41,9 @@ export interface WorkspaceChromeProps {
   selectedLogLabel?: string;
   loading: boolean;
   error: string;
+  monthsLoading: boolean;
+  monthsError: string;
+  creationBlocked: boolean;
   theme: "light" | "dark";
   themePreference?: "system" | "light" | "dark";
   readingMode?: boolean;
@@ -66,7 +69,7 @@ const themes = [
 
 /** Presentation and navigation only; authentication and document state belong to Workspace. */
 export function WorkspaceChrome({ active, view, onView, moduleNavigation, moduleSidebar, ragNavigation, inspector, openAiRequest = 0, inspectorTab, onInspectorTab, months, days, selectedMonth, selectedDate, dayQuery: query, onDayQueryChange: setQuery, selectedLogLabel, loading, error,
-  theme, themePreference = "system", readingMode = false, dayOperationBusy = false, onMonth, onDate, onNewDate, onNewQuestion, onTheme, onLogout, onRetry, onSearchSelect, onSearchChange, children }: WorkspaceChromeProps) {
+  monthsLoading, monthsError, creationBlocked, theme, themePreference = "system", readingMode = false, dayOperationBusy = false, onMonth, onDate, onNewDate, onNewQuestion, onTheme, onLogout, onRetry, onSearchSelect, onSearchChange, children }: WorkspaceChromeProps) {
   const [compact, setCompact] = useState(false);
   const [compactDateSelection, setCompactDateSelection] = useState(0);
   const [sidebarPreferences, setSidebarPreferences] = useState<Partial<Record<WorkspaceView, boolean>>>({});
@@ -271,7 +274,7 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, module
   const dateIndex = filteredDays.findIndex(day => day.date === selectedDate);
   function renderDayList() {
     return <>
-      {loading && <WorkspaceState kind="loading" title="正在读取日志目录" layout="compact" />}
+      {loading && !error && <WorkspaceState kind="loading" title="正在读取日志目录" layout="compact" />}
       {error && <WorkspaceState kind="error" title="日志目录加载失败" description={error} layout="compact" actions={<button className="button secondary" type="button" onClick={onRetry}>重试</button>} />}
       {!loading && !error && !filteredDays.length && <WorkspaceState kind="empty" title={query ? "没有符合条件的日志" : months.length ? "本月暂无日志" : "暂无学习日志"} layout="compact" />}
       {!loading && !error && filteredDays.map(day => <div key={day.date} className={`day-item${day.date === selectedDate ? " active" : ""}`} onClick={() => void selectSidebarDate(day.date)}>
@@ -283,10 +286,10 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, module
     </>;
   }
   const logDateCreation = <>
-<button className="button secondary full" type="button" onClick={() => { onNewDate(todayInShanghai()); if (compact) setPanel(null); }}><Plus size={15} />今天</button>
+<button className="button secondary full" type="button" disabled={creationBlocked} onClick={() => { onNewDate(todayInShanghai()); if (compact) setPanel(null); }}><Plus size={15} />今天</button>
             <form className="date-create" onSubmit={event => { event.preventDefault(); if (!isValidLogDate(customDate) || isFutureLogDate(customDate)) return; onNewDate(customDate); if (compact) setPanel(null); }}>
               <input type="date" value={customDate} max={todayInShanghai()} onChange={event => setCustomDate(event.target.value)} aria-label="新建指定日期" />
-              <button type="submit" disabled={!isValidLogDate(customDate) || isFutureLogDate(customDate)}><Plus size={14} />新建</button>
+              <button type="submit" disabled={creationBlocked || !isValidLogDate(customDate) || isFutureLogDate(customDate)}><Plus size={14} />新建</button>
             </form>
   </>;
 
@@ -327,13 +330,13 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, module
           {view !== "log" ? moduleSidebar ? <>{moduleSidebar.railActionBefore}<SidebarFilterPopover key={view} active={active} label={moduleSidebar.label} icon={moduleSidebar.icon} filtered={moduleSidebar.filtered} onReset={moduleSidebar.onReset}>{moduleNavigation(() => {}, true)}</SidebarFilterPopover>{moduleSidebar.railAction}</> : <button className="sidebar-rail-button" onClick={() => changeCollapsed(false)} aria-label={`展开${viewLabel}筛选`} title={`${viewLabel}筛选`}><ViewIcon size={17} /></button> : <>
           <button className="sidebar-rail-button" onClick={() => changeCollapsed(false, "months")} aria-label="展开月份列表" title="月份"><CalendarDays size={17} /></button>
           <button className="sidebar-rail-button" onClick={() => changeCollapsed(false, "dates")} aria-label="展开日期列表" title="日期"><FileText size={17} /></button>
-          <button className="sidebar-rail-button" onClick={() => onNewDate(todayInShanghai())} aria-label="新建今日日志" title="新建今日日志"><Plus size={17} /></button></>}
+          <button className="sidebar-rail-button" disabled={creationBlocked} onClick={() => onNewDate(todayInShanghai())} aria-label="新建今日日志" title="新建今日日志"><Plus size={17} /></button></>}
         </div> : view !== "log" ? <>{moduleSidebar ? <SidebarFilterHeading title={moduleSidebar.title} filtered={moduleSidebar.filtered} onReset={moduleSidebar.onReset} onCollapse={() => changeCollapsed(true)} /> : <div className="sidebar-heading"><div className="section-title inline"><ViewIcon size={15} />{viewLabel}</div><button className="sidebar-collapse-button" onClick={() => changeCollapsed(true)} aria-label="折叠左侧栏"><ChevronLeft size={16} /></button></div>}{moduleNavigation(() => setPanel(null))}</> : <>
           {compact && <div className="sidebar-section mobile-log-create">{logDateCreation}</div>}
           <div className="sidebar-section" data-log-section="months">
             <div className="sidebar-heading" ref={monthHeading} tabIndex={-1}><div className="section-title inline"><CalendarDays size={15} /><span>月份</span></div><button className="sidebar-collapse-button" onClick={() => changeCollapsed(true)} aria-label="折叠左侧栏" title="折叠左侧栏"><ChevronLeft size={16} /></button></div>
             <div className="month-list">{(compact && !monthsExpanded ? months.slice(0, 6) : months).map(month => <button key={month.id} type="button" className={`nav-item${month.id === selectedMonth ? " active" : ""}`} aria-current={month.id === selectedMonth ? "true" : undefined} onClick={() => { setQuery(""); onMonth(month.id); }}><span>{month.label}</span><small>{month.dayCount}</small></button>)}</div>
-            {!loading && !error && !months.length && <WorkspaceState kind="empty" title="暂无月份记录" layout="compact" />}
+            {monthsError ? <WorkspaceState kind="error" title="月份加载失败" description={monthsError} layout="compact" actions={<button className="button secondary" type="button" onClick={onRetry}>重试</button>} /> : monthsLoading ? <WorkspaceState kind="loading" title="正在加载月份" layout="compact" /> : !months.length && <WorkspaceState kind="empty" title="暂无月份记录" layout="compact" />}
             {compact && months.length > 6 && <button className="button secondary full" type="button" aria-expanded={monthsExpanded} onClick={() => setMonthsExpanded(value => !value)}>{monthsExpanded ? "收起月份" : `展开其余 ${months.length - 6} 个月份`}</button>}
           </div>
           <div className="sidebar-section grow" data-log-section="dates">

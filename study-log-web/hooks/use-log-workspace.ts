@@ -59,9 +59,19 @@ export function useLogWorkspace(active: boolean, beforeLeave?: RefObject<() => P
   const [days, setDays] = useState<DaySummary[]>([]);
   const [day, setDay] = useState<DayEntry | null>(null);
   const [errors, setErrors] = useState({ months: "", days: "", day: "" });
-  const [loading, setLoading] = useState({ months: false, days: false, day: false });
+  const [loading, setLoading] = useState({ months: true, days: false, day: false });
   const [revision, setRevision] = useState(0);
   const [listRevision, setListRevision] = useState(0);
+  const [settled, setSettled] = useState({ months: "", days: "", day: "" });
+  const monthsKey = `${revision}:${listRevision}`;
+  const daysKey = `${monthsKey}:${selection.month}`;
+  const dayKey = `${revision}:${selection.date}`;
+  const monthsLoading = loading.months || settled.months !== monthsKey;
+  const monthsError = settled.months === monthsKey ? errors.months : "";
+  const daysLoading = monthsLoading || Boolean(selection.month && (loading.days || settled.days !== daysKey));
+  const daysError = monthsError || (settled.days === daysKey ? errors.days : "");
+  const dayLoading = daysLoading || Boolean(selection.date && (loading.day || settled.day !== dayKey));
+  const dayError = daysError || (settled.day === dayKey ? errors.day : "");
   const [scrollTarget, setScrollTarget] = useState<number | null>(null);
   const [navigationRevision, setNavigationRevision] = useState(0);
   const currentSelection = useRef(selection);
@@ -107,17 +117,18 @@ export function useLogWorkspace(active: boolean, beforeLeave?: RefObject<() => P
     setErrors(value => ({ ...value, months: "" }));
     requestLogJson<{ months: MonthSummary[] }>("/api/logs/months", controller.signal)
       .then(result => {
+        controller.signal.throwIfAborted();
         monthsRef.current = result.months;
         setMonths(result.months);
         setSelection(current => current.month ? current : { ...current, month: result.months[0]?.id || "" });
       })
       .catch(error => { if (!cancelled(error, controller.signal)) setErrors(value => ({ ...value, months: error.message })); })
-      .finally(() => { if (!controller.signal.aborted) setLoading(value => ({ ...value, months: false })); });
+      .finally(() => { if (!controller.signal.aborted) { setLoading(value => ({ ...value, months: false })); setSettled(value => ({ ...value, months: monthsKey })); } });
     return () => controller.abort();
   }, [active, revision, listRevision]);
 
   useEffect(() => {
-    if (!active || !selection.month) return;
+    if (!active || !selection.month || monthsLoading || monthsError) return;
     const month = selection.month;
     const controller = new AbortController();
     setDays([]);
@@ -125,6 +136,8 @@ export function useLogWorkspace(active: boolean, beforeLeave?: RefObject<() => P
     setErrors(value => ({ ...value, days: "" }));
     requestLogJson<{ days: DaySummary[] }>(`/api/logs?month=${encodeURIComponent(month)}`, controller.signal)
       .then(result => {
+        controller.signal.throwIfAborted();
+        if (currentSelection.current.month !== month) return;
         setDays(result.days);
         setSelection(current => {
           if (current.month !== month || current.date) return current;
@@ -133,23 +146,23 @@ export function useLogWorkspace(active: boolean, beforeLeave?: RefObject<() => P
         });
       })
       .catch(error => { if (!cancelled(error, controller.signal)) setErrors(value => ({ ...value, days: error.message })); })
-      .finally(() => { if (!controller.signal.aborted) setLoading(value => ({ ...value, days: false })); });
+      .finally(() => { if (!controller.signal.aborted) { setLoading(value => ({ ...value, days: false })); setSettled(value => ({ ...value, days: daysKey })); } });
     return () => controller.abort();
-  }, [active, selection.month, revision, listRevision]);
+  }, [active, selection.month, revision, listRevision, monthsLoading, monthsError]);
 
   useEffect(() => {
-    if (!active) return;
+    if (!active || daysLoading || daysError) return;
     setDay(null);
     setErrors(value => ({ ...value, day: "" }));
     if (!selection.date) { setLoading(value => ({ ...value, day: false })); return; }
     const controller = new AbortController();
     setLoading(value => ({ ...value, day: true }));
     requestLogJson<{ day: DayEntry }>(`/api/logs/day?date=${encodeURIComponent(selection.date)}`, controller.signal)
-      .then(result => setDay(result.day))
+      .then(result => { controller.signal.throwIfAborted(); if (currentSelection.current.date === result.day.date) setDay(result.day); })
       .catch(error => { if (!cancelled(error, controller.signal)) setErrors(value => ({ ...value, day: error.message })); })
-      .finally(() => { if (!controller.signal.aborted) setLoading(value => ({ ...value, day: false })); });
+      .finally(() => { if (!controller.signal.aborted) { setLoading(value => ({ ...value, day: false })); setSettled(value => ({ ...value, day: dayKey })); } });
     return () => controller.abort();
-  }, [active, selection.date, revision]);
+  }, [active, selection.date, revision, daysLoading, daysError]);
 
   useEffect(() => {
     if (selection.month) { writeLocation(selection, true); acceptedIndex.current = window.history.state.studyLogIndex; }
@@ -205,11 +218,12 @@ export function useLogWorkspace(active: boolean, beforeLeave?: RefObject<() => P
   }, []);
   return {
     months, days, day: day?.date === selection.date ? day : null, selection, selectMonth, selectDate, selectView, selectNote, selectStatsMonth, selectRagSession, replaceRagSession, scrollTarget, navigationRevision,
-    navigationLoading: loading.months || loading.days,
-    navigationError: errors.months || errors.days,
+    monthsLoading, monthsError,
+    navigationLoading: daysLoading,
+    navigationError: daysError,
     acceptSaved, acceptDeleted,
-    loading: loading.day || (!selection.month && loading.months) || (!selection.date && loading.days),
-    error: errors.months || errors.days || errors.day,
+    loading: !dayError && dayLoading,
+    error: dayError,
     retry: () => setRevision(value => value + 1)
   };
 }

@@ -9,6 +9,36 @@ import { buildMarkdownOutline } from "../lib/markdown-outline.ts";
 import { searchDayContents } from "../lib/log-search.ts";
 import { parseStatsDays } from "../lib/stats-store.ts";
 
+test("date-only reads retain fenced separators and invalidate bodies on same-size same-mtime edits", async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "workbench-cache-test-"));
+  const previous = process.env.LOG_ROOT; process.env.LOG_ROOT = root;
+  t.after(async () => {
+    if (previous === undefined) delete process.env.LOG_ROOT; else process.env.LOG_ROOT = previous;
+    assert.equal(path.dirname(root), path.resolve(os.tmpdir()));
+    assert.ok(path.basename(root).startsWith("workbench-cache-test-"));
+    await fs.rm(root, { recursive: true, force: true });
+  });
+  const file = path.join(root, "2024-01_学习日志.md");
+  const source = "## 2024-01-09\n\n### 1. 标题\n\nAAAA\n\n```markdown\n---\n```\n\n---\n\n## 2024-01-10\n\n### 1. 后一篇\n\nCCCC\n\n---\n";
+  await fs.writeFile(file, source);
+  assert.equal((await listMonths())[0].dayCount, 2);
+  const first = await getDay("2024-01-09");
+  assert.match(first.content, /AAAA/);
+  assert.match(first.content, /```markdown\n---\n```$/);
+  assert.equal((await listMonths())[0].dayCount, 2);
+  assert.deepEqual(await getDay(first.date), first);
+  assert.match((await getDay("2024-01-10")).content, /CCCC/);
+  const stat = await fs.stat(file);
+  const changed = source.replace("AAAA", "BBBB");
+  assert.equal(Buffer.byteLength(changed), Buffer.byteLength(source));
+  await fs.writeFile(file, changed); await fs.utimes(file, stat.atime, stat.mtime);
+  assert.equal(Math.round((await fs.stat(file)).mtimeMs), Math.round(stat.mtimeMs));
+  assert.equal((await listMonths())[0].dayCount, 2);
+  const updated = await getDay(first.date);
+  assert.match(updated.content, /BBBB/); assert.notEqual(updated.version, first.version);
+  assert.deepEqual((await listDays("2024-01")).find(day => day.date === first.date).headings, ["标题"]);
+});
+
 test("day summaries retain unnumbered H3 headings and share section order with navigation, search and statistics", async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "workbench-read-test-"));
   const old = process.env.LOG_ROOT; process.env.LOG_ROOT = root;

@@ -28,6 +28,7 @@ interface ParsedBlock {
 const parsedFileCache = new Map<string, {
   content: string;
   headings: ReturnType<typeof findLevelTwoHeadings>;
+  bodies?: Map<number, string>;
 }>();
 
 const MAX_CACHED_CHARACTERS = 4_000_000;
@@ -88,7 +89,7 @@ async function listLogFiles(): Promise<LogFile[]> {
 }
 
 
-function parseBlocks(content: string, file: LogFile): ParsedBlock[] {
+function parseBlocks(content: string, file: LogFile, includeContent = true, requestedDate?: string): ParsedBlock[] {
   const cached = parsedFileCache.get(file.filePath);
   let headings = cached?.headings || [];
   if (!cached || cached.content !== content) {
@@ -111,6 +112,8 @@ function parseBlocks(content: string, file: LogFile): ParsedBlock[] {
     parsedFileCache.delete(file.filePath);
     parsedFileCache.set(file.filePath, cached);
   }
+  const entry = parsedFileCache.get(file.filePath);
+  if (includeContent && entry && !entry.bodies) entry.bodies = new Map();
   return headings.map((heading, index) => {
     if (!isValidLogDate(heading.text)) throw new Error("源文件包含无效日期");
     const sourceDate = file.fileName.match(LOG_FILE_PATTERN);
@@ -118,11 +121,16 @@ function parseBlocks(content: string, file: LogFile): ParsedBlock[] {
     if (prefix && !heading.text.startsWith(prefix)) throw new Error("日志日期与源文件年月不一致");
     const start = heading.start;
     const end = index + 1 < headings.length ? headings[index + 1].start : content.length;
+    let body = "";
+    if (includeContent && (!requestedDate || heading.text === requestedDate)) {
+      body = entry?.bodies?.get(start) ?? stripTrailingStructuralSeparator(content.slice(start, end));
+      entry?.bodies?.set(start, body);
+    }
     return {
       date: heading.text,
       start,
       end,
-      content: stripTrailingStructuralSeparator(content.slice(start, end)),
+      content: body,
       fileName: file.fileName,
       filePath: file.filePath,
       sourceContent: content
@@ -134,7 +142,7 @@ function parseBlocks(content: string, file: LogFile): ParsedBlock[] {
 export function extractDayBlockFromSource(content: string, fileName: string, date: string): string | null {
   assertDate(date);
   const file = { fileName, filePath: fileName };
-  const blocks = parseBlocks(content, file);
+  const blocks = parseBlocks(content, file, true, date);
   if (new Set(blocks.map(block => block.date)).size !== blocks.length) {
     throw new LogWriteInputError("备份源文件包含重复日期，无法确认所选日志");
   }
@@ -142,13 +150,13 @@ export function extractDayBlockFromSource(content: string, fileName: string, dat
 }
 
 
-async function readBlocks(month?: string): Promise<ParsedBlock[]> {
+async function readBlocks(month?: string, includeContent = true, requestedDate?: string): Promise<ParsedBlock[]> {
   const files = await listLogFiles();
   const all: ParsedBlock[] = [];
   for (const file of files) {
     if (month && file.fileName !== `${month}_学习日志.md` && file.fileName !== `${month.slice(0, 4)}_学习日志.md`) continue;
     const content = await readText(file.filePath);
-    all.push(...parseBlocks(content, file));
+    all.push(...parseBlocks(content, file, includeContent, requestedDate));
   }
   const dates = new Set<string>();
   for (const block of all) {
@@ -171,7 +179,7 @@ function toDaySummary(block: ParsedBlock): DaySummary {
 
 
 export async function listMonths(): Promise<MonthSummary[]> {
-  const blocks = await readBlocks();
+  const blocks = await readBlocks(undefined, false);
   const groups = new Map<string, ParsedBlock[]>();
   for (const block of blocks) {
     const month = toMonth(block.date);
@@ -208,7 +216,7 @@ export async function listSavedDayContents(): Promise<Array<{ date: string; cont
 
 async function findDayBlock(date: string): Promise<ParsedBlock | null> {
   assertDate(date);
-  const blocks = await readBlocks(toMonth(date));
+  const blocks = await readBlocks(toMonth(date), true, date);
   return blocks.find((block) => block.date === date) || null;
 }
 

@@ -143,3 +143,26 @@ test("complete usage releases excess reservation only after durable settlement; 
     assert.equal(path.dirname(directory), path.resolve(os.tmpdir())); assert.match(path.basename(directory), /^study-log-budget-settle-/);
     await fs.rm(directory, { recursive: true, force: true }); }
 });
+
+test('SSE DONE settles without waiting for upstream connection close', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'study-log-budget-done-'));
+  const clientFetch = globalThis.fetch; let proxy, cancelled = false;
+  try {
+    globalThis.fetch = async () => new Response(new ReadableStream({
+      start(controller) { controller.enqueue(new TextEncoder().encode('data: {"choices":[],"usage":{"prompt_tokens":1,"completion_tokens":1}}\n\ndata: [DONE]\n\n')); },
+      cancel() { cancelled = true; }
+    }), { headers: { 'content-type': 'text/event-stream' } });
+    proxy = await startBudgetProxy({ apiKey: 'synthetic', apiUrl: 'https://api.deepseek.com/chat/completions', model: 'deepseek-flash', budgetCny: 1, ledgerFile: path.join(directory, 'ledger.jsonl') });
+    const response = await clientFetch(proxy.url, { method: 'POST', headers: { Authorization: `Bearer ${proxy.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'deepseek-flash', stream: true }), signal: AbortSignal.timeout(2000) });
+    assert.match(await response.text(), /\[DONE\]/);
+    await proxy.settled();
+    assert.equal(cancelled, true);
+    assert.equal(proxy.report().unsettledReservedCny, 0);
+    const rows = (await fs.readFile(path.join(directory, 'ledger.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse);
+    assert.equal(rows.at(-1).event, 'request-finished');
+  } finally {
+    await proxy?.close(); globalThis.fetch = clientFetch;
+    assert.equal(path.dirname(directory), path.resolve(os.tmpdir())); assert.match(path.basename(directory), /^study-log-budget-done-/);
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});

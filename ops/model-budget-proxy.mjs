@@ -67,6 +67,8 @@ export async function startBudgetProxy({ apiKey, apiUrl, model, budgetCny, ledge
         collected += decoder.decode(chunk, { stream: true });
         if (record.receivedBytes > 16 * 1024 * 1024) { record.failure = "response_limit"; throw new Error("Acceptance response too large"); }
         response.write(chunk);
+        // SSE completion need not coincide with the upstream TCP connection closing.
+        if (payload.stream && /(?:^|\r?\n)data: \[DONE\]\r?\n\r?\n/.test(collected)) break;
       }
       collected += decoder.decode();
       if (payload.stream) {
@@ -120,6 +122,7 @@ export async function startBudgetProxy({ apiKey, apiUrl, model, budgetCny, ledge
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
   return {
     url: `http://127.0.0.1:${server.address().port}/chat/completions`, token: localToken,
+    settled: () => completion,
     report: () => ({ budgetCny, reservedCny, budgetedCny, usageCeilingCny: records.reduce((sum, record) => sum + (record.usageCeilingCny ?? 0), 0),
       unsettledReservedCny: records.filter(record => record.usageCeilingCny === undefined).reduce((sum, record) => sum + record.reservedCny, 0),
       records, note: "reservedCny is gross historical reservation, not spending. budgetedCny combines settled usage ceilings and unresolved reservations; neither is a supplier bill." }),

@@ -2,6 +2,29 @@ import { readStudyLogRange, retrieveStudyLogContexts, type RangePage, type Retri
 import type { McpConfig } from "./mcp-config.ts";
 import type { RagRetrievalPlan } from "./rag-retrieval-plan.ts";
 import type { RagRetrievedContext } from "./rag-types.ts";
+import { createHash } from "node:crypto";
+import { findRootAtxHeadings } from "./day-content.ts";
+
+type DaySection = Pick<RagRetrievedContext, "heading" | "headingIndex" | "contentHash">;
+const hash = (content: string) => createHash("sha256").update(content).digest("hex");
+// Only complete, uncompressed day reads can prove that no extra body is being discarded.
+function completeDaySections(item: RagRetrievedContext): DaySection[] | null {
+  if (item.truncated || item.chunkId !== `${item.date}:range:0` || hash(item.content) !== item.contentHash) return null;
+  const days = findRootAtxHeadings(item.content, 2), headings = findRootAtxHeadings(item.content, 3);
+  if (days.length !== 1 || days[0].start !== 0 || days[0].text !== item.date) return null;
+  const sections: DaySection[] = [];
+  const preamble = item.content.slice(days[0].end, headings[0]?.start ?? item.content.length).trim();
+  if (preamble) sections.push({ heading: null, headingIndex: null, contentHash: hash(preamble) });
+  for (const [headingIndex, heading] of headings.entries()) {
+    const body = item.content.slice(heading.end, headings[headingIndex + 1]?.start ?? item.content.length).trim();
+    if (!body) return null; // Empty headings still carry information.
+    const title = heading.text.replace(/!\[([^\]]*)]\([^)]+\)/g, "$1").replace(/\[([^\]]+)]\([^)]+\)/g, "$1")
+      .replace(/`([^`]+)`/g, "$1").replace(/<\/?[^>]+>/g, "").replace(/[*_~]/g, "").replace(/\s+/g, " ").trim().replace(/^\d+\.\s*/, "").trim();
+    sections.push({ heading: title, headingIndex, contentHash: hash(body) });
+  }
+  return sections.length ? sections : null;
+}
+const sameSection = (left: DaySection, right: DaySection) => left.heading === right.heading && left.headingIndex === right.headingIndex && left.contentHash === right.contentHash;
 
 export interface ScopeCoverage { dateFrom?: string; dateTo?: string; totalDays: number | null; readDates: string[]; status: "complete" | "partial" | "empty" | "failed" | "search" }
 export class EvidenceRun {
@@ -10,6 +33,7 @@ export class EvidenceRun {
   calls = 0;
   limited = false;
   private retainedChars = 0;
+  private completeDays = new Map<string, DaySection[]>();
   stopReason?: "tool_budget" | "repeated_query" | "no_new_evidence" | "step_limit" | "tool_failure" | "evidence_limit" | "sufficient_evidence" | "no_more_leads";
   readonly requests = new Set<string>();
   readonly signal: AbortSignal;
@@ -27,9 +51,15 @@ export class EvidenceRun {
       // Never silently combine changed day snapshots within a run.
       if (sameDay.some(old => old.chunkId === item.chunkId && old.contentHash !== item.contentHash)) { this.limited = true; continue; }
       if (this.contexts.some(old => old.fileName === item.fileName && old.chunkId === item.chunkId && old.contentHash === item.contentHash)) continue;
+      const dayKey = JSON.stringify([item.fileName, item.date]);
+      const sections = completeDaySections(item);
+      if (sections && sections.every(section => sameDay.some(old => !old.truncated && sameSection(section, old)))) continue;
+      if (!item.truncated && sameDay.some(old => old.chunkId === `${item.date}:range:0` && !old.truncated) &&
+        this.completeDays.get(dayKey)?.some(section => sameSection(section, item))) continue;
       if (this.contexts.length >= 160 || this.retainedChars + item.content.length > 120000) { this.limited = true; this.stopReason = "evidence_limit"; continue; }
       this.retainedChars += item.content.length;
       this.contexts.push({ ...item, sourceId: `S${this.contexts.length + 1}` }); added++;
+      if (sections) this.completeDays.set(dayKey, sections);
     }
     return added;
   }

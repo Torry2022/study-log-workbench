@@ -22,7 +22,13 @@ const themeInitializer = `
 
 export const metadata: Metadata = {
   title: "学习日志工作台",
-  description: "自部署 Markdown 学习日志工作台"
+  description: "自部署 Markdown 学习日志工作台",
+  icons: {
+    icon: [
+      { url: "/study-log/icon.svg", type: "image/svg+xml", media: "(prefers-color-scheme: light)" },
+      { url: "/study-log/icon-dark.svg", type: "image/svg+xml", media: "(prefers-color-scheme: dark)" }
+    ]
+  }
 };
 
 export const viewport: Viewport = {

@@ -1,6 +1,6 @@
 {
   "color": [
-    { "name": "logo_surface", "value": "#FFFFFF" },
+    { "name": "logo_surface", "value": "#FAF9F5" },
     { "name": "interaction_hover", "value": "#F2EDE4" },
     { "name": "interaction_hover_clear", "value": "#00F2EDE4" },
     { "name": "search_toggle_active_background", "value": "#F4EAE3" },

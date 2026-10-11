@@ -119,6 +119,23 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, module
   const drawerOpen = compact && panel !== null;
   const effectiveCollapsed = !compact && collapsed;
   const writingExpanded = compact ? panel === "writing" : !inspectorCollapsed;
+  useEffect(() => {
+    const inspectorElement = writingPanel.current;
+    if (!active || !hasInspector || !writingExpanded || !inspectorElement || CSS.supports("overscroll-behavior-y", "contain")) return;
+    // Some WebKit platforms lack CSS scroll containment. Preserve inner scrolling,
+    // including textareas, and stop only the wheel events that would leave the panel.
+    const containWheel = (event: WheelEvent) => {
+      if (event.ctrlKey || !event.deltaY || !(event.target instanceof Element)) return;
+      for (let element: Element | null = event.target; element && element !== inspectorElement; element = element.parentElement) {
+        if (!(element instanceof HTMLElement) || !/^(auto|scroll)$/.test(getComputedStyle(element).overflowY)) continue;
+        const end = element.scrollHeight - element.clientHeight;
+        if (end > 1 && (event.deltaY < 0 ? element.scrollTop > 1 : element.scrollTop < end - 1)) return;
+      }
+      event.preventDefault();
+    };
+    inspectorElement.addEventListener("wheel", containWheel, { passive: false });
+    return () => inspectorElement.removeEventListener("wheel", containWheel);
+  }, [active, hasInspector, writingExpanded]);
   const filteredDays = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
     return needle ? days.filter(day => `${day.date} ${day.headings.join(" ")}`.toLocaleLowerCase().includes(needle)) : days;

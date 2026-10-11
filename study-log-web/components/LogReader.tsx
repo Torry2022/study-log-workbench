@@ -262,6 +262,7 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
     const update = () => {
       const reader = element.closest<HTMLElement>(".reader");
       reader?.style.setProperty("--reader-toolbar-height", `${element.offsetHeight}px`);
+      element.closest<HTMLElement>(".workspace")?.style.setProperty("--log-toolbar-height", `${element.offsetHeight}px`);
       reader?.style.setProperty("--reader-toolbar-bottom", `${element.getBoundingClientRect().bottom}px`);
       if (!toolbarMenuTrigger.current?.getClientRects().length) setToolbarMenuOpen(false);
     };

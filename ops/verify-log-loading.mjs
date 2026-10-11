@@ -16,6 +16,7 @@ try{
   let ready=false;for(let i=0;i<120;i++){try{ready=(await fetch('http://127.0.0.1:3368/study-log')).ok;}catch{}if(ready)break;await new Promise(resolve=>setTimeout(resolve,250));}
   assert.ok(ready,log);
   console.log('Evidence:',evidence);
-  const {stdout}=await promisify(execFile)(process.execPath,['ops/browser-log-loading.mjs','http://127.0.0.1:3368/study-log',evidence],{cwd:repository,windowsHide:true,timeout:900000});console.log(stdout);
+  if (process.argv[2] !== 'scroll-only') { const {stdout}=await promisify(execFile)(process.execPath,['ops/browser-log-loading.mjs','http://127.0.0.1:3368/study-log',evidence],{cwd:repository,windowsHide:true,timeout:900000});console.log(stdout); }
+  const scroll=await promisify(execFile)(process.execPath,['ops/browser-inspector-scroll.mjs','http://127.0.0.1:3368/study-log',path.join(evidence,'inspector-scroll')],{cwd:repository,windowsHide:true,timeout:180000});console.log(scroll.stdout);
   for(const[name,text]of Object.entries(sources))assert.equal(await fs.readFile(path.join(root,name),'utf8'),text);
 }finally{server.kill();if(server.exitCode===null)await new Promise(resolve=>server.once('exit',resolve));await fs.writeFile(path.join(evidence,'server.log'),log);}

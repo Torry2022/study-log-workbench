@@ -96,6 +96,21 @@ test("31-day query supplies every day, returns a bounded cited subset and reread
   assert.equal(events.at(-1).data.citations.length, 1); assert.equal(events.at(-1).data.citations[0].date, "2026-10-31");
   assert.ok(requests[0].messages.at(-1).content.includes("第31天"));
   assert.ok(events.filter(item => item.event === "sources").every(item => item.data.citations.length <= 30));
+  answer = "范围内的记录[S1]";
+  for (const [question, strategy, months] of [
+    ["2026年九月和十月的做法有什么变化？", "comparison", ["2026-09", "2026-10"]],
+    ["不用比较九月和十月，只总结2026年十月。", "timeline_summary", ["2026-10"]],
+    ["找出2026年十月日志里提到2026年九月发布事件的记录。", "relevance", ["2026-10"]]
+  ]) {
+    const before = requests.length;
+    events = await query({ question });
+    assert.equal(events.at(-1).event, "done");
+    const diagnostics = events.at(-1).data.diagnostics;
+    assert.equal(diagnostics.retrievalStrategy, strategy);
+    assert.deepEqual([...new Set(diagnostics.coverage.map(scope => scope.dateFrom.slice(0, 7)))], months);
+    if (strategy !== "relevance") assert.ok(diagnostics.coverage.every(scope => scope.status === "complete"));
+    assert.ok(requests.length - before <= 1, "no additional model planning for explicit rules");
+  }
   answer = "三个日期的记录[S1]";
   events = await query({ question: "2026年10月1日、2日和3日分别记录了什么？" });
   assert.equal(events.at(-1).event, "done");

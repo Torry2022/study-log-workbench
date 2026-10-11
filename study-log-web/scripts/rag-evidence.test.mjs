@@ -9,6 +9,19 @@ const block = (date, content = "条件成立才适用，并非所有情况都成
 const config = { url: "http://unused.test", token: "synthetic" };
 const readers = blocks => ({ search: async () => { throw Error("must enumerate"); }, read: async args => validateRangePage(readLogRange(blocks, args)) });
 
+test("implicit comparison enumerates both periods and rejected comparison reads only the replacement scope", async () => {
+  const blocks = [block("2026-08-01"), block("2026-09-01"), block("2026-10-01")];
+  for (const [question, expected] of [
+    ["2026年八月和十月的做法有什么变化？", ["2026-08-01", "2026-10-01"]],
+    ["不用比较2026年九月和十月，只总结十月。", ["2026-10-01"]]
+  ]) {
+    const run = new EvidenceRun(new AbortController().signal);
+    await collectRagEvidence(question, planRagRetrieval(question), run, config, readers(blocks));
+    assert.deepEqual(run.contexts.map(item => item.date), expected);
+    assert.ok(run.coverage.every(scope => scope.status === "complete"));
+  }
+});
+
 test("literal constraints survive dates and event dates are not log filters", () => {
   const literal = planRagRetrieval("2026年9月的日志中哪里提到过`Agent`？");
   assert.equal(literal.dateFrom, "2026-09-01"); assert.equal(literal.literalQuery, "Agent");

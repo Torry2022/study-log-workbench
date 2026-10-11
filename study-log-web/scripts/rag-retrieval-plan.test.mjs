@@ -162,3 +162,22 @@ test("enumerated abbreviated days keep every date and separate nonadjacent scope
     [1, 3, 5].map(day => ({ dateFrom: `2026-10-0${day}`, dateTo: `2026-10-0${day}` })));
   assert.equal(planRagRetrieval("2026年10月1日，记录了2个问题和3个方案").ranges, undefined);
 });
+
+test('event dates, range connectors and explicit replacement requests keep separate roles', () => {
+  const now = new Date('2026-10-11T00:00:00Z');
+  for (const event of ['2026年九月', '九月', '2026年9月15日', '2026-09-15']) {
+    const plan = planRagRetrieval(`找出2026年十月日志里提到${event}发布事件的记录。`, now);
+    assert.equal(plan.dateFrom, '2026-10-01');
+    assert.equal(plan.dateTo, '2026-10-31');
+    assert.equal(plan.eventDates, true);
+    assert.equal(plan.ranges, undefined);
+  }
+  const separate = planRagRetrieval('比较2026年八月和十月提到的方案');
+  assert.equal(separate.ranges.length, 2);
+  assert.equal(planRagRetrieval('总结2026年八月到十月提到的方案').ranges.length, 1);
+  assert.equal(planRagRetrieval('不用比较2026年九月和十月，只总结十月。', now).strategy, 'timeline_summary');
+  assert.equal(planRagRetrieval('日志里如何区分乐观锁与悲观锁？').strategy, 'comparison');
+  const topic = planRagRetrieval('2026年十月日志中哪里提到过`不要比较`？');
+  assert.equal(topic.literalQuery, '不要比较');
+  assert.equal(topic.dateFrom, '2026-10-01');
+});

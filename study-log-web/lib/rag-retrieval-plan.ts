@@ -160,8 +160,11 @@ function explicitDateRange(value: string): Pick<RagRetrievalPlan, "dateFrom" | "
 
 export function planRagRetrieval(query: string, now = new Date()): RagRetrievalPlan {
   // Event dates describe the subject, not when the user wrote a log.
-  const normalized = query.normalize("NFKC");
-  const withoutEvents = normalized.replace(/20\d{2}[-年/]\d{1,2}(?:[-月/]\d{1,2}日?|月)?(?=\s*(?:正式|首次)?(?:发布|推出|发生|上线|举办|版本))/g, "");
+  // Only discard an explicit rejected operation followed by a replacement request.
+  // Negation inside a topic (e.g. “为什么不能重试”) is still searchable content.
+  const activeText = query.replace(/^(?:不用|不要|无需)比较[^，,；;。]+[，,；;。]\s*(?=只(?:总结|回顾|查找|搜索))/, "");
+  const active = activeText.normalize("NFKC");
+  const withoutEvents = active.replace(/(?:20\d{2}[-/]\d{1,2}(?:[-/]\d{1,2})?|(?:20\d{2}年)?(?:[一二三四五六七八九十]+|\d{1,2})月(?:(?:[一二三四五六七八九十]+|\d{1,2})日)?)(?=\s*(?:正式|首次)?(?:发布|推出|发生|上线|举办|版本))/g, "");
   // Resolve calendar months in code, including an omitted year in “九月和十月”.
   let year = Number(withoutEvents.match(/(20\d{2})年/)?.[1] || chinaToday(now).getUTCFullYear());
   // Enumerations inherit the named month: “10月1日、2日和3日”.
@@ -174,7 +177,7 @@ export function planRagRetrieval(query: string, now = new Date()): RagRetrievalP
     if (namedYear) year = Number(namedYear);
     return `${year}年${month}月`;
   });
-  const literalQuery = extractLiteralLookup(query);
+  const literalQuery = extractLiteralLookup(activeText);
   const today = chinaToday(now);
   let range: Pick<RagRetrievalPlan, "dateFrom" | "dateTo"> = {};
 
@@ -209,24 +212,28 @@ export function planRagRetrieval(query: string, now = new Date()): RagRetrievalP
   if (range.dateFrom && range.dateTo && range.dateFrom > range.dateTo) {
     [range.dateFrom, range.dateTo] = [range.dateTo, range.dateFrom];
   }
-  const comparison = /(?:对比|比较|区别|异同|差异|\bvs\.?\b)/i.test(value);
+  const comparison = /(?:对比|比较|区分|区别|异同|差异|\bvs\.?\b)/i.test(value);
   const timelineSummary =
     Boolean(range.dateFrom || range.dateTo) && /(?:学了什么|学了哪些|学习内容|主要学习|总结|回顾|概览|大致学|分别.{0,8}(?:什么|哪些))/.test(value);
   const strategy = literalQuery ? "relevance" : comparison ? "comparison" : timelineSummary ? "timeline_summary" : "relevance";
   const plan = withStrategyLimits(strategy, range);
   if (literalQuery) Object.assign(plan, { matchMode: "literal", literalQuery });
-  if (withoutEvents !== normalized) plan.eventDates = true;
+  if (withoutEvents !== active) plan.eventDates = true;
   // Separate explicit scopes must not silently include days between them.
   const days = [...value.matchAll(/(20\d{2})[-年/](\d{1,2})[-月/](\d{1,2})日?/g)];
   const months = [...value.matchAll(/(20\d{2})[-年/](\d{1,2})月?(?![-/\d])/g)];
-  if (days.length > 1 && !/(?:至|到|~|—)/.test(value)) {
+  const connectsRange = (matches: RegExpMatchArray[]) => matches.slice(1).some((match, index) => {
+    const previous = matches[index];
+    return /^\s*(?:至|到|~|—|-)\s*$/.test(value.slice(previous.index! + previous[0].length, match.index));
+  });
+  if (days.length > 1 && !connectsRange(days)) {
     const dates = days.map(day => explicitDate(Number(day[1]), Number(day[2]), Number(day[3])));
     if (dates.every(Boolean)) plan.ranges = [...new Set(dates as string[])].sort().map(date => ({ dateFrom: date, dateTo: date }));
   } else if (!days.length && months.length > 1) {
     const ranges = months.map(month => Number(month[2]) >= 1 && Number(month[2]) <= 12 ? monthRange(Number(month[1]), Number(month[2])) : null);
     if (ranges.every(Boolean)) {
       const valid = ranges as Array<{ dateFrom: string; dateTo: string }>;
-      plan.ranges = /(?:至|到|~|—)/.test(value)
+      plan.ranges = connectsRange(months)
         ? [{ dateFrom: valid.map(item => item.dateFrom).sort()[0], dateTo: valid.map(item => item.dateTo).sort().at(-1)! }]
         : valid;
     }
@@ -234,6 +241,9 @@ export function planRagRetrieval(query: string, now = new Date()): RagRetrievalP
   if (plan.ranges?.length) {
     plan.dateFrom = plan.ranges.map(item => item.dateFrom).sort()[0];
     plan.dateTo = plan.ranges.map(item => item.dateTo).sort().at(-1);
+    if (!literalQuery && plan.strategy === "relevance" && plan.ranges.length > 1 && /变化|改变|不同/.test(value)) {
+      Object.assign(plan, withStrategyLimits("comparison"));
+    }
   }
   return plan;
 }

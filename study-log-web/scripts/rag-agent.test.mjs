@@ -39,9 +39,55 @@ test("SDK tool loop uses exact configured endpoint and real read-only MCP, stopp
   assert.equal(usage.inputTokens, 20); assert.ok(statuses.every(value => !value.includes("内部文本")));
   const nextState = JSON.parse(requests[1].messages.find(message => message.role === "user").content);
   assert.ok(nextState.previousReads.length > 0);
+  assert.ok(Array.isArray(nextState.previousReads[0]));
+  assert.equal(nextState.remainingDecisions, 1);
+  assert.deepEqual(nextState.lastTool, { name: "search", addedSourceIds: ["S1"], stopped: false });
+  assert.equal(nextState.evidence[0].truncated, false);
   assert.ok(nextState.evidence.some(item => item.content.includes("Alpha")));
   assert.ok(!requests[1].messages.some(message => message.role === "tool"));
   assert.ok(run.contexts.every(item => item.date === "2026-09-01"));
+});
+
+test('ordinary fact wording can finish without extra reads, literal lookup bypasses tools, and no leads stay unproven', async t => {
+  const mcp = await fixture(t), old = {};
+  for (const key of ['RAG_AGENT_ENABLED','RAG_AGENT_TOOL_CALLING_VERIFIED','RAG_JEV_ENABLED']) old[key] = process.env[key];
+  Object.assign(process.env, { RAG_AGENT_ENABLED:'true', RAG_AGENT_TOOL_CALLING_VERIFIED:'true', RAG_JEV_ENABLED:'false' });
+  const calls = []; let finishReason = 'sufficient_evidence';
+  const server = http.createServer(async (req,res) => {
+    let raw=''; for await (const chunk of req) raw+=chunk;
+    const body=JSON.parse(raw); calls.push(body); res.setHeader('content-type','text/event-stream');
+    if (body.tools) res.end(await stream('finish',{reason:finishReason}).text());
+    else res.end('data: '+JSON.stringify({choices:[{delta:{content:'Alpha条件成立才适用，不适用于所有场景。[S1]'}}]})+'\n\ndata: [DONE]\n\n');
+  });
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  t.after(async()=>{
+    server.closeAllConnections(); await new Promise(resolve=>server.close(resolve));
+    for(const [key,value] of Object.entries(old)){if(value===undefined)delete process.env[key];else process.env[key]=value;}
+  });
+  const chat={baseUrl:`http://127.0.0.1:${server.address().port}`,apiKey:'synthetic',model:'mock'};
+  const query=async question=>{
+    const raw=await new Response(createRagQueryStream({question,mode:'logs_only',history:[]},{chat,lightChat:chat,mcp},new AbortController().signal)).text();
+    assert.match(raw.trim().split('\n\n').at(-1),/^event: done/);
+    assert.ok(!raw.includes('内部文本'));
+    return JSON.parse(raw.trim().split('\n\n').at(-1).split('\n')[1].slice(6));
+  };
+  const fact=await query('Alpha的适用条件是什么？');
+  assert.equal(calls.filter(call=>call.tools).length,1);
+  assert.equal(calls.length,2); assert.equal(fact.diagnostics.toolCalls,1);
+  assert.equal(fact.diagnostics.agent.stopReason,'sufficient_evidence');
+  assert.equal(fact.citations.length,1);
+  assert.ok(fact.diagnostics.coverage.every(scope=>scope.status==='search'));
+  calls.length=0;
+  const literal=await query('哪里提到过`Alpha`？');
+  assert.equal(calls.length,1); assert.ok(!calls[0].tools);
+  assert.equal(literal.diagnostics.agent,undefined);
+  calls.length=0; finishReason='no_more_leads';
+  const empty=await query('ZerofluxUnrecorded');
+  assert.equal(calls.length,1); assert.ok(calls[0].tools);
+  assert.equal(empty.diagnostics.agent.stopReason,'no_more_leads');
+  assert.deepEqual(empty.citations,[]);
+  assert.equal(empty.answer,'本次未找到能回答这个问题的记录。');
+  assert.ok(empty.diagnostics.coverage.every(scope=>scope.status==='search'));
 });
 test("invalid tool args and nonexistent tools cannot execute reads", async t => {
   const mcp = await fixture(t);

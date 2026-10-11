@@ -56,12 +56,13 @@ try {
   for (const entry of manifest.cases) for (const route of routes) {
     process.env.RAG_AGENT_ENABLED = String(route !== "baseline");
     process.env.RAG_JEV_ENABLED = String(route === "jev");
-    const before = proxy.report().records.length, started = performance.now();
+    const before = proxy.report().records.length, rejectedBefore = proxy.report().rejectedRequests.length, started = performance.now();
     const raw = await new Response(createRagQueryStream({ question: entry.question, mode: "logs_only", history: [] }, { chat, lightChat: chat, mcp: { url: `http://127.0.0.1:${mcp.address.port}/mcp`, token: "isolated-corpus" } }, new AbortController().signal)).text();
     await proxy.settled();
     const events = raw.trim().split("\n\n").filter(Boolean).map(block => ({ event: block.split("\n")[0].slice(7), data: JSON.parse(block.split("\n").slice(1).join("\n").slice(6)) }));
     const terminal = events.at(-1);
-    const result = { ...entry, route, elapsedMs: Math.round(performance.now() - started), calls: proxy.report().records.length - before, event: terminal.event, ...terminal.data };
+    const result = { ...entry, route, elapsedMs: Math.round(performance.now() - started), calls: proxy.report().records.length - before,
+      rejectedRequests: proxy.report().rejectedRequests.slice(rejectedBefore), event: terminal.event, ...terminal.data };
     results.push(result);
     await fs.writeFile(path.join(root, "report.json"), JSON.stringify({ results, budget: proxy.report(), reasoningEffort: manifest.reasoningEffort || "provider_default", jev: jevReport() }, null, 2));
     console.log(JSON.stringify({ id: entry.id, route, event: result.event, calls: result.calls, elapsedMs: result.elapsedMs }));

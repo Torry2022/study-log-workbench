@@ -80,7 +80,9 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
         // Successful enumeration covers the requested scope, including confirmed empty periods.
         // Check after compaction: a failed summary can still leave material missing.
         const scopeFullyRead = !run.limited && run.coverage.length > 0 && run.coverage.every(scope => scope.status === "complete" || scope.status === "empty");
-        if (agentEnabled() && !scopeFullyRead && !planned.plan.matchMode && (planned.plan.strategy === "comparison" || !run.contexts.length || /为什么|如何|关联|矛盾|变化/.test(input.question))) {
+        // Search coverage is not proof that the question is answered. Let the same
+        // bounded tool loop choose finish or follow a lead, independent of wording.
+        if (agentEnabled() && !scopeFullyRead && !planned.plan.matchMode) {
           diagnostics.agent = { enabled: true };
           const jev = jevConfiguration();
           if (process.env.RAG_JEV_ENABLED === "true" && jev) {

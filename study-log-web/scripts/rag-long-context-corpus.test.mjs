@@ -9,7 +9,7 @@ import { EvidenceRun, collectRagEvidence } from '../lib/rag-evidence.ts';
 import { createRagQueryStream } from '../lib/rag-query.ts';
 import { longContextCorpus, longContextQuestion, linkedRules } from './rag-long-context-corpus.mjs';
 
-test('long linked corpus reads beyond initial retrieval and supplies the referenced rule to the final answer', async () => {
+test('three phrasings reach the same bounded tool loop and supply the linked rule through actual MCP', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'rag-long-corpus-'));
   let service, model;
   const previous = Object.fromEntries(['RAG_AGENT_ENABLED', 'RAG_AGENT_TOOL_CALLING_VERIFIED', 'RAG_JEV_ENABLED'].map(key => [key, process.env[key]]));
@@ -60,12 +60,20 @@ test('long linked corpus reads beyond initial retrieval and supplies the referen
     await new Promise(resolve => model.listen(0, '127.0.0.1', resolve));
     process.env.RAG_AGENT_ENABLED = 'true'; process.env.RAG_AGENT_TOOL_CALLING_VERIFIED = 'true'; process.env.RAG_JEV_ENABLED = 'false';
     const chat = { baseUrl: `http://127.0.0.1:${model.address().port}`, apiKey: 'synthetic', model: 'mock' };
-    const output = await new Response(createRagQueryStream({ question: longContextQuestion, mode: 'logs_only', history: [] }, { chat, lightChat: chat, mcp: config }, new AbortController().signal)).text();
-    const terminal = JSON.parse(output.trim().split('\n\n').at(-1).split('\n')[1].slice(6));
-    assert.match(output, /event: done/);
-    assert.equal(steps, 2); assert.ok(summaries > 0);
-    assert.ok(terminal.citations.some(item => item.date === '2026-09-18'));
-    assert.ok(terminal.answer.includes(linkedRules));
+    for (const question of [longContextQuestion, '北辰归档流程可以直接保存吗？请给出最终保存条件。', '列出北辰归档流程完成保存所需的条件。']) {
+      const baseline = new EvidenceRun(new AbortController().signal);
+      await collectRagEvidence(question, { strategy: 'relevance' }, baseline, config);
+      assert.ok(!baseline.contexts.some(item => item.content.includes(linkedRules)), 'Record whether initial retrieval already contains the answer');
+      steps = 0; summaries = 0;
+      const output = await new Response(createRagQueryStream({ question, mode: 'logs_only', history: [] }, { chat, lightChat: chat, mcp: config }, new AbortController().signal)).text();
+      const terminal = JSON.parse(output.trim().split('\n\n').at(-1).split('\n')[1].slice(6));
+      assert.match(output, /event: done/);
+      assert.equal(steps, 2); assert.ok(summaries > 0);
+      assert.ok(terminal.citations.some(item => item.date === '2026-09-18'));
+      assert.ok(terminal.answer.includes(linkedRules));
+      assert.ok(!output.includes('内部文本'));
+      assert.ok(terminal.diagnostics.toolCalls <= 8);
+    }
   } finally {
     model?.closeAllConnections(); if (model) await new Promise(resolve => model.close(resolve));
     for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }

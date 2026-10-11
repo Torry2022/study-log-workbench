@@ -133,8 +133,9 @@ test("complete usage releases excess reservation only after durable settlement; 
       body: JSON.stringify({ model: "deepseek-flash", messages: [{ role: "user", content: "synthetic" }] }) };
     for (let i = 0; i < 3; i++) { const result = await clientFetch(proxy.url, options); assert.equal(result.status, 200); await result.text(); }
     const r = proxy.report(); assert.ok(r.reservedCny > .5); assert.ok(r.budgetedCny < .2);
-    assert.equal(r.usageCeilingCny, .0012); assert.ok(r.unsettledReservedCny > .18);
+    assert.equal(r.usageCeilingCny, .003); assert.ok(r.unsettledReservedCny > .18);
     assert.equal((await clientFetch(proxy.url, options)).status, 502); assert.equal(calls, 3);
+    assert.deepEqual(proxy.report().rejectedRequests.map(item => item.reason), ['budget_exhausted']);
     const rows = (await fs.readFile(ledgerFile, "utf8")).trim().split("\n").map(JSON.parse);
     assert.equal(rows.filter(row => row.event === 'usage-settled').length, 2);
     assert.equal(rows.at(-1).cumulativeBudgetedCny, r.budgetedCny);

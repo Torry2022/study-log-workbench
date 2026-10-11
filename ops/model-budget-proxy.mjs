@@ -17,6 +17,7 @@ export async function startBudgetProxy({ apiKey, apiUrl, model, budgetCny, ledge
   const ledger = await fs.open(ledgerFile, "wx", 0o600);
   const localToken = crypto.randomBytes(24).toString("base64url");
   const records = [];
+  const rejectedRequests = [];
   let reservedCny = 0, budgetedCny = 0;
   let inFlight = false;
   let completion = Promise.resolve();
@@ -88,9 +89,10 @@ export async function startBudgetProxy({ apiKey, apiUrl, model, budgetCny, ledge
       if ((!payload.stream || collected.includes('data: [DONE]')) &&
           Number.isSafeInteger(usage?.prompt_tokens) && usage.prompt_tokens >= 0 && usage.prompt_tokens <= bytes + 4096 &&
           Number.isSafeInteger(usage?.completion_tokens) && usage.completion_tokens >= 0 && usage.completion_tokens <= maxTokens) {
-        // Official Flash peak CNY prices checked 2026-10-08: 2/M input, 8/M output.
-        // Ignore cache/off-peak discounts: this is a usage-based ceiling, not a bill.
-        const ceiling = (usage.prompt_tokens * 2 + usage.completion_tokens * 8) / 1_000_000;
+        // Use the same conservative rates as the reservation, not an old tariff.
+        // Official 2026-10-11 USD peak prices fit below these at an assumed 10 CNY/USD;
+        // this deliberately ignores discounts and is a ceiling, not a supplier bill.
+        const ceiling = (usage.prompt_tokens * 5 + usage.completion_tokens * 20) / 1_000_000;
         const settled = budgetedCny - reservation + ceiling;
         await ledger.write(`${JSON.stringify({ ...record, event: 'usage-settled', usageCeilingCny: ceiling,
           cumulativeReservedCny: reservedCny, cumulativeBudgetedCny: settled })}\n`); await ledger.sync();
@@ -98,6 +100,10 @@ export async function startBudgetProxy({ apiKey, apiUrl, model, budgetCny, ledge
       }
       response.end();
     } catch (error) {
+      if (!record) {
+        const reasons = { "Acceptance budget exhausted before request": "budget_exhausted", "Acceptance model or call limit exceeded": "model_or_call_limit", "Acceptance request too large": "request_size" };
+        rejectedRequests.push({ reason: reasons[error?.message] || "invalid_request", elapsedMs: Math.round(performance.now() - started) });
+      }
       if (record) {
         // Whitelist transport codes only: never persist error messages, URLs or request bodies.
         const code = error?.cause?.code || error?.code;
@@ -126,7 +132,7 @@ export async function startBudgetProxy({ apiKey, apiUrl, model, budgetCny, ledge
     settled: () => completion,
     report: () => ({ budgetCny, reservedCny, budgetedCny, usageCeilingCny: records.reduce((sum, record) => sum + (record.usageCeilingCny ?? 0), 0),
       unsettledReservedCny: records.filter(record => record.usageCeilingCny === undefined).reduce((sum, record) => sum + record.reservedCny, 0),
-      records, note: "reservedCny is gross historical reservation, not spending. budgetedCny combines settled usage ceilings and unresolved reservations; neither is a supplier bill." }),
+      records, rejectedRequests, note: "reservedCny is gross historical reservation, not spending. budgetedCny combines settled usage ceilings and unresolved reservations; neither is a supplier bill." }),
     close: async () => { await new Promise(resolve => { server.closeAllConnections(); server.close(resolve); }); await completion; await ledger.close(); }
   };
 }

@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import http from "node:http";
 import { startHttpServer } from "../../study-log-mcp/src/http-server.mjs";
-import { EvidenceRun } from "../lib/rag-evidence.ts";
+import { EvidenceRun, collectRagEvidence } from "../lib/rag-evidence.ts";
 import { createAgentModel, supplementEvidence, agentEnabled } from "../lib/rag-agent.ts";
 import { judgeEvidence, validateEvidenceJudgment } from "../lib/rag-jev.ts";
 import { createRagQueryStream } from "../lib/rag-query.ts";
@@ -41,6 +41,7 @@ test("SDK tool loop uses exact configured endpoint and real read-only MCP, stopp
   assert.ok(nextState.previousReads.length > 0);
   assert.ok(Array.isArray(nextState.previousReads[0]));
   assert.equal(nextState.remainingDecisions, 1);
+  assert.deepEqual(nextState.availableReadDates, ['2026-09-01']);
   assert.deepEqual(nextState.lastTool, { name: "search", addedSourceIds: ["S1"], stopped: false });
   assert.equal(nextState.evidence[0].truncated, false);
   assert.ok(nextState.evidence.some(item => item.content.includes("Alpha")));
@@ -96,6 +97,22 @@ test("invalid tool args and nonexistent tools cannot execute reads", async t => 
     await supplementEvidence("question", { strategy: "relevance" }, run, mcp, createAgentModel(config, async () => stream(name, args)), () => {});
     assert.equal(run.calls, 0); assert.equal(run.limited, true);
   }
+});
+
+test('a provider selecting an unavailable read cannot execute a duplicate MCP request', async t => {
+  const mcp = await fixture(t), run = new EvidenceRun(new AbortController().signal);
+  await collectRagEvidence('Alpha', { strategy:'timeline_summary',dateFrom:'2026-09-01',dateTo:'2026-09-01' },run,mcp);
+  assert.equal(run.calls,1);
+  const before=[...run.requests]; let decisions=0;
+  await supplementEvidence('Alpha的条件？',{strategy:'relevance'},run,mcp,createAgentModel(config,async (_url,init)=>{
+    const body=JSON.parse(init.body), state=JSON.parse(body.messages.find(message=>message.role==='user').content);
+    assert.deepEqual(state.availableReadDates,[]);
+    assert.ok(!body.tools.some(item=>item.function.name==='read'));
+    decisions++;
+    return stream('read',{date:'2026-09-01'});
+  }),()=>{});
+  assert.ok(decisions>0 && decisions<=2);
+  assert.equal(run.calls,1); assert.deepEqual([...run.requests],before);
 });
 test("a provider ignoring required tools fails without reads and unknown model capability stays off", async () => {
   const run = new EvidenceRun(new AbortController().signal);

@@ -45,6 +45,13 @@ test('three phrasings reach the same bounded tool loop and supply the linked rul
         if (steps++) {
           assert.ok(current.previousReads.length >= 3);
           assert.ok(current.evidence.some(item => item.content.includes('河图检查规则')));
+          assert.deepEqual(current.availableReadDates, []);
+          assert.ok(!body.tools.some(item => item.function.name === 'read'));
+        } else {
+          assert.deepEqual(current.availableReadDates, ['2026-09-01']);
+          assert.ok(current.evidence.some(item => item.truncated));
+          assert.ok(body.messages.some(message => message.role === 'system' && message.content.includes('优先从availableReadDates')));
+          assert.ok(body.tools.some(item => item.function.name === 'read'));
         }
         delta = { tool_calls: [{ index: 0, id: `call-${steps}`, type: 'function', function: {
           name: steps === 1 ? 'read' : 'search', arguments: JSON.stringify(steps === 1 ? { date: '2026-09-01' } : { query: '河图检查规则' })

@@ -10,7 +10,7 @@ const {_electron:electron,chromium,expect}=require('@playwright/test');
 const evidence=path.resolve('.local',`compact-day-navigation-${Date.now()}`);await fs.mkdir(evidence);
 const profile=await fs.mkdtemp(path.join(os.tmpdir(),'compact-day-navigation-'));
 const env={...process.env,STUDY_LOG_DESKTOP_PROFILE:profile};delete env.ELECTRON_RUN_AS_NODE;
-const app=await electron.launch({executablePath:er('electron'),args:[path.resolve('ops/electron')],env,timeout:60000});
+const app=await electron.launch({executablePath:process.argv[2] || er('electron'),args:process.argv[2] ? [] : [path.resolve('ops/electron')],env,timeout:60000});
 const rows=[],errors=[];
 const first='2026-06-02',second='2026-06-01';
 const body=date=>`## ${date}\n\n### 合成阅读主题\n\n`+Array.from({length:90},(_,i)=>`第${i+1}段：用于验证长日志滚动后的日期导航。`).join('\n\n');

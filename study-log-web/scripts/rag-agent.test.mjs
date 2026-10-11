@@ -47,9 +47,9 @@ test("invalid tool args and nonexistent tools cannot execute reads", async t => 
     assert.equal(run.calls, 0); assert.equal(run.limited, true);
   }
 });
-test("empty/no-tool response makes no reads and unknown model capability stays off", async () => {
+test("a provider ignoring required tools fails without reads and unknown model capability stays off", async () => {
   const run = new EvidenceRun(new AbortController().signal);
-  await supplementEvidence("question", { strategy: "relevance" }, run, {}, createAgentModel(config, async () => stream()), () => {});
+  await assert.rejects(supplementEvidence("question", { strategy: "relevance" }, run, {}, createAgentModel(config, async () => stream()), () => {}), { code: "AGENT_PROVIDER_FAILED" });
   assert.equal(run.calls, 0); assert.equal(agentEnabled({ RAG_AGENT_ENABLED: "true" }), false);
 });
 test("provider auth and rate failures are errors, not tool capability fallback", async () => {
@@ -112,4 +112,54 @@ test("31-day query supplies every day, returns a bounded cited subset and reread
   assert.equal(events.at(-1).event, "done"); assert.equal(events.at(-1).data.citations[0].date, "2026-09-01");
   assert.notEqual(events.at(-1).data.citations[0].contentHash, "b".repeat(64));
   assert.match(requests.at(-1).messages.at(-1).content, /Alpha条件成立/);
+});
+
+test('Jev refuses oversized evidence before calling the provider and never slices accepted text', async () => {
+  let calls=0;
+  const transport=async (_url,init)=>{
+    calls++;
+    assert.equal(JSON.parse(init.body).state.evidence[0].content, 'a'.repeat(2200)+'end');
+    throw new Error('synthetic provider failure');
+  };
+  await assert.rejects(judgeEvidence('question',[{sourceId:'S1',content:'a'.repeat(2401)}],new AbortController().signal,'synthetic',transport),/scope/);
+  await assert.rejects(judgeEvidence('question',Array.from({length:5},(_,i)=>({sourceId:`S${i+1}`,content:'short'})),new AbortController().signal,'synthetic',transport),/scope/);
+  assert.equal(calls,0);
+  await assert.rejects(judgeEvidence('question',[{sourceId:'S1',content:'a'.repeat(2200)+'end'}],new AbortController().signal,'synthetic',transport));
+  assert.equal(calls,1);
+});
+
+test('explicit finish stops the SDK loop without reading or claiming program-proven coverage', async () => {
+  for (const reason of ['sufficient_evidence','no_more_leads']) {
+    let calls=0;const run=new EvidenceRun(new AbortController().signal);
+    await supplementEvidence('question',{strategy:'relevance'},run,{},createAgentModel(config,async (_url,init)=>{
+      const body=JSON.parse(init.body);assert.equal(body.tool_choice,'required');assert.equal(body.max_tokens,1200);calls++;return stream('finish',{reason});
+    }),()=>{});
+    assert.equal(calls,1);assert.equal(run.calls,0);assert.equal(run.stopReason,reason);
+    assert.deepEqual(run.coverage,[]);
+  }
+});
+
+test('large comparison bypasses Jev in the real query pipeline while continuing Agent and final answer', async t => {
+ const mcp=await fixture(t),originalFetch=globalThis.fetch,old={};
+ for(const key of ['RAG_AGENT_ENABLED','RAG_AGENT_TOOL_CALLING_VERIFIED','RAG_JEV_ENABLED','RAG_JEV_PROVIDER','TYPESAFE_API_KEY'])old[key]=process.env[key];
+ Object.assign(process.env,{RAG_AGENT_ENABLED:'true',RAG_AGENT_TOOL_CALLING_VERIFIED:'true',RAG_JEV_ENABLED:'true',RAG_JEV_PROVIDER:'typesafe',TYPESAFE_API_KEY:'synthetic'});
+ let judgeCalls=0;
+ globalThis.fetch=(url,init)=>{if(String(url).startsWith('https://api.typesafe.ai')){judgeCalls++;throw Error('Unexpected judge call');}return originalFetch(url,init);};
+ const server=http.createServer(async(req,res)=>{
+  let raw='';for await(const chunk of req)raw+=chunk;
+  const body=JSON.parse(raw);res.setHeader('content-type','text/event-stream');
+  if(body.tools)res.end(await stream('finish',{reason:'sufficient_evidence'}).text());
+  else res.end('data: '+JSON.stringify({choices:[{delta:{content:'合成比较[S1]'}}]})+'\n\ndata: [DONE]\n\n');
+ });
+ await new Promise(r=>server.listen(0,'127.0.0.1',r));
+ try {
+  const chat={baseUrl:`http://127.0.0.1:${server.address().port}`,apiKey:'synthetic',model:'mock'};
+  const raw=await new Response(createRagQueryStream({question:'比较2026年9月和10月',mode:'logs_only',history:[]},{chat,lightChat:chat,mcp},new AbortController().signal)).text();
+  const blocks=raw.trim().split('\n\n');const last=JSON.parse(blocks.at(-1).split('\n')[1].slice(6));
+  assert.match(blocks.at(-1),/^event: done/);assert.equal(judgeCalls,0);
+  assert.equal(last.diagnostics.agent.judgeSkipped,'outside_short_evidence_scope');assert.equal(last.diagnostics.agent.judgeUnavailable,undefined);assert.equal(last.diagnostics.agent.stopReason,'sufficient_evidence');
+ }finally {
+  server.closeAllConnections();await new Promise(r=>server.close(r));globalThis.fetch=originalFetch;
+  for(const [key,value]of Object.entries(old)){if(value===undefined)delete process.env[key];else process.env[key]=value;}
+ }
 });

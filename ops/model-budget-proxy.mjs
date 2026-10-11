@@ -39,7 +39,8 @@ export async function startBudgetProxy({ apiKey, apiUrl, model, budgetCny, ledge
       for await (const chunk of request) { bytes += chunk.length; if (bytes > 64_000) throw new Error("Acceptance request too large"); buffers.push(chunk); }
       const payload = JSON.parse(Buffer.concat(buffers).toString("utf8"));
       if (payload.model !== model || records.length >= 16) throw new Error("Acceptance model or call limit exceeded");
-      const maxTokens = 8192;
+      // Preserve smaller per-stage limits (the evidence agent requests only 1200).
+      const maxTokens = Number.isSafeInteger(payload.max_tokens) && payload.max_tokens > 0 ? Math.min(payload.max_tokens, 8192) : 8192;
       // Conservative test ceilings: CNY 5/M input and 20/M output, above the
       // verified Flash peak price on 2026-09-22. Input UTF-8 bytes plus protocol
       // allowance overestimates token count. Recheck rates before reusing later.

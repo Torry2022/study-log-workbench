@@ -9,7 +9,7 @@ export class EvidenceRun {
   coverage: ScopeCoverage[] = [];
   calls = 0;
   limited = false;
-  stopReason?: "tool_budget" | "repeated_query" | "no_new_evidence" | "step_limit" | "tool_failure" | "evidence_limit";
+  stopReason?: "tool_budget" | "repeated_query" | "no_new_evidence" | "step_limit" | "tool_failure" | "evidence_limit" | "sufficient_evidence" | "no_more_leads";
   readonly requests = new Set<string>();
   readonly signal: AbortSignal;
   constructor(signal: AbortSignal) { this.signal = signal; }
@@ -34,7 +34,7 @@ export class EvidenceRun {
   report(): string {
     return JSON.stringify({ scopes: this.coverage, limited: this.limited, stopReason: this.stopReason,
       retainedDates: [...new Set(this.contexts.map(item => item.date))], truncatedSources: this.contexts.filter(item => item.truncated).map(item => item.sourceId),
-      instruction: "search 仅表示相关性检索，不证明全库穷尽。partial/failed 或 limited 时必须说明材料范围，不得声称完整总结或不存在相关记录。天数仅表示日志日块数量，不代表学习次数或掌握程度。" });
+      instruction: "search 仅表示相关性检索，不证明全库穷尽。partial/failed 或 limited 时必须说明材料范围，不得声称完整总结或不存在相关记录。sufficient_evidence/no_more_leads 仅为取证模型的停止判断，不是程序证明材料完整。天数仅表示日志日块数量，不代表学习次数或掌握程度。" });
   }
 }
 type Readers = {

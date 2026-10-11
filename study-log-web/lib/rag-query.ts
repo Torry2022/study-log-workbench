@@ -11,7 +11,7 @@ import type { RagAnswerMode, RagCitation, RagDiagnostics, RagHistoryMessage } fr
 import { EvidenceRun, collectRagEvidence } from "./rag-evidence.ts";
 import { agentEnabled, createAgentModel, supplementEvidence } from "./rag-agent.ts";
 import { compactEvidence } from "./rag-evidence-summary.ts";
-import { judgeEvidence, jevConfiguration } from "./rag-jev.ts";
+import { judgeEvidence, jevConfiguration, isBoundedJevInput } from "./rag-jev.ts";
 import { planRagRetrieval } from "./rag-retrieval-plan.ts";
 
 export interface RagQueryInput { question: string; history: RagHistoryMessage[]; mode: RagAnswerMode }
@@ -65,15 +65,19 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
           diagnostics.agent = { enabled: true };
           const jev = jevConfiguration();
           if (process.env.RAG_JEV_ENABLED === "true" && jev) {
-            try {
-              const judged = await judgeEvidence(input.question, run.contexts, signal, jev.apiKey, fetch, jev.provider);
-              diagnostics.agent.judgment = judged.judgment;
-              diagnostics.agent.judgeUsage = judged.usage;
-            } catch { signal.throwIfAborted(); diagnostics.agent.judgeUnavailable = true; }
+            if (!isBoundedJevInput(input.question, run.contexts)) diagnostics.agent.judgeSkipped = "outside_short_evidence_scope";
+            else {
+              try {
+                const judged = await judgeEvidence(input.question, run.contexts, signal, jev.apiKey, fetch, jev.provider);
+                diagnostics.agent.judgment = judged.judgment;
+                diagnostics.agent.judgeUsage = judged.usage;
+              } catch { signal.throwIfAborted(); diagnostics.agent.judgeUnavailable = true; }
+            }
           }
           if (diagnostics.agent.judgment?.support !== "supported" || diagnostics.agent.judgment?.conflict !== "absent") {
             diagnostics.agent.usage = await supplementEvidence(input.question, planned.plan, run, config.mcp, createAgentModel(config.lightChat), message => send("status", { stage: "retrieving", message }));
           }
+          diagnostics.agent.stopReason = run.stopReason;
         }
         await compactEvidence(run, input.question, config.lightChat);
         diagnostics.coverage = run.coverage; diagnostics.toolCalls = run.calls;

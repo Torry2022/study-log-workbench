@@ -166,3 +166,13 @@ test('SSE DONE settles without waiting for upstream connection close', async () 
     await fs.rm(directory, { recursive: true, force: true });
   }
 });
+
+test('acceptance proxy preserves a smaller stage token limit', async () => {
+ const directory=await fs.mkdtemp(path.join(os.tmpdir(),'study-log-budget-stage-'));const clientFetch=globalThis.fetch;let proxy;
+ try {
+  globalThis.fetch=async (_url,init)=>{assert.equal(JSON.parse(init.body).max_tokens,1200);return Response.json({usage:{prompt_tokens:1,completion_tokens:1}});};
+  proxy=await startBudgetProxy({apiKey:'synthetic',apiUrl:'https://api.deepseek.com/chat/completions',model:'deepseek-flash',budgetCny:1,ledgerFile:path.join(directory,'ledger.jsonl')});
+  const response=await clientFetch(proxy.url,{method:'POST',headers:{Authorization:`Bearer ${proxy.token}`,'Content-Type':'application/json'},body:JSON.stringify({model:'deepseek-flash',max_tokens:1200})});
+  assert.equal(response.status,200);await response.text();await proxy.settled();assert.ok(proxy.report().reservedCny<0.1);
+ }finally{await proxy?.close();globalThis.fetch=clientFetch;assert.equal(path.dirname(directory),path.resolve(os.tmpdir()));assert.match(path.basename(directory),/^study-log-budget-stage-/);await fs.rm(directory,{recursive:true,force:true});}
+});

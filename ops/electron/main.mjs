@@ -431,7 +431,8 @@ async function openWorkspace(root, createDefault = false, remote = null) {
   const height = Math.min(maxHeight, Math.max(minHeight, Number.isFinite(savedSize?.height) ? Math.round(savedSize.height) : Math.min(820, Math.round(area.height * 0.8), Math.round(width / 1.6))));
   win = new BrowserWindow({ title: '学习日志工作台', width, height, minWidth, minHeight,
     x: area.x + Math.round((area.width - width) / 2), y: area.y + Math.round((area.height - height) / 2), show: false,
-    titleBarStyle: 'hidden', titleBarOverlay: { height: 36, color: dark ? '#151412' : '#faf9f5', symbolColor: dark ? '#f5f0e8' : '#141413' },
+    // Keep the final titlebar pixel below the native controls for the full-width divider.
+    titleBarStyle: 'hidden', titleBarOverlay: { height: 35, color: dark ? '#151412' : '#faf9f5', symbolColor: dark ? '#f5f0e8' : '#141413' },
     ...(app.isPackaged ? { icon: path.join(process.resourcesPath, 'icon.png') } : {}),
     backgroundColor: dark ? '#151412' : '#faf9f5',
     webPreferences: { preload: path.join(here, 'titlebar-preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true } });

@@ -5,7 +5,8 @@ import path from "node:path";
 
 // Acceptance-only loopback proxy. Reserve the worst-case charge before every call;
 // timed-out/failed calls keep their reservation. Never retries or logs credentials.
-export async function startBudgetProxy({ apiKey, apiUrl, model, budgetCny, ledgerFile, reasoningEffort }) {
+export async function startBudgetProxy({ apiKey, apiUrl, model, budgetCny, ledgerFile, reasoningEffort, maxCalls = 16 }) {
+  if (!Number.isSafeInteger(maxCalls) || maxCalls < 1 || maxCalls > 64) throw new Error("Acceptance call limit must be 1..64");
   if (reasoningEffort !== undefined && !["low", "none"].includes(reasoningEffort)) throw new Error("Unsupported acceptance reasoning effort");
   if (!apiKey || !model || !apiUrl) throw new Error("Explicit real-model test configuration is required");
   if (!Number.isFinite(budgetCny) || budgetCny <= 0 || !ledgerFile || !path.isAbsolute(ledgerFile)) throw new Error("Explicit remaining budget and NEW absolute ledger path required");
@@ -39,7 +40,7 @@ export async function startBudgetProxy({ apiKey, apiUrl, model, budgetCny, ledge
       const buffers = []; let bytes = 0;
       for await (const chunk of request) { bytes += chunk.length; if (bytes > 64_000) throw new Error("Acceptance request too large"); buffers.push(chunk); }
       const payload = JSON.parse(Buffer.concat(buffers).toString("utf8"));
-      if (payload.model !== model || records.length >= 16) throw new Error("Acceptance model or call limit exceeded");
+      if (payload.model !== model || records.length >= maxCalls) throw new Error("Acceptance model or call limit exceeded");
       // Preserve smaller per-stage limits (the evidence agent requests only 1200).
       const maxTokens = Number.isSafeInteger(payload.max_tokens) && payload.max_tokens > 0 ? Math.min(payload.max_tokens, 8192) : 8192;
       // Conservative test ceilings: CNY 5/M input and 20/M output, above the

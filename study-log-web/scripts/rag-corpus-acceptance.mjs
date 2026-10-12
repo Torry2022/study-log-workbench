@@ -49,7 +49,7 @@ const jevReport = () => ({ requested: routes.includes("jev"), requests: jevReque
 const mcp = await startHttpServer({ logRoot: data, indexRoot: path.join(root, "index"), port: 0, token: "isolated-corpus", retrieval: { embedding: { apiKey: "" }, reranker: { apiKey: "" }, rerankEnabled: false } });
 let proxy;
 try {
-  proxy = await startBudgetProxy({ apiKey: process.env.DEEPSEEK_API_KEY, apiUrl: "https://api.deepseek.com/chat/completions", model: "deepseek-flash", budgetCny: budget, ledgerFile: path.join(root, "ledger.jsonl"), reasoningEffort: manifest.reasoningEffort });
+  proxy = await startBudgetProxy({ apiKey: process.env.DEEPSEEK_API_KEY, apiUrl: "https://api.deepseek.com/chat/completions", model: "deepseek-flash", budgetCny: budget, ledgerFile: path.join(root, "ledger.jsonl"), reasoningEffort: manifest.reasoningEffort, maxCalls: Math.min(64, manifest.cases.length * routes.length * 16) });
   const chat = { baseUrl: proxy.url, apiKey: proxy.token, model: "deepseek-flash" };
   process.env.RAG_AGENT_TOOL_CALLING_VERIFIED = "true";
   process.env.RAG_JEV_PROVIDER = "typesafe";

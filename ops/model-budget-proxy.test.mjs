@@ -5,6 +5,27 @@ import os from "node:os";
 import path from "node:path";
 import { startBudgetProxy } from "./model-budget-proxy.mjs";
 
+test('explicit group call allowance is bounded and rejects before issuing an extra upstream request', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'study-log-budget-calls-'));
+  const clientFetch = globalThis.fetch; let proxy, calls = 0;
+  try {
+    globalThis.fetch = async () => { calls++; return new Response(JSON.stringify({ usage: { prompt_tokens: 1, completion_tokens: 1 } }), { headers: { 'content-type': 'application/json' } }); };
+    const config = { apiKey: 'synthetic', apiUrl: 'https://api.deepseek.com/chat/completions', model: 'deepseek-flash', budgetCny: 1, ledgerFile: path.join(directory, 'ledger.jsonl') };
+    await assert.rejects(startBudgetProxy({ ...config, maxCalls: 65 }), /call limit/);
+    proxy = await startBudgetProxy({ ...config, maxCalls: 2 });
+    const options = { method: 'POST', headers: { Authorization: `Bearer ${proxy.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'deepseek-flash', max_tokens: 1200 }) };
+    for (let index = 0; index < 2; index++) { const response = await clientFetch(proxy.url, options); assert.equal(response.status, 200); await response.text(); await proxy.settled(); }
+    const rejected = await clientFetch(proxy.url, options); assert.equal(rejected.status, 502); await rejected.text();
+    assert.equal(calls, 2);
+    assert.equal(proxy.report().records.length, 2);
+    assert.deepEqual(proxy.report().rejectedRequests.map(item => item.reason), ['model_or_call_limit']);
+  } finally {
+    await proxy?.close(); globalThis.fetch = clientFetch;
+    assert.equal(path.dirname(directory), path.resolve(os.tmpdir())); assert.match(path.basename(directory), /^study-log-budget-calls-/);
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("cancelled planner stops its upstream, preserves spending reservation and permits the next answer", async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "study-log-budget-cancel-"));
   const clientFetch = globalThis.fetch;

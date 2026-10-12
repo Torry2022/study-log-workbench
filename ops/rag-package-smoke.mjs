@@ -99,6 +99,11 @@ try {
     assert.equal(response.status, 200);
     const events = (await response.text()).trim().split("\n\n").map(block => ({ event: block.split("\n")[0].slice(7), data: JSON.parse(block.split("\n")[1].slice(6)) }));
     assert.equal(events.at(-1).event, "done", JSON.stringify(events.at(-1)));
+    const diagnostics=events.at(-1).data.diagnostics;
+    for(const field of ['retrievalMs','compactionMs','judgeMs','agentMs','generationMs'])assert.ok(Number.isFinite(diagnostics.timings[field])&&diagnostics.timings[field]>=0,field);
+    assert.ok(diagnostics.timings.retrievalMs+diagnostics.timings.compactionMs+diagnostics.timings.judgeMs+diagnostics.timings.agentMs+diagnostics.timings.generationMs<=diagnostics.timings.totalMs+10);
+    if(question.startsWith('总结'))assert.equal(diagnostics.timings.agentMs,0);
+    else assert.equal(diagnostics.agent.answeredDirectly,true);
     assert.equal(events.at(-1).data.citations[0].date, date);
     assert.equal(modelCalls-before,calls);
     if(question.includes('Gamma')) {

@@ -88,18 +88,42 @@ try {
   const { chromium, webkit, expect } = require('@playwright/test');
   for (const [engine, launcher] of Object.entries({ chromium, webkit })) {
     const browser = await launcher.launch();
-    try { for (const theme of ['light','dark']) {
-      const page = await browser.newPage({ viewport: { width:1440,height:900 },colorScheme:theme });
+    try { for (const theme of ['light','dark']) for (const width of [1440,390]) {
+      const suffix = width === 1440 ? '' : '-mobile';
+      const page = await browser.newPage({ viewport: { width,height:width === 1440 ? 900 : 844 },colorScheme:theme });
       await page.goto(base); await page.getByLabel('访问密码').fill('synthetic-entry-password'); await page.getByRole('button',{name:'登录',exact:true}).click();
       await page.getByRole('button',{name:'问答',exact:true}).click();
+      const toolbar = page.locator(width === 1440 ? '.reader-toolbar-qa' : '.mobile-topbar');
+      const beforeSave = await toolbar.boundingBox();
+      let releaseSave, rejectFirstSave = true;
+      await page.route('**/api/rag/sessions', async route => {
+        if (route.request().method() !== 'POST' || !rejectFirstSave) return route.continue();
+        await new Promise(resolve => { releaseSave = resolve; });
+        rejectFirstSave = false;
+        await route.fulfill({ status: 500, json: { error: '合成历史保存失败' } });
+      });
       await page.getByRole('textbox',{name:'输入知识库问题',exact:true}).fill('Alpha的适用条件是什么？');
       await page.getByRole('button',{name:'发送问题',exact:true}).click();
       await expect(page.locator('.rag-workspace').filter({visible:true})).toContainText('Alpha条件成立才适用，不适用于所有场景。');
-      await expect(page.getByText('正在保存问答历史...', { exact: true })).toHaveCount(0);
+      const saving = page.getByText('正在保存问答历史…', { exact: true });
+      await expect(saving).toBeVisible();
+      const duringSave = await toolbar.boundingBox();
+      assert.ok(Math.abs(duringSave.y - beforeSave.y) <= 1 && Math.abs(duringSave.height - beforeSave.height) <= 1, 'Saving must not move or stretch the module toolbar');
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      await page.screenshot({path:path.join(root,`${engine}-${theme}${suffix}-saving.png`)});
+      releaseSave();
+      await expect(page.getByRole('button', { name: '重试保存', exact: true })).toBeVisible();
+      const failedSave = await toolbar.boundingBox();
+      assert.ok(Math.abs(failedSave.y - beforeSave.y) <= 1 && Math.abs(failedSave.height - beforeSave.height) <= 1, 'Save failure must not move or stretch the module toolbar');
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      await page.screenshot({path:path.join(root,`${engine}-${theme}${suffix}-save-error.png`)});
+      await page.getByRole('button', { name: '重试保存', exact: true }).click();
+      await expect(saving).toHaveCount(0);
+      await expect(page.getByRole('button', { name: '重试保存', exact: true })).toHaveCount(0);
       await expect(page.getByRole('button', { name: '停止生成', exact: true })).toHaveCount(0);
       await expect(page).toHaveURL(/session=/);
-      await page.screenshot({path:path.join(root,`${engine}-${theme}.png`)});
-      checks.push({engine,theme,answer:true}); await page.close();
+      await page.screenshot({path:path.join(root,`${engine}-${theme}${suffix}.png`)});
+      checks.push({engine,theme,width,answer:true,savePendingLayout:true,saveErrorLayout:true,retry:true}); await page.close();
     }} finally {await browser.close();}
   }
   assert.equal(await fs.readFile(file,'utf8'),source);

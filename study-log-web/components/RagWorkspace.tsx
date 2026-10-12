@@ -11,6 +11,7 @@ import { stripRagCitationLabels } from "@/lib/rag-answer";
 
 interface RagWorkspaceProps {
   availability?: ReactNode;
+  feedback?: ReactNode;
   noLogs?: boolean;
   onOpenLog?: () => void;
   active: boolean;
@@ -35,6 +36,7 @@ interface RagWorkspaceProps {
 
 export function RagWorkspace({
   availability,
+  feedback,
   noLogs = false,
   active,
   onOpenLog,
@@ -217,6 +219,7 @@ export function RagWorkspace({
     </div></div>}
     <div className={`rag-workspace${messages.length > 0 ? " has-messages" : ""}`} hidden={!enabled}>
       <div className="rag-conversation" aria-live="polite">
+        {feedback}
         {initializing && messages.length === 0 ? (
           <WorkspaceState kind="loading" title="正在加载历史问答" className="rag-empty" />
         ) : messages.length === 0 ? (

@@ -74,6 +74,16 @@ try {
     assert.equal(modelCalls-before,calls);
     checks.push({ question, modelCalls:modelCalls-before, diagnostics: events.at(-1).data.diagnostics });
   }
+  const beforeConflict = modelCalls;
+  const conflict = await fetch(`${status.url}/api/rag/query`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` }, body: JSON.stringify({ question: '刚才第一条来源，只看2026年十月的记录。', mode: 'logs_only', history: [{ role: 'assistant', content: '合成旧回答', sourceRefs: [{ date: '2026-09-01', fileName: '2026-09_学习日志.md', heading: 'Alpha', contentHash: 'a'.repeat(64) }] }] }) });
+  assert.equal(conflict.status, 200);
+  const conflictTerminal = (await conflict.text()).trim().split('\n\n').at(-1);
+  assert.match(conflictTerminal, /^event: done/);
+  const clarification = JSON.parse(conflictTerminal.split('\n')[1].slice(6));
+  assert.match(clarification.answer, /指定.*日期范围/);
+  assert.deepEqual(clarification.citations, []);
+  assert.equal(modelCalls, beforeConflict);
+  checks.push({ sourceDateConflict: true, modelCalls: 0 });
   firstLimited = true;
   const before = modelCalls;
   const interrupted = await fetch(`${status.url}/api/rag/query`, { method:'POST', headers:{'Content-Type':'application/json',Authorization:`Bearer ${auth.token}`},body:JSON.stringify({question:'Alpha的条件是什么？',mode:'logs_only',history:[]}) });

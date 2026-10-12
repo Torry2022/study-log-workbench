@@ -263,6 +263,24 @@ test("invalid tool args and nonexistent tools cannot execute reads", async t => 
   }
 });
 
+test('finish remains terminal when another tool in the same step completes later', async t => {
+  const mcp=await fixture(t);
+  for(const order of [['search','finish'],['finish','search']]){
+    const run=new EvidenceRun(new AbortController().signal);let decisions=0;
+    const model=createAgentModel(config,async()=>{
+      decisions++;
+      if(decisions>1)return stream('search',{query:'UnrecordedTopic'});
+      const tool_calls=order.map((name,index)=>({index,id:`batch-${index}`,type:'function',function:{name,arguments:JSON.stringify(name==='search'?{query:'Alpha'}:{reason:'sufficient_evidence'})}}));
+      return new Response('data: '+JSON.stringify({choices:[{index:0,delta:{tool_calls},finish_reason:null}]})+'\n\ndata: '+JSON.stringify({choices:[{index:0,delta:{},finish_reason:'tool_calls'}]})+'\n\ndata: [DONE]\n\n',{headers:{'content-type':'text/event-stream'}});
+    });
+    await supplementEvidence('Alpha的条件是什么？',{strategy:'relevance'},run,mcp,model,()=>{});
+    assert.equal(decisions,1);
+    assert.equal(run.stopReason,'sufficient_evidence');
+    assert.equal(run.calls,order[0]==='search'?1:0);
+    assert.equal(run.contexts.length,order[0]==='search'?1:0);
+  }
+});
+
 test('a provider selecting an unavailable read cannot execute a duplicate MCP request', async t => {
   const mcp = await fixture(t), run = new EvidenceRun(new AbortController().signal);
   await collectRagEvidence('Alpha', { strategy:'timeline_summary',dateFrom:'2026-09-01',dateTo:'2026-09-01' },run,mcp);

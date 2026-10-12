@@ -95,7 +95,7 @@ export async function supplementEvidence(question: string, plan: RagRetrievalPla
           onStatus("正在补充查找相关记录");
           const before = run.contexts.length;
           await collectRagEvidence(query, { ...plan, strategy: "relevance" }, run, mcp);
-          noProgress = run.contexts.length === before;
+          noProgress ||= run.contexts.length === before;
           if (noProgress) run.stopReason ||= "no_new_evidence";
           lastTool = { name: "search", addedSourceIds: run.contexts.slice(before).map(item => item.sourceId), stopped: noProgress };
           return { added: run.contexts.slice(before), coverage: run.report() };
@@ -111,7 +111,7 @@ export async function supplementEvidence(question: string, plan: RagRetrievalPla
           onStatus("正在读取相关日志的上下文");
           const before = run.contexts.length;
           await collectRagEvidence(question, { strategy: "timeline_summary", dateFrom: date, dateTo: date }, run, mcp);
-          noProgress = run.contexts.length === before;
+          noProgress ||= run.contexts.length === before;
           if (noProgress) run.stopReason ||= "no_new_evidence";
           lastTool = { name: "read", addedSourceIds: run.contexts.slice(before).map(item => item.sourceId), stopped: noProgress };
           return { added: run.contexts.slice(before), coverage: run.report() };

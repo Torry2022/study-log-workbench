@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { getBackupRoot, getLogRoot } from "./config.ts";
 import { isValidLogDate } from "./study-date.ts";
+import { RAG_MAX_SOURCES } from "./rag-types.ts";
 import type { RagAnswerMode, RagChatMessage, RagCitation, RagSession, RagSessionSummary } from "./rag-types.ts";
 
 export class RagSessionInputError extends Error {}
@@ -76,7 +77,7 @@ function messages(input: unknown): RagChatMessage[] {
     if (!["complete", "stopped", "error"].includes(status as string) || (role === "user" && status !== "complete")) throw new RagSessionInputError("不能保存流式或无效状态的消息");
     const content = text(value.content, "消息正文", 120000, status !== "complete");
     const sources = value.citations === undefined ? [] : value.citations;
-    if (!Array.isArray(sources) || sources.length > 30 || (role === "user" && sources.length)) throw new RagSessionInputError("回答来源数量无效");
+    if (!Array.isArray(sources) || sources.length > RAG_MAX_SOURCES || (role === "user" && sources.length)) throw new RagSessionInputError("回答来源数量无效");
     const citations = sources.map(citation);
     if (new Set(citations.map(source => source.sourceId)).size !== citations.length) throw new RagSessionInputError("回答来源标识不能重复");
     if (value.error !== undefined && status !== "error") throw new RagSessionInputError("只有失败消息可以保存错误说明");

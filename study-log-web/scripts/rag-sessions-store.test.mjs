@@ -133,7 +133,7 @@ test("log-only citations retain nullable preamble positions and reject private f
     const candidate = input(), citation = source(); mutation(citation); candidate.messages[1].citations = [citation]; await failure(() => createRagSession(candidate), RagSessionInputError);
   }
   const repeated = input(); repeated.messages[1].citations = [source(), source()]; await failure(() => createRagSession(repeated), RagSessionInputError);
-  const excess = input(); excess.messages[1].citations = Array.from({ length: 31 }, (_, i) => ({ ...source(), sourceId: `S${i + 1}` })); await failure(() => createRagSession(excess), RagSessionInputError);
+  const excess = input(); excess.messages[1].citations = Array.from({ length: 161 }, (_, i) => ({ ...source(), sourceId: `S${i + 1}` })); await failure(() => createRagSession(excess), RagSessionInputError);
 });
 
 test("malformed JSON/schema/records fail closed without clearing unrelated stored sessions", async () => {
@@ -179,4 +179,22 @@ test("state/backup directory junctions cannot escape the instance boundary", asy
 test("fallback title keeps source punctuation behavior and limits Unicode characters", () => {
   assert.equal(fallbackRagSessionTitle("## **如何读日志？** 后半句"), "如何读日志");
   assert.equal(Array.from(fallbackRagSessionTitle("😀".repeat(30))).length, 20);
+});
+
+test('range sources survive saving, reloading and source-pointer history without renumbering', async () => {
+  const { parseRagHistory } = await import('../lib/rag-answer.ts');
+  const make = count => Array.from({length:count},(_,i)=>({sourceId:`S${i+1}`,date:'2026-09-01',month:'2026-09',fileName:'2026-09_学习日志.md',heading:`合成小节${i}`,headingIndex:i,chunkId:`part-${i}`,contentHash:'a'.repeat(64)}));
+  for (const count of [40,160]) {
+    const citations = make(count), pair = content('概括范围','合成结论[S1]。');
+    pair[1].citations = citations;
+    const saved = await createRagSession(input(pair));
+    const loaded = await getRagSession(saved.id);
+    assert.deepEqual(loaded.messages[1].citations,citations);
+    const refs = citations.map(({date,fileName,heading,contentHash})=>({date,fileName,heading,contentHash}));
+    const parsed = parseRagHistory([{role:'assistant',content:pair[1].content,sourceRefs:refs}]);
+    assert.deepEqual(parsed[0].sourceRefs,refs);assert.equal(parsed[0].sourceRefs[39].heading,'合成小节39');
+  }
+  const invalid = content(); invalid[1].citations = make(161);
+  await failure(() => createRagSession(input(invalid)),RagSessionInputError);
+  assert.equal(parseRagHistory([{role:'assistant',content:'合成结论',sourceRefs:make(161)}])[0].sourceRefs,undefined);
 });

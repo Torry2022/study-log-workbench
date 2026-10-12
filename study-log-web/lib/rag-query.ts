@@ -7,6 +7,7 @@ import { buildRagMessages, normalizeRagAnswer, createRagAnswerOutput, NO_LOG_EVI
 import { contextualizeRagQuestion, planRagRetrievalWithFallback } from "./rag-planning.ts";
 import { streamRagAnswer } from "./rag-stream.ts";
 import type { RagAnswerMode, RagCitation, RagDiagnostics, RagHistoryMessage } from "./rag-types.ts";
+import { RAG_MAX_SOURCES } from "./rag-types.ts";
 
 import { EvidenceRun, collectRagEvidence } from "./rag-evidence.ts";
 import { agentEnabled, createAgentModel, supplementEvidence } from "./rag-agent.ts";
@@ -135,7 +136,7 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
         diagnostics.timings.generationMs = elapsed(); diagnostics.timings.totalMs = Math.round(performance.now() - started);
         if (output.noEvidence) diagnostics.status = "no_evidence";
         const normalized = normalizeRagAnswer(output.answer, output.noEvidence ? [] : citations, input.mode);
-        if (normalized.citations.length > 30) throw new AiChatError("RAG_CITATION_LIMIT", "回答引用较多，请缩小日期范围后重试；本次回答未保存");
+        if (normalized.citations.length > RAG_MAX_SOURCES) throw new AiChatError("RAG_CITATION_LIMIT", "回答来源超过本轮材料限制；本次回答未保存");
         send("sources", { citations: normalized.citations });
         send("done", { ...normalized, diagnostics });
       } catch (error) {

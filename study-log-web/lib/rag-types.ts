@@ -1,5 +1,7 @@
 export type RagAnswerMode = "logs_only" | "logs_and_general";
 export type RagRetrievalStrategy = "relevance" | "timeline_summary" | "comparison";
+/** One bounded evidence set, shared by retrieval, streaming, persistence and follow-ups. */
+export const RAG_MAX_SOURCES = 160;
 
 export interface RagHistoryMessage {
   role: "user" | "assistant";

@@ -355,7 +355,7 @@ test("31-day query supplies every day, returns a bounded cited subset and reread
   assert.equal(events.at(-1).event, "done"); assert.equal(events.at(-1).data.diagnostics.coverage[0].readDates.length, 31);
   assert.equal(events.at(-1).data.citations.length, 1); assert.equal(events.at(-1).data.citations[0].date, "2026-10-31");
   assert.ok(requests[0].messages.at(-1).content.includes("第31天"));
-  assert.ok(events.filter(item => item.event === "sources").every(item => item.data.citations.length <= 30));
+  assert.ok(events.filter(item => item.event === "sources").every(item => item.data.citations.length <= 160));
   answer = "范围内的记录[S1]";
   for (const [question, strategy, months] of [
     ["2026年九月和十月的做法有什么变化？", "comparison", ["2026-09", "2026-10"]],
@@ -378,7 +378,7 @@ test("31-day query supplies every day, returns a bounded cited subset and reread
   assert.ok(events.at(-1).data.diagnostics.coverage.every(scope => scope.status === "complete"));
   answer = Array.from({ length: 31 }, (_, index) => `[S${index + 1}]`).join(" ");
   events = await query({ question: "总结2026年10月" });
-  assert.equal(events.at(-1).event, "error"); assert.equal(events.at(-1).data.code, "RAG_CITATION_LIMIT");
+  assert.equal(events.at(-1).event, "done"); assert.equal(events.at(-1).data.citations.length, 31); assert.equal(events.at(-1).data.citations[30].date, "2026-10-31");
   answer = "重新读取的原文[S1]";
   events = await query({ question: "刚才第二条来源写了什么？", history: [{ role: "assistant", content: "历史回答", sourceRefs: [
     { date: "2026-10-01", fileName: "2026-10_学习日志.md", heading: null, contentHash: "b".repeat(64) },

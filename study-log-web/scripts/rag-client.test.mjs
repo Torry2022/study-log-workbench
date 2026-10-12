@@ -37,3 +37,13 @@ test("abort cancels a pending stream read instead of waiting for EOF", async () 
   const result = consumeRagStream(body, controller.signal, () => {}); controller.abort();
   await assert.rejects(result, error => error.name === "AbortError"); assert.equal(cancelled, true);
 });
+
+test('range answers stream all used sources, while rejecting more than the evidence bound', async () => {
+  const make = count => Array.from({length:count},(_,i)=>({sourceId:`S${i+1}`,date:'2026-09-01',month:'2026-09',fileName:'2026-09_学习日志.md',heading:null,headingIndex:null,chunkId:`part-${i}`,contentHash:'a'.repeat(64)}));
+  for(const count of [40,160]) {
+    const citations = make(count), events = [];
+    await consumeRagStream(stream(frame('sources',{citations})+frame('done',{answer:'合成范围总结',citations}),1024),new AbortController().signal,event=>events.push(event));
+    assert.equal(events.at(-1).kind,'done');assert.deepEqual(events.at(-1).citations,citations);
+  }
+  await assert.rejects(consumeRagStream(stream(frame('done',{answer:'合成范围总结',citations:make(161)}),1024),new AbortController().signal,()=>{}),/来源响应不完整/);
+});

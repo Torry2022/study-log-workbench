@@ -1,6 +1,7 @@
 import { withBasePath } from "./base-path.ts";
 import { ApiRequestError, AUTH_EXPIRED_EVENT, workspaceRequestSignal } from "./client-http.ts";
 import type { RagCitation } from "./rag-types.ts";
+import { RAG_MAX_SOURCES } from "./rag-types.ts";
 
 export function clientUuid(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(16));
@@ -11,7 +12,7 @@ export function clientUuid(): string {
 type RagEvent = { kind: "status"; message: string } | { kind: "sources"; citations: RagCitation[] } |
   { kind: "delta"; text: string } | { kind: "done"; answer: string; citations: RagCitation[]; groundingWarning?: string };
 function sources(value: unknown): RagCitation[] {
-  if (!Array.isArray(value) || value.length > 30 || value.some(item => !item || typeof item !== "object" ||
+  if (!Array.isArray(value) || value.length > RAG_MAX_SOURCES || value.some(item => !item || typeof item !== "object" ||
     !/^S[1-9]\d*$/.test(item.sourceId) || typeof item.date !== "string" || typeof item.month !== "string" ||
     typeof item.fileName !== "string" || (item.heading !== null && typeof item.heading !== "string") ||
     (item.headingIndex !== null && (!Number.isInteger(item.headingIndex) || item.headingIndex < 0)) ||

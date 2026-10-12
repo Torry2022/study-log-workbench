@@ -1,5 +1,6 @@
 import type { RagAnswerMode, RagCitation, RagHistoryMessage, RagPromptMessage, RagRetrievedContext } from "./rag-types.ts";
 import { isValidLogDate } from "./study-date.ts";
+import { RAG_MAX_SOURCES } from "./rag-types.ts";
 import { unified } from "unified";
 import remarkParse from "remark-parse";
 type ContextForPrompt = Pick<RagRetrievedContext, "sourceId" | "date" | "heading" | "content"> & Partial<Pick<RagRetrievedContext, "rangeSection" | "fileName" | "truncated">>;
@@ -76,7 +77,7 @@ export function buildRagMessages(
         "引用只使用[S1]这样的方括号编号，不要使用[^S1]脚注、脚注定义或另列来源表。",
         "不要只在段落末尾集中堆放引用；引用应紧跟其支持的具体结论。",
         "只能使用证据中真实存在的来源编号。",
-        "可以综合全部已提供材料，但最终答案最多使用30个不同来源编号；不要为了凑引用数量丢掉对问题重要的差异、条件或否定。",
+        "可以综合全部已提供材料，只引用实际支持当前结论的来源，不逐条罗列全部来源；不要为减少引用而丢掉对问题重要的差异、条件或否定。",
         "来源编号与各证据块绑定，不代表日期顺序；引用历史事实时须核对编号对应的日期和小节，不得按日期重新编号。",
         "每条证据的日志日期只属于该条证据；不可把后一条内容放到前一条日期。正文若明确写了其他事件日期，应区分事件发生日和记录日，不得自行推断。",
         "比较阶段重点时按问题要求归纳，不要扩写成逐日流水；只有回答所必需且有明确依据的日期才写入结论。",
@@ -100,7 +101,7 @@ export function parseRagHistory(value: unknown): RagHistoryMessage[] {
     && (item.role === "user" || item.role === "assistant") && typeof item.content === "string")
     .slice(-12)
     .map((item) => {
-      const refs = Array.isArray(item.sourceRefs) ? item.sourceRefs.slice(0, 30).filter((ref: Record<string, unknown>) => ref && isValidLogDate(String(ref.date)) && typeof ref.fileName === "string" && /^\d{4}(?:-\d{2})?_学习日志\.md$/.test(ref.fileName) && (ref.heading === null || typeof ref.heading === "string" && ref.heading.length <= 4000) && typeof ref.contentHash === "string" && /^[a-f0-9]{64}$/.test(ref.contentHash)).map(({ date, fileName, heading, contentHash }: { date: string; fileName: string; heading: string | null; contentHash: string }) => ({ date, fileName, heading, contentHash })) : [];
+      const refs = Array.isArray(item.sourceRefs) ? item.sourceRefs.slice(0, RAG_MAX_SOURCES).filter((ref: Record<string, unknown>) => ref && isValidLogDate(String(ref.date)) && typeof ref.fileName === "string" && /^\d{4}(?:-\d{2})?_学习日志\.md$/.test(ref.fileName) && (ref.heading === null || typeof ref.heading === "string" && ref.heading.length <= 4000) && typeof ref.contentHash === "string" && /^[a-f0-9]{64}$/.test(ref.contentHash)).map(({ date, fileName, heading, contentHash }: { date: string; fileName: string; heading: string | null; contentHash: string }) => ({ date, fileName, heading, contentHash })) : [];
       // Do not shift “second source” onto another source after filtering a bad pointer.
       const validRefs = item.role === "assistant" && refs.length > 0 && refs.length === item.sourceRefs.length &&
         refs.every((ref: { date: string; fileName: string }) => typeof ref.date === "string" && ref.fileName.startsWith(ref.date.slice(0, ref.fileName[4] === "-" ? 7 : 4)));

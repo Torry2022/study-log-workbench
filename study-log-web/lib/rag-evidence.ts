@@ -2,6 +2,7 @@ import { readStudyLogRange, retrieveStudyLogContexts, type RangePage, type Retri
 import type { McpConfig } from "./mcp-config.ts";
 import type { RagRetrievalPlan } from "./rag-retrieval-plan.ts";
 import type { RagRetrievedContext } from "./rag-types.ts";
+import { RAG_MAX_SOURCES } from "./rag-types.ts";
 import { createHash } from "node:crypto";
 import { findRootAtxHeadings } from "./day-content.ts";
 
@@ -75,7 +76,7 @@ export class EvidenceRun {
       if (sections && sections.every(section => sameDay.some(old => !old.truncated && sameSection(section, old)))) continue;
       if (!item.truncated && sameDay.some(old => old.chunkId === `${item.date}:range:0` && !old.truncated) &&
         this.completeDays.get(dayKey)?.some(section => sameSection(section, item))) continue;
-      if (this.contexts.length >= 160 || this.retainedChars + item.content.length > 120000) { this.limited = true; this.stopReason = "evidence_limit"; continue; }
+      if (this.contexts.length >= RAG_MAX_SOURCES || this.retainedChars + item.content.length > 120000) { this.limited = true; this.stopReason = "evidence_limit"; continue; }
       this.retainedChars += item.content.length;
       this.contexts.push({ ...item, sourceId: `S${this.contexts.length + 1}` }); added++;
       if (sections) this.completeDays.set(dayKey, sections);

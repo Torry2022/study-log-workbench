@@ -18,6 +18,7 @@ const password = "synthetic-rag-package-password";
 let toolRequests = 0;
 let modelCalls = 0;
 let firstLimited = false;
+let invalidReadDate = false, finalLength = false;
 const model = http.createServer(async (req, res) => {
   assert.equal(req.url, '/full/custom/endpoint');
   assert.equal(req.headers.authorization, 'Bearer synthetic');
@@ -26,6 +27,10 @@ const model = http.createServer(async (req, res) => {
   assert.equal(body.model, "synthetic-model");
   if (!body.stream) { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({choices:[{message:{content:'合成问答'}}]})); return; }
   modelCalls++;
+  if (finalLength) {
+    res.setHeader('content-type','text/event-stream');
+    res.end('data: '+JSON.stringify({choices:[{index:0,delta:{},finish_reason:'length'}],usage:{prompt_tokens:42,completion_tokens:21}})+'\n\ndata: [DONE]\n\n');return;
+  }
   const userText = body.messages.filter(message => message.role === 'user').at(-1).content;
   const firstTurn = body.tools && userText.includes('可用工具状态：');
   const state = body.tools ? firstTurn ? { ...JSON.parse(userText.split('可用工具状态：').at(-1)), question: userText.split('\n')[0] } : JSON.parse(userText) : null;
@@ -40,7 +45,7 @@ const model = http.createServer(async (req, res) => {
     res.end('data: '+JSON.stringify({choices:[{index:0,delta:{content:firstLimited?'内部首轮截断文本':'Alpha条件成立才适用，不适用于所有场景。[S1]'},finish_reason:firstLimited?'length':'stop'}],usage:{prompt_tokens:10,completion_tokens:5}})+'\n\ndata: [DONE]\n\n'); return;
   }
   const name = state?.question.includes('Gamma') && state.remainingDecisions === 2 ? 'read' : 'finish';
-  const args = name === 'read' ? {date:'2026-09-02',missingPoint:'Gamma的补充条件'} : {reason:'sufficient_evidence'};
+  const args = name === 'read' ? {date:invalidReadDate?'2026-11-01':'2026-09-02',missingPoint:'Gamma的补充条件'} : {reason:'sufficient_evidence'};
   const provided = body.messages.map(message => message.content).join('\n');
   const gammaSource = [...provided.matchAll(/\[(S\d+)\]\n日志日期：2026-09-02(?:\n小节：[^\n]*)?\n内容：\n([\s\S]*?)\n以上为/g)].find(match => match[2].includes('先确认地址'));
   const answerAfterRead = body.tools && state?.question.includes('Gamma') && state.remainingDecisions === 1;
@@ -50,7 +55,7 @@ const model = http.createServer(async (req, res) => {
   }
   const delta = body.tools && !answerAfterRead
     ? { tool_calls: [{ index: 0, id: `call-${++toolRequests}`, type: "function", function: { name, arguments: JSON.stringify(args) } }] }
-    : { content: gammaSource ? `Gamma补充条件是先确认地址。[${gammaSource[1]}]` : '条件成立才适用[S1]' };
+    : { content: invalidReadDate ? '补查未完成，现有片段无法确定补充条件。[S1]' : gammaSource ? `Gamma补充条件是先确认地址。[${gammaSource[1]}]。S1 是片段，${gammaSource[1]} 提供完整条件。` : '条件成立才适用[S1]' };
   const frame = value => `data: ${JSON.stringify(value)}\n\n`;
   res.setHeader("content-type", "text/event-stream");
   res.end(frame({ id: "mock", object: "chat.completion.chunk", created: 1, model: "synthetic-model", choices: [{ index: 0, delta, finish_reason: null }] }) + frame({ choices: [{ index: 0, delta: {}, finish_reason: delta.tool_calls ? "tool_calls" : "stop" }], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }) + "data: [DONE]\n\n");
@@ -96,8 +101,33 @@ try {
     assert.equal(events.at(-1).event, "done", JSON.stringify(events.at(-1)));
     assert.equal(events.at(-1).data.citations[0].date, date);
     assert.equal(modelCalls-before,calls);
+    if(question.includes('Gamma')) {
+      assert.match(events.at(-1).data.answer,/S2 是片段，S1 提供完整条件/);
+      assert.equal(events.at(-1).data.citations[0].chunkId,'2026-09-02:range:0');
+      assert.equal(events.at(-1).data.citations[1].sourceId,'S2');
+      assert.ok(!events.at(-1).data.citations[1].chunkId.includes(':range:'));
+    }
     checks.push({ question, modelCalls:modelCalls-before, diagnostics: events.at(-1).data.diagnostics });
   }
+  invalidReadDate=true;
+  const beforeInvalidRead=modelCalls;
+  const invalidRead=await fetch(`${status.url}/api/rag/query`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${auth.token}`},body:JSON.stringify({question:'Gamma的补充条件是什么？',mode:'logs_only',history:[]})});
+  assert.equal(invalidRead.status,200);
+  const invalidReadTerminal=(await invalidRead.text()).trim().split('\n\n').at(-1);assert.match(invalidReadTerminal,/^event: done/);
+  const invalidReadDone=JSON.parse(invalidReadTerminal.split('\n')[1].slice(6));
+  assert.equal(invalidReadDone.diagnostics.agent.stopReason,'invalid_read_date');assert.equal(invalidReadDone.diagnostics.toolCalls,1);
+  assert.equal(modelCalls-beforeInvalidRead,2);assert.equal(invalidReadDone.citations[0].date,'2026-09-02');
+  checks.push({invalidReadDateStops:true,modelCalls:2});invalidReadDate=false;
+  finalLength=true;
+  const beforeFinalLength=modelCalls;
+  const failed=await fetch(`${status.url}/api/rag/query`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${auth.token}`},body:JSON.stringify({question:'哪里提到过`Alpha`？',mode:'logs_only',history:[]})});
+  assert.equal(failed.status,200);
+  const failedRaw=await failed.text(),failedTerminal=failedRaw.trim().split('\n\n').at(-1);assert.match(failedTerminal,/^event: error/);
+  const failedDone=JSON.parse(failedTerminal.split('\n')[1].slice(6));
+  assert.equal(failedDone.code,'AI_OUTPUT_TRUNCATED');assert.equal(modelCalls-beforeFinalLength,1);
+  assert.deepEqual(failedDone.diagnostics.usage,[{model:'synthetic-model',inputTokens:42,outputTokens:21}]);
+  assert.ok(!failedRaw.includes('event: done'));
+  checks.push({failedFinalUsageRetained:true,modelCalls:1});finalLength=false;
   const beforeConflict = modelCalls;
   const conflict = await fetch(`${status.url}/api/rag/query`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.token}` }, body: JSON.stringify({ question: '刚才第一条来源，只看2026年十月的记录。', mode: 'logs_only', history: [{ role: 'assistant', content: '合成旧回答', sourceRefs: [{ date: '2026-09-01', fileName: '2026-09_学习日志.md', heading: 'Alpha', contentHash: 'a'.repeat(64) }] }] }) });
   assert.equal(conflict.status, 200);

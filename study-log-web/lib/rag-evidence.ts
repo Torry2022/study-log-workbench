@@ -76,10 +76,19 @@ export class EvidenceRun {
         this.sourceChanged = true; this.limited = true; this.stopReason = "source_changed"; return added;
       }
       if (version) this.dayVersions.set(dayKey, version);
-      if (this.contexts.some(old => old.fileName === item.fileName && old.chunkId === item.chunkId && old.contentHash === item.contentHash)) continue;
+      const duplicate = this.contexts.find(old => old.fileName === item.fileName && old.chunkId === item.chunkId && old.contentHash === item.contentHash);
+      if (duplicate) {
+        // The original identity may still be present while its model-visible body
+        // was reduced. Restore only the exact, same-version original we retained.
+        if (this.compactedSources.has(duplicate.sourceId) && this.compactionOriginals.get(duplicate.sourceId) === item.content && duplicate.content !== item.content) {
+          duplicate.content = item.content; duplicate.truncated = item.truncated;
+          this.compactedSources.delete(duplicate.sourceId); added++;
+        }
+        continue;
+      }
       const sections = completeDaySections(item);
-      if (sections && sections.every(section => sameDay.some(old => !old.truncated && sameSection(section, old)))) continue;
-      if (!item.truncated && sameDay.some(old => old.chunkId === `${item.date}:range:0` && !old.truncated) &&
+      if (sections && sections.every(section => sameDay.some(old => !old.truncated && sameSection(section, old) && hash(old.content) === old.contentHash))) continue;
+      if (!item.truncated && sameDay.some(old => old.chunkId === `${item.date}:range:0` && !old.truncated && hash(old.content) === old.contentHash) &&
         this.completeDays.get(dayKey)?.some(section => sameSection(section, item))) continue;
       if (this.contexts.length >= RAG_MAX_SOURCES || this.retainedChars + item.content.length > MAX_RETAINED_CHARS) { this.limited = true; this.stopReason = "evidence_limit"; continue; }
       this.retainedChars += item.content.length;
@@ -122,9 +131,9 @@ export async function collectRagEvidence(query: string, plan: RagRetrievalPlan, 
   readers: Readers = { search: retrieveStudyLogContexts, read: readStudyLogRange }): Promise<string[]> {
   const addedSourceIds: string[] = [];
   const register = (items: RagRetrievedContext[]) => {
-    const before = run.contexts.length;
+    const before = new Map(run.contexts.map(item => [item.sourceId, item.content]));
     run.add(items);
-    addedSourceIds.push(...run.contexts.slice(before).map(item => item.sourceId));
+    addedSourceIds.push(...run.contexts.filter(item => !before.has(item.sourceId) || before.get(item.sourceId) !== item.content).map(item => item.sourceId));
   };
   const scopes = plan.ranges || [{ dateFrom: plan.dateFrom, dateTo: plan.dateTo }];
   for (const range of scopes) {

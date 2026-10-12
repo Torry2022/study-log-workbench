@@ -311,6 +311,27 @@ test('an empty concurrent search cannot claim sources added by another search', 
   assert.deepEqual(hit,['S1']);assert.deepEqual(empty,[]);
 });
 
+test('SDK continues after same-identity restoration and answers from the body returned by actual MCP',async t=>{
+  const mcp=await fixture(t),run=new EvidenceRun(new AbortController().signal);
+  await collectRagEvidence('Alpha',{strategy:'relevance'},run,mcp);
+  assert.equal(run.contexts.length,1);
+  const original=structuredClone(run.contexts[0]);
+  run.compactionOriginals.set('S1',original.content);run.compactedSources.add('S1');run.contexts[0].content=original.content.slice(0,6);
+  let calls=0;
+  const model=createAgentModel(config,async(_url,init)=>{
+    const body=JSON.parse(init.body);calls++;
+    if(calls===1){assert.ok(!body.messages.at(-1).content.includes('Alpha条件成立才适用'));return stream('search',{query:'Alpha条件'});}
+    const state=JSON.parse(body.messages.at(-1).content.split('可用工具状态：').at(-1));
+    assert.deepEqual(state.lastTool.addedSourceIds,['S1']);assert.equal(state.lastTool.stopped,false);
+    assert.ok(body.messages.at(-1).content.includes(original.content));
+    return plain('Alpha条件成立才适用，不适用于所有场景。[S1]');
+  });
+  const result=await supplementEvidence('Alpha的完整适用条件？',{strategy:'relevance'},run,mcp,model,()=>{},config,{mode:'logs_only',history:[],chat:config});
+  assert.equal(calls,2);assert.equal(run.calls,2);assert.equal(run.contexts.length,1);
+  assert.deepEqual(run.contexts[0],original);assert.equal(run.compactedSources.has('S1'),false);
+  assert.match(result.answer,/条件成立才适用，不适用于所有场景/);assert.equal(run.stopReason,'sufficient_evidence');
+});
+
 test('a valid but unavailable date stops the active read loop before a second decision, retaining evidence for final generation', async t => {
   const mcp=await fixture(t,'## 2026-09-01\n\n### Alpha\nAlpha补充条件记在正文末。\n'+ '合成背景。'.repeat(8000)+'\n只有来源一致才能保存。');
   const savedFetch=globalThis.fetch, keys=['RAG_AGENT_ENABLED','RAG_AGENT_TOOL_CALLING_VERIFIED','RAG_JEV_ENABLED'];

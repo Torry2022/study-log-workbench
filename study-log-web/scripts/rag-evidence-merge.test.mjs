@@ -15,6 +15,57 @@ const readers = blocks => ({
 const run = () => new EvidenceRun(new AbortController().signal);
 const range = date => ({ strategy: 'timeline_summary', dateFrom: date, dateTo: date });
 
+test('search after a whole-day excerpt retains a section omitted from the current model evidence',async()=>{
+  const date='2026-09-01';
+  const blocks=parseDayBlocks(`## ${date}\n\n### Alpha\n\nAlpha完成初步整理。\n\n### Beta\n\nBeta只有核对地址后才能保存，没有确认不得继续。`,'2026-09_学习日志.md');
+  const read=readers(blocks),evidence=run();
+  await collectRagEvidence('',range(date),evidence,config,read);
+  const original=evidence.contexts[0];evidence.compactionOriginals.set(original.sourceId,original.content);evidence.compactedSources.add(original.sourceId);original.content='Alpha完成初步整理。';
+  assert.ok(!original.content.includes('Beta只有'));
+  const changed=await collectRagEvidence('Beta',{strategy:'relevance'},evidence,config,read);
+  assert.deepEqual(changed,['S2']);assert.equal(evidence.contexts[0].sourceId,'S1');
+  assert.ok(evidence.contexts[1].content.includes('Beta只有核对地址后才能保存，没有确认不得继续'));
+  assert.equal(evidence.sourceChanged,false);assert.equal(evidence.coverage[0].status,'complete');
+});
+
+test('same-version search restores a compacted source in place and reports the updated source',async()=>{
+  const date='2026-09-01',file='2026-09_学习日志.md';
+  const blocks=parseDayBlocks(`## ${date}\n\n### Beta\n\nBeta只有核对地址后才能保存，没有确认不得继续。`,file);
+  const read=readers(blocks),evidence=run();
+  await collectRagEvidence('Beta',{strategy:'relevance'},evidence,config,read);
+  const original=structuredClone(evidence.contexts[0]);
+  evidence.compactionOriginals.set('S1',original.content);evidence.compactedSources.add('S1');
+  evidence.contexts[0].content=original.content.slice(0,4);evidence.contexts[0].truncated=true;
+  const restored=await collectRagEvidence('Beta地址',{strategy:'relevance'},evidence,config,read);
+  assert.deepEqual(restored,['S1']);assert.equal(evidence.contexts.length,1);
+  assert.deepEqual(evidence.contexts[0],original);assert.equal(evidence.compactedSources.has('S1'),false);
+  const duplicate=await collectRagEvidence('Beta确认',{strategy:'relevance'},evidence,config,read);
+  assert.deepEqual(duplicate,[]);assert.equal(evidence.contexts.length,1);
+  evidence.compactionOriginals.set('S1',original.content);evidence.compactedSources.add('S1');evidence.contexts[0].content=original.content.slice(0,4);
+  const [restoredAgain,empty]=await Promise.all([
+    collectRagEvidence('Beta恢复',{strategy:'relevance'},evidence,config,read),
+    collectRagEvidence('UnrecordedTopic',{strategy:'relevance'},evidence,config,read)
+  ]);
+  assert.deepEqual(restoredAgain,['S1']);assert.deepEqual(empty,[]);assert.deepEqual(evidence.contexts[0],original);
+  // A different day revision must still be rejected before any restoration.
+  evidence.compactionOriginals.set('S1',original.content);evidence.compactedSources.add('S1');evidence.contexts[0].content=original.content.slice(0,4);
+  const changed=parseDayBlocks(`## ${date}\n\n### Beta\n\nBeta现在无需确认。`,file);
+  assert.deepEqual(await collectRagEvidence('Beta新条件',{strategy:'relevance'},evidence,config,readers(changed)),[]);
+  assert.equal(evidence.sourceChanged,true);assert.equal(evidence.contexts[0].content,original.content.slice(0,4));
+});
+
+test('restoring an excerpt neither resets nor charges its original retention twice',async()=>{
+  const date='2026-09-01',blocks=parseDayBlocks(`## ${date}\n\n### Beta\n\nBeta需要先核对地址。`,'2026-09_学习日志.md');
+  const evidence=run(),read=readers(blocks);
+  await collectRagEvidence('Beta',{strategy:'relevance'},evidence,config,read);
+  const original=structuredClone(evidence.contexts[0]);evidence.compactionOriginals.set('S1',original.content);evidence.compactedSources.add('S1');evidence.contexts[0].content=original.content.slice(0,4);
+  assert.deepEqual(await collectRagEvidence('Beta地址',{strategy:'relevance'},evidence,config,read),['S1']);
+  const extra={date:'2026-10-01',fileName:'2026-10_学习日志.md',chunkId:'budget-fixture',contentHash:'a'.repeat(64),content:'原'.repeat(8*30000-original.content.length),truncated:false};
+  assert.equal(evidence.add([extra]),1);
+  assert.equal(evidence.add([{...extra,chunkId:'over-budget',content:'原'}]),0);
+  assert.equal(evidence.stopReason,'evidence_limit');
+});
+
 test('completed pagination is complete despite earlier search truncation, but exhausting the read budget remains partial', async () => {
   const date = '2026-09-01';
   for (const [size, expected] of [[4000, 'complete'], [15000, 'complete'], [30000, 'partial']]) {
@@ -70,11 +121,16 @@ test('actual MCP short cases do not duplicate section and complete day sources i
     const readFirst = run();
     for (const date of [entry.date, entry.ruleDate]) await collectRagEvidence('', range(date), readFirst, config, read);
     const daySources = structuredClone(readFirst.contexts);
-    // Summaries change prompt text, not the original evidence identity or its coverage proof.
-    readFirst.contexts.forEach(item => { item.content = '合成摘要'; });
     await collectRagEvidence(entry.question, { strategy: 'relevance' }, readFirst, config, read);
-    assert.equal(readFirst.contexts.length, 2);
-    assert.deepEqual(readFirst.contexts.map(item => item.chunkId), daySources.map(item => item.chunkId));
+    assert.deepEqual(readFirst.contexts,daySources); // Uncompressed day bodies still deduplicate sections.
+    const excerpted = run();
+    for (const date of [entry.date,entry.ruleDate]) await collectRagEvidence('',range(date),excerpted,config,read);
+    excerpted.contexts.forEach(item=>{excerpted.compactionOriginals.set(item.sourceId,item.content);excerpted.compactedSources.add(item.sourceId);item.content=item.content.slice(0,20);});
+    // Reading proof remains valid, but omitted section text must be supplied again.
+    await collectRagEvidence(entry.question,{strategy:'relevance'},excerpted,config,read);
+    assert.equal(excerpted.contexts.length,4);
+    assert.deepEqual(excerpted.contexts.slice(0,2).map(item=>item.chunkId),daySources.map(item=>item.chunkId));
+    assert.deepEqual(excerpted.contexts.slice(2).map(item=>item.content),sources.map(item=>item.content));
     readFirst.contexts = [];
     readFirst.add((await read.search(entry.question, { strategy: 'relevance' })).contexts);
     assert.equal(readFirst.contexts.length, 2); // Cached coverage is not retained evidence on its own.

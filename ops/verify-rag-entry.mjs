@@ -24,6 +24,7 @@ const model = http.createServer(async (req, res) => {
   const firstPass = !body.stream && body.messages[0].content.includes('needsMoreEvidence');
   if (body.stream || firstPass) calls.push({ tools: Boolean(body.tools), firstPass });
   if (body.tools) {
+    assert.equal(body.max_tokens, undefined, 'Tool decisions inherit the model output default');
     const state = JSON.parse(body.messages.find(message => message.role === 'user').content);
     assert.equal(state.remainingDecisions, 2);
     assert.equal(state.evidence[0].truncated, false);

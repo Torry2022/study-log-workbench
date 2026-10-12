@@ -323,7 +323,7 @@ test('explicit finish stops the SDK loop without reading or claiming program-pro
   for (const reason of ['sufficient_evidence','no_more_leads']) {
     let calls=0;const run=new EvidenceRun(new AbortController().signal);
     await supplementEvidence('question',{strategy:'relevance'},run,{},createAgentModel(config,async (_url,init)=>{
-      const body=JSON.parse(init.body);assert.equal(body.tool_choice,'auto');assert.equal(body.max_tokens,1200);calls++;return stream('finish',{reason});
+      const body=JSON.parse(init.body);assert.equal(body.tool_choice,'auto');assert.equal(body.max_tokens,undefined);calls++;return stream('finish',{reason});
     }),()=>{});
     assert.equal(calls,1);assert.equal(run.calls,0);assert.equal(run.stopReason,reason);
     assert.deepEqual(run.coverage,[]);

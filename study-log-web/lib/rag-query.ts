@@ -31,6 +31,12 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
       const started = performance.now();
       const diagnostics: RagDiagnostics = { traceId: randomUUID(), status: "completed", answerMode: input.mode, questionChars: input.question.length, historyMessages: input.history.length, contextualized: false, contextualizationFallback: false, retrievalMode: null, retrievalStrategy: "relevance", retrievalPlanner: "rules", sourceCount: 0, timings: { contextualizationMs: 0, planningMs: 0, retrievalMs: 0, firstTokenMs: null, generationMs: 0, totalMs: 0 } };
       diagnostics.usage = [];
+      Object.assign(diagnostics.timings, { compactionMs: 0, judgeMs: 0, agentMs: 0 });
+      const measure = async <T>(key: "retrievalMs" | "compactionMs" | "judgeMs" | "agentMs", operation: () => Promise<T>): Promise<T> => {
+        const phaseStart = performance.now();
+        try { return await operation(); }
+        finally { diagnostics.timings[key] = (diagnostics.timings[key] || 0) + Math.round(performance.now() - phaseStart); }
+      };
       config = { ...config, chat: { ...config.chat, onUsage: usage => diagnostics.usage!.push({ model: config.chat.model, ...usage }) }, lightChat: { ...config.lightChat, onUsage: usage => diagnostics.usage!.push({ model: config.lightChat.model, ...usage }) } };
       let stage: NonNullable<RagDiagnostics["failureStage"]> = "contextualizing", stageStart = performance.now();
       const elapsed = () => Math.round(performance.now() - stageStart);
@@ -80,12 +86,12 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
         send("status", { stage, message: "正在检索日志" });
         const run = new EvidenceRun(signal);
         let directAnswer: string | undefined;
-        await collectRagEvidence(query, planned.plan, run, config.mcp);
+        await measure("retrievalMs", () => collectRagEvidence(query, planned.plan, run, config.mcp));
         if (run.sourceChanged) throw new McpRetrievalError("MCP_SOURCE_CHANGED", "读取期间日志发生了修改，请重新提问以读取最新内容");
         if (referenced && run.contexts.some(item => item.fileName !== referenced.fileName)) { run.contexts = []; run.limited = true; }
         if (run.coverage.length && run.coverage.every(scope => scope.status === "failed")) throw new McpRetrievalError("MCP_RANGE_FAILED", "无法读取所选日期的日志，请检查检索服务版本或重试");
         const boundedJevInput = isBoundedJevInput(input.question, run.contexts);
-        await compactEvidence(run, input.question, config.lightChat, config.chat, input.history, input.mode);
+        await measure("compactionMs", () => compactEvidence(run, input.question, config.lightChat, config.chat, input.history, input.mode));
         // Successful enumeration covers the requested scope, including confirmed empty periods.
         // Check after compaction: a failed summary can still leave material missing.
         const scopeFullyRead = !run.limited && run.coverage.length > 0 && run.coverage.every(scope => scope.status === "complete" || scope.status === "empty");
@@ -98,23 +104,24 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
             if (!boundedJevInput) diagnostics.agent.judgeSkipped = "outside_short_evidence_scope";
             else {
               try {
-                const judged = await judgeEvidence(input.question, run.contexts, signal, jev.apiKey, fetch, jev.provider);
+                const judged = await measure("judgeMs", () => judgeEvidence(input.question, run.contexts, signal, jev.apiKey, fetch, jev.provider));
                 diagnostics.agent.judgment = judged.judgment;
                 diagnostics.agent.judgeUsage = judged.usage;
               } catch { signal.throwIfAborted(); diagnostics.agent.judgeUnavailable = true; }
             }
           }
           if (diagnostics.agent.judgment?.support !== "supported" || diagnostics.agent.judgment?.conflict !== "absent") {
-            const result = await supplementEvidence(input.question, planned.plan, run, config.mcp, createAgentModel(config.chat), message => send("status", { stage: "retrieving", message }), config.lightChat, { mode: input.mode, history: input.history, chat: config.chat });
+            const result = await measure("agentMs", () => supplementEvidence(input.question, planned.plan, run, config.mcp, createAgentModel(config.chat), message => send("status", { stage: "retrieving", message }), config.lightChat, { mode: input.mode, history: input.history, chat: config.chat }));
             diagnostics.agent.usage = result.usage; directAnswer = result.answer;
+            diagnostics.agent.answeredDirectly = directAnswer !== undefined;
           }
           diagnostics.agent.stopReason = run.stopReason;
         }
-        await compactEvidence(run, input.question, config.lightChat, config.chat, input.history, input.mode);
+        await measure("compactionMs", () => compactEvidence(run, input.question, config.lightChat, config.chat, input.history, input.mode));
         diagnostics.coverage = run.coverage; diagnostics.toolCalls = run.calls;
         if (run.sourceChanged) throw new McpRetrievalError("MCP_SOURCE_CHANGED", "读取期间日志发生了修改，请重新提问以读取最新内容");
         const retrieved = { contexts: run.contexts };
-        diagnostics.timings.retrievalMs = elapsed(); diagnostics.retrievalMode = "bounded_evidence";
+        diagnostics.retrievalMode = "bounded_evidence";
         const citations: RagCitation[] = retrieved.contexts.map(({ sourceId, date, month, fileName, heading, headingIndex, chunkId, contentHash, excerpt }) => ({ sourceId, date, month, fileName, heading, headingIndex, chunkId, contentHash, excerpt }));
         diagnostics.sourceCount = citations.length;
         // Candidate retrieval hits are internal; publish only final, used sources.
@@ -143,7 +150,8 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
         if (!external.aborted) {
           diagnostics.status = "error"; diagnostics.failureStage = stage; diagnostics.timings.totalMs = Math.round(performance.now() - started);
           const timing = { contextualizing: "contextualizationMs", planning: "planningMs", retrieving: "retrievalMs", answering: "generationMs" } as const;
-          diagnostics.timings[timing[stage]] = elapsed();
+          // Retrieval subphases record their own success/failure duration in finally.
+          if (stage !== "retrieving") diagnostics.timings[timing[stage]] = elapsed();
           const known = error instanceof AiChatError || error instanceof McpRetrievalError;
           send("error", { message: deadline.signal.aborted ? "本次问答用时过长，请缩小范围后重试" : known ? error.message : "问答请求失败，请稍后重试", code: deadline.signal.aborted ? "RAG_TIMEOUT" : known ? error.code : "RAG_QUERY_FAILED", diagnostics });
         }

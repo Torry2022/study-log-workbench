@@ -35,6 +35,36 @@ test('an enabled Agent without current tool confirmation uses ordinary RAG again
 function plain(text, finish = 'stop') {
   return new Response('data: '+JSON.stringify({choices:[{index:0,delta:{role:'assistant',content:text},finish_reason:null}]})+'\n\ndata: '+JSON.stringify({choices:[{index:0,delta:{},finish_reason:finish}],usage:{prompt_tokens:10,completion_tokens:5,total_tokens:15}})+'\n\ndata: [DONE]\n\n',{headers:{'content-type':'text/event-stream'}});
 }
+
+test('query timing separates initial MCP retrieval from delayed SDK answers and failed decisions',async t=>{
+  const mcp=await fixture(t),savedFetch=globalThis.fetch;
+  const keys=['RAG_AGENT_ENABLED','RAG_AGENT_TOOL_CALLING_VERIFIED','RAG_JEV_ENABLED'];
+  const previous=Object.fromEntries(keys.map(key=>[key,process.env[key]]));
+  t.after(()=>{globalThis.fetch=savedFetch;for(const[key,value]of Object.entries(previous)){if(value===undefined)delete process.env[key];else process.env[key]=value;}});
+  for(const path of ['ordinary','agent_direct','agent_failure']) {
+    Object.assign(process.env,{RAG_AGENT_ENABLED:path==='ordinary'?'false':'true',RAG_AGENT_TOOL_CALLING_VERIFIED:'true',RAG_JEV_ENABLED:'false'});
+    let calls=0,modelElapsed=0;
+    globalThis.fetch=async(url,init)=>{
+      if(String(url)!==config.baseUrl)return savedFetch(url,init);
+      calls++;const body=JSON.parse(init.body);assert.equal(Boolean(body.tools),path!=='ordinary');
+      const start=performance.now();await new Promise(resolve=>setTimeout(resolve,150));modelElapsed+=performance.now()-start;
+      return path==='agent_failure'?Response.json({error:'synthetic unavailable'},{status:503}):plain('Alpha条件成立才适用。[S1]');
+    };
+    const raw=await new Response(createRagQueryStream({question:'Alpha的适用条件是什么？',mode:'logs_only',history:[]},{chat:config,lightChat:config,mcp},new AbortController().signal)).text();
+    const block=raw.trim().split('\n\n').at(-1),result=JSON.parse(block.split('\n')[1].slice(6)),timing=result.diagnostics.timings;
+    assert.equal(calls,1);assert.ok(modelElapsed>=140);
+    assert.equal(timing.judgeMs,0);
+    if(path==='ordinary') {
+      assert.match(block,/^event: done/);assert.equal(timing.agentMs,0);
+      assert.ok(timing.generationMs>=modelElapsed-5);assert.equal(result.diagnostics.agent,undefined);
+    } else {
+      assert.ok(timing.agentMs>=modelElapsed-5);
+      assert.ok(timing.retrievalMs+timing.agentMs+timing.compactionMs<=timing.totalMs+10,'phase timing must not charge SDK time to retrieval twice');
+      if(path==='agent_failure') {assert.match(block,/^event: error/);assert.equal(result.diagnostics.failureStage,'retrieving');assert.equal(timing.firstTokenMs,null);}
+      else {assert.match(block,/^event: done/);assert.equal(result.diagnostics.agent.answeredDirectly,true);assert.ok(timing.firstTokenMs>=timing.agentMs-5);}
+    }
+  }
+});
 function stream(tool, args, id = "one") {
   if (["search", "read"].includes(tool)) args = { ...args, missingPoint: "合成问题中缺少的具体条件" };
   const chunk = delta => `data: ${JSON.stringify({ id: "test", object: "chat.completion.chunk", created: 1, model: "mock-tools", choices: [{ index: 0, delta, finish_reason: null }] })}\n\n`;
@@ -547,7 +577,7 @@ test('complete comparisons bypass Agent and Jev while search-only questions reta
  for(const key of ['RAG_AGENT_ENABLED','RAG_AGENT_TOOL_CALLING_VERIFIED','RAG_JEV_ENABLED','RAG_JEV_PROVIDER','TYPESAFE_API_KEY'])old[key]=process.env[key];
  Object.assign(process.env,{RAG_AGENT_ENABLED:'true',RAG_AGENT_TOOL_CALLING_VERIFIED:'true',RAG_JEV_ENABLED:'true',RAG_JEV_PROVIDER:'typesafe',TYPESAFE_API_KEY:'synthetic'});
  let judgeCalls=0, agentCalls=0;
- globalThis.fetch=(url,init)=>{if(String(url).startsWith('https://api.typesafe.ai')){judgeCalls++;return Promise.resolve(Response.json({error:'synthetic unavailable'},{status:503}));}return originalFetch(url,init);};
+ globalThis.fetch=async(url,init)=>{if(String(url).startsWith('https://api.typesafe.ai')){judgeCalls++;await new Promise(resolve=>setTimeout(resolve,120));return Response.json({error:'synthetic unavailable'},{status:503});}return originalFetch(url,init);};
  const server=http.createServer(async(req,res)=>{
   let raw='';for await(const chunk of req)raw+=chunk;
   const body=JSON.parse(raw);
@@ -570,6 +600,7 @@ test('complete comparisons bypass Agent and Jev while search-only questions reta
   const short=await new Response(createRagQueryStream({question:'Alpha为什么？',mode:'logs_only',history:[]},{chat,lightChat:chat,mcp},new AbortController().signal)).text();
   const shortBlocks=short.trim().split('\n\n'),shortDone=JSON.parse(shortBlocks.at(-1).split('\n')[1].slice(6));
   assert.match(shortBlocks.at(-1),/^event: done/);assert.equal(judgeCalls,1);assert.equal(shortDone.diagnostics.agent.judgeUnavailable,true);
+  assert.ok(shortDone.diagnostics.timings.judgeMs>=110);assert.ok(shortDone.diagnostics.timings.retrievalMs+shortDone.diagnostics.timings.judgeMs+shortDone.diagnostics.timings.agentMs<=shortDone.diagnostics.timings.totalMs+10);
   assert.equal(shortDone.diagnostics.agent.judgeSkipped,undefined);assert.equal(shortDone.answer,'合成比较[S1]');
   assert.equal(agentCalls,1);
  }finally {
@@ -589,6 +620,7 @@ test('complete long-range query summarizes then answers, while failed compaction
     const body = JSON.parse(raw);
     if (!body.stream) {
       stages.push('summary');
+      await new Promise(resolve=>setTimeout(resolve,120));
       if (failSummary) { res.writeHead(503); res.end('synthetic unavailable'); return; }
       const { evidence } = JSON.parse(body.messages[1].content);
       assert.ok(evidence.reduce((sum, item) => sum + item.content.length, 0) <= 30000, JSON.stringify({system:body.messages[0].content,stream:body.stream,tools:Boolean(body.tools),lengths:evidence.map(item=>item.content.length)}));
@@ -616,9 +648,12 @@ test('complete long-range query summarizes then answers, while failed compaction
   assert.ok(!stages.includes('agent')); assert.equal(stages.at(-1), 'answer');
   const done=JSON.parse(output.trim().split('\n\n').at(-1).split('\n')[1].slice(6));
   assert.equal(done.diagnostics.agent,undefined);
+  assert.ok(done.diagnostics.timings.compactionMs>=110);assert.equal(done.diagnostics.timings.agentMs,0);
   failSummary=true; stages.length=0;
   const failed=await new Response(createRagQueryStream({ question: '比较2026年九月和十月', mode: 'logs_only', history: [] }, { chat, lightChat: chat, mcp }, new AbortController().signal)).text();
   assert.match(failed,/event: done/); assert.equal(stages.at(-1),'agent');
+  const failedDone=JSON.parse(failed.trim().split('\n\n').at(-1).split('\n')[1].slice(6));
+  assert.ok(failedDone.diagnostics.timings.compactionMs>=110);assert.equal(failedDone.diagnostics.agent.answeredDirectly,true);
 });
 
 test('SDK answers in the second turn after a real read, discarding text from the tool turn', async t => {

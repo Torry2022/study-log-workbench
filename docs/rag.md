@@ -14,6 +14,12 @@ Web 显式配置 `STUDY_LOG_MCP_URL`（完整 HTTP(S) 接口地址）和 `STUDY_
 
 `POST /api/rag/query` 接收 `question`、`mode` 和可选 `history`。SSE 事件为 `status`、`sources`、`delta`、`done`、`error`。只有 `done` 表示完整回答；错误或连接提前结束不得当作成功保存。客户端取消会传递给检索和模型请求。无日志依据的 `logs_only` 请求直接给出说明，不调用回答模型。
 
+## 耗时诊断
+
+2026-10-13 起，`diagnostics.timings.retrievalMs` 只记录初次 MCP 取证；`compactionMs` 累计 SDK 外的材料整理，`judgeMs` 记录可选证据判断，`agentMs` 记录整个 SDK 执行（含其补查工具、内部整理及直接回答）。`generationMs` 记录后续回答阶段：SDK 已直接回答时，该阶段仅输出已完成的正文，接近零不代表模型生成没有耗时；此时 `diagnostics.agent.answeredDirectly` 为 true。新增字段可选，旧会话和客户端继续兼容。
+
+这些阶段成功或失败时都保留已测时间，不把 SDK 或整理失败的耗时重新写入初次检索。`firstTokenMs` 是本服务首次发送回答正文的时间，不是供应商首次返回数据、心跳或推理的时间。SDK 工具轮的临时文字仍不发送；直接回答目前在该轮完成后发送，因此这项计时修正本身不改善流式延迟。旧诊断的 retrievalMs 含 SDK 与整理，不可与新字段直接当作同口径检索性能对比。
+
 ## 历史存储
 
 会话保存在实例的 `state/rag-sessions.json`，写前完整快照存入 `BACKUP_ROOT/rag-sessions/`。读取遇到损坏 JSON 或结构异常会报错，不会当作空历史覆盖。写入经过单进程串行队列、独占临时文件、同步落盘与原子替换；实例服务锁限制同一数据目录的 Web 写进程。

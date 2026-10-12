@@ -49,6 +49,30 @@ test("create/open boundaries, configured password, model key retention and no ra
   assert.equal((await manager.configuration()).hasKey, false);
 });
 
+test("model or endpoint changes invalidate old Agent tool confirmation, while unchanged settings preserve it", async t => {
+  const { manager, root } = await fixture(t);
+  await manager.select({ root, create: true, password: "synthetic-password" });
+  const original = { apiUrl: "https://example.test/custom/chat?version=one", model: "synthetic-model", apiKey: "synthetic-key" };
+  await manager.configure(original);
+  const file = path.join(root, ".env");
+  const confirm = async () => {
+    await fs.appendFile(file, "\nRAG_AGENT_ENABLED=true\nRAG_AGENT_TOOL_CALLING_VERIFIED=true\nUNRELATED_SETTING=synthetic\n");
+  };
+  await confirm();
+  await manager.configure({ ...original, model: " synthetic-model ", apiKey: "" });
+  assert.equal(parseEnv(await fs.readFile(file, "utf8")).RAG_AGENT_TOOL_CALLING_VERIFIED, "true");
+  for (const changed of [{ ...original, model: "new-synthetic-model" }, { ...original, apiUrl: "https://example.test/custom/chat?version=two" }]) {
+    await manager.configure(original); await confirm();
+    await manager.configure(changed);
+    const env = parseEnv(await fs.readFile(file, "utf8"));
+    assert.equal(env.RAG_AGENT_TOOL_CALLING_VERIFIED, "false");
+    assert.equal(env.RAG_AGENT_ENABLED, "true");
+    assert.equal(env.UNRELATED_SETTING, "synthetic");
+    assert.equal(env.CHAT_API_KEY, "synthetic-key");
+    assert.equal(env.CHAT_API_URL, changed.apiUrl); assert.equal(env.CHAT_MODEL, changed.model);
+  }
+});
+
 test("IPC stop drains an actual in-flight write before releasing lock; restart and backup/restore preserve data", async t => {
   const { manager, root, base } = await fixture(t);
   await manager.select({ root, create: true, password: "synthetic-password" });

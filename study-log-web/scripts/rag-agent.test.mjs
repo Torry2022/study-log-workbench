@@ -11,6 +11,27 @@ import { judgeEvidence, validateEvidenceJudgment } from "../lib/rag-jev.ts";
 import { createRagQueryStream } from "../lib/rag-query.ts";
 
 const config = { baseUrl: "https://example.test/custom/endpoint?version=one", apiKey: "synthetic", model: "mock-tools" };
+
+test('an enabled Agent without current tool confirmation uses ordinary RAG against actual MCP', async t => {
+  const mcp=await fixture(t), previousFetch=globalThis.fetch;
+  const keys=['RAG_AGENT_ENABLED','RAG_AGENT_TOOL_CALLING_VERIFIED','RAG_JEV_ENABLED'];
+  const previous=Object.fromEntries(keys.map(key=>[key,process.env[key]]));
+  t.after(()=>{globalThis.fetch=previousFetch;for(const [key,value] of Object.entries(previous)){if(value===undefined)delete process.env[key];else process.env[key]=value;}});
+  Object.assign(process.env,{RAG_AGENT_ENABLED:'true',RAG_AGENT_TOOL_CALLING_VERIFIED:'false',RAG_JEV_ENABLED:'false'});
+  let calls=0;
+  globalThis.fetch=async(url,init)=>{
+    if(String(url)!==config.baseUrl)return previousFetch(url,init);
+    calls++;const body=JSON.parse(init.body);assert.equal(body.tools,undefined);
+    assert.ok(body.messages.at(-1).content.includes('Alpha条件成立才适用'));
+    return plain('Alpha条件成立才适用，不适用于所有场景。[S1]');
+  };
+  const raw=await new Response(createRagQueryStream({question:'Alpha的适用条件是什么？',mode:'logs_only',history:[]},{chat:config,lightChat:config,mcp},new AbortController().signal)).text();
+  const last=raw.trim().split('\n\n').at(-1);assert.match(last,/^event: done/);
+  const result=JSON.parse(last.split('\n')[1].slice(6));
+  assert.equal(calls,1);assert.equal(result.diagnostics.agent,undefined);
+  assert.equal(result.citations[0].date,'2026-09-01');assert.match(result.answer,/不适用于所有场景/);
+});
+
 function plain(text, finish = 'stop') {
   return new Response('data: '+JSON.stringify({choices:[{index:0,delta:{role:'assistant',content:text},finish_reason:null}]})+'\n\ndata: '+JSON.stringify({choices:[{index:0,delta:{},finish_reason:finish}],usage:{prompt_tokens:10,completion_tokens:5,total_tokens:15}})+'\n\ndata: [DONE]\n\n',{headers:{'content-type':'text/event-stream'}});
 }

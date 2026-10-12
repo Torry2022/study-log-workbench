@@ -86,6 +86,23 @@
   border-radius: var(--radius-md);
 }
 
+.rag-session-status {
+  display: inline-flex;
+  align-items: center;
+  color: var(--primary);
+}
+
+.rag-session-status.generating svg,
+.rag-session-status.saving svg {
+  animation: rag-session-spin 0.8s linear infinite;
+}
+
+@keyframes rag-session-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .rag-session-status svg { animation: none !important; }
+}
+
 .rag-session-item:hover,
 .rag-session-item.active {
   background: var(--surface-card);

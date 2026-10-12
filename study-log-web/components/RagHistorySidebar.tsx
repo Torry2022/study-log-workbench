@@ -2,7 +2,7 @@
 
 import "@/app/rag-history.css";
 
-import { ChevronLeft, ChevronRight, MessageSquareText, MoreHorizontal, Plus, Search, SquarePen, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, CircleAlert, CircleDot, LoaderCircle, MessageSquareText, MoreHorizontal, Plus, Search, SquarePen, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { containModalFocus, lockBodyScroll } from "@/hooks/use-dialog-exit";
 import { WorkspaceState } from "@/components/WorkspaceState";
@@ -19,7 +19,7 @@ interface RagHistorySidebarProps {
   loading: boolean;
   error: string;
   onRetry: () => void;
-  generating: boolean;
+  sessionActivity: Record<string, "generating" | "saving" | "unsaved" | "unread">;
   onCollapse: () => void;
   onExpand: () => void;
   onNew: () => void;
@@ -41,7 +41,7 @@ export function RagHistorySidebar({
   loading,
   error,
   onRetry,
-  generating,
+  sessionActivity,
   onCollapse,
   onExpand,
   onNew,
@@ -182,11 +182,13 @@ export function RagHistorySidebar({
   }
 
   function renderSessionList() {
-    if (loading) return <WorkspaceState kind="loading" title="正在加载历史记录" layout="compact" className="rag-history-empty" />;
-    if (error) return <WorkspaceState kind="error" title="历史问答加载失败" description={error} layout="compact" className="rag-history-empty" actions={<button className="button secondary" type="button" onClick={onRetry}>重试</button>} />;
+    if (loading && groups.length === 0) return <WorkspaceState kind="loading" title="正在加载历史记录" layout="compact" className="rag-history-empty" />;
+    if (error && groups.length === 0) return <WorkspaceState kind="error" title="历史问答加载失败" description={error} layout="compact" className="rag-history-empty" actions={<button className="button secondary" type="button" onClick={onRetry}>重试</button>} />;
     if (groups.length === 0) return <WorkspaceState kind="empty" title={query ? "没有匹配的历史问答" : "暂无历史问答"} layout="compact" className="rag-history-empty" />;
 
-    return (
+    return (<>
+      {loading && <WorkspaceState kind="loading" title="正在加载历史记录" layout="compact" className="rag-history-empty" />}
+      {error && <WorkspaceState kind="error" title="历史问答加载失败" description={error} layout="compact" className="rag-history-empty" actions={<button className="button secondary" type="button" onClick={onRetry}>重试</button>} />}
       <div className="rag-history-groups">
         {groups.map((group) => (
           <section className="rag-history-group" key={group.label}>
@@ -195,6 +197,7 @@ export function RagHistorySidebar({
               <div
                 className={`rag-session-item${session.id === activeSessionId ? " active" : ""}`}
                 key={session.id}
+                data-session-id={session.id}
                 ref={session.id === activeSessionId ? activeSessionRef : undefined}
               >
                 {renameId === session.id ? (
@@ -220,7 +223,7 @@ export function RagHistorySidebar({
                   <button
                     className="rag-session-main"
                     type="button"
-                    disabled={generating || Boolean(busyId)}
+                    disabled={Boolean(busyId)}
                     onClick={async () => {
                       const token = epoch.current;
                       try { if (await onOpen(session.id) && token === epoch.current) setPopoverMode(null); }
@@ -229,13 +232,15 @@ export function RagHistorySidebar({
                     title={session.title}
                   >
                     <span>{session.title}</span>
-                    <small>{updatedLabel(session.updatedAt)}</small>
+                    <small>{sessionActivity[session.id] ? <span className={`rag-session-status ${sessionActivity[session.id]}`} role="status" aria-label={({generating:"正在生成",saving:"正在保存",unsaved:"未保存",unread:"新回答"})[sessionActivity[session.id]]}>
+                      {sessionActivity[session.id] === "generating" || sessionActivity[session.id] === "saving" ? <LoaderCircle size={14} aria-hidden="true" /> : sessionActivity[session.id] === "unsaved" ? <CircleAlert size={14} aria-hidden="true" /> : <CircleDot size={14} aria-hidden="true" />}
+                    </span> : updatedLabel(session.updatedAt)}</small>
                   </button>
                 )}
                 <button
                   className="rag-session-menu-button"
                   type="button"
-                  disabled={generating || Boolean(busyId)}
+                  disabled={Boolean(busyId) || !session.version || ["generating", "saving", "unsaved"].includes(sessionActivity[session.id])}
                   onClick={() => {
                     setMenuId((current) => (current === session.id ? "" : session.id));
                     setDeleteId("");
@@ -281,7 +286,7 @@ export function RagHistorySidebar({
             ))}
           </section>
         ))}
-      </div>
+      </div></>
     );
   }
 
@@ -291,7 +296,7 @@ export function RagHistorySidebar({
         <button className="sidebar-rail-button" onClick={onExpand} title="展开左侧栏" aria-label="展开左侧栏">
           <ChevronRight size={18} />
         </button>
-        <button className="sidebar-rail-button" onClick={onNew} disabled={generating} title="新建问答" aria-label="新建问答">
+        <button className="sidebar-rail-button" onClick={onNew} title="新建问答" aria-label="新建问答">
           <SquarePen size={17} />
         </button>
         <button
@@ -335,7 +340,7 @@ export function RagHistorySidebar({
           <ChevronLeft size={16} />
         </button>
       </div>
-      <button className="button secondary full" type="button" onClick={onNew} disabled={generating}>
+      <button className="button secondary full" type="button" onClick={onNew}>
         <Plus size={15} />
         新建问答
       </button>

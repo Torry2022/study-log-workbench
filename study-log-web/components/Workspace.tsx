@@ -158,6 +158,7 @@ export function Workspace() {
   const exit = async () => {
     if (closeDesktopWindow()) return;
     if (!(await beforeLeave.current())) return;
+    if (!(await rag.confirmExit())) return;
     setSessionError("");
     try { await logout(); clearSearchSessionHistory(); } catch { setSessionError("退出失败，请重试"); }
   };
@@ -233,7 +234,7 @@ export function Workspace() {
       : logs.selection.view === "notes" ? { title: <><Lightbulb size={15} /><span>随记</span></>, label: "年份和标签", icon: <Tag size={18} />, filtered: notes.yearFilter !== "all" || notes.tagFilter !== "all", onReset: notes.clearFilters, railActionBefore: <button className="sidebar-rail-button" type="button" title="新建随记" aria-label="新建随记" disabled={notes.saving} onClick={() => void notesWithExtraction.openNew()}><Plus size={18} /></button> }
       : logs.selection.view === "stats" ? { title: <><BarChart3 size={15} /><span>统计导航</span></>, label: "统计月份", icon: <CalendarDays size={18} />, filtered: Boolean(stats.months[0] && stats.selectedMonth !== stats.months[0].id), onReset: () => { if (stats.months[0]) void stats.changeMonth(stats.months[0].id); }, railAction: <button className="sidebar-rail-button" type="button" title="分类管理" aria-label="分类管理" onClick={stats.showManager}><Tags size={18} /></button> } : undefined}
     ragNavigation={({ collapsed, visible, onCollapse, onExpand, onNavigate }) => <RagHistorySidebar active={active} visible={logs.selection.view === "qa" && visible} collapsed={collapsed}
-      sessions={rag.sessions} activeSessionId={rag.session?.id || ""} query={rag.query} loading={rag.loading} error={rag.historyError} onRetry={rag.retryHistory} generating={rag.generating || rag.saving || rag.initializing}
+      sessions={rag.sessions} activeSessionId={rag.activeSessionId} sessionActivity={rag.sessionActivity} query={rag.query} loading={rag.loading} error={rag.historyError} onRetry={rag.retryHistory}
       onCollapse={onCollapse} onExpand={onExpand} onQueryChange={rag.setQuery} onNew={() => { void rag.newSession().then(accepted => { if (accepted) onNavigate(); }); }}
       onOpen={async id => { const accepted = await logs.selectRagSession(id); if (accepted) onNavigate(); return accepted; }} onRename={rag.rename} onDelete={rag.delete} />}
     inspectorTab={inspectorTab} onInspectorTab={setInspectorTab}

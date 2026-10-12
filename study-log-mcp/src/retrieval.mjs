@@ -136,9 +136,11 @@ export class KeywordRetriever {
     const contexts = [];
     const selectedContents = [];
     let totalChars = 0;
+    let remainingSections = sectionGroups.size;
 
     for (const matches of sectionGroups.values()) {
       if (contexts.length >= maxChunks || totalChars >= maxChars) break;
+      const sectionsLeft = remainingSections--;
       const merged = mergeSectionMatches(matches);
       const match = merged.primary;
       const chunk = match.chunk;
@@ -146,8 +148,11 @@ export class KeywordRetriever {
       let content = merged.content;
       if (isNearDuplicateContent(content, selectedContents)) continue;
       const remainingChars = maxChars - totalChars;
-      const truncated = content.length > remainingChars;
-      if (truncated) content = content.slice(0, remainingChars).trimEnd();
+      // Leave a share for later matches instead of letting one merged long section
+      // hide a short rule. Short sections spend only their actual length.
+      const allowance = Math.floor(remainingChars / Math.min(maxChunks - contexts.length, sectionsLeft));
+      const truncated = content.length > allowance;
+      if (truncated) content = content.slice(0, allowance).trimEnd();
       if (!content) continue;
 
       contexts.push({
@@ -175,7 +180,6 @@ export class KeywordRetriever {
       });
       totalChars += content.length;
       selectedContents.push({ normalized: normalizedContent(merged.content), terms: new Set(tokenizeOccurrences(merged.content)) });
-      if (truncated) break;
     }
 
     for (const context of contexts) {

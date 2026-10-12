@@ -7,6 +7,30 @@ function block(date, body) {
   return parseDayBlocks(`## ${date}\n\n${body}`, `${date.slice(0, 7)}_学习日志.md`)[0];
 }
 
+test('a long leading section cannot consume the context allowance for a later matching rule', async () => {
+  // Isolate context packing from ranking: both sections match, with the long one first.
+  const retriever = new class extends KeywordRetriever {
+    async rankChunks(blocks, input, options) {
+      const result = await super.rankChunks(blocks, input, options);
+      result.ranked.sort((a, b) => a.chunk.date.localeCompare(b.chunk.date));
+      return result;
+    }
+  }();
+  const blocks = [
+    block('2026-09-01', '### Alpha流程\n\n' + 'Alpha流程完成后需检查。'.repeat(1200)),
+    block('2026-09-18', '### Beta规则\n\nBeta规则：来源一致才允许继续，来源不同必须停止。')
+  ];
+  const result = await retriever.retrieveContexts(blocks, 'Alpha流程 Beta规则', { maxChars: 1600, maxChunks: 2 });
+  assert.equal(result.contexts[0].date, '2026-09-01');
+  assert.ok(result.contexts[0].truncated);
+  assert.match(result.contexts.find(item => item.date === '2026-09-18')?.content || '', /来源不同必须停止/);
+  assert.ok(result.context.totalChars <= 1600);
+  assert.equal(result.contexts.find(item => item.date === '2026-09-18').dayFullyProvided, true);
+  const one = await retriever.retrieveContexts(blocks, 'Alpha流程 Beta规则', { maxChars: 1600, maxChunks: 1 });
+  assert.equal(one.contexts.length, 1);
+  assert.equal(one.contexts[0].content.length, 1600);
+});
+
 test('day completeness requires every original section including preamble, with intact bodies', async () => {
   const retriever = new KeywordRetriever();
   const complete = await retriever.retrieveContexts([block('2026-09-01', 'Alpha前言。\n\n### Alpha\n\nAlpha正文。')], 'Alpha');

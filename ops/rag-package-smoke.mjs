@@ -43,12 +43,17 @@ const model = http.createServer(async (req, res) => {
   const args = name === 'read' ? {date:'2026-09-02',missingPoint:'Gamma的补充条件'} : {reason:'sufficient_evidence'};
   const provided = body.messages.map(message => message.content).join('\n');
   const gammaSource = [...provided.matchAll(/\[(S\d+)\]\n日志日期：2026-09-02(?:\n小节：[^\n]*)?\n内容：\n([\s\S]*?)\n以上为/g)].find(match => match[2].includes('先确认地址'));
-  const delta = body.tools
+  const answerAfterRead = body.tools && state?.question.includes('Gamma') && state.remainingDecisions === 1;
+  if (answerAfterRead) {
+    assert.ok(gammaSource, 'Second SDK turn must contain the actual reread condition');
+    assert.ok(!body.tools.some(item => item.function.name === 'finish'));
+  }
+  const delta = body.tools && !answerAfterRead
     ? { tool_calls: [{ index: 0, id: `call-${++toolRequests}`, type: "function", function: { name, arguments: JSON.stringify(args) } }] }
     : { content: gammaSource ? `Gamma补充条件是先确认地址。[${gammaSource[1]}]` : '条件成立才适用[S1]' };
   const frame = value => `data: ${JSON.stringify(value)}\n\n`;
   res.setHeader("content-type", "text/event-stream");
-  res.end(frame({ id: "mock", object: "chat.completion.chunk", created: 1, model: "synthetic-model", choices: [{ index: 0, delta, finish_reason: null }] }) + frame({ choices: [{ index: 0, delta: {}, finish_reason: body.tools ? "tool_calls" : "stop" }], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }) + "data: [DONE]\n\n");
+  res.end(frame({ id: "mock", object: "chat.completion.chunk", created: 1, model: "synthetic-model", choices: [{ index: 0, delta, finish_reason: null }] }) + frame({ choices: [{ index: 0, delta: {}, finish_reason: delta.tool_calls ? "tool_calls" : "stop" }], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }) + "data: [DONE]\n\n");
 });
 await new Promise(resolve => model.listen(0, "127.0.0.1", resolve));
 try {
@@ -64,7 +69,7 @@ try {
   const auth = await (await fetch(`${status.url}/api/auth/app-login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password }) })).json();
   assert.equal(typeof auth.token, "string");
   const checks = [];
-  for (const [question, calls, date] of [["总结2026年9月",1,"2026-09-02"], ["Alpha为什么只在条件成立时适用？",1,"2026-09-01"], ["Gamma的补充条件是什么？",3,"2026-09-02"]]) {
+  for (const [question, calls, date] of [["总结2026年9月",1,"2026-09-02"], ["Alpha为什么只在条件成立时适用？",1,"2026-09-01"], ["Gamma的补充条件是什么？",2,"2026-09-02"]]) {
     const before = modelCalls;
     const response = await fetch(`${status.url}/api/rag/query`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${auth.token}` }, body: JSON.stringify({ question, mode: "logs_only", history: [] }) });
     assert.equal(response.status, 200);

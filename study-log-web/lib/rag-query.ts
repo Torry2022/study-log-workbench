@@ -84,7 +84,7 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
         if (referenced && run.contexts.some(item => item.fileName !== referenced.fileName)) { run.contexts = []; run.limited = true; }
         if (run.coverage.length && run.coverage.every(scope => scope.status === "failed")) throw new McpRetrievalError("MCP_RANGE_FAILED", "无法读取所选日期的日志，请检查检索服务版本或重试");
         const boundedJevInput = isBoundedJevInput(input.question, run.contexts);
-        await compactEvidence(run, input.question, config.lightChat);
+        await compactEvidence(run, input.question, config.lightChat, config.chat, input.history, input.mode);
         // Successful enumeration covers the requested scope, including confirmed empty periods.
         // Check after compaction: a failed summary can still leave material missing.
         const scopeFullyRead = !run.limited && run.coverage.length > 0 && run.coverage.every(scope => scope.status === "complete" || scope.status === "empty");
@@ -104,12 +104,12 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
             }
           }
           if (diagnostics.agent.judgment?.support !== "supported" || diagnostics.agent.judgment?.conflict !== "absent") {
-            const result = await supplementEvidence(input.question, planned.plan, run, config.mcp, createAgentModel(config.chat), message => send("status", { stage: "retrieving", message }), config.lightChat, { mode: input.mode, history: input.history });
+            const result = await supplementEvidence(input.question, planned.plan, run, config.mcp, createAgentModel(config.chat), message => send("status", { stage: "retrieving", message }), config.lightChat, { mode: input.mode, history: input.history, chat: config.chat });
             diagnostics.agent.usage = result.usage; directAnswer = result.answer;
           }
           diagnostics.agent.stopReason = run.stopReason;
         }
-        await compactEvidence(run, input.question, config.lightChat);
+        await compactEvidence(run, input.question, config.lightChat, config.chat, input.history, input.mode);
         diagnostics.coverage = run.coverage; diagnostics.toolCalls = run.calls;
         if (run.sourceChanged) throw new McpRetrievalError("MCP_SOURCE_CHANGED", "读取期间日志发生了修改，请重新提问以读取最新内容");
         const retrieved = { contexts: run.contexts };

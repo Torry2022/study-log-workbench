@@ -423,3 +423,5 @@ rc.6 打包入口可接收新的绝对输出目录，payload、安装包与构�
 共享使用帮助由 Web 的 HelpDialog 提供，桌面网页与窄屏设置入口均使用它；Windows 原生帮助菜单经 preload 只派发打开事件。WorkspaceChrome 处理跨模块快捷键，LogReader／LogEditor 处理阅读及编辑命令，BackToTop 处理返回顶部，业务均调用原有导航、草稿保护和插入流程。全局按键通过 workspace-shortcuts 排除模态弹窗、组合输入、重复及已处理事件；普通方向键另排除输入与操作控件。跨模块新建日期明确展开日志侧栏，避免沿用旧模块的折叠状态。详见[帮助与快捷键记录](help-and-shortcuts-2026-10-09.md)。
 
 日志鼠标三击正文切源码由共享 LogReader 处理，沿用 changeMode、useReadingPosition 和 LogEditor 焦点机制。排除代码、链接、图片、表单及图表；只改变模式，不写入或重载正文。手势不加入 MarkdownPreview，避免影响问答及随记等复用渲染场景；Windows 没有专属处理。验证见[三击切换记录](preview-edit-2026-10-09.md)。
+
+问答材料压缩按回答模型的已核实上下文能力决定：官方 DeepSeek 接口的 Flash/Pro 使用核实的 1M 窗口，完整提示词与历史按 UTF-8 字节保守估算，预留 65,536 输出 token 和 32,768 协议/工具空间。未知供应商或代理不凭模型名推断容量，沿用 30,000 字符基线。补查准备步骤使用同一回答配置。原有 160 来源及 120,000 原文字符读取上限不变；需要压缩时仅处理足够腾出空间的长来源，其他原文不改写。容量与思考模式是不同问题，本批不自动关闭供应商推理。能力依据：[DeepSeek 模型规格](https://api-docs.deepseek.com/quick_start/pricing/)。

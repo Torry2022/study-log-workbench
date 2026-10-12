@@ -5,6 +5,29 @@ import { EvidenceRun } from "../lib/rag-evidence.ts";
 import { compactEvidence } from "../lib/rag-evidence-summary.ts";
 import { parseRagHistory } from "../lib/rag-answer.ts";
 
+test('a small input overflow compacts only the required long source and preserves other days verbatim', async t => {
+  const requests = [];
+  const server = http.createServer(async (req, res) => {
+    let raw = ''; for await (const chunk of req) raw += chunk;
+    const evidence = JSON.parse(JSON.parse(raw).messages[1].content).evidence;
+    requests.push(evidence);
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify({choices:[{message:{content:JSON.stringify(evidence.map(item=>({sourceId:item.sourceId,excerpts:[item.content.slice(-80)]})))}}]}));
+  });
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  t.after(()=>{server.closeAllConnections();server.close();});
+  const run = new EvidenceRun(new AbortController().signal);
+  const contents = Array.from({length:30},(_,i)=>'原'.repeat((i===0?3300:1000)-20)+`条件${i}：没有确认不能保存。`);
+  run.add(contents.map((content,i)=>({date:`2026-09-${String(i+1).padStart(2,'0')}`,fileName:'2026-09_学习日志.md',chunkId:`part-${i}`,contentHash:`hash-${i}`,excerpt:'原始摘录',content,truncated:false})));
+  await compactEvidence(run,'概括各日期的条件',{baseUrl:`http://127.0.0.1:${server.address().port}`,apiKey:'synthetic',model:'mock'});
+  assert.equal(requests.length,1);
+  assert.deepEqual(requests[0].map(item=>item.sourceId),['S1']);
+  assert.ok(run.contexts.reduce((sum,item)=>sum+item.content.length,0)<=30000);
+  assert.equal(run.contexts.length,30);assert.equal(run.limited,false);
+  assert.deepEqual([...run.compactedSources],['S1']);
+  for(let i=1;i<30;i++){assert.equal(run.contexts[i].content,contents[i]);assert.equal(run.contexts[i].truncated,false);assert.equal(run.contexts[i].contentHash,`hash-${i}`);}
+});
+
 test('short rules remain verbatim between long sources, even when adjacent summaries fail', async t => {
   let malformed = false; const requests = [];
   const rule = '只有来源一致且用户确认才能保存；没有确认不能保存。下一步参照南渡连接检查。';
@@ -25,8 +48,9 @@ test('short rules remain verbatim between long sources, even when adjacent summa
     const run=new EvidenceRun(new AbortController().signal);
     run.add(['长'.repeat(26000),rule,'长'.repeat(26000),rule].map((content,index)=>({date:'2026-09-01',fileName:'synthetic.md',chunkId:`part-${index}`,contentHash:`hash-${index}`,excerpt:'原文摘录',content,truncated:false})));
     await compactEvidence(run,'保存条件和后续步骤？',config);
-    assert.equal(requests.length,2);
-    assert.deepEqual(requests.flat().map(item=>item.sourceId),['S1','S3']);
+    assert.equal(requests.length,1);
+    assert.deepEqual(requests.flat().map(item=>item.sourceId),['S1']);
+    assert.equal(run.contexts[2].content,'长'.repeat(26000));
     for(const index of [1,3]) {
       assert.equal(run.contexts[index].content,rule); assert.equal(run.contexts[index].truncated,false);
       assert.equal(run.contexts[index].contentHash,`hash-${index}`); assert.equal(run.contexts[index].excerpt,'原文摘录');
@@ -51,7 +75,9 @@ test("batch synthesis keeps original source identity and marks failed compressio
   const run = make(); await compactEvidence(run, "条件是什么？", config);
   assert.equal(run.limited, false); assert.equal(run.contexts[5].sourceId, "S6"); assert.equal(run.contexts[0].excerpt, "原始摘录"); assert.equal(run.contexts[0].contentHash, "a".repeat(64));
   malformed = true; const failed = make(); await compactEvidence(failed, "条件是什么？", config);
-  assert.equal(failed.limited, true); assert.ok(failed.contexts.every(item => item.truncated && item.content.length === 900));
+  assert.equal(failed.limited, true);
+  assert.ok(failed.contexts.slice(0,2).every(item => item.truncated && item.content.length === 900));
+  assert.ok(failed.contexts.slice(2).every(item => !item.truncated && item.content === '原始条件'.repeat(1500)));
   const aborted = make(); const controller = new AbortController(); controller.abort();
   await assert.rejects(compactEvidence(Object.assign(aborted, { signal: controller.signal }), "question", config));
 });
@@ -79,7 +105,7 @@ test('compaction accepts only ordered original excerpts and never registers inve
   const config = { baseUrl: `http://127.0.0.1:${server.address().port}`, apiKey: 'synthetic', model: 'mock' };
   for (const excerpts of [[first, last], ['未提供另一个日期的记录。'], [last, first], [first, first], [''], Array(4).fill(first)]) {
     const run = new EvidenceRun(new AbortController().signal);
-    run.add([0, 1].map(index => ({ date: `2026-09-0${index + 1}`, fileName: 'synthetic.md', chunkId: `chunk-${index}`, contentHash: `hash-${index}`, excerpt: '原始摘录', content: `${first}\n\n${'过程内容。'.repeat(3000)}\n\n${last}`, truncated: false })));
+    run.add([0, 1].map(index => ({ date: `2026-09-0${index + 1}`, fileName: 'synthetic.md', chunkId: `chunk-${index}`, contentHash: `hash-${index}`, excerpt: '原始摘录', content: `${first}\n\n${'过程内容。'.repeat(5900)}\n\n${last}`, truncated: false })));
     run.coverage = [{ dateFrom: '2026-09-01', dateTo: '2026-09-02', totalDays: 2, readDates: ['2026-09-01', '2026-09-02'], status: 'complete' }];
     response = run.contexts.map(({ sourceId }) => ({ sourceId, excerpts }));
     await compactEvidence(run, '何时可以保存？', config);
@@ -157,4 +183,22 @@ test('long evidence batches bound input and final material while retaining every
     assert.equal(run.stopReason, 'evidence_limit');
   }
   assert.ok(requests.length > 4);
+});
+
+test('verified answer capacity keeps full monthly material without calling the light model', async () => {
+  const run = new EvidenceRun(new AbortController().signal);
+  const contents = Array.from({length:40},(_,i)=>`合成日期${i}。`+'原文条件。'.repeat(200));
+  run.add(contents.map((content,i)=>({date:`2026-09-${String(i%30+1).padStart(2,'0')}`,fileName:'synthetic.md',chunkId:`part-${i}`,contentHash:`hash-${i}`,content})));
+  const original = run.contexts.map(item=>({...item}));
+  await compactEvidence(run,'比较这段期间的变化',{baseUrl:'http://127.0.0.1:1/unused',apiKey:'synthetic',model:'small'},
+    {baseUrl:'https://api.deepseek.com/chat/completions',apiKey:'synthetic',model:'deepseek-flash'},[{role:'user',content:'合成历史'.repeat(1000)}]);
+  assert.deepEqual(run.contexts,original);
+  assert.equal(run.compactedSources.size,0); assert.equal(run.limited,false);
+});
+
+test('a model name on an unknown proxy does not declare its context capacity', async () => {
+  const run = new EvidenceRun(new AbortController().signal);
+  run.add([{date:'2026-09-01',fileName:'synthetic.md',chunkId:'part',contentHash:'hash',content:'原'.repeat(31000)}]);
+  await compactEvidence(run,'合成问题',{baseUrl:'http://127.0.0.1:1/unused',apiKey:'synthetic',model:'deepseek-flash'});
+  assert.equal(run.limited,true); assert.equal(run.contexts[0].truncated,true);
 });

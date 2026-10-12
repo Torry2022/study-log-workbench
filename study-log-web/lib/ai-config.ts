@@ -1,10 +1,23 @@
 export interface ChatConfig {
   /** Request-scoped observer; never persisted in settings. */
   onUsage?: (usage: { inputTokens: number | null; outputTokens: number | null }) => void;
+  /** Verified request-scoped model capability; never inferred from a proxy's model name. */
+  contextWindowTokens?: number;
   apiKey: string;
   model: string;
   /** Complete OpenAI-compatible chat/completions endpoint; never expanded. */
   baseUrl: string;
+}
+
+export function chatContextWindowTokens(config: ChatConfig): number | undefined {
+  if (Number.isSafeInteger(config.contextWindowTokens) && config.contextWindowTokens! > 98304) return config.contextWindowTokens;
+  try {
+    const endpoint = new URL(config.baseUrl);
+    // Official provider documentation, checked 2026-10-12. Unknown endpoints keep the conservative fallback.
+    if (endpoint.protocol === "https:" && endpoint.hostname === "api.deepseek.com" &&
+      ["deepseek-flash", "deepseek-v4-pro"].includes(config.model)) return 1000000;
+  } catch { /* Configuration validation owns invalid endpoints. */ }
+  return undefined;
 }
 
 type AiEnvironment = Record<string, string | undefined>;

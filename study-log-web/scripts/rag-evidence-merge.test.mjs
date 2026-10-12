@@ -15,9 +15,9 @@ const readers = blocks => ({
 const run = () => new EvidenceRun(new AbortController().signal);
 const range = date => ({ strategy: 'timeline_summary', dateFrom: date, dateTo: date });
 
-test('completed pagination is complete despite earlier search truncation, but dropped evidence remains partial', async () => {
+test('completed pagination is complete despite earlier search truncation, but exhausting the read budget remains partial', async () => {
   const date = '2026-09-01';
-  for (const [size, expected] of [[4000, 'complete'], [15000, 'partial']]) {
+  for (const [size, expected] of [[4000, 'complete'], [15000, 'complete'], [30000, 'partial']]) {
     const blocks = parseDayBlocks(`## ${date}\n\n### Alpha\n\n${'Alpha条件成立才适用。'.repeat(size)}最终要求核对地址。`, '2026-09_学习日志.md');
     const evidence = run();
     await collectRagEvidence('Alpha', {strategy:'relevance',maxChars:1200}, evidence, config, readers(blocks));
@@ -25,7 +25,8 @@ test('completed pagination is complete despite earlier search truncation, but dr
     await collectRagEvidence('Alpha', range(date), evidence, config, readers(blocks));
     assert.equal(evidence.coverage[1].status, expected);
     if (expected === 'complete') assert.ok(evidence.contexts.some(item => item.content.includes('最终要求核对地址')));
-    else assert.equal(evidence.stopReason, 'evidence_limit');
+    else assert.equal(evidence.stopReason, 'tool_budget');
+    assert.ok(evidence.calls<=8);assert.ok(evidence.contexts.reduce((sum,item)=>sum+item.content.length,0)<=8*30000);
     assert.equal(evidence.limited, true); // Does not declare whole-corpus search complete.
   }
 });

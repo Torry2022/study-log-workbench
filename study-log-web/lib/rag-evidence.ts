@@ -9,6 +9,10 @@ import { isValidLogDate } from "./study-date.ts";
 
 type DaySection = Pick<RagRetrievedContext, "heading" | "headingIndex" | "contentHash">;
 const hash = (content: string) => createHash("sha256").update(content).digest("hex");
+const MAX_TOOL_CALLS = 8;
+// Each validated MCP read returns at most 30,000 characters. Retain the full
+// admitted read budget before selecting excerpts for the model's input window.
+const MAX_RETAINED_CHARS = MAX_TOOL_CALLS * 30000;
 // Only complete, uncompressed day reads can prove that no extra body is being discarded.
 function completeDaySections(item: RagRetrievedContext): DaySection[] | null {
   if (item.truncated || item.chunkId !== `${item.date}:range:0` || hash(item.content) !== item.contentHash) return null;
@@ -56,7 +60,7 @@ export class EvidenceRun {
     this.signal.throwIfAborted();
     if (this.sourceChanged) return false;
     const key = JSON.stringify([name, args]);
-    if (this.calls >= 8 || this.requests.has(key)) { this.limited = true; this.stopReason = this.calls >= 8 ? "tool_budget" : "repeated_query"; return false; }
+    if (this.calls >= MAX_TOOL_CALLS || this.requests.has(key)) { this.limited = true; this.stopReason = this.calls >= MAX_TOOL_CALLS ? "tool_budget" : "repeated_query"; return false; }
     this.calls++; this.requests.add(key); return true;
   }
   add(items: RagRetrievedContext[]): number {
@@ -77,7 +81,7 @@ export class EvidenceRun {
       if (sections && sections.every(section => sameDay.some(old => !old.truncated && sameSection(section, old)))) continue;
       if (!item.truncated && sameDay.some(old => old.chunkId === `${item.date}:range:0` && !old.truncated) &&
         this.completeDays.get(dayKey)?.some(section => sameSection(section, item))) continue;
-      if (this.contexts.length >= RAG_MAX_SOURCES || this.retainedChars + item.content.length > 120000) { this.limited = true; this.stopReason = "evidence_limit"; continue; }
+      if (this.contexts.length >= RAG_MAX_SOURCES || this.retainedChars + item.content.length > MAX_RETAINED_CHARS) { this.limited = true; this.stopReason = "evidence_limit"; continue; }
       this.retainedChars += item.content.length;
       this.contexts.push({ ...item, sourceId: `S${this.contexts.length + 1}` }); added++;
       if (sections) this.completeDays.set(dayKey, sections);

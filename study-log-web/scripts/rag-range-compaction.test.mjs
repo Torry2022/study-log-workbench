@@ -6,12 +6,13 @@ import path from 'node:path';
 import { startHttpServer } from '../../study-log-mcp/src/http-server.mjs';
 import { createRagQueryStream } from '../lib/rag-query.ts';
 
-test('over-context cross-month query reads every day before bounded extraction and retains dates, conditions and failure coverage',async t=>{
+for(const backgroundLength of [220,600])test(`over-context cross-month query reads every day before bounded extraction and retains dates, conditions and failure coverage (${backgroundLength})`,async t=>{
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'rag-range-compaction-'));
   const data=path.join(root,'data');await fs.mkdir(data);
   const days=[...Array.from({length:30},(_,i)=>`2026-09-${String(i+1).padStart(2,'0')}`),...Array.from({length:5},(_,i)=>`2026-10-${String(i+1).padStart(2,'0')}`)];
   const conclusion=date=>`当日结论${date}：修正早期记录，读取已完成；只有来源一致且用户确认才能保存，没有确认不得保存。`;
-  const contents=new Map(days.map(date=>[date,`## ${date}\n\n### 合成读取流程\n\n初次记录：读取尚未开始。\n\n${'合成背景材料。'.repeat(220)}\n\n${conclusion(date)}\n`]));
+  const contents=new Map(days.map(date=>[date,`## ${date}\n\n### 合成读取流程\n\n初次记录：读取尚未开始。\n\n${'合成背景材料。'.repeat(backgroundLength)}\n\n${conclusion(date)}\n`]));
+  if(backgroundLength===600)assert.ok([...contents.values()].reduce((sum,text)=>sum+text.length,0)>120000);
   for(const month of ['2026-09','2026-10'])await fs.writeFile(path.join(data,`${month}_学习日志.md`),days.filter(date=>date.startsWith(month)).map(date=>contents.get(date)).join('\n'));
   const service=await startHttpServer({logRoot:data,indexRoot:path.join(root,'index'),port:0,token:'synthetic',retrieval:{embedding:{apiKey:''},reranker:{apiKey:''},rerankEnabled:false}});
   const originalFetch=globalThis.fetch,previous=process.env.RAG_AGENT_ENABLED;

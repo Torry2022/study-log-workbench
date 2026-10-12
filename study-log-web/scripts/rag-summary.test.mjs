@@ -162,7 +162,7 @@ test('long evidence batches bound input and final material while retaining every
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => { server.closeAllConnections(); server.close(); });
   const config = { baseUrl: `http://127.0.0.1:${server.address().port}`, apiKey: 'synthetic', model: 'mock' };
-  for (const [count, length, invalid] of [[4, 28000, false], [160, 750, false], [160, 750, true]]) {
+  for (const [count, length, invalid] of [[4, 28000, false], [8, 30000, false], [160, 750, false], [160, 750, true]]) {
     oversized = invalid;
     const run = new EvidenceRun(new AbortController().signal);
     run.add(Array.from({ length: count }, (_, i) => {
@@ -179,7 +179,7 @@ test('long evidence batches bound input and final material while retaining every
     else assert.ok(run.contexts.every(item => item.truncated));
     assert.equal(run.limited, invalid);
     // Compaction cannot reset the original read budget.
-    assert.equal(run.add([{ date: '2026-10-02', fileName: 'synthetic.md', chunkId: 'extra', contentHash: 'extra', content: 'x'.repeat(20000) }]), 0);
+    assert.equal(run.add([{ date: '2026-10-02', fileName: 'synthetic.md', chunkId: 'extra', contentHash: 'extra', content: 'x'.repeat(8 * 30000 - count * length + 1) }]), 0);
     assert.equal(run.stopReason, 'evidence_limit');
   }
   assert.ok(requests.length > 4);

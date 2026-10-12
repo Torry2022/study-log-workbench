@@ -131,7 +131,7 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
         });
         try {
           if (directAnswer !== undefined) output.push(directAnswer);
-          else await streamRagAnswer(config.chat, buildRagMessages(input.question, input.history, retrieved.contexts, input.mode, run.report() + (referenced ? `\n用户指向历史来源：${referenced.date} ${referenced.heading || ""}。已重新读取当前原文；历史摘录和编号不可视为当前事实。` : "")), delta => output.push(delta), { signal });
+          else await streamRagAnswer(config.chat, buildRagMessages(input.question, input.history, retrieved.contexts, input.mode, run.answerReport() + (referenced ? `\n用户指向历史来源：${referenced.date} ${referenced.heading || ""}。已重新读取当前原文；历史摘录和编号不可视为当前事实。` : "")), delta => output.push(delta), { signal });
         } finally { output.flush(); }
         diagnostics.timings.generationMs = elapsed(); diagnostics.timings.totalMs = Math.round(performance.now() - started);
         if (output.noEvidence) diagnostics.status = "no_evidence";

@@ -9,6 +9,33 @@ const block = (date, content = "条件成立才适用，并非所有情况都成
 const config = { url: "http://unused.test", token: "synthetic" };
 const readers = blocks => ({ search: async () => { throw Error("must enumerate"); }, read: async args => validateRangePage(readLogRange(blocks, args)) });
 
+test('answer coverage preserves each scope and source limitation without internal field names',()=>{
+  const run=new EvidenceRun(new AbortController().signal);
+  run.coverage=[
+    {dateFrom:'2026-09-01',dateTo:'2026-09-30',totalDays:2,readDates:['2026-09-01','2026-09-03'],status:'complete'},
+    {dateFrom:'2026-10-01',dateTo:'2026-10-31',totalDays:3,readDates:['2026-10-02'],status:'partial'},
+    {dateFrom:'2026-08-01',dateTo:'2026-08-31',totalDays:0,readDates:[],status:'empty'},
+    {dateFrom:'2026-07-01',dateTo:'2026-07-31',totalDays:null,readDates:[],status:'failed'},
+    {totalDays:null,readDates:['2026-06-01'],status:'search'}
+  ];
+  run.contexts=[{sourceId:'S1',date:'2026-09-01',content:'部分条件',truncated:true},{sourceId:'S2',date:'2026-10-02',content:'摘录',truncated:false}];
+  run.compactedSources.add('S2');run.limited=true;run.sourceChanged=true;run.stopReason='tool_failure';
+  const machine=JSON.parse(run.report()),text=run.answerReport();
+  assert.equal(machine.scopes[0].lastReadDate,'2026-09-03');assert.equal(machine.scopes[1].lastReadDate,'2026-10-02');
+  assert.match(text,/2026-09-01至2026-09-30：已完整读取该范围的日志日块；日志日块总数2；已读日期2026-09-01、2026-09-03；实际最后读取日期2026-09-03/);
+  for(const expected of ['读取不完整','已确认该范围没有日志','读取失败','未穷尽范围','日志日块总数未确定','正文有截断的来源：[S1]','已改为原文摘录的来源：[S2]','最终保留材料的日期：2026-09-01、2026-10-02','补查工具失败','本轮材料不完整或取证受限','不能混用版本','范围读完不等于最终材料包含全部细节'])assert.ok(text.includes(expected),expected);
+  assert.doesNotMatch(text,/truncatedSources|compactedSources|retainedDates|lastReadDate|stopReason|sourceChanged/);
+  assert.deepEqual(JSON.parse(run.report()),machine,'Answer representation must not mutate internal evidence');
+});
+
+test('answer coverage distinguishes model termination from hard budgets',()=>{
+  const run=new EvidenceRun(new AbortController().signal);
+  const reasons={tool_budget:'工具调用次数达到上限',repeated_query:'重复查询已停止',no_new_evidence:'未取得新的证据',step_limit:'补查轮数达到上限',decision_output_limit:'模型未完整结束补查决策',tool_failure:'补查工具失败',invalid_read_date:'模型选择的日期不在允许读取的集合中',evidence_limit:'保留材料达到容量上限',sufficient_evidence:'取证模型判断已有足够依据',no_more_leads:'取证模型判断没有更多线索',source_changed:'读取期间原文改变'};
+  for(const [reason,description]of Object.entries(reasons)){run.stopReason=reason;assert.ok(run.answerReport().includes(description));}
+  run.stopReason=undefined;assert.match(run.answerReport(),/取证停止原因：未提供/);
+  assert.match(run.answerReport(),/取证模型决定结束不代表程序证明完整/);
+});
+
 test("implicit comparison enumerates both periods and rejected comparison reads only the replacement scope", async () => {
   const blocks = [block("2026-08-01"), block("2026-09-01"), block("2026-10-01")];
   for (const [question, expected] of [

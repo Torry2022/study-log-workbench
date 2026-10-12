@@ -40,10 +40,15 @@ test('over-context cross-month query reads every day before bounded extraction a
       }
       answerCalls++;assert.equal(body.tools,undefined);
       const system=body.messages[0].content,user=body.messages.at(-1).content;
-      const coverage=JSON.parse(system.split('程序计算的材料覆盖情况：').at(-1));
-      assert.equal(coverage.scopes.length,2);assert.deepEqual(coverage.scopes.flatMap(scope=>scope.readDates),days);
-      assert.ok(coverage.scopes.every(scope=>scope.status==='complete'));assert.equal(coverage.limited,malformed);
-      assert.ok(coverage.compactedSources.length>5);
+      const coverage=system.split('程序计算的材料覆盖情况：').at(-1);
+      const scopes=coverage.split('\n').filter(line=>/^2026-\d{2}-01至2026-\d{2}-\d{2}：/.test(line));
+      assert.equal(scopes.length,2);assert.deepEqual(scopes.flatMap(line=>line.split('；已读日期')[1].split('；实际最后读取日期')[0].split('、')),days);
+      assert.ok(scopes.every(line=>line.includes('已完整读取该范围的日志日块')));
+      assert.ok(scopes[0].includes('日志日块总数30')&&scopes[0].includes('实际最后读取日期2026-09-30'));
+      assert.ok(scopes[1].includes('日志日块总数5')&&scopes[1].includes('实际最后读取日期2026-10-05'));
+      assert.equal(coverage.includes('本轮材料不完整或取证受限'),malformed);
+      assert.ok([...coverage.match(/已改为原文摘录的来源：([^\n]+)/)[1].matchAll(/\[S\d+\]/g)].length>5);
+      assert.ok(!coverage.includes('truncatedSources'));
       const blocks=user.split('\n\n---\n\n');let retainedChars=0;
       const response=[];
       for(const date of days){
@@ -55,7 +60,7 @@ test('over-context cross-month query reads every day before bounded extraction a
         else response.push(`已读取${date}，部分原文未能保留。[${sourceId}]`);
       }
       assert.ok(retainedChars<=30000);
-      if(malformed){assert.ok(coverage.truncatedSources.length>0);assert.ok(system.includes('不得声称完整总结'));}
+      if(malformed){assert.match(coverage,/正文有截断的来源：\[S\d+\]/);assert.ok(system.includes('不得声称完整总结'));}
       const answer=malformed?'提取失败，以下仅说明实际读取范围。\n'+response.join('\n'):response.join('\n');
       return new Response('data: '+JSON.stringify({choices:[{delta:{content:answer},finish_reason:null}]})+'\n\ndata: [DONE]\n\n',{headers:{'content-type':'text/event-stream'}});
     };

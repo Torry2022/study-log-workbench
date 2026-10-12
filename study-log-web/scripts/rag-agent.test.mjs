@@ -185,8 +185,8 @@ test('internal decision length stops tools and answers from retained evidence; f
     if (body.tools) {
       res.end(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { reasoning_content: '内部思考不可发布', content: '内部草稿不可发布' }, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: finish }], usage: { prompt_tokens: 10, completion_tokens: 1200, total_tokens: 1210 } })}\n\ndata: [DONE]\n\n`);
     } else {
-      assert.ok(body.messages.some(message => message.content.includes('decision_output_limit')));
-      assert.ok(body.messages.some(message => message.content.includes('"limited":true')));
+      assert.ok(body.messages.some(message => message.content.includes('模型未完整结束补查决策')));
+      assert.ok(body.messages.some(message => message.content.includes('本轮材料不完整或取证受限')));
       res.end(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: '仅依据本次已读记录，Alpha条件成立才适用。[S1]' }, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`);
     }
   });
@@ -328,7 +328,8 @@ test('a valid but unavailable date stops the active read loop before a second de
       return stream('read',{date:'2026-11-01'},`invalid-date-${decisions}`);
     }
     assert.ok(body.messages.at(-1).content.includes('Alpha补充条件'));
-    assert.ok(body.messages[0].content.includes('"limited":true'));
+    assert.ok(body.messages[0].content.includes('本轮材料不完整或取证受限'));
+    assert.ok(!body.messages[0].content.includes('truncatedSources'));
     return plain('目前只提供了Alpha的片段，补查没有完成。[S1]');
   };
   const raw=await new Response(createRagQueryStream({question:'2026-09-01的Alpha补充条件是什么？',mode:'logs_only',history:[]},{chat:config,lightChat:config,mcp},new AbortController().signal)).text();
@@ -553,6 +554,8 @@ test('SDK answers in the second turn after a real read, discarding text from the
     if(requests.length===1)return stream('read',{date:'2026-09-01'});
     assert.ok(body.messages.at(-1).content.includes('Alpha条件成立才适用，不适用于所有场景'));
     assert.ok(body.messages.at(-1).content.includes('"remainingDecisions":1'));
+    assert.ok(!JSON.stringify(body.messages).includes('truncatedSources'));
+    assert.ok(body.messages[0].content.includes('实际最后读取日期2026-09-01'));
     assert.ok(!body.tools.some(item=>item.function.name==='finish'));
     assert.ok(!body.messages.some(item=>String(item.content).includes('内部文本，不可送给用户')));
     return plain('Alpha条件成立才适用，不适用于所有场景。[S2]');

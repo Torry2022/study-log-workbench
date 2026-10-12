@@ -75,6 +75,9 @@ test('query done keeps a bare partial-source mention distinct from the complete 
   assert.equal(result.data.answer,'明确确认后才能保存[S1]。S2 为部分片段，S1 提供完整条件。');
   assert.deepEqual(result.data.citations.map(item=>({sourceId:item.sourceId,chunkId:item.chunkId})),[{sourceId:'S1',chunkId:'complete'},{sourceId:'S2',chunkId:'partial'}]);
   assert.deepEqual(values.find(item=>item.event==='sources').data.citations,result.data.citations);
+  const generated=state.requests.find(item=>item.stream);
+  assert.ok(generated.messages[0].content.includes('正文有截断的来源：[S1]'));
+  assert.ok(!JSON.stringify(generated.messages).includes('truncatedSources'));
 });
 
 test("a changed range revision rejects the query before answer generation", async t => {

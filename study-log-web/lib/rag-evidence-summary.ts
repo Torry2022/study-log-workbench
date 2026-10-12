@@ -11,7 +11,7 @@ export async function compactEvidence(run: EvidenceRun, question: string, config
   const window = chatContextWindowTokens(answerConfig);
   // UTF-8 bytes conservatively bound byte-tokenized input. Reserve output and tool/protocol overhead.
   const promptBytes = Buffer.byteLength(JSON.stringify(buildRagMessages(question, history,
-    run.contexts.map(item => ({ ...item, content: "" })), mode, run.report())), "utf8");
+    run.contexts.map(item => ({ ...item, content: "" })), mode, run.answerReport())), "utf8");
   const evidenceLimit = window === undefined ? 30000 : Math.max(0, Math.floor((window - 65536 - 32768 - promptBytes) / 4));
   if (totalChars <= evidenceLimit) return;
   if (evidenceLimit < run.contexts.length) throw new Error("Question and history exceed model input capacity");

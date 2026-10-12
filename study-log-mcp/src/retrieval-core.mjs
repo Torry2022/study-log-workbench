@@ -56,9 +56,15 @@ function tokenizeOccurrences(value) {
     tokens.push(match[0]);
   }
   for (const match of normalized.matchAll(/[\u3400-\u9fff]{2,}/g)) {
-    for (const segment of chineseWordSegmenter.segment(match[0])) {
+    const segments = [...chineseWordSegmenter.segment(match[0])];
+    for (const [index, segment] of segments.entries()) {
       const token = segment.segment.trim();
       if (segment.isWordLike && token.length >= 2) tokens.push(token);
+      // Unknown names may be split entirely into single characters. Preserve
+      // adjacent fragments, without making bigrams across recognized words.
+      else if (segment.isWordLike && token.length === 1 && segments[index + 1]?.isWordLike && segments[index + 1].segment.length === 1) {
+        tokens.push(token + segments[index + 1].segment);
+      }
     }
   }
   return tokens;

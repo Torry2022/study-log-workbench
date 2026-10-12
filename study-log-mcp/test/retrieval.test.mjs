@@ -51,6 +51,19 @@ test("word tokenization retains technical identifiers without personal topic dic
   assert.ok(tokenize("植物生长与土壤水分").length > 0);
 });
 
+test('unregistered Chinese names retain adjacent single-character fragments without crossing word boundaries', async () => {
+  assert.ok(tokenize('霁川').includes('霁川'));
+  assert.ok(!tokenize('霁 川').includes('霁川'));
+  assert.ok(!tokenize('霁，川').includes('霁川'));
+  const retriever = new KeywordRetriever();
+  const result = await retriever.retrieveContexts([
+    block('2026-06-03', '### 霁川连接排错\n\n霁川停在断连处。'),
+    block('2026-06-04', '### 川流观测\n\n观察河川流量。')
+  ], '霁川这次该怎么往下做？');
+  assert.equal(result.contexts[0]?.date, '2026-06-03');
+  assert.ok(result.contexts.every(item => item.date !== '2026-06-04'));
+});
+
 test("H3 chunks preserve headings, file identity, code and preamble instead of making entire days into evidence", () => {
   const blocks = [block("2026-01-01", "前言。\n\n### 1. 术语（原文）\n\n~~~md\n## 2026-01-09\n### FakeHeading\n~~~\n\n真实正文。\n\n### 第二小节\n\n独立内容。")];
   const chunks = buildSectionChunks(blocks);

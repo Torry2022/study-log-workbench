@@ -83,7 +83,7 @@ export class EvidenceRun {
   report(): string {
     return JSON.stringify({ scopes: this.coverage, limited: this.limited, sourceChanged: this.sourceChanged, stopReason: this.stopReason,
       retainedDates: [...new Set(this.contexts.map(item => item.date))], truncatedSources: this.contexts.filter(item => item.truncated).map(item => item.sourceId),
-      instruction: "search 仅表示相关性检索，不证明全库穷尽。partial/failed 或 limited 时必须说明材料范围，不得声称完整总结或不存在相关记录。sufficient_evidence/no_more_leads 仅为取证模型的停止判断，不是程序证明材料完整。天数仅表示日志日块数量，不代表学习次数或掌握程度。" });
+      instruction: "search 仅表示相关性检索，不证明全库穷尽。complete 表示该日期范围已分页读完，压缩或后续容量不足另看 limited 和 truncatedSources；不因早期搜索 partial 就否认后续读取。判断缺口须核对当前证据，当前已提供的原文或规则不能再说未提供。partial/failed 或 limited 时必须说明材料范围，不得声称完整总结或不存在相关记录。sufficient_evidence/no_more_leads 仅为取证模型的停止判断，不是程序证明材料完整。天数仅表示日志日块数量，不代表学习次数或掌握程度。" });
   }
 }
 type Readers = {
@@ -110,7 +110,7 @@ export async function collectRagEvidence(query: string, plan: RagRetrievalPlan, 
           run.add(page.contexts);
           coverage.readDates = [...new Set([...coverage.readDates, ...page.coverage.completedDates])];
           cursor = page.coverage.nextCursor || undefined;
-          if (!cursor) coverage.status = page.coverage.totalDays === 0 ? "empty" : run.limited ? "partial" : "complete";
+          if (!cursor) coverage.status = page.coverage.totalDays === 0 ? "empty" : run.sourceChanged || run.stopReason === "evidence_limit" || coverage.readDates.length !== coverage.totalDays ? "partial" : "complete";
         } catch (error) { run.signal.throwIfAborted(); coverage.status = "failed"; break; }
       // A prior search truncation is a reason to read on, not to stop pagination.
       } while (cursor && run.stopReason !== "evidence_limit");

@@ -15,6 +15,31 @@ const readers = blocks => ({
 const run = () => new EvidenceRun(new AbortController().signal);
 const range = date => ({ strategy: 'timeline_summary', dateFrom: date, dateTo: date });
 
+test('completed pagination is complete despite earlier search truncation, but dropped evidence remains partial', async () => {
+  const date = '2026-09-01';
+  for (const [size, expected] of [[4000, 'complete'], [15000, 'partial']]) {
+    const blocks = parseDayBlocks(`## ${date}\n\n### Alpha\n\n${'Alpha条件成立才适用。'.repeat(size)}最终要求核对地址。`, '2026-09_学习日志.md');
+    const evidence = run();
+    await collectRagEvidence('Alpha', {strategy:'relevance',maxChars:1200}, evidence, config, readers(blocks));
+    assert.equal(evidence.coverage[0].status, 'partial'); assert.equal(evidence.limited, true);
+    await collectRagEvidence('Alpha', range(date), evidence, config, readers(blocks));
+    assert.equal(evidence.coverage[1].status, expected);
+    if (expected === 'complete') assert.ok(evidence.contexts.some(item => item.content.includes('最终要求核对地址')));
+    else assert.equal(evidence.stopReason, 'evidence_limit');
+    assert.equal(evidence.limited, true); // Does not declare whole-corpus search complete.
+  }
+});
+
+test('a final page without all completed dates cannot prove complete range coverage', async () => {
+  const blocks = parseDayBlocks('## 2026-09-01\n\n### Alpha\n\n第一天。\n\n## 2026-09-02\n\n### Beta\n\n第二天。', '2026-09_学习日志.md');
+  const real = readers(blocks), evidence = run();
+  await collectRagEvidence('Alpha', {strategy:'timeline_summary',dateFrom:'2026-09-01',dateTo:'2026-09-02'}, evidence, config, {
+    ...real, read: async args => { const page = await real.read(args); page.coverage.completedDates = ['2026-09-01']; return page; }
+  });
+  assert.equal(evidence.coverage[0].totalDays, 2);
+  assert.equal(evidence.coverage[0].status, 'partial');
+});
+
 test('complete supplied days disable reads while missing, legacy and compressed evidence remains readable', async () => {
   const blocks = parseDayBlocks('## 2026-09-01\n\n### Alpha\n\nAlpha需要核对地址。', '2026-09_学习日志.md');
   const evidence = run();

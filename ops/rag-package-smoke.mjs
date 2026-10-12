@@ -23,6 +23,12 @@ const model = http.createServer(async (req, res) => {
   let raw = ""; for await (const chunk of req) raw += chunk;
   const body = JSON.parse(raw);
   assert.equal(body.model, "synthetic-model");
+  if (!body.stream && body.messages[0].content.includes('needsMoreEvidence')) {
+    modelCalls++;
+    const needsMoreEvidence=body.messages.at(-1).content.includes('当前问题：Gamma');
+    const answer=needsMoreEvidence?'Gamma尚未提供附加说明。':'Alpha条件成立才适用，不适用于所有场景。[S1]';
+    res.setHeader('content-type','application/json');res.end(JSON.stringify({choices:[{message:{role:'assistant',content:JSON.stringify({needsMoreEvidence,answer})},finish_reason:'stop'}],usage:{prompt_tokens:10,completion_tokens:5}}));return;
+  }
   if (!body.stream) { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({choices:[{message:{content:'合成问答'}}]})); return; }
   modelCalls++;
   const state = body.tools ? JSON.parse(body.messages.find(message => message.role === 'user').content) : null;
@@ -33,7 +39,7 @@ const model = http.createServer(async (req, res) => {
     assert.ok(state.availableReadDates.includes('2026-09-02'));
   }
   const name = state?.question.includes('Gamma') && state.remainingDecisions === 2 ? 'read' : 'finish';
-  const args = name === 'read' ? {date:'2026-09-02'} : {reason:'sufficient_evidence', ...(state?.question.includes('Alpha') ? {answer:'Alpha条件成立才适用，不适用于所有场景。[S1]'} : {})};
+  const args = name === 'read' ? {date:'2026-09-02'} : {reason:'sufficient_evidence'};
   const provided = body.messages.map(message => message.content).join('\n');
   const gammaSource = [...provided.matchAll(/\[(S\d+)\]\n日志日期：2026-09-02(?:\n小节：[^\n]*)?\n内容：\n([\s\S]*?)\n以上为/g)].find(match => match[2].includes('先确认地址'));
   const delta = body.tools
@@ -57,7 +63,7 @@ try {
   const auth = await (await fetch(`${status.url}/api/auth/app-login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password }) })).json();
   assert.equal(typeof auth.token, "string");
   const checks = [];
-  for (const [question, calls, date] of [["总结2026年9月",1,"2026-09-02"], ["Alpha为什么只在条件成立时适用？",1,"2026-09-01"], ["Gamma的补充条件是什么？",3,"2026-09-02"]]) {
+  for (const [question, calls, date] of [["总结2026年9月",1,"2026-09-02"], ["Alpha为什么只在条件成立时适用？",1,"2026-09-01"], ["Gamma的补充条件是什么？",4,"2026-09-02"]]) {
     const before = modelCalls;
     const response = await fetch(`${status.url}/api/rag/query`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${auth.token}` }, body: JSON.stringify({ question, mode: "logs_only", history: [] }) });
     assert.equal(response.status, 200);

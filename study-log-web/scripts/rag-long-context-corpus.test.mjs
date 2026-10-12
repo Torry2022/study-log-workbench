@@ -33,6 +33,10 @@ test('three phrasings reach the same bounded tool loop and supply the linked rul
       const chunks = []; for await (const chunk of request) chunks.push(chunk);
       const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
       if (!body.stream) {
+        if(body.messages[0].content.includes('needsMoreEvidence')){
+          response.setHeader('content-type','application/json');
+          response.end(JSON.stringify({choices:[{message:{role:'assistant',content:JSON.stringify({needsMoreEvidence:true,answer:'需读取北辰明确指向的规则，不能套用相似规则。'})},finish_reason:'stop'}],usage:{prompt_tokens:10,completion_tokens:5}}));return;
+        }
         summaries++;
         const { evidence } = JSON.parse(body.messages[1].content);
         response.setHeader('content-type', 'application/json');
@@ -42,14 +46,6 @@ test('three phrasings reach the same bounded tool loop and supply the linked rul
       let delta, finish;
       if (body.tools) {
         const current = JSON.parse(body.messages.find(message => message.role === 'user').content);
-        const suppliedRule = current.evidence.find(item => item.content.includes(linkedRules));
-        if (steps === 0 && suppliedRule) {
-          steps++;
-          delta = { tool_calls: [{ index: 0, id: 'already-supplied', type: 'function', function: {
-            name: 'finish', arguments: JSON.stringify({ reason: 'sufficient_evidence', answer: `${linkedRules}[${suppliedRule.sourceId}]` })
-          } }] };
-          finish = 'tool_calls';
-        } else {
           if (steps++) {
             assert.ok(current.previousReads.length >= 3);
             assert.ok(current.evidence.some(item => item.content.includes('河图检查规则')));
@@ -65,10 +61,10 @@ test('three phrasings reach the same bounded tool loop and supply the linked rul
             name: steps === 1 ? 'read' : 'search', arguments: JSON.stringify(steps === 1 ? { date: '2026-09-01' } : { query: '河图检查规则' })
           } }] };
           finish = 'tool_calls';
-        }
       } else {
         assert.ok(body.messages.at(-1).content.includes(linkedRules));
-        delta = { content: `${linkedRules}[S4]` }; finish = 'stop';
+        const ruleBlock=body.messages.at(-1).content.split('\n\n---\n\n').find(item=>item.includes(linkedRules));
+        delta = { content: `${linkedRules}[${ruleBlock.match(/\[(S\d+)\]/)[1]}]` }; finish = 'stop';
       }
       response.setHeader('content-type', 'text/event-stream');
       response.end(`data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: finish }], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } })}\n\ndata: [DONE]\n\n`);
@@ -79,14 +75,14 @@ test('three phrasings reach the same bounded tool loop and supply the linked rul
     for (const question of [longContextQuestion, '北辰归档流程可以直接保存吗？请给出最终保存条件。', '列出北辰归档流程完成保存所需的条件。']) {
       const baseline = new EvidenceRun(new AbortController().signal);
       await collectRagEvidence(question, { strategy: 'relevance' }, baseline, config);
-      const baselineAlreadyHasRule = baseline.contexts.some(item => item.content.includes(linkedRules));
+      const baselineHasProjectLink = baseline.contexts.some(item => item.date==='2026-09-01'&&item.content.includes('河图检查规则'));
+      assert.equal(baselineHasProjectLink,false);
       steps = 0; summaries = 0;
       const output = await new Response(createRagQueryStream({ question, mode: 'logs_only', history: [] }, { chat, lightChat: chat, mcp: config }, new AbortController().signal)).text();
       const terminal = JSON.parse(output.trim().split('\n\n').at(-1).split('\n')[1].slice(6));
       assert.match(output, /event: done/);
-      // Better base retrieval is not an Agent benefit; do not hide the rule to force tools.
-      assert.equal(steps, baselineAlreadyHasRule ? 1 : 2);
-      if (!baselineAlreadyHasRule) assert.ok(summaries > 0);
+      // The rule alone cannot prove applicability: retain it, then read the project link.
+      assert.equal(steps, 2); assert.ok(summaries > 0);
       assert.ok(terminal.citations.some(item => item.date === '2026-09-18'));
       assert.ok(terminal.answer.includes(linkedRules));
       assert.ok(!output.includes('内部文本'));

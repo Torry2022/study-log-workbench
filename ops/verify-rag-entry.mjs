@@ -21,7 +21,8 @@ const model = http.createServer(async (req, res) => {
   assert.equal(req.headers.authorization, 'Bearer synthetic');
   let raw = ''; for await (const chunk of req) raw += chunk;
   const body = JSON.parse(raw);
-  if (body.stream) calls.push({ tools: Boolean(body.tools) });
+  const firstPass = !body.stream && body.messages[0].content.includes('needsMoreEvidence');
+  if (body.stream || firstPass) calls.push({ tools: Boolean(body.tools), firstPass });
   if (body.tools) {
     const state = JSON.parse(body.messages.find(message => message.role === 'user').content);
     assert.equal(state.remainingDecisions, 2);
@@ -31,10 +32,11 @@ const model = http.createServer(async (req, res) => {
     tools.push(state);
   }
   const answer = 'Alpha条件成立才适用，不适用于所有场景。[S1]';
+  if (firstPass) {res.setHeader('content-type','application/json');res.end(JSON.stringify({choices:[{message:{role:'assistant',content:JSON.stringify({needsMoreEvidence:false,answer})},finish_reason:'stop'}],usage:{prompt_tokens:10,completion_tokens:5}}));return;}
   if (!body.stream) { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ choices: [{ message: { content: 'Alpha适用条件' } }] })); return; }
   res.setHeader('content-type', 'text/event-stream');
   const frame = value => `data: ${JSON.stringify(value)}\n\n`;
-  const delta = body.tools ? { tool_calls: [{ index: 0, id: 'synthetic-finish', type: 'function', function: { name: 'finish', arguments: JSON.stringify({ reason: 'sufficient_evidence', answer }) } }] } : { content: answer };
+  const delta = body.tools ? { tool_calls: [{ index: 0, id: 'synthetic-finish', type: 'function', function: { name: 'finish', arguments: JSON.stringify({ reason: 'sufficient_evidence' }) } }] } : { content: answer };
   res.end(frame({ id: 'synthetic', object: 'chat.completion.chunk', model: 'synthetic', choices: [{ index: 0, delta, finish_reason: null }] }) + frame({ choices: [{ index: 0, delta: {}, finish_reason: body.tools ? 'tool_calls' : 'stop' }], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }) + 'data: [DONE]\n\n');
 });
 await new Promise(resolve => model.listen(0, '127.0.0.1', resolve));
@@ -56,7 +58,7 @@ try {
     const raw = await response.text(), blocks = raw.trim().split('\n\n');
     assert.match(blocks.at(-1),/^event: done/);
     const done = JSON.parse(blocks.at(-1).split('\n')[1].slice(6));
-    assert.equal(done.citations[0].date,'2026-09-01'); assert.equal(tools.length > before,agent);
+    assert.equal(done.citations[0].date,'2026-09-01'); assert.equal(Boolean(done.diagnostics.agent?.enabled),agent);assert.equal(tools.length,before);
     assert.equal(calls.length - callsBefore, 1, 'Sufficient evidence must need only one generating-model call');
     checks.push({ question, agent, done: true, modelCalls: calls.length - callsBefore });
   }

@@ -4,6 +4,14 @@ import { buildRagMessages, normalizeRagAnswer, parseRagHistory } from "../lib/ra
 
 const source = (sourceId, headingIndex = 0) => ({ sourceId, date: "2026-08-01", month: "2026-08", fileName: "2026-08.md", heading: "合成主题", headingIndex, chunkId: `chunk-${headingIndex}`, contentHash: `hash-${headingIndex}`, excerpt: "合成摘录" });
 
+test('prompt preserves range piece section context while citation identity stays at day level', () => {
+  const item={...source('S1'),heading:null,headingIndex:null,content:'后续应按Beta规则。',rangeSection:{heading:'Alpha项目',headingIndex:1}};
+  const messages=buildRagMessages('Alpha如何继续？',[],[item]);
+  assert.ok(messages.at(-1).content.includes('第2个小节「Alpha项目」'));
+  assert.ok(messages.at(-1).content.includes('不是另一条独立日志'));
+  const result=normalizeRagAnswer('查阅Beta[S1]',[item]);assert.equal(result.citations[0].heading,null);assert.equal(result.citations[0].contentHash,item.contentHash);
+});
+
 test("citation numbering follows first use and preserves exact source identity", () => {
   const first = source("S1"), second = source("S2", 1);
   const result = normalizeRagAnswer("结论[S2]，再次[S2]，另一结论[S1]，不存在[S99]。", [first, second]);

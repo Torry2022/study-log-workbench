@@ -77,6 +77,21 @@ test("cursor prevents mixed revisions and long days can be read without dropped 
   assert.deepEqual(second.coverage.completedDates, ["2026-09-01"]);
   assert.throws(() => readLogRange([block("2026-09-01", "已修改")], { dateFrom: "2026-09-01", dateTo: "2026-09-01", cursor: first.coverage.nextCursor }), { code: "SOURCE_CHANGED" });
 });
+
+test('optional range section context is validated, retained and never changes citation heading identity', () => {
+  const data=[block('2026-09-01','## 2026-09-01\n\n### Alpha\n\n'+'正文。'.repeat(1000))];
+  const args={dateFrom:'2026-09-01',dateTo:'2026-09-01',maxChars:1000};
+  const first=readLogRange(data,args),second=readLogRange(data,{...args,cursor:first.coverage.nextCursor});
+  const parsed=validateRangePage(second).contexts[0];
+  assert.deepEqual(parsed.rangeSection,{heading:'Alpha',headingIndex:0});assert.equal(parsed.heading,null);
+  for(const invalid of [null,{heading:'',headingIndex:0},{heading:'Alpha',headingIndex:-1},{heading:'Alpha',headingIndex:0,extra:true}]){
+    const changed=structuredClone(second);changed.contexts[0].rangeSection=invalid;
+    assert.throws(()=>validateRangePage(changed),{code:'MCP_INVALID_RESPONSE'});
+  }
+  const noVersion=structuredClone(second);delete noVersion.contexts[0].dayContentHash;
+  assert.throws(()=>validateRangePage(noVersion),{code:'MCP_INVALID_RESPONSE'});
+  delete second.contexts[0].rangeSection;assert.equal(validateRangePage(second).contexts[0].rangeSection,undefined);
+});
 test("call cap, duplicate requests and cancellation stop actual reads", async () => {
   const run = new EvidenceRun(new AbortController().signal);
   assert.equal(run.take("x", 1), true); assert.equal(run.take("x", 1), false);

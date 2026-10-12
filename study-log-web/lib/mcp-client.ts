@@ -34,13 +34,16 @@ export function validateRetrievedContexts(value: unknown, limits = { maxChunks: 
       !text(item.chunkId, 512) || !text(item.contentHash, 64) || !/^[a-f0-9]{64}$/i.test(item.contentHash) ||
       (item.dayContentHash !== undefined && (!text(item.dayContentHash, 64) || !/^[a-f0-9]{64}$/i.test(item.dayContentHash))) ||
       (item.dayFullyProvided !== undefined && (typeof item.dayFullyProvided !== "boolean" || item.dayContentHash === undefined)) ||
+      (item.rangeSection !== undefined && (!record(item.rangeSection) || Object.keys(item.rangeSection).length !== 2 ||
+        !text(item.rangeSection.heading, 4000) || !integer(item.rangeSection.headingIndex, 0, 100000) ||
+        item.dayContentHash === undefined || !new RegExp(`^${item.date}:range:\\d+$`).test(item.chunkId))) ||
       !text(item.content, limits.maxChars) || typeof item.truncated !== "boolean" || typeof item.score !== "number" || !Number.isFinite(item.score) ||
       item.sourceType !== undefined || (item.excerpt !== undefined && (typeof item.excerpt !== "string" || item.excerpt.length > 4000))) throw invalid();
     const fileMatch = item.fileName.match(LOG_FILE_PATTERN)!;
     if (item.date.slice(0, 4) !== fileMatch[1] || fileMatch[2] && item.date.slice(5, 7) !== fileMatch[2]) throw invalid();
     ids.add(item.sourceId); totalChars += item.content.length;
     if (totalChars > limits.maxChars) throw invalid();
-    return { sourceId: item.sourceId, date: item.date, month: item.month as string, fileName: item.fileName, heading: item.heading as string | null, headingIndex: item.headingIndex as number | null, chunkId: item.chunkId, contentHash: item.contentHash, ...(typeof item.dayContentHash === "string" ? { dayContentHash: item.dayContentHash } : {}), ...(typeof item.dayFullyProvided === "boolean" ? { dayFullyProvided: item.dayFullyProvided } : {}), content: item.content, truncated: item.truncated, score: item.score, ...(typeof item.excerpt === "string" ? { excerpt: item.excerpt } : {}) };
+    return { sourceId: item.sourceId, date: item.date, month: item.month as string, fileName: item.fileName, heading: item.heading as string | null, headingIndex: item.headingIndex as number | null, chunkId: item.chunkId, contentHash: item.contentHash, ...(typeof item.dayContentHash === "string" ? { dayContentHash: item.dayContentHash } : {}), ...(typeof item.dayFullyProvided === "boolean" ? { dayFullyProvided: item.dayFullyProvided } : {}), ...(record(item.rangeSection) ? { rangeSection: {heading:item.rangeSection.heading as string,headingIndex:item.rangeSection.headingIndex as number} } : {}), content: item.content, truncated: item.truncated, score: item.score, ...(typeof item.excerpt === "string" ? { excerpt: item.excerpt } : {}) };
   });
   const context = value.context;
   if (!integer(context.maxChunks, 1, limits.maxChunks) || !integer(context.maxChars, 1, limits.maxChars) || context.returnedChunks !== contexts.length || context.totalChars !== totalChars || typeof context.truncated !== "boolean" || contexts.length > context.maxChunks || totalChars > context.maxChars) throw invalid();

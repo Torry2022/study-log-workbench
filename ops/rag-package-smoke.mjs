@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import { pathToFileURL } from "node:url";
 import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { promisify, parseEnv } from "node:util";
 
 const [payload, root] = process.argv.slice(2);
 if (!payload || !root || !path.isAbsolute(payload) || !path.isAbsolute(root)) throw Error("Explicit package and NEW synthetic root required");
@@ -64,11 +64,30 @@ try {
   const source = "## 2026-09-01\n\n### Alpha\nAlpha条件成立才适用，不适用于所有场景。\n\n---\n\n## 2026-09-02\n\n### Gamma\nGamma的补充条件另列如下。\n\n### 附加说明\n先确认地址。\n";
   const file = path.join(root, "data", "2026-09_学习日志.md"); await fs.writeFile(file, source);
   for (const license of ["ai/LICENSE", "@ai-sdk/openai-compatible/LICENSE", "@typesafe-ai/sdk/LICENSE"]) await fs.access(path.join(payload, "web", "node_modules", license));
+  const target = { apiUrl: `http://127.0.0.1:${model.address().port}/full/custom/endpoint`, model: 'synthetic-model' };
+  await manager.configure(target);
+  assert.equal(parseEnv(await fs.readFile(envFile, 'utf8')).RAG_AGENT_TOOL_CALLING_VERIFIED, 'true');
+  await manager.configure({ ...target, model: 'new-synthetic-model' });
+  assert.equal(parseEnv(await fs.readFile(envFile, 'utf8')).RAG_AGENT_TOOL_CALLING_VERIFIED, 'false');
+  await manager.configure(target);
+  const checks = [];
+  const unverified = await manager.start();
+  const probeAuth = await (await fetch(`${unverified.url}/api/auth/app-login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password }) })).json();
+  const beforeProbe = modelCalls;
+  const probe = await fetch(`${unverified.url}/api/rag/query`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${probeAuth.token}` }, body: JSON.stringify({ question: 'Alpha的适用条件是什么？', mode: 'logs_only', history: [] }) });
+  assert.equal(probe.status, 200);
+  const probeTerminal = (await probe.text()).trim().split('\n\n').at(-1);
+  assert.match(probeTerminal, /^event: done/);
+  assert.equal(JSON.parse(probeTerminal.split('\n')[1].slice(6)).diagnostics.agent, undefined);
+  assert.equal(modelCalls - beforeProbe, 1);
+  await manager.stop();
+  checks.push({ changedTargetInvalidatesConfirmation: true, unverifiedTargetUsesOrdinaryRag: true, modelCalls: 1 });
+  // Confirm only the restored target whose synthetic tool protocol is verified below.
+  await fs.appendFile(envFile, '\nRAG_AGENT_TOOL_CALLING_VERIFIED=true\n');
   const status = await manager.start(); assert.equal(status.state, "running");
   assert.equal((await fetch(status.url)).status, 200);
   const auth = await (await fetch(`${status.url}/api/auth/app-login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password }) })).json();
   assert.equal(typeof auth.token, "string");
-  const checks = [];
   for (const [question, calls, date] of [["总结2026年9月",1,"2026-09-02"], ["Alpha为什么只在条件成立时适用？",1,"2026-09-01"], ["Gamma的补充条件是什么？",2,"2026-09-02"]]) {
     const before = modelCalls;
     const response = await fetch(`${status.url}/api/rag/query`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${auth.token}` }, body: JSON.stringify({ question, mode: "logs_only", history: [] }) });
@@ -101,9 +120,28 @@ try {
   assert.equal(recovered.citations[0].date,'2026-09-01');assert.equal(modelCalls-before,2);
   checks.push({firstDecisionLength:true,modelCalls:modelCalls-before,diagnostics:recovered.diagnostics});firstLimited=false;
   assert.ok(toolRequests >= 1); assert.equal(await fs.readFile(file, "utf8"), source);
-  await fs.writeFile(path.join(root, "package-check.json"), JSON.stringify({ driverNode: process.version, serviceNode, checks, toolRequests }, null, 2));
   const result = await promisify(execFile)(node, ["ops/browser-rag.mjs", root, status.url], { cwd: path.resolve(import.meta.dirname, ".."), windowsHide: true, timeout: 180000, maxBuffer: 1024 * 1024 });
   console.log(result.stdout);
+  // Browser source-jump verification creates its own synthetic target day.
+  const beforeInvalidSource = await fs.readFile(file, 'utf8');
+  await manager.stop();
+  await fs.appendFile(envFile, '\nRAG_DEEPSEEK_THINKING=synthetic-invalid\n');
+  const invalid = await manager.start();
+  const invalidAuth = await (await fetch(`${invalid.url}/api/auth/app-login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password }) })).json();
+  const invalidHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${invalidAuth.token}` };
+  const capabilityResponse = await fetch(`${invalid.url}/api/capabilities`, { headers: invalidHeaders });
+  assert.equal(capabilityResponse.status, 200);
+  const capabilities = await capabilityResponse.json();
+  assert.equal(capabilities.aiConfiguration.provider.configured, true);
+  assert.equal(capabilities.features.rag.configured, false);
+  assert.equal(capabilities.features.rag.issues[0].field, 'RAG_DEEPSEEK_THINKING');
+  const beforeInvalid = modelCalls;
+  const rejected = await fetch(`${invalid.url}/api/rag/query`, { method: 'POST', headers: invalidHeaders, body: JSON.stringify({ question: '合成配置错误不得调用模型', mode: 'logs_only', history: [] }) });
+  assert.equal(rejected.status, 503); assert.equal((await rejected.json()).code, 'AI_CONFIGURATION_INVALID');
+  assert.equal(modelCalls, beforeInvalid);
+  checks.push({ invalidThinkingReadiness: true, invalidThinkingRejectsBeforeModel: true, modelCalls: 0 });
+  assert.equal(await fs.readFile(file, 'utf8'), beforeInvalidSource);
+  await fs.writeFile(path.join(root, "package-check.json"), JSON.stringify({ driverNode: process.version, serviceNode, checks, toolRequests }, null, 2));
   console.log("Packaged Node/Web/MCP, bearer-auth SSE, AI SDK exact URL and browser RAG checks passed.");
 } finally {
   await manager.shutdown(); model.closeAllConnections(); await new Promise(resolve => model.close(resolve));

@@ -14,6 +14,8 @@ CHAT_API_KEY=replace-with-your-key
 
 问答可选 `RAG_DEEPSEEK_THINKING=disabled` 或 `low`，仅适用于 HTTPS 官方 `api.deepseek.com` 的 `deepseek-flash`、`deepseek-v4-pro`。留空沿用供应商默认行为；不会自动关闭思考或更换模型。`disabled` 发送 `thinking.type=disabled`，不发送无效的 `reasoning_effort=none`；`low` 发送 `thinking.type=enabled` 和 `reasoning_effort=low`。普通问答最终生成与 SDK 工具循环使用相同参数。此设置不改变轻量规划、材料压缩、会话标题或其他模块的 AI 调用；代理接口不凭模型名推断兼容性，显式配置不支持的组合时问答返回配置错误，不静默忽略。保存后重启实例生效，现有桌面模型设置窗口仍只管理地址、模型和密钥。参数依据：[DeepSeek 思考模式](https://api-docs.deepseek.com/guides/thinking_mode/)。
 
+能力接口的 `features.rag.configured` 使用与问答请求相同的思考模式校验；可选 `features.rag.issues` 返回固定诊断文字，不返回配置值。网页在既有“检查说明”中显示错误并禁用发送，已有会话仍可查看。其他 AI 功能的就绪状态不因问答专用设置错误而关闭；旧客户端不识别 issues 时仍可使用 configured，旧服务器缺少 issues 时网页沿用通用提示。检查不会探测模型或消耗费用。
+
 初始化会将仓库 `prompts` 中三个通用模板复制到实例的 `data/prompts`：`generation.md`、`highlighting.md`、`extraction.md`。模板强调材料依据、结果预览和用户决定，不规定个人领域、文风、括号或中英文空格习惯。每次请求重新读取模板，修改后无需重启；文件须为非空 UTF-8 普通文件，最大 64 KiB，路径不能包含链接。
 
 升级已有实例时，停止该实例后重新运行初始化即可补充缺失模板；已有密码、环境文件和自定义模板保留。旧环境文件中的 AI 变量需自行添加。缺少或无效模板会给出具体模板名和原因，不读取其他实例或个人 Skill。

@@ -95,6 +95,18 @@ export function configureRagThinking(config: ChatConfig, env: AiEnvironment = pr
   return { ...config, thinkingMode: mode as "disabled" | "low" };
 }
 
+export function inspectRagChatConfig(env: AiEnvironment = process.env): { configured: boolean; issues: ChatConfigIssue[] } {
+  const provider = inspectChatConfig(env);
+  if (!provider.configured) return provider;
+  try {
+    configureRagThinking(getChatConfig(env), env);
+    return provider;
+  } catch (error) {
+    if (error instanceof ChatConfigurationError) return { configured: false, issues: error.issues };
+    throw error;
+  }
+}
+
 export function chatThinkingParameters(config: ChatConfig): { thinking?: { type: "enabled" | "disabled" }; reasoning_effort?: "low" } {
   if (!config.thinkingMode) return {};
   // Recheck request-scoped callers as well as environment configuration.

@@ -4,7 +4,7 @@ import path from "node:path";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { getLogRoot } from "@/lib/config";
-import { inspectChatConfig } from "@/lib/ai-config";
+import { inspectChatConfig, inspectRagChatConfig } from "@/lib/ai-config";
 import { inspectWritingPrompts } from "@/lib/ai-prompts";
 import { inspectMcpConfig } from "@/lib/mcp-config";
 
@@ -18,6 +18,7 @@ export async function GET(request: NextRequest) {
     const instance = JSON.parse(await fs.readFile(path.join(getLogRoot(), ".instance.json"), "utf8"));
     if (instance.schemaVersion !== 1 || typeof instance.id !== "string" || !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(instance.id)) throw new Error("Invalid identity");
     const provider = inspectChatConfig();
+    const ragProvider = inspectRagChatConfig();
     const templates = await inspectWritingPrompts();
     return NextResponse.json({
       instanceId: instance.id,
@@ -29,7 +30,7 @@ export async function GET(request: NextRequest) {
         aiHighlighting: { supported: true, configured: provider.configured && templates.highlighting.configured },
         aiNoteExtraction: { supported: true, configured: provider.configured && templates.extraction.configured },
         aiTaxonomy: { supported: true, configured: provider.configured },
-        rag: { supported: true, configured: provider.configured && inspectMcpConfig().configured }
+        rag: { supported: true, configured: ragProvider.configured && inspectMcpConfig().configured, issues: ragProvider.issues }
       }
     }, { headers: { "Cache-Control": "no-store" } });
   } catch {

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { configureRagThinking, chatThinkingParameters, getChatConfig } from '../lib/ai-config.ts';
+import { configureRagThinking, chatThinkingParameters, getChatConfig, inspectRagChatConfig, inspectChatConfig } from '../lib/ai-config.ts';
 import { requestChat } from '../lib/ai-chat.ts';
 import { streamRagAnswer } from '../lib/rag-stream.ts';
 import { createAgentModel, supplementEvidence } from '../lib/rag-agent.ts';
@@ -9,6 +9,20 @@ import { EvidenceRun } from '../lib/rag-evidence.ts';
 const config={baseUrl:'https://api.deepseek.com/v1/chat/completions?synthetic=one',model:'deepseek-flash',apiKey:'synthetic'};
 const messages=[{role:'user',content:'合成问题'}];
 function stream(){return new Response('data: '+JSON.stringify({choices:[{index:0,delta:{content:'合成回答'},finish_reason:null}]})+'\n\ndata: '+JSON.stringify({choices:[{index:0,delta:{},finish_reason:'stop'}]})+'\n\ndata: [DONE]\n\n',{headers:{'content-type':'text/event-stream'}});}
+
+test('RAG readiness reports invalid thinking without disabling other AI or probing network',()=>{
+  const previous=globalThis.fetch;globalThis.fetch=()=>{throw Error('Unexpected readiness probe');};
+  try{
+    const env={CHAT_API_URL:config.baseUrl,CHAT_API_KEY:config.apiKey,CHAT_MODEL:config.model};
+    for(const mode of [undefined,'disabled','low'])assert.equal(inspectRagChatConfig({...env,RAG_DEEPSEEK_THINKING:mode}).configured,true);
+    for(const bad of [{RAG_DEEPSEEK_THINKING:'private-invalid-mode'},{CHAT_API_URL:'https://proxy.invalid/chat',RAG_DEEPSEEK_THINKING:'low'}]){
+      const configured={...env,...bad};assert.equal(inspectChatConfig(configured).configured,true);
+      const state=inspectRagChatConfig(configured);assert.equal(state.configured,false);
+      assert.equal(state.issues[0].field,'RAG_DEEPSEEK_THINKING');assert.ok(!JSON.stringify(state).includes('private-invalid-mode'));
+    }
+    assert.deepEqual(inspectRagChatConfig({...env,CHAT_API_URL:'invalid'}),inspectChatConfig({...env,CHAT_API_URL:'invalid'}));
+  }finally{globalThis.fetch=previous;}
+});
 
 test('explicit RAG thinking rejects unverified providers and leaves other AI configuration unchanged',()=>{
   assert.equal(configureRagThinking(config,{}),config);

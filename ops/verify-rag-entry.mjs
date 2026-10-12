@@ -123,7 +123,23 @@ try {
       await expect(page.getByRole('button', { name: '停止生成', exact: true })).toHaveCount(0);
       await expect(page).toHaveURL(/session=/);
       await page.screenshot({path:path.join(root,`${engine}-${theme}${suffix}.png`)});
-      checks.push({engine,theme,width,answer:true,savePendingLayout:true,saveErrorLayout:true,retry:true}); await page.close();
+      const configurationIssue = 'RAG_DEEPSEEK_THINKING 仅支持官方 DeepSeek Flash/Pro 的 disabled 或 low';
+      await page.route('**/api/capabilities', async route => {
+        const response = await route.fetch(), body = await response.json();
+        body.features.rag = { ...body.features.rag, configured: false, issues: [{ field: 'RAG_DEEPSEEK_THINKING', reason: 'invalid', message: configurationIssue }] };
+        await route.fulfill({ response, json: body });
+      });
+      await page.reload();
+      const availability = page.getByRole('complementary', { name: '暂时无法提问', exact: true });
+      await expect(availability).toBeVisible();
+      await availability.getByText('检查说明', { exact: true }).click();
+      await expect(availability.getByText(configurationIssue, { exact: true })).toBeVisible();
+      await page.getByRole('textbox', { name: '输入知识库问题', exact: true }).fill('合成配置错误不得提交');
+      await expect(page.getByRole('button', { name: '发送问题', exact: true })).toBeDisabled();
+      await expect(page.locator('.rag-workspace').filter({ visible: true })).toContainText('Alpha条件成立才适用');
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      await page.screenshot({ path: path.join(root, `${engine}-${theme}${suffix}-configuration-error.png`) });
+      checks.push({engine,theme,width,answer:true,savePendingLayout:true,saveErrorLayout:true,retry:true,configurationIssue:true,historyPreserved:true}); await page.close();
     }} finally {await browser.close();}
   }
   assert.equal(await fs.readFile(file,'utf8'),source);

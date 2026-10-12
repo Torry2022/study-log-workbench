@@ -578,7 +578,7 @@ test('query publishes a second-turn answer and reread source without a third mod
     else {
       assert.ok(body.messages.at(-1).content.includes(tail));
       const source='S2';
-      res.end(await plain(`${tail}[${source}]`).text());
+      res.end(await plain(`${tail}[${source}]。S1 是片段，S2 提供完整条件。`).text());
     }
   });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -587,7 +587,9 @@ test('query publishes a second-turn answer and reread source without a third mod
   const raw=await new Response(createRagQueryStream({question:'Alpha和Beta的条件是什么？',history:[],mode:'logs_only'},{chat,lightChat:chat,mcp},new AbortController().signal)).text();
   const events=raw.trim().split('\n\n').map(block=>({event:block.split('\n')[0].slice(7),data:JSON.parse(block.split('\n')[1].slice(6))}));
   assert.equal(requests.length,2);assert.equal(events.at(-1).event,'done');assert.ok(!raw.includes('内部文本'));
-  assert.ok(events.at(-1).data.answer.includes(tail));assert.equal(events.at(-1).data.citations.length,1);assert.equal(events.at(-1).data.citations[0].chunkId,'2026-09-01:range:0');
+  assert.ok(events.at(-1).data.answer.includes(tail));assert.equal(events.at(-1).data.citations.length,2);assert.equal(events.at(-1).data.citations[0].chunkId,'2026-09-01:range:0');
+  assert.match(events.at(-1).data.answer,/S2 是片段，S1 提供完整条件/);
+  assert.equal(events.at(-1).data.citations[1].sourceId,'S2');assert.ok(!events.at(-1).data.citations[1].chunkId.includes(':range:'));
 });
 
 test('second-turn length, filtering and oversized answers retain completion guards', async t => {

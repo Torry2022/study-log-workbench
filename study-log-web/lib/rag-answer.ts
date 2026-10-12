@@ -178,15 +178,6 @@ function replaceCitationLabels(answer: string, replace: (sourceId: string) => st
   });
 }
 
-function remapBareSourceMentions(answer: string, remappedIds: Map<string, string>): string {
-  const excluded = excludedSourceLabelRanges(answer);
-  return answer.replace(/\bS\d+\b/g, (sourceId: string, offset: number) => {
-    if (answer[offset - 1] === "[" || answer[offset + sourceId.length] === "]" ||
-      excluded.some(([start, end]) => offset >= start && offset < end)) return sourceId;
-    return remappedIds.get(sourceId) || sourceId;
-  });
-}
-
 export function stripRagCitationLabels(answer: string): string {
   return replaceCitationLabels(answer, () => "");
 }
@@ -198,12 +189,16 @@ export function normalizeRagAnswer(
 ): { answer: string; citations: RagCitation[]; groundingWarning?: string } {
   const sourceById = new Map(sources.map((source) => [source.sourceId, source]));
   const remappedIds = new Map<string, string>();
-  const normalized = replaceCitationLabels(answer, (sourceId) => {
-    if (!sourceById.has(sourceId)) return "";
+  const excluded = excludedSourceLabelRanges(answer);
+  // Both reference forms use the original text and the same first-use registry.
+  // An uncited bare label must not retain an ID now assigned to another source.
+  const normalizedAnswer = answer.replace(/\[(S\d+)\]|\b(S\d+)\b/g, (full, bracketed: string | undefined, bare: string | undefined, offset: number) => {
+    if (excluded.some(([start, end]) => offset >= start && offset < end)) return full;
+    const sourceId = bracketed || bare!;
+    if (!sourceById.has(sourceId)) return bracketed ? "" : full;
     if (!remappedIds.has(sourceId)) remappedIds.set(sourceId, `S${remappedIds.size + 1}`);
-    return `[${remappedIds.get(sourceId)}]`;
-  });
-  const normalizedAnswer = remapBareSourceMentions(normalized, remappedIds).trim();
+    return bracketed ? `[${remappedIds.get(sourceId)}]` : remappedIds.get(sourceId)!;
+  }).trim();
   const citations = [...remappedIds].map(([sourceId, remappedSourceId]) => ({
       ...sourceById.get(sourceId)!,
       sourceId: remappedSourceId

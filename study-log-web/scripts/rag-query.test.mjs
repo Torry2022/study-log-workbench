@@ -63,6 +63,20 @@ test('query error diagnostics retain supplied usage for truncated final generati
   assert.ok(!values.some(value=>value.event==='done'));
 });
 
+test('query done keeps a bare partial-source mention distinct from the complete cited source',async t=>{
+  const {state,config}=await fixture(t);
+  state.contexts=[
+    {sourceId:'S1',date:'2026-08-01',month:'2026-08',fileName:'2026-08_学习日志.md',heading:'片段',headingIndex:0,chunkId:'partial',contentHash:'a'.repeat(64),content:'部分条件',truncated:true,score:1},
+    {sourceId:'S2',date:'2026-08-01',month:'2026-08',fileName:'2026-08_学习日志.md',heading:'完整条件',headingIndex:1,chunkId:'complete',contentHash:'b'.repeat(64),content:'明确确认后才能保存',truncated:false,score:1}
+  ];
+  state.answer='明确确认后才能保存[S2]。S1 为部分片段，S2 提供完整条件。';
+  const values=await events(query.createRagQueryStream({question:'保存的条件是什么？',history:[],mode:'logs_only'},config,new AbortController().signal));
+  const result=values.at(-1);assert.equal(result.event,'done');
+  assert.equal(result.data.answer,'明确确认后才能保存[S1]。S2 为部分片段，S1 提供完整条件。');
+  assert.deepEqual(result.data.citations.map(item=>({sourceId:item.sourceId,chunkId:item.chunkId})),[{sourceId:'S1',chunkId:'complete'},{sourceId:'S2',chunkId:'partial'}]);
+  assert.deepEqual(values.find(item=>item.event==='sources').data.citations,result.data.citations);
+});
+
 test("a changed range revision rejects the query before answer generation", async t => {
   const { state, config } = await fixture(t);
   const blocks = [{ date: "2026-09-01", month: "2026-09", fileName: "2026-09_学习日志.md", content: "甲".repeat(45000) }];

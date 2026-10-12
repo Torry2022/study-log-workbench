@@ -43,6 +43,20 @@ test("bare source mentions follow their citations after first-use renumbering", 
   assert.deepEqual(result.citations.map((item) => item.headingIndex), [2, 4, 3]);
 });
 
+test('a source mentioned without brackets cannot collide with a renumbered citation',()=>{
+  const partial=source('S1'),complete=source('S4',1);
+  const result=normalizeRagAnswer('完整条件[S4]。S1 是部分片段，S4 是完整来源。',[partial,complete]);
+  assert.equal(result.answer,'完整条件[S1]。S2 是部分片段，S1 是完整来源。');
+  assert.deepEqual(result.citations,[{...complete,sourceId:'S1'},{...partial,sourceId:'S2'}]);
+});
+
+test('bare and bracketed references share first-use order, protected and unknown labels stay literal',()=>{
+  const sources=[source('S1'),source('S4',1)];
+  const result=normalizeRagAnswer('S4 给出完整条件，片段[S1]。`S1`、<span data-source="S4"></span>、[链接 S1](https://example.test/S4)、S99 和 [S99]。',sources);
+  assert.equal(result.answer,'S1 给出完整条件，片段[S2]。`S1`、<span data-source="S4"></span>、[链接 S1](https://example.test/S4)、S99 和 。');
+  assert.deepEqual(result.citations.map(item=>item.headingIndex),[1,0]);
+});
+
 test("citation-like tokens inside code and links remain literal and do not create sources", () => {
   const answer = "`items[S1]`\n\n```js\nitems[S2]\n```\n\n[link](https://example.test/[S1])\n\n事实[S2]";
   const result = normalizeRagAnswer(answer, [source("S1"), source("S2", 1)]);

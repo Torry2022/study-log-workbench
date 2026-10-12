@@ -301,14 +301,69 @@ test('an empty concurrent search cannot claim sources added by another search', 
     return new Response('data: '+JSON.stringify({choices:[{index:0,delta:{tool_calls},finish_reason:null}]})+'\n\ndata: '+JSON.stringify({choices:[{index:0,delta:{},finish_reason:'tool_calls'}]})+'\n\ndata: [DONE]\n\n',{headers:{'content-type':'text/event-stream'}});
   });
   await supplementEvidence('Alpha的条件是什么？',{strategy:'relevance'},run,mcp,model,()=>{});
-  assert.equal(decisions,1);assert.equal(run.calls,2);assert.equal(run.contexts.length,1);
-  assert.equal(run.stopReason,'no_new_evidence');
+  // Alpha added evidence in this group, so the empty sibling cannot stop it.
+  assert.equal(decisions,2);assert.equal(run.calls,2);assert.equal(run.contexts.length,1);
+  assert.equal(run.stopReason,'sufficient_evidence');
   const shared=new EvidenceRun(new AbortController().signal);
   const [hit,empty]=await Promise.all([
     collectRagEvidence('Alpha',{strategy:'relevance'},shared,mcp),
     collectRagEvidence('UnrecordedTopic',{strategy:'relevance'},shared,mcp)
   ]);
   assert.deepEqual(hit,['S1']);assert.deepEqual(empty,[]);
+});
+
+test('a parallel search with no new material cannot stop another search from following its new rule lead',async t=>{
+  const savedFetch=globalThis.fetch,keys=['RAG_AGENT_ENABLED','RAG_AGENT_TOOL_CALLING_VERIFIED','RAG_JEV_ENABLED'];
+  const previous=Object.fromEntries(keys.map(key=>[key,process.env[key]]));
+  t.after(()=>{globalThis.fetch=savedFetch;for(const[key,value]of Object.entries(previous)){if(value===undefined)delete process.env[key];else process.env[key]=value;}});
+  Object.assign(process.env,{RAG_AGENT_ENABLED:'true',RAG_AGENT_TOOL_CALLING_VERIFIED:'true',RAG_JEV_ENABLED:'false'});
+  for(const order of [['Gamma','UnrecordedTopic'],['UnrecordedTopic','Gamma']]){
+    const mcp=await fixture(t,'## 2026-09-01\n\n### Alpha\nAlpha应遵循Gamma细则，旧别名为UnrecordedTopic。\n\n## 2026-09-02\n\n### Gamma\nGamma指向Beta规则。\n\n## 2026-09-03\n\n### Beta\nBeta必须核对地址，未确认不得写入。');
+    let calls=0;
+    globalThis.fetch=async(url,init)=>{
+      if(String(url)!==config.baseUrl)return savedFetch(url,init);
+      const body=JSON.parse(init.body),provided=body.messages.at(-1).content;calls++;
+      if(body.tools&&calls===1){
+        assert.ok(provided.includes('Alpha应遵循Gamma'));assert.ok(!provided.includes('Gamma指向Beta规则'));
+        const tool_calls=order.map((query,index)=>({index,id:`parallel-${index}`,type:'function',function:{name:'search',arguments:JSON.stringify({query,missingPoint:'查明Alpha所指细则或旧别名对应的内容'})}}));
+        return new Response('data: '+JSON.stringify({choices:[{index:0,delta:{tool_calls},finish_reason:null}]})+'\n\ndata: '+JSON.stringify({choices:[{index:0,delta:{},finish_reason:'tool_calls'}],usage:{prompt_tokens:10,completion_tokens:5}})+'\n\ndata: [DONE]\n\n',{headers:{'content-type':'text/event-stream'}});
+      }
+      if(body.tools){assert.equal(calls,2);assert.ok(provided.includes('Gamma指向Beta规则'));return stream('search',{query:'Beta'},'beta-rule');}
+      if(calls<3)return plain('仅找到规则名称，尚未提供Beta的具体要求。[S1]');
+      assert.ok(provided.includes('Beta必须核对地址，未确认不得写入'));
+      return plain('Alpha应遵循Gamma细则[S1]；Gamma指向Beta规则[S2]。Beta必须核对地址，未确认不得写入[S3]。');
+    };
+    const raw=await new Response(createRagQueryStream({question:'Alpha怎么推进？',mode:'logs_only',history:[]},{chat:config,lightChat:config,mcp},new AbortController().signal)).text();
+    const terminal=raw.trim().split('\n\n').at(-1);assert.match(terminal,/^event: done/);
+    const result=JSON.parse(terminal.split('\n')[1].slice(6));
+    assert.equal(calls,3);assert.equal(result.diagnostics.toolCalls,4);assert.equal(result.diagnostics.agent.stopReason,'step_limit');
+    assert.deepEqual(result.citations.map(source=>source.date),['2026-09-01','2026-09-02','2026-09-03']);
+    assert.match(result.answer,/未确认不得写入/);
+  }
+});
+
+test('an exhausted read budget skips SDK decisions, but still generates a bounded answer after actual range reads',async t=>{
+  const mcp=await fixture(t,'## 2026-09-01\n\n### Alpha\n'+'合成背景材料。'.repeat(45000));
+  const savedFetch=globalThis.fetch,keys=['RAG_AGENT_ENABLED','RAG_AGENT_TOOL_CALLING_VERIFIED','RAG_JEV_ENABLED'];
+  const previous=Object.fromEntries(keys.map(key=>[key,process.env[key]]));
+  t.after(()=>{globalThis.fetch=savedFetch;for(const[key,value]of Object.entries(previous)){if(value===undefined)delete process.env[key];else process.env[key]=value;}});
+  Object.assign(process.env,{RAG_AGENT_ENABLED:'true',RAG_AGENT_TOOL_CALLING_VERIFIED:'true',RAG_JEV_ENABLED:'false'});
+  let decisions=0,answers=0,extractions=0;
+  globalThis.fetch=async(url,init)=>{
+    if(String(url)!==config.baseUrl)return savedFetch(url,init);
+    const body=JSON.parse(init.body);
+    if(!body.stream){extractions++;const {evidence}=JSON.parse(body.messages[1].content);return Response.json({choices:[{message:{content:JSON.stringify(evidence.map(item=>({sourceId:item.sourceId,excerpts:[item.content.slice(0,80)]})))}}]});}
+    if(body.tools){decisions++;return stream('search',{query:'UnrecordedTopic'});}
+    answers++;assert.ok(body.messages[0].content.includes('工具调用次数达到上限'));
+    return plain('已提供Alpha记录片段，所选范围未完整读取，不作完整总结。[S1]');
+  };
+  const raw=await new Response(createRagQueryStream({question:'总结2026年9月',mode:'logs_only',history:[]},{chat:config,lightChat:config,mcp},new AbortController().signal)).text();
+  const terminal=raw.trim().split('\n\n').at(-1);assert.match(terminal,/^event: done/);
+  const result=JSON.parse(terminal.split('\n')[1].slice(6));
+  assert.equal(decisions,0);assert.equal(answers,1);assert.ok(extractions>0);
+  assert.equal(result.diagnostics.toolCalls,8);assert.equal(result.diagnostics.agent.stopReason,'tool_budget');
+  assert.equal(result.diagnostics.coverage[0].status,'partial');assert.equal(result.citations[0].date,'2026-09-01');
+  assert.match(result.answer,/未完整读取/);
 });
 
 test('SDK continues after same-identity restoration and answers from the body returned by actual MCP',async t=>{

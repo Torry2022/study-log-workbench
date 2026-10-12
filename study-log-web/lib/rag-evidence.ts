@@ -5,6 +5,7 @@ import type { RagRetrievedContext } from "./rag-types.ts";
 import { RAG_MAX_SOURCES } from "./rag-types.ts";
 import { createHash } from "node:crypto";
 import { findRootAtxHeadings } from "./day-content.ts";
+import { isValidLogDate } from "./study-date.ts";
 
 type DaySection = Pick<RagRetrievedContext, "heading" | "headingIndex" | "contentHash">;
 const hash = (content: string) => createHash("sha256").update(content).digest("hex");
@@ -84,7 +85,9 @@ export class EvidenceRun {
     return added;
   }
   report(): string {
-    return JSON.stringify({ scopes: this.coverage, limited: this.limited, sourceChanged: this.sourceChanged, stopReason: this.stopReason,
+    return JSON.stringify({ scopes: this.coverage.map(scope => ({ ...scope,
+      lastReadDate: scope.readDates.filter(date => isValidLogDate(date) && (!scope.dateFrom || date >= scope.dateFrom) && (!scope.dateTo || date <= scope.dateTo)).sort().at(-1) || null
+    })), limited: this.limited, sourceChanged: this.sourceChanged, stopReason: this.stopReason,
       retainedDates: [...new Set(this.contexts.map(item => item.date))], truncatedSources: this.contexts.filter(item => item.truncated).map(item => item.sourceId), compactedSources: [...this.compactedSources],
       instruction: "search 仅表示相关性检索，不证明全库穷尽。complete 表示该日期范围已分页读完，不表示最终材料包含全部细节。compactedSources 为从原文选出的摘录，[…]表示省略，不能据此推断未读的日期或原日志缺少内容；压缩失败或后续容量不足另看 limited 和 truncatedSources。不因早期搜索 partial 就否认后续读取。判断缺口须核对当前证据，当前已提供的原文或规则不能再说未提供。partial/failed 或 limited 时必须说明材料范围，不得声称完整总结或不存在相关记录。sufficient_evidence/no_more_leads 仅为取证模型的停止判断，不是程序证明材料完整。天数仅表示日志日块数量，不代表学习次数或掌握程度。" });
   }

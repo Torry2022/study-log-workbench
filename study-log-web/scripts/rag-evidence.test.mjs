@@ -120,3 +120,19 @@ test("call cap, duplicate requests and cancellation stop actual reads", async ()
   const controller = new AbortController(); controller.abort();
   await assert.rejects(collectRagEvidence("summary", planRagRetrieval("2026年9月总结"), new EvidenceRun(controller.signal), config, readers([])), { name: "AbortError" });
 });
+
+test('coverage reports independent last-read dates without inventing requested month-end progress', () => {
+  const run=new EvidenceRun(new AbortController().signal);
+  run.coverage=[
+    {dateFrom:'2026-09-01',dateTo:'2026-09-30',totalDays:3,readDates:['2026-09-30','2026-09-01','2026-09-22'],status:'complete'},
+    {dateFrom:'2026-10-01',dateTo:'2026-10-31',totalDays:10,readDates:['2026-10-10','2026-10-01'],status:'partial'},
+    {dateFrom:'2026-11-01',dateTo:'2026-11-30',totalDays:0,readDates:[],status:'empty'}
+  ];
+  const original=structuredClone(run.coverage);
+  const scopes=JSON.parse(run.report()).scopes;
+  assert.deepEqual(scopes.map(scope=>scope.lastReadDate),['2026-09-30','2026-10-10',null]);
+  assert.equal(scopes[1].dateTo,'2026-10-31');assert.equal(scopes[1].status,'partial');
+  assert.deepEqual(run.coverage,original);
+  run.coverage=[{dateFrom:'2026-09-01',dateTo:'2026-09-30',totalDays:null,readDates:['2026-10-01','2026-02-30','invalid'],status:'failed'}];
+  assert.equal(JSON.parse(run.report()).scopes[0].lastReadDate,null);
+});

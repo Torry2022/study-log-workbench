@@ -2,7 +2,7 @@ import type { RagAnswerMode, RagCitation, RagHistoryMessage, RagPromptMessage, R
 import { isValidLogDate } from "./study-date.ts";
 import { unified } from "unified";
 import remarkParse from "remark-parse";
-type ContextForPrompt = Pick<RagRetrievedContext, "sourceId" | "date" | "heading" | "content"> & Partial<Pick<RagRetrievedContext, "rangeSection" | "fileName">>;
+type ContextForPrompt = Pick<RagRetrievedContext, "sourceId" | "date" | "heading" | "content"> & Partial<Pick<RagRetrievedContext, "rangeSection" | "fileName" | "truncated">>;
 export const NO_LOG_EVIDENCE = "本次未找到能回答这个问题的记录。";
 
 /** The final model explicitly selects the prescribed abstention, not a keyword guess. */
@@ -46,7 +46,7 @@ export function buildRagMessages(
   coverage?: string
 ): RagPromptMessage[] {
   const evidence = contexts
-    .map((item) => `[${item.sourceId}]\n日志日期：${item.date}${item.heading === null ? "" : `\n小节：${item.heading}`}${item.rangeSection ? `\n原文分片所属：${item.fileName || "当日日志"}的第${item.rangeSection.headingIndex + 1}个小节「${item.rangeSection.heading}」，不是另一条独立日志。` : ""}\n内容：\n${item.content}\n以上为[${item.sourceId}]（日志日期${item.date}）的全部已提供内容。`)
+    .map((item) => `[${item.sourceId}]\n日志日期：${item.date}${item.heading === null ? "" : `\n小节：${item.heading}`}${item.rangeSection ? `\n原文分片所属：${item.fileName || "当日日志"}的第${item.rangeSection.headingIndex + 1}个小节「${item.rangeSection.heading}」，不是另一条独立日志。` : ""}\n内容：\n${item.content}\n以上为[${item.sourceId}]（日志日期${item.date}）的全部已提供内容。${item.truncated ? "本来源正文有截断，尚未完整提供；不能据此断定原文没有记载未展示的要点。" : ""}`)
     .join("\n\n---\n\n");
 
   const groundingRules =

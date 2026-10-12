@@ -110,6 +110,7 @@ test('first answer can identify an unread part before the existing read loop', a
     const body=JSON.parse(init.body);calls++;
     if(calls===1){
       assert.ok(body.messages[0].content.includes(JSON.stringify(dates)));
+      assert.ok(body.messages.at(-1).content.includes('本来源正文有截断'));
       return firstAnswer(true,'Beta 的条件在所给片段中未提供，需要补读命中的原文。');
     }
     return calls===2 ? stream('read',{date:dates[0]}) : stream('finish',{reason:'sufficient_evidence'});

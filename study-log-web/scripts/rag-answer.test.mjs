@@ -12,6 +12,17 @@ test('prompt preserves range piece section context while citation identity stays
   const result=normalizeRagAnswer('查阅Beta[S1]',[item]);assert.equal(result.citations[0].heading,null);assert.equal(result.citations[0].contentHash,item.contentHash);
 });
 
+test('prompt ties truncation to its source without labelling other excerpts complete', () => {
+  const items=[{...source('S1'),content:'部分条件',truncated:true},{...source('S2',1),content:'其他证据',truncated:false}];
+  const body=buildRagMessages('条件是什么？',[],items).at(-1).content;
+  const first=body.slice(body.indexOf('[S1]'),body.indexOf('\n\n---\n\n'));
+  const second=body.slice(body.indexOf('[S2]'));
+  assert.match(first,/本来源正文有截断/);
+  assert.doesNotMatch(second,/本来源正文有截断|完整小节|完整日志/);
+  assert.equal(items[0].content,'部分条件');
+  assert.equal(items[0].contentHash,'hash-0');
+});
+
 test("citation numbering follows first use and preserves exact source identity", () => {
   const first = source("S1"), second = source("S2", 1);
   const result = normalizeRagAnswer("结论[S2]，再次[S2]，另一结论[S1]，不存在[S99]。", [first, second]);

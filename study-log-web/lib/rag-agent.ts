@@ -93,12 +93,11 @@ export async function supplementEvidence(question: string, plan: RagRetrievalPla
         execute: async ({ query }) => {
           if (noProgress) return { stopped: true };
           onStatus("正在补充查找相关记录");
-          const before = run.contexts.length;
-          await collectRagEvidence(query, { ...plan, strategy: "relevance" }, run, mcp);
-          noProgress ||= run.contexts.length === before;
+          const addedSourceIds = await collectRagEvidence(query, { ...plan, strategy: "relevance" }, run, mcp);
+          noProgress ||= addedSourceIds.length === 0;
           if (noProgress) run.stopReason ||= "no_new_evidence";
-          lastTool = { name: "search", addedSourceIds: run.contexts.slice(before).map(item => item.sourceId), stopped: noProgress };
-          return { added: run.contexts.slice(before), coverage: run.report() };
+          lastTool = { name: "search", addedSourceIds, stopped: noProgress };
+          return { added: run.contexts.filter(item => addedSourceIds.includes(item.sourceId)), coverage: run.report() };
         } }),
       read: tool({ description: "补齐已命中但截断的原文，或读取该记录中的后续线索；date从availableReadDates选择。只读已有日志。",
         inputSchema: jsonSchema<{ date: string }>({ type: "object", properties: { date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" } }, required: ["date"], additionalProperties: false }, { validate: value => {
@@ -109,12 +108,11 @@ export async function supplementEvidence(question: string, plan: RagRetrievalPla
         execute: async ({ date }) => {
           if (noProgress || !isValidLogDate(date) || !availableReadDates().includes(date)) return { stopped: true };
           onStatus("正在读取相关日志的上下文");
-          const before = run.contexts.length;
-          await collectRagEvidence(question, { strategy: "timeline_summary", dateFrom: date, dateTo: date }, run, mcp);
-          noProgress ||= run.contexts.length === before;
+          const addedSourceIds = await collectRagEvidence(question, { strategy: "timeline_summary", dateFrom: date, dateTo: date }, run, mcp);
+          noProgress ||= addedSourceIds.length === 0;
           if (noProgress) run.stopReason ||= "no_new_evidence";
-          lastTool = { name: "read", addedSourceIds: run.contexts.slice(before).map(item => item.sourceId), stopped: noProgress };
-          return { added: run.contexts.slice(before), coverage: run.report() };
+          lastTool = { name: "read", addedSourceIds, stopped: noProgress };
+          return { added: run.contexts.filter(item => addedSourceIds.includes(item.sourceId)), coverage: run.report() };
         } })
     }
   });

@@ -281,6 +281,30 @@ test('finish remains terminal when another tool in the same step completes later
   }
 });
 
+test('an empty concurrent search cannot claim sources added by another search', async t => {
+  const mcp=await fixture(t),original=globalThis.fetch;
+  globalThis.fetch=async(input,init)=>{
+    if(typeof init?.body==='string' && init.body.includes('UnrecordedTopic'))await new Promise(resolve=>setTimeout(resolve,80));
+    return original(input,init);
+  };
+  t.after(()=>{globalThis.fetch=original;});
+  const run=new EvidenceRun(new AbortController().signal);let decisions=0;
+  const model=createAgentModel(config,async()=>{
+    decisions++;if(decisions>1)return stream('finish',{reason:'sufficient_evidence'});
+    const tool_calls=['Alpha','UnrecordedTopic'].map((query,index)=>({index,id:`lookup-${index}`,type:'function',function:{name:'search',arguments:JSON.stringify({query})}}));
+    return new Response('data: '+JSON.stringify({choices:[{index:0,delta:{tool_calls},finish_reason:null}]})+'\n\ndata: '+JSON.stringify({choices:[{index:0,delta:{},finish_reason:'tool_calls'}]})+'\n\ndata: [DONE]\n\n',{headers:{'content-type':'text/event-stream'}});
+  });
+  await supplementEvidence('Alpha的条件是什么？',{strategy:'relevance'},run,mcp,model,()=>{});
+  assert.equal(decisions,1);assert.equal(run.calls,2);assert.equal(run.contexts.length,1);
+  assert.equal(run.stopReason,'no_new_evidence');
+  const shared=new EvidenceRun(new AbortController().signal);
+  const [hit,empty]=await Promise.all([
+    collectRagEvidence('Alpha',{strategy:'relevance'},shared,mcp),
+    collectRagEvidence('UnrecordedTopic',{strategy:'relevance'},shared,mcp)
+  ]);
+  assert.deepEqual(hit,['S1']);assert.deepEqual(empty,[]);
+});
+
 test('a provider selecting an unavailable read cannot execute a duplicate MCP request', async t => {
   const mcp = await fixture(t), run = new EvidenceRun(new AbortController().signal);
   await collectRagEvidence('Alpha', { strategy:'timeline_summary',dateFrom:'2026-09-01',dateTo:'2026-09-01' },run,mcp);

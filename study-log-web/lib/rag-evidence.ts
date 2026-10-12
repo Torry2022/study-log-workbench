@@ -93,7 +93,13 @@ type Readers = {
   read: (range: { dateFrom: string; dateTo: string; cursor?: string }, signal: AbortSignal, config: McpConfig) => Promise<RangePage>;
 };
 export async function collectRagEvidence(query: string, plan: RagRetrievalPlan, run: EvidenceRun, config: McpConfig,
-  readers: Readers = { search: retrieveStudyLogContexts, read: readStudyLogRange }): Promise<void> {
+  readers: Readers = { search: retrieveStudyLogContexts, read: readStudyLogRange }): Promise<string[]> {
+  const addedSourceIds: string[] = [];
+  const register = (items: RagRetrievedContext[]) => {
+    const before = run.contexts.length;
+    run.add(items);
+    addedSourceIds.push(...run.contexts.slice(before).map(item => item.sourceId));
+  };
   const scopes = plan.ranges || [{ dateFrom: plan.dateFrom, dateTo: plan.dateTo }];
   for (const range of scopes) {
     const coverage: ScopeCoverage = { ...range, totalDays: null, readDates: [], status: "search" };
@@ -109,7 +115,7 @@ export async function collectRagEvidence(query: string, plan: RagRetrievalPlan, 
           run.signal.throwIfAborted();
           if (revision && revision !== page.coverage.revision) throw new Error("Source changed");
           revision = page.coverage.revision; coverage.totalDays = page.coverage.totalDays;
-          run.add(page.contexts);
+          register(page.contexts);
           coverage.readDates = [...new Set([...coverage.readDates, ...page.coverage.completedDates])];
           cursor = page.coverage.nextCursor || undefined;
           if (!cursor) coverage.status = page.coverage.totalDays === 0 ? "empty" : run.sourceChanged || run.stopReason === "evidence_limit" || coverage.readDates.length !== coverage.totalDays ? "partial" : "complete";
@@ -121,9 +127,10 @@ export async function collectRagEvidence(query: string, plan: RagRetrievalPlan, 
       if (!run.take("retrieve_contexts", [query, scoped])) { coverage.status = "partial"; continue; }
       const result = await readers.search(query, scoped, run.signal, config);
       run.signal.throwIfAborted();
-      run.add(result.contexts);
+      register(result.contexts);
       coverage.readDates = [...new Set(result.contexts.map(item => item.date))];
       if (result.context.truncated || result.contexts.some(item => item.truncated)) { coverage.status = "partial"; run.limited = true; }
     }
   }
+  return addedSourceIds;
 }

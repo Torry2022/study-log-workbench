@@ -40,6 +40,7 @@ async function fixture(t) {
         return reply({ choices: [{ message: { content: JSON.stringify(contextualizing ? { query: state.rewritten || "原文哪里提到合成证据？" } : { strategy: "timeline_summary", dateFrom: null, dateTo: null }) }, finish_reason: "stop" }] });
       }
       res.setHeader("content-type", "text/event-stream");
+      if(state.modelFrame){res.end(`data: ${JSON.stringify(state.modelFrame)}\n\n`);return;}
       res.end(`data: ${JSON.stringify({ choices: [{ delta: { content: state.answer || "合成回答[S1]" } }] })}\n\n${state.broken ? "" : "data: [DONE]\n\n"}`);
     } catch { res.destroy(); }
   });
@@ -52,6 +53,15 @@ async function fixture(t) {
 async function events(stream) {
   return (await new Response(stream).text()).trim().split("\n\n").filter(Boolean).map(block => ({ event: block.split("\n")[0].slice(7), data: JSON.parse(block.split("\n").slice(1).join("\n").slice(6)) }));
 }
+
+test('query error diagnostics retain supplied usage for truncated final generation',async t=>{
+  const {state,config}=await fixture(t);
+  state.modelFrame={choices:[{finish_reason:'length'}],usage:{prompt_tokens:42,completion_tokens:21}};
+  const values=await events(query.createRagQueryStream({question:'合成证据具体是什么？',history:[],mode:'logs_only'},config,new AbortController().signal));
+  assert.equal(values.at(-1).event,'error');assert.equal(values.at(-1).data.code,'AI_OUTPUT_TRUNCATED');
+  assert.deepEqual(values.at(-1).data.diagnostics.usage,[{model:'main-mock',inputTokens:42,outputTokens:21}]);
+  assert.ok(!values.some(value=>value.event==='done'));
+});
 
 test("a changed range revision rejects the query before answer generation", async t => {
   const { state, config } = await fixture(t);

@@ -65,11 +65,16 @@ export async function streamRagAnswer(config: ChatConfig, messages: RagPromptMes
         }
         if (done) { if (buffer) line(buffer); dispatch(); break; }
       }
-    } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
+    } finally {
+      await reader.cancel().catch(() => {}); reader.releaseLock();
+      // Received usage is charge information, independent of answer completion.
+      // Do not wait for a provider tail after a terminal error just to obtain it.
+      if (usage !== undefined) config.onUsage?.(readChatUsage(usage));
+    }
     signal.throwIfAborted();
     if (!completed) throw new AiChatError("AI_STREAM_INTERRUPTED", "模型响应提前中断，当前内容尚未完成，请重试");
     if (!answer.trim()) throw new AiChatError("AI_EMPTY_RESPONSE", "模型没有返回有效正文，请重试");
-    config.onUsage?.(readChatUsage(usage));
+    if (usage === undefined) config.onUsage?.(readChatUsage(undefined));
     return answer.trim();
   } catch (error) {
     if (options.signal?.aborted) throw new AiChatError("AI_CANCELLED", "已取消回答", 499);

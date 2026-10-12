@@ -115,6 +115,34 @@ test("model never treats truncated, malformed, filtered, empty or excessive stre
   ]) { body = value; await assert.rejects(streamRagAnswer(chat(url), [], () => {}), { code }); }
 });
 
+test('failed streams report received usage once without draining a stalled provider', async t => {
+  let finish='length';
+  const url=await server(t,async(req,res)=>{
+    await json(req);res.setHeader('content-type','text/event-stream');
+    res.write(`data: ${JSON.stringify({choices:[{finish_reason:finish}],usage:{prompt_tokens:31,completion_tokens:17}})}\n\n`);
+    // The transport must reject immediately, without waiting for a usage tail or DONE.
+  });
+  for(const [reason,code] of [['length','AI_OUTPUT_TRUNCATED'],['content_filter','AI_OUTPUT_INCOMPLETE']]) {
+    finish=reason;const usage=[],deltas=[];
+    await assert.rejects(streamRagAnswer({...chat(url),onUsage:value=>usage.push(value)},[],value=>deltas.push(value),{timeoutMs:500}),{code});
+    assert.deepEqual(usage,[{inputTokens:31,outputTokens:17}]);assert.deepEqual(deltas,[]);
+  }
+});
+
+test('usage received before an interrupted stream is retained, success does not double count', async t => {
+  let complete=false;
+  const url=await server(t,async(req,res)=>{
+    await json(req);res.setHeader('content-type','text/event-stream');
+    res.end(`data: ${JSON.stringify({choices:[],usage:{prompt_tokens:9,completion_tokens:4}})}\n\n${event('合成回答')}${complete?'data: [DONE]\n\n':''}`);
+  });
+  for(const success of [false,true]) {
+    complete=success;const usage=[];
+    const call=streamRagAnswer({...chat(url),onUsage:value=>usage.push(value)},[],()=>{});
+    if(success)assert.equal(await call,'合成回答');else await assert.rejects(call,{code:'AI_STREAM_INTERRUPTED'});
+    assert.deepEqual(usage,[{inputTokens:9,outputTokens:4}]);
+  }
+});
+
 test("model abort/deadline cancel network and provider bodies are not reflected", async t => {
   let behavior = "stall", started;
   const url = await server(t, async (req, res) => { await json(req); if (behavior === "failure") { res.writeHead(401); res.end("synthetic-key-do-not-echo"); return; } res.setHeader("content-type", "text/event-stream"); res.write(event("first")); started?.(); });

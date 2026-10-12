@@ -1,11 +1,49 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { KeywordRetriever, buildSectionChunks, tokenize } from "../src/retrieval.mjs";
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { KeywordRetriever, HybridRetriever, buildSectionChunks, tokenize } from "../src/retrieval.mjs";
 import { parseDayBlocks } from "../src/markdown-source.mjs";
 
 function block(date, body) {
   return parseDayBlocks(`## ${date}\n\n${body}`, `${date.slice(0, 7)}_学习日志.md`)[0];
 }
+
+test('explicit parenthetical object names prioritize the specific object without hiding a referenced rule', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'retrieval-object-'));
+  t.after(async () => { assert.equal(path.dirname(root), path.resolve(os.tmpdir())); assert.match(path.basename(root), /^retrieval-object-/); await fs.rm(root, {recursive:true,force:true}); });
+  const blocks = [
+    block('2026-06-01', '### 实践(霁川)\n\n霁川 Agent 问答架构暂未实施。Agent 问答架构仍在评估。'),
+    block('2026-09-01', '### 实践（霁川客户端）\n\n霁川客户端问答已上线，下一步参照蓝桥规则。'),
+    block('2026-09-02', '### 蓝桥规则\n\n霁川客户端问答采用此规则：来源一致才允许继续。')
+  ];
+  const hybridOptions = {logRoot:path.join(root,'data'),indexRoot:path.join(root,'index'),embedding:{apiKey:''},reranker:{apiKey:''},rerankEnabled:false};
+  for (const retriever of [new KeywordRetriever(), new HybridRetriever(hybridOptions), new HybridRetriever({...hybridOptions,rerankEnabled:true,rerankClient:{enabled:true,model:'synthetic',rerank:async (_query, documents) => documents.map((_,index)=>({index,score:index})).reverse()}})]) {
+    const result = await retriever.retrieveContexts(blocks, '霁川的客户端 Agent 问答架构目前如何？');
+    assert.equal(result.contexts[0]?.date, '2026-09-01');
+    assert.ok(result.contexts.some(item => item.date === '2026-09-02'));
+    assert.equal(result.contexts[0].heading, '实践（霁川客户端）');
+    const parent = await retriever.retrieveContexts(blocks, '霁川 Agent 问答架构？');
+    assert.ok(parent.contexts.some(item => item.date === '2026-06-01'));
+    const compared = await retriever.retrieveContexts(blocks, '霁川和霁川客户端的问答有哪些不同？');
+    assert.ok(compared.contexts.some(item => item.date === '2026-06-01'));
+    assert.ok(compared.contexts.some(item => item.date === '2026-09-01'));
+    const dated = await retriever.retrieveContexts(blocks, '霁川的客户端 Agent 问答架构？', {dateTo:'2026-06-30'});
+    assert.ok(dated.contexts.every(item => item.date === '2026-06-01'));
+    const literal = await retriever.retrieveContexts(blocks, 'Agent', {matchMode:'literal',literalQuery:'Agent'});
+    assert.ok(literal.contexts.every(item => item.date === '2026-06-01'));
+  }
+});
+
+test('an explicitly named plain rule is not displaced by many matching object headings', async () => {
+  const blocks = Array.from({length:12}, (_,index)=>block(`2026-09-${String(index+1).padStart(2,'0')}`, `### 实践(霁川客户端)\n\n霁川客户端问答参考蓝桥规则，第${index+1}天继续处理。`));
+  blocks.push(block('2026-09-18','### 蓝桥规则\n\n来源一致且经过审核才能继续，条件不满足不能继续。'));
+  const result = await new KeywordRetriever().retrieveContexts(blocks, '霁川的客户端问答采用蓝桥规则吗？', {maxChunks:2});
+  assert.equal(result.contexts.length,2);
+  assert.ok(result.contexts.some(item=>item.heading==='蓝桥规则'));
+  assert.ok(result.contexts.some(item=>item.heading==='实践(霁川客户端)'));
+});
 
 test('a long leading section cannot consume the context allowance for a later matching rule', async () => {
   // Isolate context packing from ranking: both sections match, with the long one first.
@@ -29,6 +67,20 @@ test('a long leading section cannot consume the context allowance for a later ma
   const one = await retriever.retrieveContexts(blocks, 'Alpha流程 Beta规则', { maxChars: 1600, maxChunks: 1 });
   assert.equal(one.contexts.length, 1);
   assert.equal(one.contexts[0].content.length, 1600);
+});
+
+test('explicit heading names are literal and respect identifier boundaries', async () => {
+  const retriever = new KeywordRetriever();
+  const blocks = [
+    block('2026-09-01', '### 实践(Client[2])\n\n来源一致才允许继续。'),
+    block('2026-09-02', '### 实践(Client2)\n\nClient2 Client2 规则已经更新。'),
+    block('2026-09-03', '### 实践(Alpha)\n\nAlphabet 调查暂未完成。'),
+    block('2026-09-04', '### 实践(Alphabet)\n\nAlphabet 调查已完成。')
+  ];
+  const literal = await retriever.retrieveContexts(blocks, 'Client[2] 的规则是什么？', {maxChunks:1});
+  assert.equal(literal.contexts[0]?.heading, '实践(Client[2])');
+  const identifier = await retriever.retrieveContexts(blocks, 'Alphabet 调查进展？', {maxChunks:1});
+  assert.equal(identifier.contexts[0]?.heading, '实践(Alphabet)');
 });
 
 test('day completeness requires every original section including preamble, with intact bodies', async () => {

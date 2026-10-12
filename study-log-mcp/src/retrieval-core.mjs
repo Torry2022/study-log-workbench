@@ -372,6 +372,27 @@ function normalizedContent(value) {
   return stripMarkdownInline(value).normalize("NFKC").toLowerCase();
 }
 
+function preferExplicitHeadingNames(matches, input, eligibleIds) {
+  const eligible = () => eligibleIds ? matches.filter(match => eligibleIds.has(match.chunk.id)) : matches;
+  const normalize = value => String(value || '').normalize('NFKC').toLowerCase().replace(/\s+/g, '').replace(/的/g, '');
+  const query = normalize(input);
+  const aliases = new Set(matches.flatMap(({ chunk }) => [...String(chunk.heading || '').normalize('NFKC').matchAll(/\(([^()]*)\)/g)].map(match => normalize(match[1])).filter(Boolean)));
+  if (!aliases.size) return eligible();
+  const names = new Set([...aliases, ...matches.map(({chunk}) => normalize(chunk.heading)).filter(Boolean)]);
+  // Prefer the complete name at each occurrence; a comparison may name both.
+  const patterns = [...names].sort((a, b) => b.length - a.length).map(name => `${/[a-z0-9]/.test(name[0]) ? '(?<![a-z0-9])' : ''}${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}${/[a-z0-9]/.test(name.at(-1)) ? '(?![a-z0-9])' : ''}`);
+  const explicit = new Set();
+  for (const match of query.matchAll(new RegExp(patterns.join('|'), 'g'))) explicit.add(match[0]);
+  // A shared short name alone does not choose among known longer variants.
+  for (const name of explicit) if (aliases.has(name) && [...aliases].some(other => other !== name && other.includes(name) && !explicit.has(other))) explicit.delete(name);
+  if (![...explicit].some(name => aliases.has(name) || /\(/.test(name))) return eligible();
+  const nameFor = match => explicit.has(normalize(match.chunk.heading)) ? normalize(match.chunk.heading) : [...String(match.chunk.heading || '').normalize('NFKC').matchAll(/\(([^()]*)\)/g)].map(item => normalize(item[1])).find(name => explicit.has(name));
+  const preferred = matches.filter(match => nameFor(match));
+  const order = new Map([...new Set(preferred.map(nameFor))].map((name, index) => [name, index]));
+  // Keep explicitly named sources even below the weak-score cutoff; retain other eligible evidence.
+  return [...roundRobinBy(preferred, nameFor, (a, b) => order.get(a) - order.get(b)), ...eligible().filter(match => !nameFor(match))];
+}
+
 function isNearDuplicateContent(value, selectedValues) {
   const normalized = normalizedContent(value);
   if (!normalized) return true;
@@ -391,4 +412,4 @@ function isNearDuplicateContent(value, selectedValues) {
 }
 
 
-export { RRF_K, MIN_RELATIVE_FUSION_SCORE, MIN_CONTEXT_CHARS, DEFAULT_CONTEXT_CHARS, MAX_CONTEXT_CHARS, hash, makeSnippet, tokenizeOccurrences, countTerms, buildLexicalCorpus, lexicalScore, normalizeDate, filterBlocksByDateRange, normalizeStrategy, sectionKey, mergeSectionMatches, rankLiteralSections, orderMatchesForStrategy, normalizedContent, isNearDuplicateContent };
+export { RRF_K, MIN_RELATIVE_FUSION_SCORE, MIN_CONTEXT_CHARS, DEFAULT_CONTEXT_CHARS, MAX_CONTEXT_CHARS, hash, makeSnippet, tokenizeOccurrences, countTerms, buildLexicalCorpus, lexicalScore, normalizeDate, filterBlocksByDateRange, normalizeStrategy, sectionKey, mergeSectionMatches, rankLiteralSections, orderMatchesForStrategy, normalizedContent, isNearDuplicateContent, preferExplicitHeadingNames };

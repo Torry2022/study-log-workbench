@@ -4,6 +4,7 @@ import { parseSections } from "./markdown-source.mjs";
 import { cosineSimilarity } from "./retrieval-core.mjs";
 import { EmbeddingClient, RerankClient, ProviderError, checkCancelled } from "./providers.mjs";
 import { VectorIndex, IndexError } from "./vector-index.mjs";
+import { preferExplicitHeadingNames } from "./retrieval-core.mjs";
 export { buildSectionChunks, tokenize } from "./retrieval-core.mjs";
 
 function validateInput(input, options) {
@@ -93,7 +94,8 @@ export class KeywordRetriever {
       const found = new Set(ranked.map(match => match.chunk.id));
       for (const chunk of chunks) if (!found.has(chunk.id)) ranked.push({ chunk, keywordScore: 0, semanticScore: 0, matchedTerms: [], score: 0 });
     }
-    const selected = strategy === "timeline_summary" ? ranked : this.filterWeakMatches(ranked, strategy === "relevance" ? MIN_RELATIVE_FUSION_SCORE : 0.4);
+    let selected = strategy === "timeline_summary" ? ranked : this.filterWeakMatches(ranked, strategy === "relevance" ? MIN_RELATIVE_FUSION_SCORE : 0.4);
+    if (strategy === "relevance") selected = preferExplicitHeadingNames(ranked, input, new Set(selected.map(match => match.chunk.id)));
     return { ranked: orderMatchesForStrategy(selected, strategy), retrieval: { mode: "lexical_fallback", strategy, model: null, dimensions: null, indexUpdatedAt: null } };
   }
 
@@ -256,6 +258,7 @@ export class HybridRetriever extends KeywordRetriever {
       for (const chunk of chunks) if (!found.has(chunk.id)) ranked.push({ chunk, keywordScore: 0, semanticScore: 0, matchedTerms: [], score: 0 });
     }
     let selected = strategy === "timeline_summary" ? ranked : this.filterWeakMatches(ranked, strategy === "relevance" ? MIN_RELATIVE_FUSION_SCORE : 0.4);
+    if (strategy === "relevance") selected = preferExplicitHeadingNames(ranked, input, new Set(selected.map(match => match.chunk.id)));
     if (options.rerank ?? this.rerankEnabled) {
       let rerank = { status: "skipped", model: this.rerankClient.model || null, candidateCount: 0, latencyMs: 0 };
       if (strategy !== "relevance") rerank.reason = "strategy_not_supported";
@@ -276,6 +279,7 @@ export class HybridRetriever extends KeywordRetriever {
       retrieval.rerank = rerank;
     }
     checkCancelled(options.signal);
+    if (strategy === "relevance") selected = preferExplicitHeadingNames(selected, input);
     return { ranked: orderMatchesForStrategy(selected, strategy), retrieval };
   }
 }

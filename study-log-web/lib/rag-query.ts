@@ -53,6 +53,13 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
           send("done", { answer: "无法确定你指的是哪条来源。请打开对应的日志，或补充日期和小节标题后再提问。", citations: [], diagnostics });
           close(); return;
         }
+        const originalRanges = original.ranges || [{ dateFrom: original.dateFrom, dateTo: original.dateTo }];
+        if (referenced && !originalRanges.some(range => (!range.dateFrom || referenced.date >= range.dateFrom) && (!range.dateTo || referenced.date <= range.dateTo))) {
+          diagnostics.timings.totalMs = Math.round(performance.now() - started);
+          send("sources", { citations: [] });
+          send("done", { answer: "这条历史来源不在你指定的日期范围内。请确认是查看这条来源，还是只查该日期范围内的记录。", citations: [], diagnostics });
+          close(); return;
+        }
         if (input.history.length && !referenced) {
           send("status", { stage, message: "正在理解问题" });
           try { query = await contextualizeRagQuestion(input.question, input.history, signal, config.lightChat); diagnostics.contextualized = query !== input.question; }

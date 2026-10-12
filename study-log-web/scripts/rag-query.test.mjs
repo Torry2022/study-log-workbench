@@ -70,6 +70,20 @@ test("routing matrix: invalid explicit dates request correction without unbounde
   assert.equal(state.requests.length, 0);
 });
 
+test('source pointers outside explicit dates request clarification without reading other dates', async t => {
+  const {state,config}=await fixture(t);
+  const history=[{role:'assistant',content:'旧回答',sourceRefs:[
+    {date:'2026-08-01',fileName:'2026-08_学习日志.md',heading:null,contentHash:'a'.repeat(64)},
+    {date:'2026-08-02',fileName:'2026-08_学习日志.md',heading:null,contentHash:'b'.repeat(64)}
+  ]}];
+  for(const question of ['刚才第二条来源，只看2026年十月的记录。','刚才第二条来源，限定2026年十月并找`新主题`原文。','刚才第二条来源，只查2026-08-01和2026-08-03的记录。']){
+    const values=await events(query.createRagQueryStream({question,history,mode:'logs_only'},config,new AbortController().signal));
+    assert.equal(values.at(-1).event,'done');assert.match(values.at(-1).data.answer,/指定.*日期范围/);
+    assert.deepEqual(values.at(-1).data.citations,[]);
+  }
+  assert.equal(state.requests.length,0);
+});
+
 test("followup matrix: rewriting cannot add old dates to new literal lookups or event-date questions", async t => {
   const { state, config } = await fixture(t);
   state.rewritten = "2026年九月哪里提到过合成证据？";

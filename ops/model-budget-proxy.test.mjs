@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { startBudgetProxy } from "./model-budget-proxy.mjs";
+import { requestChat } from "../study-log-web/lib/ai-chat.ts";
 
 test('bounded Chinese material is sent intact and oversized bodies are rejected before charging', async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'study-log-budget-utf8-'));
@@ -99,6 +100,37 @@ test("cancelled planner stops its upstream, preserves spending reservation and p
     await proxy?.close();
     globalThis.fetch = clientFetch;
     if (path.dirname(directory) === os.tmpdir()) await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('chat timeout after upstream headers cancels the body and releases the next request', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'study-log-budget-body-cancel-'));
+  const clientFetch = globalThis.fetch;
+  let proxy, bodyController, stopped, calls = 0;
+  const aborted = new Promise(resolve => { stopped = resolve; });
+  globalThis.fetch = async (url, options) => {
+    if (String(url).startsWith('http://127.0.0.1:')) return clientFetch(url, options);
+    if (++calls === 1) {
+      return new Response(new ReadableStream({ start(controller) {
+        bodyController = controller;
+        options.signal.addEventListener('abort', () => { stopped(); controller.error(options.signal.reason); }, { once: true });
+      } }), { headers: { 'content-type': 'application/json' } });
+    }
+    return Response.json({ choices: [{ message: { content: '合成回答' } }], usage: { prompt_tokens: 1, completion_tokens: 1 } });
+  };
+  try {
+    proxy = await startBudgetProxy({ apiKey: 'synthetic', apiUrl: 'https://api.deepseek.com/chat/completions', model: 'deepseek-flash', budgetCny: 1, ledgerFile: path.join(directory, 'ledger.jsonl') });
+    await assert.rejects(requestChat({ baseUrl: proxy.url, apiKey: proxy.token, model: 'deepseek-flash' }, [{ role: 'user', content: '合成' }], { timeoutMs: 100 }), { code: 'AI_TIMEOUT' });
+    await Promise.race([aborted, new Promise((_resolve, reject) => setTimeout(() => reject(new Error('Body cancellation did not reach upstream')), 1000))]);
+    await proxy.settled();
+    assert.equal(proxy.report().records[0].status, 'cancelled');
+    assert.equal(await requestChat({ baseUrl: proxy.url, apiKey: proxy.token, model: 'deepseek-flash' }, [{ role: 'user', content: '合成' }], { timeoutMs: 1000 }), '合成回答');
+    assert.equal(calls, 2);
+  } finally {
+    bodyController?.error(new Error('synthetic cleanup'));
+    await proxy?.close(); globalThis.fetch = clientFetch;
+    assert.equal(path.dirname(directory), path.resolve(os.tmpdir())); assert.match(path.basename(directory), /^study-log-budget-body-cancel-/);
+    await fs.rm(directory, { recursive: true, force: true });
   }
 });
 

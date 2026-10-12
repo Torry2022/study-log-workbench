@@ -84,7 +84,13 @@ export async function supplementEvidence(question: string, plan: RagRetrievalPla
             ? { success: true, value: item as { date: string; missingPoint: string } } : { success: false, error: new Error("Invalid read arguments") };
         } }),
         execute: async ({ date }) => {
-          if (noProgress || !isValidLogDate(date) || !availableReadDates().includes(date)) return { stopped: true };
+          if (noProgress) return { stopped: true };
+          if (!isValidLogDate(date) || !availableReadDates().includes(date)) {
+            noProgress = true; run.limited = true; run.stopReason ||= "invalid_read_date";
+            lastTool = { name: "read", addedSourceIds: [], stopped: true };
+            onStatus("补充读取未完成，正在根据已读记录回答");
+            return { stopped: true };
+          }
           onStatus("正在读取相关日志的上下文");
           const addedSourceIds = await collectRagEvidence(question, { strategy: "timeline_summary", dateFrom: date, dateTo: date }, run, mcp);
           noProgress ||= addedSourceIds.length === 0;

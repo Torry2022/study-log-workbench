@@ -311,6 +311,35 @@ test('an empty concurrent search cannot claim sources added by another search', 
   assert.deepEqual(hit,['S1']);assert.deepEqual(empty,[]);
 });
 
+test('a valid but unavailable date stops the active read loop before a second decision, retaining evidence for final generation', async t => {
+  const mcp=await fixture(t,'## 2026-09-01\n\n### Alpha\nAlpha补充条件记在正文末。\n'+ '合成背景。'.repeat(8000)+'\n只有来源一致才能保存。');
+  const savedFetch=globalThis.fetch, keys=['RAG_AGENT_ENABLED','RAG_AGENT_TOOL_CALLING_VERIFIED','RAG_JEV_ENABLED'];
+  const previous=Object.fromEntries(keys.map(key=>[key,process.env[key]]));
+  t.after(()=>{globalThis.fetch=savedFetch;for(const [key,value] of Object.entries(previous)){if(value===undefined)delete process.env[key];else process.env[key]=value;}});
+  Object.assign(process.env,{RAG_AGENT_ENABLED:'true',RAG_AGENT_TOOL_CALLING_VERIFIED:'true',RAG_JEV_ENABLED:'false'});
+  let modelCalls=0,decisions=0;
+  globalThis.fetch=async(url,init)=>{
+    if(String(url)!==config.baseUrl)return savedFetch(url,init);
+    modelCalls++;const body=JSON.parse(init.body);
+    if(body.tools){
+      decisions++;assert.ok(body.tools.some(item=>item.function.name==='read'));
+      const state=JSON.parse(body.messages.at(-1).content.split('可用工具状态：').at(-1));
+      assert.deepEqual(state.availableReadDates,['2026-09-01']);
+      return stream('read',{date:'2026-11-01'},`invalid-date-${decisions}`);
+    }
+    assert.ok(body.messages.at(-1).content.includes('Alpha补充条件'));
+    assert.ok(body.messages[0].content.includes('"limited":true'));
+    return plain('目前只提供了Alpha的片段，补查没有完成。[S1]');
+  };
+  const raw=await new Response(createRagQueryStream({question:'2026-09-01的Alpha补充条件是什么？',mode:'logs_only',history:[]},{chat:config,lightChat:config,mcp},new AbortController().signal)).text();
+  const last=raw.trim().split('\n\n').at(-1);assert.match(last,/^event: done/);
+  const result=JSON.parse(last.split('\n')[1].slice(6));
+  assert.equal(decisions,1);assert.equal(modelCalls,2);
+  assert.equal(result.diagnostics.agent.stopReason,'invalid_read_date');
+  assert.equal(result.diagnostics.toolCalls,1);assert.equal(result.citations[0].date,'2026-09-01');
+  assert.ok(!raw.includes('内部文本'));
+});
+
 test('a provider selecting an unavailable read cannot execute a duplicate MCP request', async t => {
   const mcp = await fixture(t), run = new EvidenceRun(new AbortController().signal);
   await collectRagEvidence('Alpha', { strategy:'timeline_summary',dateFrom:'2026-09-01',dateTo:'2026-09-01' },run,mcp);

@@ -40,7 +40,7 @@ export class EvidenceRun {
   private completeDays = new Map<string, DaySection[]>();
   private dayVersions = new Map<string, string>();
   sourceChanged = false;
-  stopReason?: "tool_budget" | "repeated_query" | "no_new_evidence" | "step_limit" | "decision_output_limit" | "tool_failure" | "evidence_limit" | "sufficient_evidence" | "no_more_leads" | "source_changed";
+  stopReason?: "tool_budget" | "repeated_query" | "no_new_evidence" | "step_limit" | "decision_output_limit" | "tool_failure" | "invalid_read_date" | "evidence_limit" | "sufficient_evidence" | "no_more_leads" | "source_changed";
   readonly requests = new Set<string>();
   readonly signal: AbortSignal;
   constructor(signal: AbortSignal) { this.signal = signal; }

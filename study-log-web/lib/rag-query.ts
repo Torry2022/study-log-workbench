@@ -106,8 +106,6 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
           if (diagnostics.agent.judgment?.support !== "supported" || diagnostics.agent.judgment?.conflict !== "absent") {
             const result = await supplementEvidence(input.question, planned.plan, run, config.mcp, createAgentModel(config.chat), message => send("status", { stage: "retrieving", message }), config.lightChat, { mode: input.mode, history: input.history });
             diagnostics.agent.usage = result.usage; directAnswer = result.answer;
-            if (result.firstPassUsage) diagnostics.agent.firstPassUsage = result.firstPassUsage;
-            if (result.firstPassLimited) diagnostics.agent.firstPassLimited = true;
           }
           diagnostics.agent.stopReason = run.stopReason;
         }

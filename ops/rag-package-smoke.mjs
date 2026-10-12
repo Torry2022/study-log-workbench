@@ -24,23 +24,23 @@ const model = http.createServer(async (req, res) => {
   let raw = ""; for await (const chunk of req) raw += chunk;
   const body = JSON.parse(raw);
   assert.equal(body.model, "synthetic-model");
-  if (!body.stream && body.messages[0].content.includes('needsMoreEvidence')) {
-    modelCalls++;
-    const needsMoreEvidence=body.messages.at(-1).content.includes('当前问题：Gamma');
-    const answer=needsMoreEvidence?'Gamma尚未提供附加说明。':'Alpha条件成立才适用，不适用于所有场景。[S1]';
-    res.setHeader('content-type','application/json');res.end(JSON.stringify({choices:[{message:{role:'assistant',content:firstLimited?'内部首轮截断文本':JSON.stringify({needsMoreEvidence,answer})},finish_reason:firstLimited?'length':'stop'}],usage:{prompt_tokens:10,completion_tokens:5}}));return;
-  }
   if (!body.stream) { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({choices:[{message:{content:'合成问答'}}]})); return; }
   modelCalls++;
-  const state = body.tools ? JSON.parse(body.messages.find(message => message.role === 'user').content) : null;
+  const userText = body.messages.filter(message => message.role === 'user').at(-1).content;
+  const firstTurn = body.tools && userText.includes('可用工具状态：');
+  const state = body.tools ? firstTurn ? { ...JSON.parse(userText.split('可用工具状态：').at(-1)), question: userText.split('\n')[0] } : JSON.parse(userText) : null;
   if (state && state.question.includes('Alpha')) {
     assert.ok(!state.availableReadDates.includes('2026-09-01'));
   }
   if (state && state.question.includes('Gamma') && state.remainingDecisions === 2) {
     assert.ok(state.availableReadDates.includes('2026-09-02'));
   }
+  if (firstTurn && (firstLimited || state.question.includes('Alpha'))) {
+    res.setHeader('content-type','text/event-stream');
+    res.end('data: '+JSON.stringify({choices:[{index:0,delta:{content:firstLimited?'内部首轮截断文本':'Alpha条件成立才适用，不适用于所有场景。[S1]'},finish_reason:firstLimited?'length':'stop'}],usage:{prompt_tokens:10,completion_tokens:5}})+'\n\ndata: [DONE]\n\n'); return;
+  }
   const name = state?.question.includes('Gamma') && state.remainingDecisions === 2 ? 'read' : 'finish';
-  const args = name === 'read' ? {date:'2026-09-02'} : {reason:'sufficient_evidence'};
+  const args = name === 'read' ? {date:'2026-09-02',missingPoint:'Gamma的补充条件'} : {reason:'sufficient_evidence'};
   const provided = body.messages.map(message => message.content).join('\n');
   const gammaSource = [...provided.matchAll(/\[(S\d+)\]\n日志日期：2026-09-02(?:\n小节：[^\n]*)?\n内容：\n([\s\S]*?)\n以上为/g)].find(match => match[2].includes('先确认地址'));
   const delta = body.tools
@@ -64,7 +64,7 @@ try {
   const auth = await (await fetch(`${status.url}/api/auth/app-login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password }) })).json();
   assert.equal(typeof auth.token, "string");
   const checks = [];
-  for (const [question, calls, date] of [["总结2026年9月",1,"2026-09-02"], ["Alpha为什么只在条件成立时适用？",1,"2026-09-01"], ["Gamma的补充条件是什么？",4,"2026-09-02"]]) {
+  for (const [question, calls, date] of [["总结2026年9月",1,"2026-09-02"], ["Alpha为什么只在条件成立时适用？",1,"2026-09-01"], ["Gamma的补充条件是什么？",3,"2026-09-02"]]) {
     const before = modelCalls;
     const response = await fetch(`${status.url}/api/rag/query`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${auth.token}` }, body: JSON.stringify({ question, mode: "logs_only", history: [] }) });
     assert.equal(response.status, 200);
@@ -91,9 +91,9 @@ try {
   const interruptedRaw=await interrupted.text();assert.ok(!interruptedRaw.includes('内部首轮截断文本'));
   const terminal=interruptedRaw.trim().split('\n\n').at(-1);assert.match(terminal,/^event: done/);
   const recovered=JSON.parse(terminal.split('\n')[1].slice(6));
-  assert.equal(recovered.diagnostics.agent.firstPassLimited,true);
-  assert.equal(recovered.diagnostics.agent.firstPassUsage.inputTokens,10);
-  assert.equal(recovered.citations[0].date,'2026-09-01');assert.equal(modelCalls-before,3);
+  assert.equal(recovered.diagnostics.agent.stopReason,'decision_output_limit');
+  assert.equal(recovered.diagnostics.agent.usage.inputTokens,10);
+  assert.equal(recovered.citations[0].date,'2026-09-01');assert.equal(modelCalls-before,2);
   checks.push({firstDecisionLength:true,modelCalls:modelCalls-before,diagnostics:recovered.diagnostics});firstLimited=false;
   assert.ok(toolRequests >= 1); assert.equal(await fs.readFile(file, "utf8"), source);
   await fs.writeFile(path.join(root, "package-check.json"), JSON.stringify({ driverNode: process.version, serviceNode, checks, toolRequests }, null, 2));

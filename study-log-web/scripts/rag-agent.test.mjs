@@ -11,10 +11,11 @@ import { judgeEvidence, validateEvidenceJudgment } from "../lib/rag-jev.ts";
 import { createRagQueryStream } from "../lib/rag-query.ts";
 
 const config = { baseUrl: "https://example.test/custom/endpoint?version=one", apiKey: "synthetic", model: "mock-tools" };
-function firstAnswer(needsMoreEvidence, answer, finish = 'stop') {
-  return new Response(JSON.stringify({ choices: [{ message: { role:'assistant', content:JSON.stringify({needsMoreEvidence,answer}) }, finish_reason:finish }], usage:{prompt_tokens:10,completion_tokens:5,total_tokens:15} }), {headers:{'content-type':'application/json'}});
+function plain(text, finish = 'stop') {
+  return new Response('data: '+JSON.stringify({choices:[{index:0,delta:{role:'assistant',content:text},finish_reason:null}]})+'\n\ndata: '+JSON.stringify({choices:[{index:0,delta:{},finish_reason:finish}],usage:{prompt_tokens:10,completion_tokens:5,total_tokens:15}})+'\n\ndata: [DONE]\n\n',{headers:{'content-type':'text/event-stream'}});
 }
 function stream(tool, args, id = "one") {
+  if (["search", "read"].includes(tool)) args = { ...args, missingPoint: "合成问题中缺少的具体条件" };
   const chunk = delta => `data: ${JSON.stringify({ id: "test", object: "chat.completion.chunk", created: 1, model: "mock-tools", choices: [{ index: 0, delta, finish_reason: null }] })}\n\n`;
   return new Response(chunk({ role: "assistant", content: "内部文本，不可送给用户。" }) + (tool ? chunk({ tool_calls: [{ index: 0, id, type: "function", function: { name: tool, arguments: JSON.stringify(args) } }] }) : "") +
     `data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: tool ? "tool_calls" : "stop" }], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } })}\n\ndata: [DONE]\n\n`, { headers: { "Content-Type": "text/event-stream" } });
@@ -60,9 +61,8 @@ test('ordinary facts answer once, literal lookup bypasses tools, and no leads st
   const server = http.createServer(async (req,res) => {
     let raw=''; for await (const chunk of req) raw+=chunk;
     const body=JSON.parse(raw); calls.push(body);
-    if (!body.stream) {res.setHeader('content-type','application/json');res.end(await firstAnswer(finishReason==='no_more_leads',finishReason==='no_more_leads'?'本次材料没有具体依据。':'Alpha条件成立才适用，不适用于所有场景。[S1]').text());return;}
     res.setHeader('content-type','text/event-stream');
-    if (body.tools) res.end(await stream('finish',{reason:finishReason}).text());
+    if (body.tools) res.end(await plain(finishReason==='no_more_leads'?'本次未找到能回答这个问题的记录。':'Alpha条件成立才适用，不适用于所有场景。[S1]').text());
     else res.end('data: '+JSON.stringify({choices:[{delta:{content:'Alpha条件成立才适用，不适用于所有场景。[S1]'}}]})+'\n\ndata: [DONE]\n\n');
   });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -78,7 +78,7 @@ test('ordinary facts answer once, literal lookup bypasses tools, and no leads st
     return JSON.parse(raw.trim().split('\n\n').at(-1).split('\n')[1].slice(6));
   };
   const fact=await query('Alpha的适用条件是什么？');
-  assert.equal(calls.filter(call=>call.tools).length,0);
+  assert.equal(calls.filter(call=>call.tools).length,1);
   assert.equal(calls.length,1); assert.equal(fact.diagnostics.toolCalls,1);
   assert.equal(fact.diagnostics.agent.stopReason,'sufficient_evidence');
   assert.equal(fact.citations.length,1);
@@ -89,8 +89,8 @@ test('ordinary facts answer once, literal lookup bypasses tools, and no leads st
   assert.equal(literal.diagnostics.agent,undefined);
   calls.length=0; finishReason='no_more_leads';
   const empty=await query('ZerofluxUnrecorded');
-  assert.equal(calls.length,2); assert.ok(calls[1].tools);
-  assert.equal(empty.diagnostics.agent.stopReason,'no_more_leads');
+  assert.equal(calls.length,1); assert.ok(calls[0].tools);
+  assert.equal(empty.diagnostics.agent.stopReason,'sufficient_evidence');
   assert.deepEqual(empty.citations,[]);
   assert.equal(empty.answer,'本次未找到能回答这个问题的记录。');
   assert.ok(empty.diagnostics.coverage.every(scope=>scope.status==='search'));
@@ -109,15 +109,15 @@ test('first answer can identify an unread part before the existing read loop', a
   const model=createAgentModel(config, async (_url,init)=>{
     const body=JSON.parse(init.body);calls++;
     if(calls===1){
-      assert.ok(body.messages[0].content.includes(JSON.stringify(dates)));
+      assert.ok(body.messages.at(-1).content.includes(JSON.stringify(dates)));
       assert.ok(body.messages.at(-1).content.includes('本来源正文有截断'));
-      return firstAnswer(true,'Beta 的条件在所给片段中未提供，需要补读命中的原文。');
+      return stream('read',{date:dates[0]});
     }
-    return calls===2 ? stream('read',{date:dates[0]}) : stream('finish',{reason:'sufficient_evidence'});
+    return stream('finish',{reason:'sufficient_evidence'});
   });
   const result=await supplementEvidence('Alpha 和 Beta 的条件是什么？',{strategy:'relevance'},run,mcp,model,()=>{},undefined,{mode:'logs_only',history:[]});
   assert.equal(result.answer,undefined);
-  assert.equal(calls,3);
+  assert.equal(calls,2);
   assert.ok(run.contexts.some(item=>item.content.includes(tail)));
   assert.equal(run.stopReason,'sufficient_evidence');
 });
@@ -130,9 +130,9 @@ test('first answer uses one primary-model call, preserves modes and refuses filt
   const server=http.createServer(async(req,res)=>{
     let raw='';for await(const chunk of req)raw+=chunk;
     const body=JSON.parse(raw);calls.push(body);
-    assert.equal(body.model,'primary-answer-model');assert.ok(!body.tools);assert.equal(body.temperature,0);
+    assert.equal(body.model,'primary-answer-model');assert.ok(body.tools);assert.equal(body.temperature,0);
     assert.ok(body.messages.some(message=>message.role==='system' && message.content.includes('来源编号')));
-    res.setHeader('content-type','application/json');res.end(await firstAnswer(false,answer,interrupted?'content_filter':'stop').text());
+    res.setHeader('content-type','text/event-stream');res.end(await plain(answer,interrupted?'content_filter':'stop').text());
   });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   t.after(async()=>{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));for(const[key,value]of Object.entries(previous)){if(value===undefined)delete process.env[key];else process.env[key]=value;}});
@@ -153,45 +153,12 @@ test('first answer uses one primary-model call, preserves modes and refuses filt
   assert.match(raw,/event: error/);assert.ok(!raw.includes('event: delta'));assert.ok(!raw.includes(answer));
 });
 
-test('first decision length discards its text and continues bounded tools before final generation', async t => {
-  const mcp=await fixture(t), previous={};
-  for(const key of ['RAG_AGENT_ENABLED','RAG_AGENT_TOOL_CALLING_VERIFIED','RAG_JEV_ENABLED'])previous[key]=process.env[key];
-  Object.assign(process.env,{RAG_AGENT_ENABLED:'true',RAG_AGENT_TOOL_CALLING_VERIFIED:'true',RAG_JEV_ENABLED:'false'});
-  const calls=[];
-  const server=http.createServer(async(req,res)=>{
-    let raw='';for await(const chunk of req)raw+=chunk;
-    const body=JSON.parse(raw);calls.push(body);
-    if(!body.stream){res.setHeader('content-type','application/json');res.end(await firstAnswer(false,'内部截断答案不可显示[S99]','length').text());return;}
-    res.setHeader('content-type','text/event-stream');
-    if(body.tools){
-      const state=JSON.parse(body.messages.find(x=>x.role==='user').content);
-      assert.equal(state.firstPassLimited,true);assert.equal(state.firstPassGap,undefined);
-      assert.equal(state.remainingDecisions,2);assert.equal(state.evidence.length,1);
-      assert.ok(!JSON.stringify(body).includes('内部截断答案'));
-      res.end(await stream('finish',{reason:'sufficient_evidence'}).text());return;
-    }
-    res.end('data: '+JSON.stringify({choices:[{delta:{content:'Alpha条件成立才适用，不适用于所有场景。[S1]'}}]})+'\n\ndata: [DONE]\n\n');
-  });
-  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
-  t.after(async()=>{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));for(const[key,value]of Object.entries(previous)){if(value===undefined)delete process.env[key];else process.env[key]=value;}});
-  const chat={baseUrl:`http://127.0.0.1:${server.address().port}`,apiKey:'synthetic',model:'mock'};
-  const raw=await new Response(createRagQueryStream({question:'Alpha的适用条件是什么？',mode:'logs_only',history:[]},{chat,lightChat:chat,mcp},new AbortController().signal)).text();
-  assert.equal(calls.length,3);assert.ok(!raw.includes('内部截断答案'));assert.ok(!raw.includes('[S99]'));
-  const terminal=raw.trim().split('\n\n').at(-1);assert.match(terminal,/^event: done/);
-  const done=JSON.parse(terminal.split('\n')[1].slice(6));
-  assert.equal(done.diagnostics.agent.firstPassLimited,true);
-  assert.equal(done.diagnostics.agent.firstPassUsage.inputTokens,10);
-  assert.equal(done.diagnostics.agent.stopReason,'sufficient_evidence');
-  assert.equal(done.citations[0].date,'2026-09-01');
-});
-
 test('internal decision length stops tools and answers from retained evidence; filtering still fails', async t => {
   const mcp = await fixture(t), previous = {};
   for (const key of ['RAG_AGENT_ENABLED', 'RAG_AGENT_TOOL_CALLING_VERIFIED', 'RAG_JEV_ENABLED']) { previous[key] = process.env[key]; process.env[key] = key === 'RAG_JEV_ENABLED' ? 'false' : 'true'; }
   let finish = 'length'; const calls = [];
   const server = http.createServer(async (req, res) => {
     let raw = ''; for await (const chunk of req) raw += chunk; const body = JSON.parse(raw); calls.push(body);
-    if (!body.stream) { res.setHeader('content-type', 'application/json'); res.end(await firstAnswer(true, '另一个条件尚未提供。').text()); return; }
     res.setHeader('content-type', 'text/event-stream');
     if (body.tools) {
       res.end(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { reasoning_content: '内部思考不可发布', content: '内部草稿不可发布' }, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: finish }], usage: { prompt_tokens: 10, completion_tokens: 1200, total_tokens: 1210 } })}\n\ndata: [DONE]\n\n`);
@@ -206,32 +173,29 @@ test('internal decision length stops tools and answers from retained evidence; f
   const chat = { baseUrl: `http://127.0.0.1:${server.address().port}`, apiKey: 'synthetic', model: 'mock' };
   const query = () => new Response(createRagQueryStream({ question: 'Alpha的适用条件？', mode: 'logs_only', history: [] }, { chat, lightChat: chat, mcp }, new AbortController().signal)).text();
   const output = await query(), done = JSON.parse(output.trim().split('\n\n').at(-1).split('\n')[1].slice(6));
-  assert.match(output, /event: done/); assert.equal(calls.length, 3);
+  assert.match(output, /event: done/); assert.equal(calls.length, 2);
   assert.equal(done.diagnostics.agent.stopReason, 'decision_output_limit');
   assert.equal(done.diagnostics.toolCalls, 1); assert.equal(done.citations[0].date, '2026-09-01');
   assert.ok(!output.includes('内部思考') && !output.includes('内部草稿'));
   finish = 'content_filter'; calls.length = 0;
-  const filtered = await query(); assert.match(filtered, /event: error/); assert.equal(calls.length, 2);
+  const filtered = await query(); assert.match(filtered, /event: error/); assert.equal(calls.length, 1);
   assert.ok(!filtered.includes('event: delta'));
 });
 
 test('a finish answer after a search cannot bypass separate final generation', async t=>{
   const mcp=await fixture(t),run=new EvidenceRun(new AbortController().signal);let steps=0;
-  const result=await supplementEvidence('Alpha的条件？',{strategy:'relevance'},run,mcp,createAgentModel(config,async(_url,init)=>!JSON.parse(init.body).stream?firstAnswer(true,'缺少Alpha条件。'):++steps===1?stream('search',{query:'Alpha'}):stream('finish',{reason:'sufficient_evidence',answer:'工具中的回答不可发布[S1]'})),()=>{},undefined,{mode:'logs_only',history:[]});
+  const result=await supplementEvidence('Alpha的条件？',{strategy:'relevance'},run,mcp,createAgentModel(config,async(_url,init)=>++steps===1?stream('search',{query:'Alpha'}):stream('finish',{reason:'sufficient_evidence',answer:'工具中的回答不可发布[S1]'})),()=>{},undefined,{mode:'logs_only',history:[]});
   assert.equal(steps,2);assert.equal(result.answer,undefined);assert.equal(run.stopReason,'tool_failure');assert.equal(run.calls,1);
 });
 
-test('first-answer schema failures and provider errors stop before any tool, without retries', async () => {
-  const invalid = ['not JSON', '{}', JSON.stringify({needsMoreEvidence:'false',answer:'错误类型'}), JSON.stringify({needsMoreEvidence:false,answer:' ',extra:true}), JSON.stringify({needsMoreEvidence:false,answer:'x'.repeat(40001)})];
-  for(const text of invalid){
-    let calls=0;const run=new EvidenceRun(new AbortController().signal);
-    await assert.rejects(supplementEvidence('question',{strategy:'relevance'},run,{},createAgentModel(config,async()=>{calls++;return Response.json({choices:[{message:{role:'assistant',content:text},finish_reason:'stop'}]});}),()=>{},undefined,{mode:'logs_only',history:[]}),{code:'AGENT_DECISION_INVALID'});
-    assert.equal(calls,1);assert.equal(run.calls,0);
-  }
+test('oversized direct answers and provider errors fail without tool calls or retries', async () => {
+  let calls=0;const run=new EvidenceRun(new AbortController().signal);
+  await assert.rejects(supplementEvidence('question',{strategy:'relevance'},run,{},createAgentModel(config,async()=>{calls++;return plain('x'.repeat(40001));}),()=>{},undefined,{mode:'logs_only',history:[]}),{code:'AGENT_DECISION_INVALID'});
+  assert.equal(calls,1);assert.equal(run.calls,0);
   for(const status of [401,429,500]){
-    let calls=0;const run=new EvidenceRun(new AbortController().signal);
-    await assert.rejects(supplementEvidence('question',{strategy:'relevance'},run,{},createAgentModel(config,async()=>{calls++;return Response.json({error:{message:'synthetic private provider detail'}},{status});}),()=>{},undefined,{mode:'logs_only',history:[]}),error=>error.code==='AGENT_PROVIDER_FAILED'&&!error.message.includes('private'));
-    assert.equal(calls,1);assert.equal(run.calls,0);
+    let requests=0;const failed=new EvidenceRun(new AbortController().signal);
+    await assert.rejects(supplementEvidence('question',{strategy:'relevance'},failed,{},createAgentModel(config,async()=>{requests++;return Response.json({error:{message:'synthetic private provider detail'}},{status});}),()=>{},undefined,{mode:'logs_only',history:[]}),error=>error.code==='AGENT_PROVIDER_FAILED'&&!error.message.includes('private'));
+    assert.equal(requests,1);assert.equal(failed.calls,0);
   }
 });
 
@@ -248,10 +212,10 @@ test('search and finish in the same model step cannot deliver a pre-search answe
   const mcp=await fixture(t),run=new EvidenceRun(new AbortController().signal);
   await collectRagEvidence('Alpha',{strategy:'relevance'},run,mcp);
   const response=()=>new Response('data: '+JSON.stringify({choices:[{index:0,delta:{tool_calls:[
-    {index:0,id:'search',type:'function',function:{name:'search',arguments:JSON.stringify({query:'Alpha'})}},
+    {index:0,id:'search',type:'function',function:{name:'search',arguments:JSON.stringify({query:'Alpha',missingPoint:'合成缺失条件'})}},
     {index:1,id:'finish',type:'function',function:{name:'finish',arguments:JSON.stringify({reason:'sufficient_evidence',answer:'不应交付[S1]'})}}
   ]},finish_reason:null}]})+'\n\ndata: '+JSON.stringify({choices:[{index:0,delta:{},finish_reason:'tool_calls'}]})+'\n\ndata: [DONE]\n\n',{headers:{'content-type':'text/event-stream'}});
-  const result=await supplementEvidence('Alpha条件？',{strategy:'relevance'},run,mcp,createAgentModel(config,async(_url,init)=>!JSON.parse(init.body).stream?firstAnswer(true,'需要进一步核对。'):response()),()=>{},undefined,{mode:'logs_only',history:[]});
+  const result=await supplementEvidence('Alpha条件？',{strategy:'relevance'},run,mcp,createAgentModel(config,async(_url,init)=>response()),()=>{},undefined,{mode:'logs_only',history:[]});
   assert.equal(result.answer,undefined);
 });
 test("invalid tool args and nonexistent tools cannot execute reads", async t => {
@@ -263,6 +227,26 @@ test("invalid tool args and nonexistent tools cannot execute reads", async t => 
   }
 });
 
+test('search and read require a bounded nonblank missing requested point before execution', async t => {
+  const mcp = await fixture(t, '## 2026-09-01\n\n### Alpha\n' + 'Alpha背景。'.repeat(1000));
+  for (const name of ['search', 'read']) for (const missingPoint of [undefined, '  ', 'x'.repeat(161)]) {
+    const run = new EvidenceRun(new AbortController().signal);
+    if (name === 'read') {
+      await collectRagEvidence('Alpha', { strategy: 'relevance' }, run, mcp);
+      assert.deepEqual(run.availableReadDates(), ['2026-09-01']);
+    }
+    const before = run.calls, args = { ...(name === 'search' ? { query: 'Alpha' } : { date: '2026-09-01' }), ...(missingPoint === undefined ? {} : { missingPoint }) };
+    let calls = 0;
+    const model = createAgentModel(config, async () => {
+      calls++;
+      return new Response('data: '+JSON.stringify({choices:[{index:0,delta:{tool_calls:[{index:0,id:'invalid-gap',type:'function',function:{name,arguments:JSON.stringify(args)}}]},finish_reason:null}]})+'\n\ndata: '+JSON.stringify({choices:[{index:0,delta:{},finish_reason:'tool_calls'}]})+'\n\ndata: [DONE]\n\n',{headers:{'content-type':'text/event-stream'}});
+    });
+    const result = await supplementEvidence('Alpha的条件？', { strategy: 'relevance' }, run, mcp, model, () => {}, undefined, { mode: 'logs_only', history: [] });
+    assert.equal(calls, 1); assert.equal(run.calls, before); assert.equal(result.answer, undefined);
+    assert.equal(run.stopReason, 'tool_failure'); assert.equal(run.limited, true);
+  }
+});
+
 test('finish remains terminal when another tool in the same step completes later', async t => {
   const mcp=await fixture(t);
   for(const order of [['search','finish'],['finish','search']]){
@@ -270,7 +254,7 @@ test('finish remains terminal when another tool in the same step completes later
     const model=createAgentModel(config,async()=>{
       decisions++;
       if(decisions>1)return stream('search',{query:'UnrecordedTopic'});
-      const tool_calls=order.map((name,index)=>({index,id:`batch-${index}`,type:'function',function:{name,arguments:JSON.stringify(name==='search'?{query:'Alpha'}:{reason:'sufficient_evidence'})}}));
+      const tool_calls=order.map((name,index)=>({index,id:`batch-${index}`,type:'function',function:{name,arguments:JSON.stringify(name==='search'?{query:'Alpha',missingPoint:'合成缺失条件'}:{reason:'sufficient_evidence'})}}));
       return new Response('data: '+JSON.stringify({choices:[{index:0,delta:{tool_calls},finish_reason:null}]})+'\n\ndata: '+JSON.stringify({choices:[{index:0,delta:{},finish_reason:'tool_calls'}]})+'\n\ndata: [DONE]\n\n',{headers:{'content-type':'text/event-stream'}});
     });
     await supplementEvidence('Alpha的条件是什么？',{strategy:'relevance'},run,mcp,model,()=>{});
@@ -291,7 +275,7 @@ test('an empty concurrent search cannot claim sources added by another search', 
   const run=new EvidenceRun(new AbortController().signal);let decisions=0;
   const model=createAgentModel(config,async()=>{
     decisions++;if(decisions>1)return stream('finish',{reason:'sufficient_evidence'});
-    const tool_calls=['Alpha','UnrecordedTopic'].map((query,index)=>({index,id:`lookup-${index}`,type:'function',function:{name:'search',arguments:JSON.stringify({query})}}));
+    const tool_calls=['Alpha','UnrecordedTopic'].map((query,index)=>({index,id:`lookup-${index}`,type:'function',function:{name:'search',arguments:JSON.stringify({query,missingPoint:"合成缺失条件"})}}));
     return new Response('data: '+JSON.stringify({choices:[{index:0,delta:{tool_calls},finish_reason:null}]})+'\n\ndata: '+JSON.stringify({choices:[{index:0,delta:{},finish_reason:'tool_calls'}]})+'\n\ndata: [DONE]\n\n',{headers:{'content-type':'text/event-stream'}});
   });
   await supplementEvidence('Alpha的条件是什么？',{strategy:'relevance'},run,mcp,model,()=>{});
@@ -439,9 +423,8 @@ test('complete comparisons bypass Agent and Jev while search-only questions reta
  const server=http.createServer(async(req,res)=>{
   let raw='';for await(const chunk of req)raw+=chunk;
   const body=JSON.parse(raw);
-  if(!body.stream){res.setHeader('content-type','application/json');res.end(await firstAnswer(true,'Alpha的原因尚不明确。').text());return;}
   res.setHeader('content-type','text/event-stream');
-  if(body.tools){agentCalls++;res.end(await stream('finish',{reason:'sufficient_evidence'}).text());}
+  if(body.tools){agentCalls++;res.end(await plain('合成比较[S1]').text());}
   else res.end('data: '+JSON.stringify({choices:[{delta:{content:'合成比较[S1]'}}]})+'\n\ndata: [DONE]\n\n');
  });
  await new Promise(r=>server.listen(0,'127.0.0.1',r));
@@ -477,7 +460,6 @@ test('complete long-range query summarizes then answers, while failed compaction
     const chunks = []; for await (const chunk of req) chunks.push(chunk); const raw = Buffer.concat(chunks).toString('utf8');
     const body = JSON.parse(raw);
     if (!body.stream) {
-      if(body.messages[0].content.includes('needsMoreEvidence')) {res.setHeader('content-type','application/json');res.end(await firstAnswer(true,'部分材料在压缩后仍缺少依据。').text());return;}
       stages.push('summary');
       if (failSummary) { res.writeHead(503); res.end('synthetic unavailable'); return; }
       const { evidence } = JSON.parse(body.messages[1].content);
@@ -486,10 +468,10 @@ test('complete long-range query summarizes then answers, while failed compaction
       res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(evidence.map(item => ({ sourceId: item.sourceId, excerpts: [item.content.slice(-60)] }))) } }] }));
     } else if (body.tools) {
       stages.push('agent');
-      const current = JSON.parse(body.messages.find(item => item.role === 'user').content);
-      assert.ok(current.evidence.reduce((sum, item) => sum + item.content.length, 0) <= 30000);
+      assert.ok(body.messages.at(-1).content.includes('可用工具状态'));
+      assert.ok(body.messages.at(-1).content.length <= 40000);
       res.setHeader('content-type', 'text/event-stream');
-      res.end(await stream('finish', { reason: 'sufficient_evidence' }).text());
+      res.end(await plain('需要确认[S2]。').text());
     } else {
       stages.push('answer');
       if (!failSummary) assert.match(body.messages.at(-1).content, /没有确认不能保存/);
@@ -508,5 +490,5 @@ test('complete long-range query summarizes then answers, while failed compaction
   assert.equal(done.diagnostics.agent,undefined);
   failSummary=true; stages.length=0;
   const failed=await new Response(createRagQueryStream({ question: '比较2026年九月和十月', mode: 'logs_only', history: [] }, { chat, lightChat: chat, mcp }, new AbortController().signal)).text();
-  assert.match(failed,/event: done/); assert.deepEqual(stages.slice(-2),['agent','answer']);
+  assert.match(failed,/event: done/); assert.equal(stages.at(-1),'agent');
 });

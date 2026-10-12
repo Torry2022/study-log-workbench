@@ -21,24 +21,23 @@ const model = http.createServer(async (req, res) => {
   assert.equal(req.headers.authorization, 'Bearer synthetic');
   let raw = ''; for await (const chunk of req) raw += chunk;
   const body = JSON.parse(raw);
-  const firstPass = !body.stream && body.messages[0].content.includes('needsMoreEvidence');
-  if (body.stream || firstPass) calls.push({ tools: Boolean(body.tools), firstPass });
+  if (body.stream) calls.push({ tools: Boolean(body.tools) });
   if (body.tools) {
     assert.equal(body.max_tokens, undefined, 'Tool decisions inherit the model output default');
-    const state = JSON.parse(body.messages.find(message => message.role === 'user').content);
+    const state = JSON.parse(body.messages.at(-1).content.split('可用工具状态：').at(-1));
     assert.equal(state.remainingDecisions, 2);
-    assert.equal(state.evidence[0].truncated, false);
+    assert.ok(body.messages.at(-1).content.includes('Alpha条件成立才适用'));
     assert.deepEqual(state.availableReadDates, []);
     assert.ok(!body.tools.some(item => item.function.name === 'read'));
-    tools.push(state);
+    if (decisionLimited || firstLimited) tools.push(state);
   }
   const answer = 'Alpha条件成立才适用，不适用于所有场景。[S1]';
-  if (firstPass) {res.setHeader('content-type','application/json');res.end(JSON.stringify({choices:[{message:{role:'assistant',content:firstLimited?'内部首轮截断文本':JSON.stringify({needsMoreEvidence:decisionLimited,answer})},finish_reason:firstLimited?'length':'stop'}],usage:{prompt_tokens:10,completion_tokens:5}}));return;}
   if (!body.stream) { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ choices: [{ message: { content: 'Alpha适用条件' } }] })); return; }
   res.setHeader('content-type', 'text/event-stream');
   const frame = value => `data: ${JSON.stringify(value)}\n\n`;
-  const delta = body.tools ? decisionLimited ? { content: '内部草稿不可发布', reasoning_content: '内部思考不可发布' } : { tool_calls: [{ index: 0, id: 'synthetic-finish', type: 'function', function: { name: 'finish', arguments: JSON.stringify({ reason: 'sufficient_evidence' }) } }] } : { content: answer };
-  res.end(frame({ id: 'synthetic', object: 'chat.completion.chunk', model: 'synthetic', choices: [{ index: 0, delta, finish_reason: null }] }) + frame({ choices: [{ index: 0, delta: {}, finish_reason: body.tools ? decisionLimited ? 'length' : 'tool_calls' : 'stop' }], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }) + 'data: [DONE]\n\n');
+  const limited = body.tools && (decisionLimited || firstLimited);
+  const delta = limited ? { content: firstLimited ? '内部首轮截断文本' : '内部草稿不可发布', reasoning_content: '内部思考不可发布' } : { content: answer };
+  res.end(frame({ id: 'synthetic', object: 'chat.completion.chunk', model: 'synthetic', choices: [{ index: 0, delta, finish_reason: null }] }) + frame({ choices: [{ index: 0, delta: {}, finish_reason: limited ? 'length' : 'stop' }], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }) + 'data: [DONE]\n\n');
 });
 await new Promise(resolve => model.listen(0, '127.0.0.1', resolve));
 const mcp = await startHttpServer({ logRoot: data, indexRoot: path.join(root, 'index'), port: 0, token: 'synthetic', retrieval: { embedding: { apiKey: '' }, reranker: { apiKey: '' }, rerankEnabled: false } });
@@ -71,7 +70,7 @@ try {
   assert.match(limitRaw.trim().split('\n\n').at(-1), /^event: done/);
   assert.equal(limitDone.diagnostics.agent.stopReason, 'decision_output_limit');
   assert.equal(limitDone.diagnostics.toolCalls, 1); assert.equal(limitDone.citations[0].date, '2026-09-01');
-  assert.equal(calls.length - limitCalls, 3); assert.equal(tools.length - limitTools, 1);
+  assert.equal(calls.length - limitCalls, 2); assert.equal(tools.length - limitTools, 1);
   assert.ok(!limitRaw.includes('内部草稿') && !limitRaw.includes('内部思考'));
   checks.push({ decisionOutputLimit: true, finalAnswer: true, internalMessagesHidden: true }); decisionLimited = false;
   firstLimited = true;
@@ -80,11 +79,11 @@ try {
   assert.equal(firstResponse.status, 200);
   const firstRaw = await firstResponse.text(); assert.match(firstRaw.trim().split('\n\n').at(-1), /^event: done/);
   const firstDone = JSON.parse(firstRaw.trim().split('\n\n').at(-1).split('\n')[1].slice(6));
-  assert.equal(firstDone.diagnostics.agent.firstPassLimited, true);
-  assert.equal(firstDone.diagnostics.agent.firstPassUsage.inputTokens, 10);
-  assert.equal(firstDone.citations[0].date, '2026-09-01'); assert.equal(calls.length - firstCalls, 3);
+  assert.equal(firstDone.diagnostics.agent.stopReason, 'decision_output_limit');
+  assert.equal(firstDone.diagnostics.agent.usage.inputTokens, 10);
+  assert.equal(firstDone.citations[0].date, '2026-09-01'); assert.equal(calls.length - firstCalls, 2);
   assert.ok(!firstRaw.includes('内部首轮截断文本'));
-  checks.push({ firstOutputLimit: true, boundedTools: true, finalAnswer: true });
+  checks.push({ firstOutputLimit: true, noExtraReads: true, finalAnswer: true }); firstLimited = false;
   const require = createRequire(new URL('../study-log-web/package.json',import.meta.url));
   const { chromium, webkit, expect } = require('@playwright/test');
   for (const [engine, launcher] of Object.entries({ chromium, webkit })) {

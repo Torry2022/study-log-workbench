@@ -33,10 +33,6 @@ test('three phrasings reach the same bounded tool loop and supply the linked rul
       const chunks = []; for await (const chunk of request) chunks.push(chunk);
       const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
       if (!body.stream) {
-        if(body.messages[0].content.includes('needsMoreEvidence')){
-          response.setHeader('content-type','application/json');
-          response.end(JSON.stringify({choices:[{message:{role:'assistant',content:JSON.stringify({needsMoreEvidence:true,answer:'需读取北辰明确指向的规则，不能套用相似规则。'})},finish_reason:'stop'}],usage:{prompt_tokens:10,completion_tokens:5}}));return;
-        }
         summaries++;
         const { evidence } = JSON.parse(body.messages[1].content);
         response.setHeader('content-type', 'application/json');
@@ -45,7 +41,8 @@ test('three phrasings reach the same bounded tool loop and supply the linked rul
       }
       let delta, finish;
       if (body.tools) {
-        const current = JSON.parse(body.messages.find(message => message.role === 'user').content);
+        const userText = body.messages.filter(message => message.role === 'user').at(-1).content;
+        const current = JSON.parse(userText.split('可用工具状态：').at(-1));
           if (steps++) {
             assert.ok(current.previousReads.length >= 3);
             assert.ok(current.evidence.some(item => item.content.includes('河图检查规则')));
@@ -53,12 +50,12 @@ test('three phrasings reach the same bounded tool loop and supply the linked rul
             assert.ok(!body.tools.some(item => item.function.name === 'read'));
           } else {
             assert.deepEqual(current.availableReadDates, ['2026-09-01']);
-            assert.ok(current.evidence.some(item => item.truncated));
-            assert.ok(body.messages.some(message => message.role === 'system' && message.content.includes('优先从availableReadDates')));
+            assert.ok(userText.includes('本来源正文有截断'));
+            assert.ok(body.messages.some(message => message.role === 'system' && message.content.includes('先读取对应命中日期')));
             assert.ok(body.tools.some(item => item.function.name === 'read'));
           }
           delta = { tool_calls: [{ index: 0, id: `call-${steps}`, type: 'function', function: {
-            name: steps === 1 ? 'read' : 'search', arguments: JSON.stringify(steps === 1 ? { date: '2026-09-01' } : { query: '河图检查规则' })
+            name: steps === 1 ? 'read' : 'search', arguments: JSON.stringify(steps === 1 ? { date: '2026-09-01', missingPoint: '北辰项目关联的具体规则' } : { query: '河图检查规则', missingPoint: '规则中的明确保存条件' })
           } }] };
           finish = 'tool_calls';
       } else {

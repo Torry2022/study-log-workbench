@@ -86,12 +86,11 @@ test('actual query stops after source modification during Agent read, without fi
   const model = http.createServer(async (req, res) => {
     let raw = ''; for await (const chunk of req) raw += chunk;
     const body = JSON.parse(raw); calls++;
-    if(!body.stream){res.setHeader('content-type','application/json');res.end(JSON.stringify({choices:[{message:{role:'assistant',content:JSON.stringify({needsMoreEvidence:true,answer:'需读取未提供的小节。'})},finish_reason:'stop'}],usage:{prompt_tokens:10,completion_tokens:5}}));return;}
     assert.ok(body.tools);
     await fs.writeFile(log, blocks('Alpha不必核对地址。')[0].content);
     const frame = delta => `data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: null }] })}\n\n`;
     res.setHeader('content-type', 'text/event-stream');
-    res.end(frame({ tool_calls: [{ index: 0, id: 'read', type: 'function', function: { name: 'read', arguments: JSON.stringify({date}) } }] }) + 'data: '+JSON.stringify({choices:[{index:0,delta:{},finish_reason:'tool_calls'}]})+'\n\ndata: [DONE]\n\n');
+    res.end(frame({ tool_calls: [{ index: 0, id: 'read', type: 'function', function: { name: 'read', arguments: JSON.stringify({date,missingPoint:'尚未提供的小节原因'}) } }] }) + 'data: '+JSON.stringify({choices:[{index:0,delta:{},finish_reason:'tool_calls'}]})+'\n\ndata: [DONE]\n\n');
   });
   await new Promise(resolve => model.listen(0, '127.0.0.1', resolve));
   t.after(async () => {
@@ -101,6 +100,6 @@ test('actual query stops after source modification during Agent read, without fi
   });
   const chat = { baseUrl: `http://127.0.0.1:${model.address().port}`, apiKey: 'synthetic', model: 'mock' };
   const output = await new Response(createRagQueryStream({ question: 'Alpha为什么？', mode: 'logs_only', history: [] }, { chat, lightChat: chat, mcp: { url: `http://127.0.0.1:${service.address.port}/mcp`, token: 'synthetic' } }, new AbortController().signal)).text();
-  assert.equal(calls, 2); assert.match(output, /event: error/); assert.match(output, /MCP_SOURCE_CHANGED/);
+  assert.equal(calls, 1); assert.match(output, /event: error/); assert.match(output, /MCP_SOURCE_CHANGED/);
   assert.ok(!output.includes('event: done')); assert.ok(!output.includes('event: delta')); assert.ok(!output.includes('event: sources'));
 });

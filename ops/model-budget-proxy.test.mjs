@@ -5,6 +5,29 @@ import os from "node:os";
 import path from "node:path";
 import { startBudgetProxy } from "./model-budget-proxy.mjs";
 
+test('bounded Chinese material is sent intact and oversized bodies are rejected before charging', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'study-log-budget-utf8-'));
+  const clientFetch = globalThis.fetch; let proxy, calls = 0;
+  const content = '文'.repeat(30000);
+  try {
+    globalThis.fetch = async (_url, options) => {
+      calls++; assert.equal(JSON.parse(options.body).messages[0].content, content);
+      return Response.json({ usage: { prompt_tokens: 30000, completion_tokens: 1 } });
+    };
+    proxy = await startBudgetProxy({ apiKey: 'synthetic', apiUrl: 'https://api.deepseek.com/chat/completions', model: 'deepseek-flash', budgetCny: 1, ledgerFile: path.join(directory, 'ledger.jsonl') });
+    const send = text => clientFetch(proxy.url, { method: 'POST', headers: { Authorization: `Bearer ${proxy.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'deepseek-flash', max_tokens: 1200, messages: [{ role: 'user', content: text }] }) });
+    const accepted = await send(content); assert.equal(accepted.status, 200); await accepted.text(); await proxy.settled();
+    assert.equal(calls, 1); assert.ok(proxy.report().records[0].reservedCny > .45);
+    const rejected = await send('文'.repeat(90000)); assert.equal(rejected.status, 502); await rejected.text(); await proxy.settled();
+    assert.equal(calls, 1); assert.equal(proxy.report().records.length, 1);
+    assert.deepEqual(proxy.report().rejectedRequests.map(item => item.reason), ['request_size']);
+  } finally {
+    await proxy?.close(); globalThis.fetch = clientFetch;
+    assert.equal(path.dirname(directory), path.resolve(os.tmpdir())); assert.match(path.basename(directory), /^study-log-budget-utf8-/);
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
 test('explicit group call allowance is bounded and rejects before issuing an extra upstream request', async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'study-log-budget-calls-'));
   const clientFetch = globalThis.fetch; let proxy, calls = 0;

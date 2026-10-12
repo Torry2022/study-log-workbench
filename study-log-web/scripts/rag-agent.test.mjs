@@ -127,6 +127,36 @@ test('first answer uses one primary-model call, preserves modes and refuses inco
   assert.match(raw,/event: error/);assert.ok(!raw.includes('event: delta'));assert.ok(!raw.includes(answer));
 });
 
+test('internal decision length stops tools and answers from retained evidence; filtering still fails', async t => {
+  const mcp = await fixture(t), previous = {};
+  for (const key of ['RAG_AGENT_ENABLED', 'RAG_AGENT_TOOL_CALLING_VERIFIED', 'RAG_JEV_ENABLED']) { previous[key] = process.env[key]; process.env[key] = key === 'RAG_JEV_ENABLED' ? 'false' : 'true'; }
+  let finish = 'length'; const calls = [];
+  const server = http.createServer(async (req, res) => {
+    let raw = ''; for await (const chunk of req) raw += chunk; const body = JSON.parse(raw); calls.push(body);
+    if (!body.stream) { res.setHeader('content-type', 'application/json'); res.end(await firstAnswer(true, '另一个条件尚未提供。').text()); return; }
+    res.setHeader('content-type', 'text/event-stream');
+    if (body.tools) {
+      res.end(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { reasoning_content: '内部思考不可发布', content: '内部草稿不可发布' }, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: finish }], usage: { prompt_tokens: 10, completion_tokens: 1200, total_tokens: 1210 } })}\n\ndata: [DONE]\n\n`);
+    } else {
+      assert.ok(body.messages.some(message => message.content.includes('decision_output_limit')));
+      assert.ok(body.messages.some(message => message.content.includes('"limited":true')));
+      res.end(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: '仅依据本次已读记录，Alpha条件成立才适用。[S1]' }, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`);
+    }
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => { server.closeAllConnections(); server.close(); for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } });
+  const chat = { baseUrl: `http://127.0.0.1:${server.address().port}`, apiKey: 'synthetic', model: 'mock' };
+  const query = () => new Response(createRagQueryStream({ question: 'Alpha的适用条件？', mode: 'logs_only', history: [] }, { chat, lightChat: chat, mcp }, new AbortController().signal)).text();
+  const output = await query(), done = JSON.parse(output.trim().split('\n\n').at(-1).split('\n')[1].slice(6));
+  assert.match(output, /event: done/); assert.equal(calls.length, 3);
+  assert.equal(done.diagnostics.agent.stopReason, 'decision_output_limit');
+  assert.equal(done.diagnostics.toolCalls, 1); assert.equal(done.citations[0].date, '2026-09-01');
+  assert.ok(!output.includes('内部思考') && !output.includes('内部草稿'));
+  finish = 'content_filter'; calls.length = 0;
+  const filtered = await query(); assert.match(filtered, /event: error/); assert.equal(calls.length, 2);
+  assert.ok(!filtered.includes('event: delta'));
+});
+
 test('a finish answer after a search cannot bypass separate final generation', async t=>{
   const mcp=await fixture(t),run=new EvidenceRun(new AbortController().signal);let steps=0;
   const result=await supplementEvidence('Alpha的条件？',{strategy:'relevance'},run,mcp,createAgentModel(config,async(_url,init)=>!JSON.parse(init.body).stream?firstAnswer(true,'缺少Alpha条件。'):++steps===1?stream('search',{query:'Alpha'}):stream('finish',{reason:'sufficient_evidence',answer:'工具中的回答不可发布[S1]'})),()=>{},undefined,{mode:'logs_only',history:[]});

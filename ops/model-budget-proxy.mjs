@@ -38,7 +38,8 @@ export async function startBudgetProxy({ apiKey, apiUrl, model, budgetCny, ledge
     response.on("close", onClose);
     try {
       const buffers = []; let bytes = 0;
-      for await (const chunk of request) { bytes += chunk.length; if (bytes > 64_000) throw new Error("Acceptance request too large"); buffers.push(chunk); }
+      // Accommodate bounded Chinese evidence/history plus source metadata in UTF-8.
+      for await (const chunk of request) { bytes += chunk.length; if (bytes > 256_000) throw new Error("Acceptance request too large"); buffers.push(chunk); }
       const payload = JSON.parse(Buffer.concat(buffers).toString("utf8"));
       if (payload.model !== model || records.length >= maxCalls) throw new Error("Acceptance model or call limit exceeded");
       // Preserve smaller per-stage limits (the evidence agent requests only 1200).

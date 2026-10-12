@@ -117,7 +117,13 @@ export async function supplementEvidence(question: string, plan: RagRetrievalPla
     if (event.type === "tool-call") stepCalledTool = true;
     if (event.type === "error") throw new AiChatError("AGENT_PROVIDER_FAILED", "补充检索未能完成，请稍后重试");
     if (event.type === "tool-error") { noProgress = true; run.limited = true; run.stopReason = "tool_failure"; }
-    if (event.type === "finish-step" && (event.finishReason === "length" || event.finishReason === "content-filter")) {
+    if (event.type === "finish-step" && event.finishReason === "length") {
+      // A bounded internal decision is not a partially generated user answer.
+      // Stop further tools and let the final answer use only retained evidence.
+      noProgress = true; run.limited = true; run.stopReason = "decision_output_limit";
+      onStatus("补充查找未能完成，正在根据已读记录回答");
+    }
+    if (event.type === "finish-step" && event.finishReason === "content-filter") {
       throw new AiChatError("AI_STREAM_INTERRUPTED", "模型回答未完整结束，请重试");
     }
     if (event.type === "finish-step" && event.finishReason === "stop" && !stepCalledTool) {

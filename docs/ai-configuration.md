@@ -12,6 +12,8 @@ CHAT_API_KEY=replace-with-your-key
 
 地址是完整的 OpenAI 兼容聊天接口地址，不会自动追加路径。可显式使用 HTTP 代理；是否加密取决于管理员填写的地址。不得在地址中嵌入用户名、密码或片段。可选 `CHAT_LIGHT_MODEL` 指定轻量任务模型，空值使用 `CHAT_MODEL`。没有内置供应商、模型或个人环境变量回退。
 
+问答可选 `RAG_DEEPSEEK_THINKING=disabled` 或 `low`，仅适用于 HTTPS 官方 `api.deepseek.com` 的 `deepseek-flash`、`deepseek-v4-pro`。留空沿用供应商默认行为；不会自动关闭思考或更换模型。`disabled` 发送 `thinking.type=disabled`，不发送无效的 `reasoning_effort=none`；`low` 发送 `thinking.type=enabled` 和 `reasoning_effort=low`。普通问答最终生成与 SDK 工具循环使用相同参数。此设置不改变轻量规划、材料压缩、会话标题或其他模块的 AI 调用；代理接口不凭模型名推断兼容性，显式配置不支持的组合时问答返回配置错误，不静默忽略。保存后重启实例生效，现有桌面模型设置窗口仍只管理地址、模型和密钥。参数依据：[DeepSeek 思考模式](https://api-docs.deepseek.com/guides/thinking_mode/)。
+
 初始化会将仓库 `prompts` 中三个通用模板复制到实例的 `data/prompts`：`generation.md`、`highlighting.md`、`extraction.md`。模板强调材料依据、结果预览和用户决定，不规定个人领域、文风、括号或中英文空格习惯。每次请求重新读取模板，修改后无需重启；文件须为非空 UTF-8 普通文件，最大 64 KiB，路径不能包含链接。
 
 升级已有实例时，停止该实例后重新运行初始化即可补充缺失模板；已有密码、环境文件和自定义模板保留。旧环境文件中的 AI 变量需自行添加。缺少或无效模板会给出具体模板名和原因，不读取其他实例或个人 Skill。

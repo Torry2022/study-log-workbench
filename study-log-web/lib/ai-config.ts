@@ -3,6 +3,8 @@ export interface ChatConfig {
   onUsage?: (usage: { inputTokens: number | null; outputTokens: number | null }) => void;
   /** Verified request-scoped model capability; never inferred from a proxy's model name. */
   contextWindowTokens?: number;
+  /** Explicit RAG-only setting for verified DeepSeek official models. */
+  thinkingMode?: "disabled" | "low";
   apiKey: string;
   model: string;
   /** Complete OpenAI-compatible chat/completions endpoint; never expanded. */
@@ -22,7 +24,7 @@ export function chatContextWindowTokens(config: ChatConfig): number | undefined 
 
 type AiEnvironment = Record<string, string | undefined>;
 export interface ChatConfigIssue {
-  field: "CHAT_API_KEY" | "CHAT_API_URL" | "CHAT_MODEL" | "CHAT_LIGHT_MODEL";
+  field: "CHAT_API_KEY" | "CHAT_API_URL" | "CHAT_MODEL" | "CHAT_LIGHT_MODEL" | "RAG_DEEPSEEK_THINKING";
   reason: "missing" | "invalid";
   message: string;
 }
@@ -79,4 +81,23 @@ export function getChatConfig(env: AiEnvironment = process.env): ChatConfig {
 export function getLightChatConfig(env: AiEnvironment = process.env): ChatConfig {
   const config = getChatConfig(env);
   return { ...config, model: env.CHAT_LIGHT_MODEL?.trim() || config.model };
+}
+
+/** Unset keeps provider defaults. Never infer proxy capabilities from a model name. */
+export function configureRagThinking(config: ChatConfig, env: AiEnvironment = process.env): ChatConfig {
+  const mode = env.RAG_DEEPSEEK_THINKING?.trim();
+  if (!mode) return config;
+  const endpoint = new URL(config.baseUrl);
+  if (!["disabled", "low"].includes(mode) || endpoint.protocol !== "https:" || endpoint.hostname !== "api.deepseek.com" ||
+    !["deepseek-flash", "deepseek-v4-pro"].includes(config.model)) {
+    throw new ChatConfigurationError([{ field: "RAG_DEEPSEEK_THINKING", reason: "invalid", message: "RAG_DEEPSEEK_THINKING 仅支持官方 DeepSeek Flash/Pro 的 disabled 或 low" }]);
+  }
+  return { ...config, thinkingMode: mode as "disabled" | "low" };
+}
+
+export function chatThinkingParameters(config: ChatConfig): { thinking?: { type: "enabled" | "disabled" }; reasoning_effort?: "low" } {
+  if (!config.thinkingMode) return {};
+  // Recheck request-scoped callers as well as environment configuration.
+  configureRagThinking(config, { RAG_DEEPSEEK_THINKING: config.thinkingMode });
+  return config.thinkingMode === "disabled" ? { thinking: { type: "disabled" } } : { thinking: { type: "enabled" }, reasoning_effort: "low" };
 }

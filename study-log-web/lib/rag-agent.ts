@@ -1,6 +1,7 @@
 import { streamText, isStepCount, jsonSchema, tool, type LanguageModel } from "ai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { ChatConfig } from "./ai-config.ts";
+import { chatThinkingParameters } from "./ai-config.ts";
 import type { McpConfig } from "./mcp-config.ts";
 import { AiChatError } from "./ai-chat.ts";
 import { EvidenceRun, collectRagEvidence } from "./rag-evidence.ts";
@@ -15,9 +16,11 @@ export function agentEnabled(env = process.env): boolean {
   return env.RAG_AGENT_ENABLED === "true" && env.RAG_AGENT_TOOL_CALLING_VERIFIED === "true";
 }
 export function createAgentModel(config: ChatConfig, transport: typeof fetch = fetch): LanguageModel {
+  const thinking = chatThinkingParameters(config);
   return createOpenAICompatible({ name: "study-log", baseURL: new URL(config.baseUrl).origin,
     apiKey: config.apiKey,
-    fetch: async (_url, init) => transport(config.baseUrl, { ...init, redirect: "error" })
+    fetch: async (_url, init) => transport(config.baseUrl, { ...init, redirect: "error",
+      ...(config.thinkingMode ? { body: JSON.stringify({ ...JSON.parse(String(init?.body)), ...thinking }) } : {}) })
   }).chatModel(config.model);
 }
 

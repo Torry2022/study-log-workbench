@@ -1,4 +1,5 @@
 import type { ChatConfig } from "./ai-config.ts";
+import { chatThinkingParameters } from "./ai-config.ts";
 
 export class AiChatError extends Error {
   readonly code: string;
@@ -19,7 +20,7 @@ export async function requestChat(config: ChatConfig, messages: ChatMessage[], o
     const response = await fetch(config.baseUrl, {
       method: "POST", redirect: "error", signal,
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` },
-      body: JSON.stringify({ model: config.model, messages, temperature: options.temperature ?? 0.3, stream: false })
+      body: JSON.stringify({ model: config.model, messages, temperature: options.temperature ?? 0.3, stream: false, ...chatThinkingParameters(config) })
     });
     signal.throwIfAborted();
     if (!response.ok) {

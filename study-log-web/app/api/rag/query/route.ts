@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { ChatConfigurationError, getChatConfig, getLightChatConfig } from "@/lib/ai-config";
+import { ChatConfigurationError, getChatConfig, getLightChatConfig, configureRagThinking } from "@/lib/ai-config";
 import { getMcpConfig, McpConfigurationError } from "@/lib/mcp-config";
 import { parseRagHistory } from "@/lib/rag-answer";
 import { createRagQueryStream } from "@/lib/rag-query";
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     const question = typeof body?.question === "string" ? body.question.trim() : "";
     if (!question || question.length > 2000) return fail("问题必须为 1 至 2000 字", 400, "RAG_INVALID_INPUT");
     if (body.mode !== undefined && body.mode !== "logs_only" && body.mode !== "logs_and_general") return fail("回答模式无效", 400, "RAG_INVALID_INPUT");
-    const config = { chat: getChatConfig(), lightChat: getLightChatConfig(), mcp: getMcpConfig() };
+    const config = { chat: configureRagThinking(getChatConfig()), lightChat: getLightChatConfig(), mcp: getMcpConfig() };
     const stream = createRagQueryStream({ question, history: parseRagHistory(body.history), mode: body.mode || "logs_only" }, config, request.signal);
     return new Response(stream, { headers: { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-store, no-transform", "X-Accel-Buffering": "no" } });
   } catch (error) {

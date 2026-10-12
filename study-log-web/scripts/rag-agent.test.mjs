@@ -353,7 +353,7 @@ test('complete long-range query summarizes then answers, while failed compaction
       const { evidence } = JSON.parse(body.messages[1].content);
       assert.ok(evidence.reduce((sum, item) => sum + item.content.length, 0) <= 30000, JSON.stringify({system:body.messages[0].content,stream:body.stream,tools:Boolean(body.tools),lengths:evidence.map(item=>item.content.length)}));
       res.setHeader('content-type', 'application/json');
-      res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(evidence.map(item => ({ sourceId: item.sourceId, content: item.content.slice(-60) }))) } }] }));
+      res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(evidence.map(item => ({ sourceId: item.sourceId, excerpts: [item.content.slice(-60)] }))) } }] }));
     } else if (body.tools) {
       stages.push('agent');
       const current = JSON.parse(body.messages.find(item => item.role === 'user').content);

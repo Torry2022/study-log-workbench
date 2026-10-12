@@ -40,7 +40,7 @@ test('three phrasings reach the same bounded tool loop and supply the linked rul
         summaries++;
         const { evidence } = JSON.parse(body.messages[1].content);
         response.setHeader('content-type', 'application/json');
-        response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(evidence.map(item => ({ sourceId: item.sourceId, content: item.content.slice(-180) }))) } }] }));
+        response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(evidence.map(item => ({ sourceId: item.sourceId, excerpts: [item.content.slice(-180)] }))) } }] }));
         return;
       }
       let delta, finish;

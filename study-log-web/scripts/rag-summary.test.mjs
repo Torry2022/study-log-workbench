@@ -15,7 +15,7 @@ test('short rules remain verbatim between long sources, even when adjacent summa
     assert.ok(body.messages[0].content.includes('规则名称'));
     assert.ok(evidence.every(item => !item.content.includes(rule)));
     res.setHeader('content-type','application/json');
-    res.end(JSON.stringify({choices:[{message:{content:JSON.stringify(malformed ? [] : evidence.map(item=>({sourceId:item.sourceId,content:'过程采样不能证明已经完成。'})))}}]}));
+    res.end(JSON.stringify({choices:[{message:{content:JSON.stringify(malformed ? [] : evidence.map(item=>({sourceId:item.sourceId,excerpts:[item.content.slice(-80)]})))}}]}));
   });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   t.after(()=>{server.closeAllConnections();server.close();});
@@ -42,7 +42,7 @@ test("batch synthesis keeps original source identity and marks failed compressio
     let raw = ""; for await (const chunk of req) raw += chunk;
     const evidence = JSON.parse(JSON.parse(raw).messages[1].content).evidence;
     res.setHeader("content-type", "application/json");
-    res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(malformed ? [] : evidence.map(item => ({ sourceId: item.sourceId, content: "仅在条件满足时成立，不代表所有情况。" }))) } }] }));
+    res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(malformed ? [] : evidence.map(item => ({ sourceId: item.sourceId, excerpts: [item.content.slice(-80)] }))) } }] }));
   });
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
   t.after(() => { server.closeAllConnections(); server.close(); });
@@ -64,6 +64,64 @@ test("source pointers reject path traversal, mismatched dates and bad numbering 
   assert.equal(history([{ ...ref, date: "2026-10-01" }]).sourceRefs, undefined);
 });
 
+test('compaction accepts only ordered original excerpts and never registers invented coverage as evidence', async t => {
+  const first = '仅在来源一致且本人确认后才能保存，没有确认不能保存。';
+  const last = '下一步参照合成连接检查，不能套用另一项规则。';
+  let response;
+  const server = http.createServer(async (req, res) => {
+    let raw = ''; for await (const chunk of req) raw += chunk;
+    const ids = JSON.parse(JSON.parse(raw).messages[1].content).evidence.map(item => item.sourceId);
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(response.filter(item => ids.includes(item.sourceId))) } }] }));
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const config = { baseUrl: `http://127.0.0.1:${server.address().port}`, apiKey: 'synthetic', model: 'mock' };
+  for (const excerpts of [[first, last], ['未提供另一个日期的记录。'], [last, first], [first, first], [''], Array(4).fill(first)]) {
+    const run = new EvidenceRun(new AbortController().signal);
+    run.add([0, 1].map(index => ({ date: `2026-09-0${index + 1}`, fileName: 'synthetic.md', chunkId: `chunk-${index}`, contentHash: `hash-${index}`, excerpt: '原始摘录', content: `${first}\n\n${'过程内容。'.repeat(3000)}\n\n${last}`, truncated: false })));
+    run.coverage = [{ dateFrom: '2026-09-01', dateTo: '2026-09-02', totalDays: 2, readDates: ['2026-09-01', '2026-09-02'], status: 'complete' }];
+    response = run.contexts.map(({ sourceId }) => ({ sourceId, excerpts }));
+    await compactEvidence(run, '何时可以保存？', config);
+    const valid = excerpts.length === 2 && excerpts[0] === first && excerpts[1] === last;
+    assert.equal(run.limited, !valid);
+    assert.ok(run.contexts.every(item => !item.content.includes('未提供另一个日期')));
+    assert.deepEqual([...run.compactedSources], ['S1', 'S2']);
+    assert.equal(JSON.parse(run.report()).scopes[0].status, 'complete');
+    assert.deepEqual(JSON.parse(run.report()).compactedSources, ['S1', 'S2']);
+    if (valid) assert.ok(run.contexts.every(item => item.content === `${first}\n[…]\n${last}` && !item.truncated));
+    else assert.ok(run.contexts.every(item => item.truncated));
+  }
+});
+
+test('repeated compaction checks the original body rather than its inserted omission marker', async t => {
+  let calls = 0;
+  const first = '甲'.repeat(420), last = '乙'.repeat(420);
+  const original = `${first}\n${'中间过程。'.repeat(3200)}\n${last}`;
+  const server = http.createServer(async (req, res) => {
+    let raw = ''; for await (const chunk of req) raw += chunk;
+    const evidence = JSON.parse(JSON.parse(raw).messages[1].content).evidence;
+    const excerpts = ++calls <= 2 ? [first, last] : [`${'甲'.repeat(20)}\n[…]\n${'乙'.repeat(20)}`];
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(evidence.map(({ sourceId }) => ({ sourceId, excerpts }))) } }] }));
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const run = new EvidenceRun(new AbortController().signal);
+  const item = (index, content) => ({ date: '2026-09-01', fileName: 'synthetic.md', chunkId: `chunk-${index}`, contentHash: `hash-${index}`, excerpt: '原始摘录', content, truncated: false });
+  run.add([item(0, original), item(1, original)]);
+  const config = { baseUrl: `http://127.0.0.1:${server.address().port}`, apiKey: 'synthetic', model: 'mock' };
+  await compactEvidence(run, '总结过程', config);
+  assert.equal(run.limited, false);
+  assert.equal(run.contexts[0].content, `${first}\n[…]\n${last}`);
+  run.add(Array.from({ length: 38 }, (_, index) => item(index + 2, '短'.repeat(750))));
+  await compactEvidence(run, '总结过程', config);
+  assert.equal(run.limited, true);
+  assert.equal(run.contexts[0].content, original.slice(0, 750));
+  assert.ok(!run.contexts[0].content.includes('[…]'));
+  assert.equal(run.compactionOriginals.get('S1'), original);
+});
+
 test('long evidence batches bound input and final material while retaining every source and its tail', async t => {
   const requests = [];
   let oversized = false;
@@ -73,7 +131,7 @@ test('long evidence batches bound input and final material while retaining every
     requests.push(evidence);
     assert.ok(evidence.reduce((sum, item) => sum + item.content.length, 0) <= 30000);
     res.setHeader('content-type', 'application/json');
-    res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(evidence.map(item => ({ sourceId: item.sourceId, content: oversized ? '长'.repeat(900) : item.content.slice(-80) }))) } }] }));
+    res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(evidence.map(item => ({ sourceId: item.sourceId, excerpts: [oversized ? '长'.repeat(900) : item.content.slice(-80)] }))) } }] }));
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => { server.closeAllConnections(); server.close(); });

@@ -45,7 +45,8 @@ test('three phrasings reach the same bounded tool loop and supply the linked rul
         const current = JSON.parse(userText.split('可用工具状态：').at(-1));
           if (steps++) {
             assert.ok(current.previousReads.length >= 3);
-            assert.ok(current.evidence.some(item => item.content.includes('河图检查规则')));
+            assert.ok(userText.includes('河图检查规则'));
+            assert.equal(current.remainingDecisions, 1);
             assert.deepEqual(current.availableReadDates, []);
             assert.ok(!body.tools.some(item => item.function.name === 'read'));
           } else {

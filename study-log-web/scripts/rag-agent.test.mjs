@@ -113,10 +113,11 @@ test('first answer can identify an unread part before the existing read loop', a
       assert.ok(body.messages.at(-1).content.includes('本来源正文有截断'));
       return stream('read',{date:dates[0]});
     }
-    return stream('finish',{reason:'sufficient_evidence'});
+    assert.ok(body.messages.at(-1).content.includes(tail));
+    return plain(`${tail}[S2]`);
   });
   const result=await supplementEvidence('Alpha 和 Beta 的条件是什么？',{strategy:'relevance'},run,mcp,model,()=>{},undefined,{mode:'logs_only',history:[]});
-  assert.equal(result.answer,undefined);
+  assert.equal(result.answer,`${tail}[S2]`);
   assert.equal(calls,2);
   assert.ok(run.contexts.some(item=>item.content.includes(tail)));
   assert.equal(run.stopReason,'sufficient_evidence');
@@ -491,4 +492,64 @@ test('complete long-range query summarizes then answers, while failed compaction
   failSummary=true; stages.length=0;
   const failed=await new Response(createRagQueryStream({ question: '比较2026年九月和十月', mode: 'logs_only', history: [] }, { chat, lightChat: chat, mcp }, new AbortController().signal)).text();
   assert.match(failed,/event: done/); assert.equal(stages.at(-1),'agent');
+});
+
+test('SDK answers in the second turn after a real read, discarding text from the tool turn', async t => {
+  const mcp=await fixture(t), requests=[];
+  const run=new EvidenceRun(new AbortController().signal);
+  run.add([{date:'2026-09-01',fileName:'2026-09_学习日志.md',heading:'Alpha',headingIndex:0,chunkId:'initial-fragment',contentHash:'a'.repeat(64),content:'Alpha背景。',truncated:true}]);
+  const model=createAgentModel(config,async(_url,init)=>{
+    const body=JSON.parse(init.body);requests.push(body);
+    if(requests.length===1)return stream('read',{date:'2026-09-01'});
+    assert.ok(body.messages.at(-1).content.includes('Alpha条件成立才适用，不适用于所有场景'));
+    assert.ok(body.messages.at(-1).content.includes('"remainingDecisions":1'));
+    assert.ok(!body.tools.some(item=>item.function.name==='finish'));
+    assert.ok(!body.messages.some(item=>String(item.content).includes('内部文本，不可送给用户')));
+    return plain('Alpha条件成立才适用，不适用于所有场景。[S2]');
+  });
+  const result=await supplementEvidence('Alpha具体条件？',{strategy:'relevance'},run,mcp,model,()=>{},undefined,{mode:'logs_only',history:[]});
+  assert.equal(requests.length,2);assert.equal(run.calls,1);
+  assert.equal(result.answer,'Alpha条件成立才适用，不适用于所有场景。[S2]');
+  assert.equal(run.stopReason,'sufficient_evidence');assert.equal(result.usage.inputTokens,20);
+  assert.ok(run.contexts.some(item=>item.sourceId==='S2'&&item.chunkId==='2026-09-01:range:0'));
+});
+
+test('query publishes a second-turn answer and reread source without a third model call', async t => {
+  const tail='Beta的条件是来源一致且明确确认，缺少确认不能继续。';
+  const mcp=await fixture(t,`## 2026-09-01\n\n### Alpha\n${'Alpha过程。'.repeat(2200)}\n\n${tail}`);
+  const previous={};for(const key of ['RAG_AGENT_ENABLED','RAG_AGENT_TOOL_CALLING_VERIFIED','RAG_JEV_ENABLED'])previous[key]=process.env[key];
+  Object.assign(process.env,{RAG_AGENT_ENABLED:'true',RAG_AGENT_TOOL_CALLING_VERIFIED:'true',RAG_JEV_ENABLED:'false'});
+  const requests=[];
+  const server=http.createServer(async(req,res)=>{
+    let raw='';for await(const chunk of req)raw+=chunk;const body=JSON.parse(raw);requests.push(body);
+    assert.ok(body.tools,'No separate final-generation request is needed');
+    res.setHeader('content-type','text/event-stream');
+    if(requests.length===1)res.end(await stream('read',{date:'2026-09-01'}).text());
+    else {
+      assert.ok(body.messages.at(-1).content.includes(tail));
+      const source='S2';
+      res.end(await plain(`${tail}[${source}]`).text());
+    }
+  });
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  t.after(async()=>{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));for(const[key,value]of Object.entries(previous)){if(value===undefined)delete process.env[key];else process.env[key]=value;}});
+  const chat={baseUrl:`http://127.0.0.1:${server.address().port}`,apiKey:'synthetic',model:'mock'};
+  const raw=await new Response(createRagQueryStream({question:'Alpha和Beta的条件是什么？',history:[],mode:'logs_only'},{chat,lightChat:chat,mcp},new AbortController().signal)).text();
+  const events=raw.trim().split('\n\n').map(block=>({event:block.split('\n')[0].slice(7),data:JSON.parse(block.split('\n')[1].slice(6))}));
+  assert.equal(requests.length,2);assert.equal(events.at(-1).event,'done');assert.ok(!raw.includes('内部文本'));
+  assert.ok(events.at(-1).data.answer.includes(tail));assert.equal(events.at(-1).data.citations.length,1);assert.equal(events.at(-1).data.citations[0].chunkId,'2026-09-01:range:0');
+});
+
+test('second-turn length, filtering and oversized answers retain completion guards', async t => {
+  const mcp=await fixture(t);
+  for(const finish of ['length','content-filter','oversized']) {
+    const run=new EvidenceRun(new AbortController().signal);
+    run.add([{date:'2026-09-01',fileName:'2026-09_学习日志.md',heading:'Alpha',chunkId:'initial',contentHash:'a'.repeat(64),content:'Alpha背景',truncated:true}]);
+    let calls=0;
+    const model=createAgentModel(config,async()=>++calls===1?stream('read',{date:'2026-09-01'}):plain(finish==='oversized'?'x'.repeat(40001):'未完成正文',finish==='oversized'?'stop':finish==='content-filter'?'content_filter':finish));
+    const invoke=()=>supplementEvidence('Alpha条件？',{strategy:'relevance'},run,mcp,model,()=>{},undefined,{mode:'logs_only',history:[]});
+    if(finish==='length'){const result=await invoke();assert.equal(result.answer,undefined);assert.equal(run.limited,true);assert.equal(run.stopReason,'decision_output_limit');}
+    else await assert.rejects(invoke(),error=>error.code===(finish==='oversized'?'AGENT_DECISION_INVALID':'AI_STREAM_INTERRUPTED'));
+    assert.equal(calls,2);
+  }
 });

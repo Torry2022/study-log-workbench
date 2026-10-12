@@ -78,6 +78,26 @@ test("cursor prevents mixed revisions and long days can be read without dropped 
   assert.throws(() => readLogRange([block("2026-09-01", "已修改")], { dateFrom: "2026-09-01", dateTo: "2026-09-01", cursor: first.coverage.nextCursor }), { code: "SOURCE_CHANGED" });
 });
 
+test("a changed range revision stops the run before registering the next page", async () => {
+  const data = [block("2026-09-01", "甲".repeat(45000))];
+  const run = new EvidenceRun(new AbortController().signal);
+  let reads = 0;
+  await collectRagEvidence("summary", planRagRetrieval("比较2026年9月和10月"), run, config, {
+    read: async args => {
+      reads++;
+      const page = validateRangePage(readLogRange(data, args));
+      if (args.cursor) page.coverage.revision = "b".repeat(64);
+      return page;
+    }
+  });
+  assert.equal(reads, 2);
+  assert.equal(run.sourceChanged, true);
+  assert.equal(run.limited, true);
+  assert.equal(run.stopReason, "source_changed");
+  assert.equal(run.contexts.length, 1);
+  assert.equal(run.coverage[0].status, "failed");
+});
+
 test('optional range section context is validated, retained and never changes citation heading identity', () => {
   const data=[block('2026-09-01','## 2026-09-01\n\n### Alpha\n\n'+'正文。'.repeat(1000))];
   const args={dateFrom:'2026-09-01',dateTo:'2026-09-01',maxChars:1000};

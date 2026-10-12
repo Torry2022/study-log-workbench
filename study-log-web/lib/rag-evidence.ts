@@ -113,7 +113,10 @@ export async function collectRagEvidence(query: string, plan: RagRetrievalPlan, 
         try {
           const page = await readers.read(args, run.signal, config);
           run.signal.throwIfAborted();
-          if (revision && revision !== page.coverage.revision) throw new Error("Source changed");
+          if (revision && revision !== page.coverage.revision) {
+            run.sourceChanged = true; run.limited = true; run.stopReason = "source_changed";
+            throw new Error("Source changed");
+          }
           revision = page.coverage.revision; coverage.totalDays = page.coverage.totalDays;
           register(page.contexts);
           coverage.readDates = [...new Set([...coverage.readDates, ...page.coverage.completedDates])];

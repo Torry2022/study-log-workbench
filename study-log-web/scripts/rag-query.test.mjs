@@ -9,6 +9,7 @@ import * as mcpConfig from "../lib/mcp-config.ts";
 import * as answer from "../lib/rag-answer.ts";
 import * as query from "../lib/rag-query.ts";
 import { contextualizeRagQuestion, planRagRetrievalWithFallback } from "../lib/rag-planning.ts";
+import { readLogRange } from "../../study-log-mcp/src/range-reader.mjs";
 
 async function fixture(t) {
   const state = { requests: [], contexts: true, broken: false, semanticFailure: false, stall: false, started: undefined };
@@ -24,6 +25,9 @@ async function fixture(t) {
         if (!Object.hasOwn(body, "id")) { res.writeHead(202); res.end(); return; }
         if (body.method === "tools/call") {
           if (state.stall) { state.started?.(); return; }
+          if (body.params.name === "read_log_range" && state.rangePage) {
+            return reply({ jsonrpc: "2.0", id: body.id, result: { content: [{ type: "text", text: JSON.stringify(state.rangePage(body.params.arguments)) }] } });
+          }
           const contexts = state.contexts === false ? [] : Array.isArray(state.contexts) ? state.contexts :
             [{ sourceId: "S1", date: "2026-08-01", month: "2026-08", fileName: "2026-08_学习日志.md", heading: null, headingIndex: null, chunkId: "synthetic", contentHash: "a".repeat(64), content: "合成证据", truncated: false, score: 1 }];
           return reply({ jsonrpc: "2.0", id: body.id, result: { content: [{ type: "text", text: JSON.stringify({ contexts, context: { maxChunks: body.params.arguments.maxChunks, maxChars: body.params.arguments.maxChars, returnedChunks: contexts.length, totalChars: contexts.reduce((sum, item) => sum + item.content.length, 0), truncated: false }, retrieval: { mode: "lexical_fallback" } }) }] } });
@@ -48,6 +52,22 @@ async function fixture(t) {
 async function events(stream) {
   return (await new Response(stream).text()).trim().split("\n\n").filter(Boolean).map(block => ({ event: block.split("\n")[0].slice(7), data: JSON.parse(block.split("\n").slice(1).join("\n").slice(6)) }));
 }
+
+test("a changed range revision rejects the query before answer generation", async t => {
+  const { state, config } = await fixture(t);
+  const blocks = [{ date: "2026-09-01", month: "2026-09", fileName: "2026-09_学习日志.md", content: "甲".repeat(45000) }];
+  state.rangePage = args => {
+    const page = readLogRange(blocks, args);
+    if (args.cursor) page.coverage.revision = "b".repeat(64);
+    return page;
+  };
+  const values = await events(query.createRagQueryStream({ question: "比较2026年9月和10月", history: [], mode: "logs_only" }, config, new AbortController().signal));
+  assert.equal(values.at(-1).event, "error");
+  assert.equal(values.at(-1).data.code, "MCP_SOURCE_CHANGED");
+  assert.equal(values.some(item => ["sources", "delta", "done"].includes(item.event)), false);
+  assert.equal(state.requests.filter(item => item.method === "tools/call").length, 2);
+  assert.equal(state.requests.some(item => item.messages), false);
+});
 
 test("followup matrix: source pointers cannot silently fall back to unrelated retrieval", async t => {
   const { state, config } = await fixture(t);

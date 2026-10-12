@@ -62,7 +62,7 @@ export interface RagSession extends RagSessionSummary {
 }
 
 export interface RagDiagnostics {
-  agent?: { enabled: boolean; usage?: unknown; firstPassUsage?: unknown; judgment?: { support: string; conflict: string }; judgeUsage?: unknown; judgeUnavailable?: boolean; judgeSkipped?: "outside_short_evidence_scope"; stopReason?: string };
+  agent?: { enabled: boolean; usage?: unknown; firstPassUsage?: unknown; firstPassLimited?: boolean; judgment?: { support: string; conflict: string }; judgeUsage?: unknown; judgeUnavailable?: boolean; judgeSkipped?: "outside_short_evidence_scope"; stopReason?: string };
   coverage?: unknown;
   toolCalls?: number;
   usage?: Array<{ model: string; inputTokens: number | null; outputTokens: number | null }>;

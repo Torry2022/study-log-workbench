@@ -121,7 +121,7 @@ test('first answer can identify an unread part before the existing read loop', a
   assert.equal(run.stopReason,'sufficient_evidence');
 });
 
-test('first answer uses one primary-model call, preserves modes and refuses incomplete output', async t => {
+test('first answer uses one primary-model call, preserves modes and refuses filtered output', async t => {
   const mcp=await fixture(t), previous={};
   for(const key of ['RAG_AGENT_ENABLED','RAG_AGENT_TOOL_CALLING_VERIFIED','RAG_JEV_ENABLED'])previous[key]=process.env[key];
   Object.assign(process.env,{RAG_AGENT_ENABLED:'true',RAG_AGENT_TOOL_CALLING_VERIFIED:'true',RAG_JEV_ENABLED:'false'});
@@ -131,7 +131,7 @@ test('first answer uses one primary-model call, preserves modes and refuses inco
     const body=JSON.parse(raw);calls.push(body);
     assert.equal(body.model,'primary-answer-model');assert.ok(!body.tools);assert.equal(body.temperature,0);
     assert.ok(body.messages.some(message=>message.role==='system' && message.content.includes('来源编号')));
-    res.setHeader('content-type','application/json');res.end(await firstAnswer(false,answer,interrupted?'length':'stop').text());
+    res.setHeader('content-type','application/json');res.end(await firstAnswer(false,answer,interrupted?'content_filter':'stop').text());
   });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   t.after(async()=>{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));for(const[key,value]of Object.entries(previous)){if(value===undefined)delete process.env[key];else process.env[key]=value;}});
@@ -150,6 +150,38 @@ test('first answer uses one primary-model call, preserves modes and refuses inco
   interrupted=true;
   const raw=await new Response(createRagQueryStream({question:'Alpha的适用条件是什么？',mode:'logs_only',history:[]},{chat,lightChat:chat,mcp},new AbortController().signal)).text();
   assert.match(raw,/event: error/);assert.ok(!raw.includes('event: delta'));assert.ok(!raw.includes(answer));
+});
+
+test('first decision length discards its text and continues bounded tools before final generation', async t => {
+  const mcp=await fixture(t), previous={};
+  for(const key of ['RAG_AGENT_ENABLED','RAG_AGENT_TOOL_CALLING_VERIFIED','RAG_JEV_ENABLED'])previous[key]=process.env[key];
+  Object.assign(process.env,{RAG_AGENT_ENABLED:'true',RAG_AGENT_TOOL_CALLING_VERIFIED:'true',RAG_JEV_ENABLED:'false'});
+  const calls=[];
+  const server=http.createServer(async(req,res)=>{
+    let raw='';for await(const chunk of req)raw+=chunk;
+    const body=JSON.parse(raw);calls.push(body);
+    if(!body.stream){res.setHeader('content-type','application/json');res.end(await firstAnswer(false,'内部截断答案不可显示[S99]','length').text());return;}
+    res.setHeader('content-type','text/event-stream');
+    if(body.tools){
+      const state=JSON.parse(body.messages.find(x=>x.role==='user').content);
+      assert.equal(state.firstPassLimited,true);assert.equal(state.firstPassGap,undefined);
+      assert.equal(state.remainingDecisions,2);assert.equal(state.evidence.length,1);
+      assert.ok(!JSON.stringify(body).includes('内部截断答案'));
+      res.end(await stream('finish',{reason:'sufficient_evidence'}).text());return;
+    }
+    res.end('data: '+JSON.stringify({choices:[{delta:{content:'Alpha条件成立才适用，不适用于所有场景。[S1]'}}]})+'\n\ndata: [DONE]\n\n');
+  });
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  t.after(async()=>{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));for(const[key,value]of Object.entries(previous)){if(value===undefined)delete process.env[key];else process.env[key]=value;}});
+  const chat={baseUrl:`http://127.0.0.1:${server.address().port}`,apiKey:'synthetic',model:'mock'};
+  const raw=await new Response(createRagQueryStream({question:'Alpha的适用条件是什么？',mode:'logs_only',history:[]},{chat,lightChat:chat,mcp},new AbortController().signal)).text();
+  assert.equal(calls.length,3);assert.ok(!raw.includes('内部截断答案'));assert.ok(!raw.includes('[S99]'));
+  const terminal=raw.trim().split('\n\n').at(-1);assert.match(terminal,/^event: done/);
+  const done=JSON.parse(terminal.split('\n')[1].slice(6));
+  assert.equal(done.diagnostics.agent.firstPassLimited,true);
+  assert.equal(done.diagnostics.agent.firstPassUsage.inputTokens,10);
+  assert.equal(done.diagnostics.agent.stopReason,'sufficient_evidence');
+  assert.equal(done.citations[0].date,'2026-09-01');
 });
 
 test('internal decision length stops tools and answers from retained evidence; filtering still fails', async t => {

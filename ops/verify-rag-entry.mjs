@@ -15,7 +15,7 @@ const source = '## 2026-09-01\n\n### Alpha\nAlpha条件成立才适用，不适�
 const file = path.join(data, '2026-09_学习日志.md');
 await fs.writeFile(file, source, { flag: 'wx' });
 await fs.writeFile(path.join(data, '.instance.json'), JSON.stringify({ schemaVersion: 1, id: 'b0250000-0000-4000-8000-000000000001' }), { flag: 'wx' });
-const tools = [], checks = [], calls = []; let decisionLimited = false;
+const tools = [], checks = [], calls = []; let decisionLimited = false, firstLimited = false;
 const model = http.createServer(async (req, res) => {
   assert.equal(req.url, '/full/custom/endpoint');
   assert.equal(req.headers.authorization, 'Bearer synthetic');
@@ -33,7 +33,7 @@ const model = http.createServer(async (req, res) => {
     tools.push(state);
   }
   const answer = 'Alpha条件成立才适用，不适用于所有场景。[S1]';
-  if (firstPass) {res.setHeader('content-type','application/json');res.end(JSON.stringify({choices:[{message:{role:'assistant',content:JSON.stringify({needsMoreEvidence:decisionLimited,answer})},finish_reason:'stop'}],usage:{prompt_tokens:10,completion_tokens:5}}));return;}
+  if (firstPass) {res.setHeader('content-type','application/json');res.end(JSON.stringify({choices:[{message:{role:'assistant',content:firstLimited?'内部首轮截断文本':JSON.stringify({needsMoreEvidence:decisionLimited,answer})},finish_reason:firstLimited?'length':'stop'}],usage:{prompt_tokens:10,completion_tokens:5}}));return;}
   if (!body.stream) { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ choices: [{ message: { content: 'Alpha适用条件' } }] })); return; }
   res.setHeader('content-type', 'text/event-stream');
   const frame = value => `data: ${JSON.stringify(value)}\n\n`;
@@ -74,6 +74,17 @@ try {
   assert.equal(calls.length - limitCalls, 3); assert.equal(tools.length - limitTools, 1);
   assert.ok(!limitRaw.includes('内部草稿') && !limitRaw.includes('内部思考'));
   checks.push({ decisionOutputLimit: true, finalAnswer: true, internalMessagesHidden: true }); decisionLimited = false;
+  firstLimited = true;
+  const firstCalls = calls.length;
+  const firstResponse = await fetch(`${base}/api/rag/query`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${auth.token}` }, body: JSON.stringify({ question: 'Alpha的适用条件是什么？', mode: 'logs_only', history: [] }) });
+  assert.equal(firstResponse.status, 200);
+  const firstRaw = await firstResponse.text(); assert.match(firstRaw.trim().split('\n\n').at(-1), /^event: done/);
+  const firstDone = JSON.parse(firstRaw.trim().split('\n\n').at(-1).split('\n')[1].slice(6));
+  assert.equal(firstDone.diagnostics.agent.firstPassLimited, true);
+  assert.equal(firstDone.diagnostics.agent.firstPassUsage.inputTokens, 10);
+  assert.equal(firstDone.citations[0].date, '2026-09-01'); assert.equal(calls.length - firstCalls, 3);
+  assert.ok(!firstRaw.includes('内部首轮截断文本'));
+  checks.push({ firstOutputLimit: true, boundedTools: true, finalAnswer: true });
   const require = createRequire(new URL('../study-log-web/package.json',import.meta.url));
   const { chromium, webkit, expect } = require('@playwright/test');
   for (const [engine, launcher] of Object.entries({ chromium, webkit })) {

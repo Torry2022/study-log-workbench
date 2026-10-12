@@ -25,7 +25,7 @@ export async function supplementEvidence(question: string, plan: RagRetrievalPla
   model: LanguageModel, onStatus: (message: string) => void, summaryConfig?: ChatConfig,
   answerContext?: { mode: RagAnswerMode; history: RagHistoryMessage[] }) {
   let noProgress = false, steps = 0;
-  let firstPassUsage: unknown, firstPassGap: string | undefined;
+  let firstPassUsage: unknown, firstPassGap: string | undefined, firstPassLimited = false;
   if (answerContext) {
     onStatus("正在核对日志依据");
     const messages = buildRagMessages(question, answerContext.history, run.contexts, answerContext.mode, run.report());
@@ -35,19 +35,25 @@ export async function supplementEvidence(question: string, plan: RagRetrievalPla
     try { first = await generateText({ model, system: messages[0].content, messages: messages.slice(1), temperature: 0, maxOutputTokens: 8192, maxRetries: 0, abortSignal: run.signal }); }
     catch { run.signal.throwIfAborted(); throw new AiChatError("AGENT_PROVIDER_FAILED", "核对日志依据未能完成，请稍后重试"); }
     run.signal.throwIfAborted();
-    if (first.finishReason !== "stop") throw new AiChatError("AI_STREAM_INTERRUPTED", "模型回答未完整结束，请重试");
-    let decision: unknown;
-    try { decision = JSON.parse(first.text.trim().replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "")); } catch {}
-    const item = decision as { needsMoreEvidence?: unknown; answer?: unknown } | null;
-    if (!item || Array.isArray(item) || Object.keys(item).length !== 2 || typeof item.needsMoreEvidence !== "boolean" ||
-      typeof item.answer !== "string" || !item.answer.trim() || item.answer.length > 40000) {
-      throw new AiChatError("AGENT_DECISION_INVALID", "核对日志依据的结果无效，请重试");
+    if (first.finishReason === "length") {
+      // Discard incomplete decisions; the existing tool loop can inspect retained evidence.
+      firstPassUsage = first.totalUsage; firstPassLimited = true;
+      onStatus("首轮核对未完成，正在继续检查日志依据");
+    } else {
+      if (first.finishReason !== "stop") throw new AiChatError("AI_STREAM_INTERRUPTED", "模型回答未完整结束，请重试");
+      let decision: unknown;
+      try { decision = JSON.parse(first.text.trim().replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "")); } catch {}
+      const item = decision as { needsMoreEvidence?: unknown; answer?: unknown } | null;
+      if (!item || Array.isArray(item) || Object.keys(item).length !== 2 || typeof item.needsMoreEvidence !== "boolean" ||
+        typeof item.answer !== "string" || !item.answer.trim() || item.answer.length > 40000) {
+        throw new AiChatError("AGENT_DECISION_INVALID", "核对日志依据的结果无效，请重试");
+      }
+      if (!item.needsMoreEvidence) {
+        run.stopReason ||= "sufficient_evidence";
+        return { usage: first.totalUsage, answer: item.answer.trim() };
+      }
+      firstPassUsage = first.totalUsage; firstPassGap = item.answer;
     }
-    if (!item.needsMoreEvidence) {
-      run.stopReason ||= "sufficient_evidence";
-      return { usage: first.totalUsage, answer: item.answer.trim() };
-    }
-    firstPassUsage = first.totalUsage; firstPassGap = item.answer;
   }
   type FinishInput = { reason: "sufficient_evidence" | "no_more_leads" };
   let lastTool: { name: string; addedSourceIds: string[]; stopped: boolean } | undefined;
@@ -55,6 +61,7 @@ export async function supplementEvidence(question: string, plan: RagRetrievalPla
   const state = () => JSON.stringify({ question, constraints: plan, coverage: run.report(),
     remainingDecisions: 2 - steps, lastTool, availableReadDates: availableReadDates(),
     ...(firstPassGap ? { firstPassGap } : {}),
+    ...(firstPassLimited ? { firstPassLimited: true } : {}),
     ...(answerContext ? { history: answerContext.history } : {}),
     previousReads: [...run.requests].map(request => JSON.parse(request)),
     evidence: run.contexts.map(({ sourceId, date, heading, content, truncated, rangeSection }) => ({ sourceId, date, heading, content, ...(rangeSection ? {rangeSection} : {}), truncated: !!truncated })) });
@@ -136,5 +143,5 @@ export async function supplementEvidence(question: string, plan: RagRetrievalPla
     if (event.type === "finish-step") stepCalledTool = false;
   }
   run.signal.throwIfAborted();
-  return { usage: await result.totalUsage, firstPassUsage, answer: undefined };
+  return { usage: await result.totalUsage, firstPassUsage, firstPassLimited, answer: undefined };
 }

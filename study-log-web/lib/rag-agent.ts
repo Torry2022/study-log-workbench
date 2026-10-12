@@ -30,6 +30,7 @@ export async function supplementEvidence(question: string, plan: RagRetrievalPla
     onStatus("正在核对日志依据");
     const messages = buildRagMessages(question, answerContext.history, run.contexts, answerContext.mode, run.report());
     messages[0].content += "\n本次只返回JSON对象，严格包含needsMoreEvidence(boolean)和answer(string)。先尝试依据当前材料回答。所问具体条件和事实已经提供、适用关系明确时needsMoreEvidence=false，answer写完整的带来源回答。只有缺少回答当前问题所需的具体信息时needsMoreEvidence=true，answer说明缺口；检索未覆盖全库或无关片段被截断本身不是缺口。不要为找更多材料而选择true。";
+    messages[0].content += `\n尚可补读原文的命中日期：${JSON.stringify(run.availableReadDates())}。问题包含多个要点时，不能因已回答部分要点就认定依据足够。若某个所问要点缺少依据、且其相关命中原文仍可补读，应选择needsMoreEvidence=true并指出该要点；不能一边宣称该要点未提供，一边将部分回答作为完整回答结束。已提供该要点的依据时，不因其他内容截断而补读。`;
     let first;
     try { first = await generateText({ model, system: messages[0].content, messages: messages.slice(1), temperature: 0, maxOutputTokens: 8192, maxRetries: 0, abortSignal: run.signal }); }
     catch { run.signal.throwIfAborted(); throw new AiChatError("AGENT_PROVIDER_FAILED", "核对日志依据未能完成，请稍后重试"); }

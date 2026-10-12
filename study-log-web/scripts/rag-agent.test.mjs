@@ -96,6 +96,31 @@ test('ordinary facts answer once, literal lookup bypasses tools, and no leads st
   assert.ok(empty.diagnostics.coverage.every(scope=>scope.status==='search'));
 });
 
+test('first answer can identify an unread part before the existing read loop', async t => {
+  const tail = 'Beta 的条件是来源一致且明确确认，缺少确认不能继续。';
+  const mcp = await fixture(t, `## 2026-09-01\n\n### Alpha\n${'Alpha 过程记录。'.repeat(1600)}\n\n${tail}`);
+  const run = new EvidenceRun(new AbortController().signal);
+  await collectRagEvidence('Alpha 和 Beta 的条件是什么？', {strategy:'relevance'}, run, mcp);
+  assert.ok(run.contexts.some(item=>item.truncated));
+  assert.ok(!run.contexts.some(item=>item.content.includes(tail)));
+  const dates = run.availableReadDates();
+  assert.deepEqual(dates, ['2026-09-01']);
+  let calls=0;
+  const model=createAgentModel(config, async (_url,init)=>{
+    const body=JSON.parse(init.body);calls++;
+    if(calls===1){
+      assert.ok(body.messages[0].content.includes(JSON.stringify(dates)));
+      return firstAnswer(true,'Beta 的条件在所给片段中未提供，需要补读命中的原文。');
+    }
+    return calls===2 ? stream('read',{date:dates[0]}) : stream('finish',{reason:'sufficient_evidence'});
+  });
+  const result=await supplementEvidence('Alpha 和 Beta 的条件是什么？',{strategy:'relevance'},run,mcp,model,()=>{},undefined,{mode:'logs_only',history:[]});
+  assert.equal(result.answer,undefined);
+  assert.equal(calls,3);
+  assert.ok(run.contexts.some(item=>item.content.includes(tail)));
+  assert.equal(run.stopReason,'sufficient_evidence');
+});
+
 test('first answer uses one primary-model call, preserves modes and refuses incomplete output', async t => {
   const mcp=await fixture(t), previous={};
   for(const key of ['RAG_AGENT_ENABLED','RAG_AGENT_TOOL_CALLING_VERIFIED','RAG_JEV_ENABLED'])previous[key]=process.env[key];

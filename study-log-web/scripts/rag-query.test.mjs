@@ -80,12 +80,20 @@ test("followup matrix: rewriting cannot add old dates to new literal lookups or 
     ["我记录过2025年九月发布的模型吗？", undefined, undefined]
   ]) {
     const before = state.requests.length;
+    state.contexts = expectedFrom ? [{ sourceId:'S1',date:expectedFrom,month:expectedFrom.slice(0,7),fileName:`${expectedFrom.slice(0,7)}_学习日志.md`,heading:null,headingIndex:null,chunkId:'synthetic',contentHash:'a'.repeat(64),content:'合成证据 新主题 2026年2月30日',truncated:false,score:1 }] : true;
     const result = await events(query.createRagQueryStream({ question, history: [{ role: "user", content: "九月学了什么？" }], mode: "logs_only" }, config, new AbortController().signal));
     assert.equal(result.at(-1).event, "done");
     const tool = state.requests.slice(before).find(item => item.method === "tools/call");
     assert.equal(tool.params.arguments.dateFrom, expectedFrom);
     assert.equal(tool.params.arguments.literalQuery, expectedLiteral);
   }
+});
+test('out-of-range MCP search evidence fails before answer generation', async t => {
+  const {state,config}=await fixture(t);
+  const values=await events(query.createRagQueryStream({question:'2026年十月哪里提到过`合成证据`？',history:[],mode:'logs_only'},config,new AbortController().signal));
+  assert.equal(values.at(-1).event,'error');assert.equal(values.at(-1).data.code,'MCP_INVALID_RESPONSE');
+  assert.ok(!values.some(item=>['delta','sources','done'].includes(item.event)));
+  assert.equal(state.requests.filter(item=>item.stream).length,0);
 });
 const input = { question: "原文哪里提到合成证据？", history: [], mode: "logs_only" };
 

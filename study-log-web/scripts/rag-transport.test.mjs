@@ -52,6 +52,11 @@ test("real SDK legacy handshake carries token and bounded raw-log retrieve_conte
   assert.equal(output.contexts[0].contentHash, "a".repeat(64));
   const call = requests.find(item => item.method === "tools/call");
   assert.deepEqual(call.params.arguments, { input: "合成问题", strategy: "relevance", matchMode: "literal", literalQuery: "ＡＰＩ", maxChunks: 8, maxChars: 12000 });
+  for(const bounds of [{dateFrom:'2026-08-02'},{dateTo:'2026-07-31'},{dateFrom:'2026-08-02',dateTo:'2026-08-02'}]) {
+    await assert.rejects(retrieveStudyLogContexts('合成问题',{strategy:'relevance',...bounds},undefined,{url,token:'synthetic-token'}),{code:'MCP_INVALID_RESPONSE'});
+  }
+  const bounded=await retrieveStudyLogContexts('合成问题',{strategy:'relevance',dateFrom:'2026-08-01',dateTo:'2026-08-01'},undefined,{url,token:'synthetic-token'});
+  assert.equal(bounded.contexts[0].date,'2026-08-01');
 });
 
 test("MCP cancellation and deadline terminate stalled connect without exposing endpoint", async t => {

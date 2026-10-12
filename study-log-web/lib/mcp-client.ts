@@ -109,7 +109,9 @@ export async function callStudyLogTool(name: "retrieve_contexts" | "read_log_ran
 export async function retrieveStudyLogContexts(input: string, options: RagRetrievalPlan = { strategy: "relevance" }, signal?: AbortSignal, config: McpConfig = getMcpConfig(), timeoutMs = 60000): Promise<RetrievedContextsResult> {
   const maxChunks = Math.min(options.maxChunks ?? 8, 20), maxChars = Math.min(options.maxChars ?? 12000, 30000);
   const { ranges: _ranges, eventDates: _events, ...filters } = options;
-  return validateRetrievedContexts(await callStudyLogTool("retrieve_contexts", { input, ...filters, maxChunks, maxChars }, signal, config, timeoutMs), { maxChunks, maxChars });
+  const result = validateRetrievedContexts(await callStudyLogTool("retrieve_contexts", { input, ...filters, maxChunks, maxChars }, signal, config, timeoutMs), { maxChunks, maxChars });
+  if (result.contexts.some(item => options.dateFrom && item.date < options.dateFrom || options.dateTo && item.date > options.dateTo)) throw invalid();
+  return result;
 }
 export interface RangePage extends RetrievedContextsResult {
   coverage: { revision: string; totalDays: number; completedDates: string[]; nextCursor: string | null };

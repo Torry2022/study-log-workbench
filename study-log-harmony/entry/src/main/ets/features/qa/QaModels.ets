@@ -11,6 +11,14 @@ export interface RagSessionSummary {
 export interface RagHistoryMessage {
   role: string;
   content: string;
+  sourceRefs?: RagSourceRef[];
+}
+
+export interface RagSourceRef {
+  date: string;
+  fileName: string;
+  heading: string | null;
+  contentHash: string;
 }
 
 export interface RagChatMessage extends RagHistoryMessage {

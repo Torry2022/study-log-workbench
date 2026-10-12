@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import { parseRagHistory } from '../../study-log-web/lib/rag-answer.ts';
 
 async function loadController() {
   const directory = new URL('../entry/src/main/ets/features/qa/', import.meta.url);
@@ -33,6 +34,29 @@ function view() { return {
   onSessionReady() {}, onBeforeSessionChange: async () => {}, resetComposerScroll() {},
   beforeSend() {}, showComposer() {}, afterFrame(action) { action(); }
 }; }
+
+test('native history supplies ordered source pointers accepted by the shared backend', async () => {
+  let submitted;
+  const Controller=await loadController(),controller=new Controller({
+    postStream:async (_path,request,chunk)=>{submitted=JSON.parse(JSON.stringify(request));chunk('event: done\ndata: {"answer":"新的合成回答","citations":[]}\n\n');},
+    put:async ()=>({session:{id:'synthetic-session',version:'v2'}}),
+    get:async ()=>({sessions:[]})
+  },view());
+  const citations=[{sourceId:'S1',date:'2026-09-03',fileName:'2026-09_学习日志.md',heading:'Alpha',contentHash:'a'.repeat(64),excerpt:'不随历史重复传输的原文'},
+    {sourceId:'S2',date:'2026-09-01',fileName:'2026-09_学习日志.md',heading:null,contentHash:'b'.repeat(64),excerpt:'另一段原文'}];
+  controller.messages=[{id:'q1',role:'user',content:'合成问题'},{id:'a1',role:'assistant',content:'合成回答[S1][S2]',citations},
+    {id:'q2',role:'user',content:'旧会话问题'},{id:'a2',role:'assistant',content:'旧会话回答'},
+    {id:'q3',role:'user',content:'中断问题'},{id:'a3',role:'assistant',content:'中断片段',status:'stopped',citations}];
+  const history=JSON.parse(JSON.stringify(controller.history()));
+  assert.equal(history.length,4);assert.equal(history[3].sourceRefs,undefined);
+  assert.deepEqual(history[1].sourceRefs,citations.map(({date,fileName,heading,contentHash})=>({date,fileName,heading,contentHash})));
+  assert.ok(!JSON.stringify(history).includes('原文'));
+  const accepted=parseRagHistory(history);assert.deepEqual(accepted[1].sourceRefs,history[1].sourceRefs);
+  assert.equal(accepted[1].sourceRefs[1].date,'2026-09-01');
+  controller.sessionId='synthetic-session';controller.sessionVersion='v1';controller.question='刚才第二条来源讲了什么？';
+  await controller.send();assert.deepEqual(submitted.history,history);
+  citations[1].date='2026-09-02';assert.equal(history[1].sourceRefs[1].date,'2026-09-01');
+});
 
 test('history loading preserves a new question and cannot send it with the previous session context', async () => {
   const Controller = await loadController();

@@ -1,5 +1,5 @@
 import { ApiClient, ApiError, ApiStreamCancelledError } from '../../common/network/ApiClient';
-import { RagChatMessage, RagCitation, RagDeltaEvent, RagDoneEvent, RagErrorEvent, RagHistoryMessage, RagQueryRequest, RagSessionResponse, RagSessionsResponse, RagSessionSummary, RagSessionWriteRequest, RagSourcesEvent, RagStatusEvent } from './QaModels';
+import { RagChatMessage, RagCitation, RagDeltaEvent, RagDoneEvent, RagErrorEvent, RagHistoryMessage, RagQueryRequest, RagSessionResponse, RagSessionsResponse, RagSessionSummary, RagSessionWriteRequest, RagSourceRef, RagSourcesEvent, RagStatusEvent } from './QaModels';
 import { QaStreamParser } from './QaStreamParser';
 import { util } from '@kit.ArkTS';
 
@@ -176,8 +176,13 @@ export class QaSessionController {
       const answer = this.messages[index + 1];
       if (question.role !== 'user' || answer.role !== 'assistant' ||
         answer.status === 'stopped' || answer.status === 'error' || !answer.content.trim()) continue;
-      history.push({ role: 'user', content: question.content },
-        { role: 'assistant', content: answer.content });
+      const historyAnswer: RagHistoryMessage = { role: 'assistant', content: answer.content };
+      if (answer.citations && answer.citations.length > 0) {
+        historyAnswer.sourceRefs = answer.citations.map((citation: RagCitation): RagSourceRef => ({
+          date: citation.date, fileName: citation.fileName, heading: citation.heading, contentHash: citation.contentHash
+        }));
+      }
+      history.push({ role: 'user', content: question.content }, historyAnswer);
     }
     return history;
   }

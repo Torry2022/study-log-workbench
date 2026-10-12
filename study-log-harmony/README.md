@@ -6,6 +6,8 @@
 
 ## 准备
 
+2026-10-12 来源追问已补齐历史指针，与网页使用同一后端契约。243 项协议检查和未签名 HAP 构建通过，本次尚未现场验证；详见[接线记录](../docs/harmony-rag-source-refs-2026-10-12.md)。
+
 - 已按[服务器部署指南](../deploy/README.md)启动服务，并取得服务器地址和访问密码。先在目标设备浏览器确认能够打开 `https://你的域名/study-log`。
 - 安装匹配的 DevEco Studio 和 HarmonyOS SDK `6.1.1(24)`；工程支持 `phone`、`tablet`、`2in1`，设备系统须满足工程兼容版本。
 - 获取本仓库源码，用 DevEco 打开 `study-log-harmony`。按本机环境生成或创建不入库的 `local.properties`，设置 `sdk.dir`。命令行测试需要 Node.js 22.13 或更新版本。

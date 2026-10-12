@@ -17,6 +17,7 @@ const manager = new DesktopManager({ packageRoot: payload, node });
 const password = "synthetic-rag-package-password";
 let toolRequests = 0;
 let modelCalls = 0;
+let firstLimited = false;
 const model = http.createServer(async (req, res) => {
   assert.equal(req.url, '/full/custom/endpoint');
   assert.equal(req.headers.authorization, 'Bearer synthetic');
@@ -27,7 +28,7 @@ const model = http.createServer(async (req, res) => {
     modelCalls++;
     const needsMoreEvidence=body.messages.at(-1).content.includes('当前问题：Gamma');
     const answer=needsMoreEvidence?'Gamma尚未提供附加说明。':'Alpha条件成立才适用，不适用于所有场景。[S1]';
-    res.setHeader('content-type','application/json');res.end(JSON.stringify({choices:[{message:{role:'assistant',content:JSON.stringify({needsMoreEvidence,answer})},finish_reason:'stop'}],usage:{prompt_tokens:10,completion_tokens:5}}));return;
+    res.setHeader('content-type','application/json');res.end(JSON.stringify({choices:[{message:{role:'assistant',content:firstLimited?'内部首轮截断文本':JSON.stringify({needsMoreEvidence,answer})},finish_reason:firstLimited?'length':'stop'}],usage:{prompt_tokens:10,completion_tokens:5}}));return;
   }
   if (!body.stream) { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({choices:[{message:{content:'合成问答'}}]})); return; }
   modelCalls++;
@@ -73,6 +74,17 @@ try {
     assert.equal(modelCalls-before,calls);
     checks.push({ question, modelCalls:modelCalls-before, diagnostics: events.at(-1).data.diagnostics });
   }
+  firstLimited = true;
+  const before = modelCalls;
+  const interrupted = await fetch(`${status.url}/api/rag/query`, { method:'POST', headers:{'Content-Type':'application/json',Authorization:`Bearer ${auth.token}`},body:JSON.stringify({question:'Alpha的条件是什么？',mode:'logs_only',history:[]}) });
+  assert.equal(interrupted.status,200);
+  const interruptedRaw=await interrupted.text();assert.ok(!interruptedRaw.includes('内部首轮截断文本'));
+  const terminal=interruptedRaw.trim().split('\n\n').at(-1);assert.match(terminal,/^event: done/);
+  const recovered=JSON.parse(terminal.split('\n')[1].slice(6));
+  assert.equal(recovered.diagnostics.agent.firstPassLimited,true);
+  assert.equal(recovered.diagnostics.agent.firstPassUsage.inputTokens,10);
+  assert.equal(recovered.citations[0].date,'2026-09-01');assert.equal(modelCalls-before,3);
+  checks.push({firstDecisionLength:true,modelCalls:modelCalls-before,diagnostics:recovered.diagnostics});firstLimited=false;
   assert.ok(toolRequests >= 1); assert.equal(await fs.readFile(file, "utf8"), source);
   await fs.writeFile(path.join(root, "package-check.json"), JSON.stringify({ driverNode: process.version, serviceNode, checks, toolRequests }, null, 2));
   const result = await promisify(execFile)(node, ["ops/browser-rag.mjs", root, status.url], { cwd: path.resolve(import.meta.dirname, ".."), windowsHide: true, timeout: 180000, maxBuffer: 1024 * 1024 });

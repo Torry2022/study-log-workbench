@@ -108,7 +108,7 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
         const scopeFullyRead = !run.limited && run.coverage.length > 0 && run.coverage.every(scope => scope.status === "complete" || scope.status === "empty");
         // Search coverage is not proof that the question is answered. Let the same
         // bounded tool loop choose finish or follow a lead, independent of wording.
-        if (agentEnabled() && !scopeFullyRead && !planned.plan.matchMode) {
+        if (agentEnabled(process.env, config.chat) && !scopeFullyRead && !planned.plan.matchMode) {
           diagnostics.agent = { enabled: true };
           const jev = jevConfiguration();
           if (process.env.RAG_JEV_ENABLED === "true" && jev) {

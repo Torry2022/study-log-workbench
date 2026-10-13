@@ -11,9 +11,15 @@ import { compactEvidence } from "./rag-evidence-summary.ts";
 import { buildRagMessages } from "./rag-answer.ts";
 import type { RagAnswerMode, RagHistoryMessage } from "./rag-types.ts";
 
-/** Explicit opt-in after provider fixtures and quality evaluation; no automatic probing. */
-export function agentEnabled(env = process.env): boolean {
-  return env.RAG_AGENT_ENABLED === "true" && env.RAG_AGENT_TOOL_CALLING_VERIFIED === "true";
+/** Use the verified official Flash path by default; compatible providers still require explicit confirmation. */
+export function agentEnabled(env = process.env, config?: Pick<ChatConfig, "baseUrl" | "model">): boolean {
+  if (env.RAG_AGENT_ENABLED === "false") return false;
+  if (env.RAG_AGENT_ENABLED === "true" && env.RAG_AGENT_TOOL_CALLING_VERIFIED === "true") return true;
+  if (!config) return false;
+  try {
+    const endpoint = new URL(config.baseUrl);
+    return endpoint.protocol === "https:" && endpoint.hostname === "api.deepseek.com" && config.model === "deepseek-flash";
+  } catch { return false; }
 }
 export function createAgentModel(config: ChatConfig, transport: typeof fetch = fetch): LanguageModel {
   const thinking = chatThinkingParameters(config);

@@ -12,6 +12,37 @@ import { createRagQueryStream } from "../lib/rag-query.ts";
 
 const config = { baseUrl: "https://example.test/custom/endpoint?version=one", apiKey: "synthetic", model: "mock-tools" };
 
+test("official DeepSeek Flash uses the verified Agent path unless explicitly disabled", () => {
+  const official = { baseUrl: "https://api.deepseek.com/chat/completions", model: "deepseek-flash" };
+  assert.equal(agentEnabled({}, official), true);
+  assert.equal(agentEnabled({ RAG_AGENT_ENABLED: "false" }, official), false);
+  assert.equal(agentEnabled({}, { ...official, model: "deepseek-v4-pro" }), false);
+  assert.equal(agentEnabled({}, { ...official, baseUrl: "https://proxy.invalid/chat/completions" }), false);
+  assert.equal(agentEnabled({ RAG_AGENT_ENABLED: "true", RAG_AGENT_TOOL_CALLING_VERIFIED: "true" }, config), true);
+  assert.equal(agentEnabled({ RAG_AGENT_ENABLED: "true", RAG_AGENT_TOOL_CALLING_VERIFIED: "false" }, config), false);
+});
+
+test("official DeepSeek Flash reaches the bounded Agent loop without instance flags", async t => {
+  const mcp = await fixture(t), savedFetch = globalThis.fetch;
+  const keys = ["RAG_AGENT_ENABLED", "RAG_AGENT_TOOL_CALLING_VERIFIED", "RAG_JEV_ENABLED"];
+  const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+  for (const key of keys) delete process.env[key];
+  t.after(() => { for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } });
+  const chat = { baseUrl: "https://api.deepseek.com/chat/completions", apiKey: "synthetic", model: "deepseek-flash" };
+  let modelCalls = 0;
+  t.mock.method(globalThis, "fetch", async (url, init) => {
+    if (String(url) !== chat.baseUrl) return savedFetch(url, init);
+    const body = JSON.parse(init.body); modelCalls++;
+    assert.ok(body.tools.some(item => item.function.name === "search"));
+    return plain("Alpha条件成立才适用，不适用于所有场景。[S1]");
+  });
+  const raw = await new Response(createRagQueryStream({ question: "Alpha的条件是什么？", mode: "logs_only", history: [] }, { chat, lightChat: chat, mcp }, new AbortController().signal)).text();
+  assert.match(raw, /event: done/, raw);
+  const done = JSON.parse(raw.trim().split("\n\n").at(-1).split("\n")[1].slice(6));
+  assert.equal(modelCalls, 1); assert.equal(done.diagnostics.agent.enabled, true);
+  assert.match(done.answer, /Alpha条件成立/);
+});
+
 test('inherited follow-up scope constrains actual MCP reads throughout the SDK loop', async t => {
   const mcp = await fixture(t), savedFetch = globalThis.fetch, calls = [];
   const keys = ['RAG_AGENT_ENABLED', 'RAG_AGENT_TOOL_CALLING_VERIFIED', 'RAG_JEV_ENABLED'];

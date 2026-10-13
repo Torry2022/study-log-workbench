@@ -14,9 +14,11 @@ CHAT_API_KEY=replace-with-your-key
 
 问答可选 `RAG_DEEPSEEK_THINKING=disabled` 或 `low`，仅适用于 HTTPS 官方 `api.deepseek.com` 的 `deepseek-flash`、`deepseek-v4-pro`。留空沿用供应商默认行为；不会自动关闭思考或更换模型。`disabled` 发送 `thinking.type=disabled`，不发送无效的 `reasoning_effort=none`；`low` 发送 `thinking.type=enabled` 和 `reasoning_effort=low`。普通问答最终生成与 SDK 工具循环使用相同参数。此设置不改变轻量规划、材料压缩、会话标题或其他模块的 AI 调用；代理接口不凭模型名推断兼容性，显式配置不支持的组合时问答返回配置错误，不静默忽略。保存后重启实例生效，现有桌面模型设置窗口仍只管理地址、模型和密钥。参数依据：[DeepSeek 思考模式](https://api-docs.deepseek.com/guides/thinking_mode/)。
 
+官方 `https://api.deepseek.com` 的 `deepseek-flash` 已按当前工具协议验证，相关性问答默认使用有界 Agent：同一次调用可以直接回答，也可以读取命中日期或沿原文明示的名称补查。完整日期范围已经读完和字面查找不进入这条循环。需要停用时设置 `RAG_AGENT_ENABLED=false`。其他模型和代理接口不会仅凭模型名取得工具权限，仍需 `RAG_AGENT_ENABLED=true` 与 `RAG_AGENT_TOOL_CALLING_VERIFIED=true`；两项缺一项使用普通 RAG。Jev 不随 Agent 自动启用。
+
 能力接口的 `features.rag.configured` 使用与问答请求相同的思考模式校验；可选 `features.rag.issues` 返回固定诊断文字，不返回配置值。网页在既有“检查说明”中显示错误并禁用发送，已有会话仍可查看。其他 AI 功能的就绪状态不因问答专用设置错误而关闭；旧客户端不识别 issues 时仍可使用 configured，旧服务器缺少 issues 时网页沿用通用提示。检查不会探测模型或消耗费用。
 
-桌面端保存不同的模型名称或完整接口地址时，已有的 `RAG_AGENT_TOOL_CALLING_VERIFIED=true` 会改为 false，避免把旧目标的工具能力确认用于新目标。`RAG_AGENT_ENABLED` 和其他实例设置保留；目标相同的重复保存不撤销确认。新目标未重新确认时正常使用普通 RAG，不自动探测工具能力。服务器管理员手动修改环境文件时仍需同步撤销旧确认，核对新目标后再显式设置 true。
+桌面端保存不同的模型名称或完整接口地址时，已有的 `RAG_AGENT_TOOL_CALLING_VERIFIED=true` 会改为 false，避免把旧目标的工具能力确认用于新目标。`RAG_AGENT_ENABLED` 和其他实例设置保留；目标相同的重复保存不撤销确认。除上述精确匹配的官方 Flash 外，新目标未重新确认时正常使用普通 RAG，不自动探测工具能力。服务器管理员手动修改环境文件时仍需同步撤销旧确认，核对新目标后再显式设置 true。
 
 初始化会将仓库 `prompts` 中三个通用模板复制到实例的 `data/prompts`：`generation.md`、`highlighting.md`、`extraction.md`。模板强调材料依据、结果预览和用户决定，不规定个人领域、文风、括号或中英文空格习惯。每次请求重新读取模板，修改后无需重启；文件须为非空 UTF-8 普通文件，最大 64 KiB，路径不能包含链接。
 

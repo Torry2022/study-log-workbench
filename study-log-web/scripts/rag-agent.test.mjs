@@ -350,6 +350,32 @@ test('an empty concurrent search cannot claim sources added by another search', 
   assert.deepEqual(hit,['S1']);assert.deepEqual(empty,[]);
 });
 
+test('parallel reads of the same known date share one MCP read without cutting off the next answer',async t=>{
+  const tail='Alpha的条件是明确确认，未确认不得写入。';
+  const mcp=await fixture(t,`## 2026-09-01\n\n### Alpha\n${'Alpha背景。'.repeat(2400)}\n\n${tail}`);
+  const run=new EvidenceRun(new AbortController().signal);
+  await collectRagEvidence('Alpha的条件是什么？',{strategy:'relevance'},run,mcp);
+  assert.deepEqual(run.availableReadDates(),['2026-09-01']);
+  assert.ok(!run.contexts.some(item=>item.content.includes(tail)));
+  const initialLimited=run.limited;
+  let decisions=0;
+  const model=createAgentModel(config,async(_url,init)=>{
+    decisions++;const body=JSON.parse(init.body);
+    if(decisions===1){
+      const tool_calls=['确认条件','不能写入的情形'].map((missingPoint,index)=>({index,id:`duplicate-read-${index}`,type:'function',function:{name:'read',arguments:JSON.stringify({date:'2026-09-01',missingPoint})}}));
+      return new Response('data: '+JSON.stringify({choices:[{index:0,delta:{tool_calls},finish_reason:null}]})+'\n\ndata: '+JSON.stringify({choices:[{index:0,delta:{},finish_reason:'tool_calls'}],usage:{prompt_tokens:10,completion_tokens:5}})+'\n\ndata: [DONE]\n\n',{headers:{'content-type':'text/event-stream'}});
+    }
+    assert.ok(body.messages.at(-1).content.includes(tail));
+    assert.deepEqual(JSON.parse(body.messages.at(-1).content.split('可用工具状态：').at(-1)).availableReadDates,[]);
+    return plain(`${tail}[S2]`);
+  });
+  const result=await supplementEvidence('Alpha的条件是什么？',{strategy:'relevance'},run,mcp,model,()=>{},undefined,{mode:'logs_only',history:[]});
+  assert.equal(decisions,2);assert.equal(run.calls,2);
+  assert.equal(run.stopReason,'sufficient_evidence');assert.equal(run.limited,initialLimited);
+  assert.match(result.answer,/未确认不得写入/);
+  assert.equal(run.coverage.at(-1).status,'complete');
+});
+
 test('a parallel search with no new material cannot stop another search from following its new rule lead',async t=>{
   const savedFetch=globalThis.fetch,keys=['RAG_AGENT_ENABLED','RAG_AGENT_TOOL_CALLING_VERIFIED','RAG_JEV_ENABLED'];
   const previous=Object.fromEntries(keys.map(key=>[key,process.env[key]]));

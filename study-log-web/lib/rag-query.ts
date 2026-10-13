@@ -4,7 +4,7 @@ import type { ChatConfig } from "./ai-config.ts";
 import type { McpConfig } from "./mcp-config.ts";
 import { McpRetrievalError } from "./mcp-client.ts";
 import { buildRagMessages, normalizeRagAnswer, createRagAnswerOutput, NO_LOG_EVIDENCE } from "./rag-answer.ts";
-import { contextualizeRagQuestion, planRagRetrievalWithFallback } from "./rag-planning.ts";
+import { contextualizeRagQuestion, planRagRetrievalWithFallback, type RagContextualizedQuestion } from "./rag-planning.ts";
 import { streamRagAnswer } from "./rag-stream.ts";
 import type { RagAnswerMode, RagCitation, RagDiagnostics, RagHistoryMessage } from "./rag-types.ts";
 import { RAG_MAX_SOURCES } from "./rag-types.ts";
@@ -43,6 +43,7 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
       try {
         signal.throwIfAborted();
         let query = input.question;
+        let contextualized: RagContextualizedQuestion | undefined;
         const original = planRagRetrieval(input.question);
         if (original.invalidDate) {
           diagnostics.timings.totalMs = Math.round(performance.now() - started);
@@ -69,15 +70,25 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
         }
         if (input.history.length && !referenced) {
           send("status", { stage, message: "正在理解问题" });
-          try { query = await contextualizeRagQuestion(input.question, input.history, signal, config.lightChat); diagnostics.contextualized = query !== input.question; }
-          catch (error) { if (signal.aborted) throw error; diagnostics.contextualizationFallback = true; }
+          try {
+            contextualized = await contextualizeRagQuestion(input.question, input.history, signal, config.lightChat);
+            query = contextualized.query; diagnostics.contextualized = query !== input.question || contextualized.scopeSource !== null;
+          } catch (error) {
+            const priorScope = input.history.some(item => item.role === "user" && planRagRetrieval(item.content).dateFrom);
+            if (signal.aborted || error instanceof AiChatError && error.code === "RAG_CONTEXT_UNCERTAIN" || priorScope && !original.dateFrom && !original.matchMode && !original.eventDates) throw error;
+            diagnostics.contextualizationFallback = true;
+          }
           diagnostics.timings.contextualizationMs = elapsed();
         }
         signal.throwIfAborted(); stage = "planning"; stageStart = performance.now();
         send("status", { stage: "contextualizing", message: "正在规划检索" });
-        const planned = !referenced && /总结|回顾|比较|对比|阶段|期间|那几天|之前|之后/.test(query)
-          ? await planRagRetrievalWithFallback(query, signal, new Date(), config.lightChat)
-          : { plan: planRagRetrieval(query), planner: "rules" as const };
+        // A new topic is planned from the current question, not dates inserted into rewritten prose.
+        const planningQuestion = contextualized ? input.question : query;
+        const planned = contextualized && contextualized.scopeSource !== null
+          ? { plan: contextualized.plan, planner: "rules" as const }
+          : !referenced && /总结|回顾|比较|对比|阶段|期间|那几天|之前|之后/.test(planningQuestion)
+            ? await planRagRetrievalWithFallback(planningQuestion, signal, new Date(), config.lightChat)
+            : { plan: contextualized?.plan || planRagRetrieval(query), planner: "rules" as const };
         // Rewriting may resolve pronouns but cannot erase original explicit constraints.
         if (original.dateFrom || original.matchMode || original.eventDates) planned.plan = original;
         if (referenced) planned.plan = { strategy: "timeline_summary", dateFrom: referenced.date, dateTo: referenced.date };

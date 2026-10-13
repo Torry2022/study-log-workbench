@@ -15,7 +15,7 @@ const source = '## 2026-09-01\n\n### Alpha\nAlpha条件成立才适用，不适�
 const file = path.join(data, '2026-09_学习日志.md');
 await fs.writeFile(file, source, { flag: 'wx' });
 await fs.writeFile(path.join(data, '.instance.json'), JSON.stringify({ schemaVersion: 1, id: 'b0250000-0000-4000-8000-000000000001' }), { flag: 'wx' });
-const tools = [], checks = [], calls = []; let decisionLimited = false, firstLimited = false;
+const tools = [], checks = [], calls = [], agentScopes = []; let decisionLimited = false, firstLimited = false, contextSelection = null;
 const model = http.createServer(async (req, res) => {
   assert.equal(req.url, '/full/custom/endpoint');
   assert.equal(req.headers.authorization, 'Bearer synthetic');
@@ -25,6 +25,7 @@ const model = http.createServer(async (req, res) => {
   if (body.tools) {
     assert.equal(body.max_tokens, undefined, 'Tool decisions inherit the model output default');
     const state = JSON.parse(body.messages.at(-1).content.split('可用工具状态：').at(-1));
+    agentScopes.push(state.constraints);
     assert.equal(state.remainingDecisions, 2);
     assert.ok(body.messages.at(-1).content.includes('Alpha条件成立才适用'));
     assert.deepEqual(state.availableReadDates, []);
@@ -32,7 +33,10 @@ const model = http.createServer(async (req, res) => {
     if (decisionLimited || firstLimited) tools.push(state);
   }
   const answer = 'Alpha条件成立才适用，不适用于所有场景。[s1]';
-  if (!body.stream) { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ choices: [{ message: { content: 'Alpha适用条件' } }] })); return; }
+  if (!body.stream) {
+    const content = body.messages[0].content.includes('scopeSource') ? JSON.stringify({ query: 'Alpha的适用条件是什么？', scopeSource: contextSelection }) : 'Alpha适用条件';
+    res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ choices: [{ message: { content }, finish_reason: 'stop' }] })); return;
+  }
   res.setHeader('content-type', 'text/event-stream');
   const frame = value => `data: ${JSON.stringify(value)}\n\n`;
   const limited = body.tools && (decisionLimited || firstLimited);
@@ -63,6 +67,24 @@ try {
     assert.equal(calls.length - callsBefore, 1, 'Sufficient evidence must need only one generating-model call');
     checks.push({ question, agent, done: true, modelCalls: calls.length - callsBefore });
   }
+  for (const [selection, historyQuestion, expectedFrom] of [[0, '只看2026年9月，Alpha的条件是什么？', '2026-09-01'], [null, '只看2026年10月，旧主题是什么？', undefined]]) {
+    contextSelection = selection;
+    const before = agentScopes.length;
+    const response = await fetch(`${base}/api/rag/query`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${auth.token}` }, body: JSON.stringify({ question: 'Alpha的适用条件是什么？', history: [{ role: 'user', content: historyQuestion }], mode: 'logs_only' }) });
+    const raw = await response.text(), block = raw.trim().split('\n\n').at(-1);
+    assert.match(block, /^event: done/);
+    const done = JSON.parse(block.split('\n')[1].slice(6));
+    assert.equal(agentScopes.length, before + 1); assert.equal(agentScopes.at(-1).dateFrom, expectedFrom);
+    assert.equal(done.citations[0].date, '2026-09-01');
+    checks.push({ followupScope: selection === null ? 'new_topic' : 'inherited', done: true, actualSdkScope: true });
+  }
+  contextSelection = 'uncertain';
+  const before = calls.length;
+  const uncertain = await fetch(`${base}/api/rag/query`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${auth.token}` }, body: JSON.stringify({ question: '它呢？', history: [{ role: 'user', content: '只看2026年9月' }], mode: 'logs_only' }) });
+  const uncertainBlock = (await uncertain.text()).trim().split('\n\n').at(-1);
+  assert.match(uncertainBlock, /^event: error/); assert.equal(JSON.parse(uncertainBlock.split('\n')[1].slice(6)).code, 'RAG_CONTEXT_UNCERTAIN');
+  assert.equal(calls.length, before); checks.push({ uncertainScope: true, stoppedBeforeGeneration: true });
+  contextSelection = null;
   decisionLimited = true;
   const limitCalls = calls.length, limitTools = tools.length;
   const limitResponse = await fetch(`${base}/api/rag/query`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${auth.token}` }, body: JSON.stringify({ question: 'Alpha的适用条件是什么？', mode: 'logs_only', history: [] }) });
@@ -125,6 +147,14 @@ try {
       await expect(page.getByRole('button', { name: '停止生成', exact: true })).toHaveCount(0);
       await expect(page).toHaveURL(/session=/);
       await page.screenshot({path:path.join(root,`${engine}-${theme}${suffix}.png`)});
+      contextSelection = 'uncertain';
+      await page.getByRole('textbox', { name: '输入知识库问题', exact: true }).fill('它呢？');
+      await page.getByRole('button', { name: '发送问题', exact: true }).click();
+      await expect(page.locator('.rag-workspace').filter({ visible: true })).toContainText('无法确定追问沿用的范围，请补充日期或完整问题后重试');
+      await expect(page.getByRole('button', { name: '停止生成', exact: true })).toHaveCount(0);
+      await expect(page.locator('.rag-workspace').filter({ visible: true })).toContainText('Alpha条件成立才适用');
+      await page.screenshot({ path: path.join(root, `${engine}-${theme}${suffix}-scope-clarification.png`) });
+      contextSelection = null;
       const configurationIssue = 'RAG_DEEPSEEK_THINKING 仅支持官方 DeepSeek Flash/Pro 的 disabled 或 low';
       await page.route('**/api/capabilities', async route => {
         const response = await route.fetch(), body = await response.json();
@@ -141,7 +171,7 @@ try {
       await expect(page.locator('.rag-workspace').filter({ visible: true })).toContainText('Alpha条件成立才适用');
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
       await page.screenshot({ path: path.join(root, `${engine}-${theme}${suffix}-configuration-error.png`) });
-      checks.push({engine,theme,width,answer:true,savePendingLayout:true,saveErrorLayout:true,retry:true,configurationIssue:true,historyPreserved:true}); await page.close();
+      checks.push({engine,theme,width,answer:true,savePendingLayout:true,saveErrorLayout:true,retry:true,scopeClarification:true,configurationIssue:true,historyPreserved:true}); await page.close();
     }} finally {await browser.close();}
   }
   assert.equal(await fs.readFile(file,'utf8'),source);

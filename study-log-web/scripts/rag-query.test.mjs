@@ -37,7 +37,7 @@ async function fixture(t) {
       if (!body.stream) {
         if (state.semanticFailure) { res.writeHead(500); res.end("synthetic-private-provider-body"); return; }
         const contextualizing = body.messages[0].content.includes("独立查询");
-        return reply({ choices: [{ message: { content: JSON.stringify(contextualizing ? { query: state.rewritten || "原文哪里提到合成证据？" } : { strategy: "timeline_summary", dateFrom: null, dateTo: null }) }, finish_reason: "stop" }] });
+        return reply({ choices: [{ message: { content: JSON.stringify(contextualizing ? (state.contextResult || { query: state.rewritten || "原文哪里提到合成证据？", scopeSource: null }) : { strategy: "timeline_summary", dateFrom: null, dateTo: null }) }, finish_reason: "stop" }] });
       }
       res.setHeader("content-type", "text/event-stream");
       if(state.modelFrame){res.end(`data: ${JSON.stringify(state.modelFrame)}\n\n`);return;}
@@ -149,6 +149,64 @@ test("followup matrix: rewriting cannot add old dates to new literal lookups or 
     assert.equal(tool.params.arguments.literalQuery, expectedLiteral);
   }
 });
+
+test('follow-up scope reaches MCP even when rewrite omits or invents dates, without extra planning calls', async t => {
+  const { state, config } = await fixture(t);
+  const history = [{ role: 'user', content: '只看2026年9月的记录，这个项目的恢复如何？' }, { role: 'assistant', content: '合成恢复说明' }];
+  state.contexts = [{ sourceId: 'S1', date: '2026-09-27', month: '2026-09', fileName: '2026-09_学习日志.md', heading: null, headingIndex: null, chunkId: 'synthetic', contentHash: 'a'.repeat(64), content: '合成恢复证据', truncated: false, score: 1 }];
+  for (const rewritten of ['项目恢复会写入原文吗？', '2027年1月项目恢复会写入原文吗？']) {
+    const start = state.requests.length;
+    state.contextResult = { query: rewritten, scopeSource: 0 };
+    const result = await events(query.createRagQueryStream({ question: '这个恢复会写入原文吗？', history, mode: 'logs_only' }, config, new AbortController().signal));
+    assert.equal(result.at(-1).event, 'done', JSON.stringify(result));
+    const requests = state.requests.slice(start), tool = requests.find(item => item.method === 'tools/call');
+    assert.equal(tool.params.arguments.dateFrom, '2026-09-01'); assert.equal(tool.params.arguments.dateTo, '2026-09-30');
+    assert.equal(requests.filter(item => item.messages && !item.stream).length, 1);
+  }
+});
+
+test('inherited disjoint summary ranges are enumerated separately and leave the gap unread', async t => {
+  const { state, config } = await fixture(t);
+  state.contextResult = { query: '总结这个项目的记录', scopeSource: 0 };
+  const blocks = ['2026-09-01', '2026-10-01', '2026-11-01'].map(date => ({ date, month: date.slice(0, 7), fileName: `${date.slice(0, 7)}_学习日志.md`, content: '合成内容' }));
+  state.rangePage = args => readLogRange(blocks, args);
+  const result = await events(query.createRagQueryStream({ question: '再总结这些记录', history: [{ role: 'user', content: '总结2026年9月和11月' }], mode: 'logs_only' }, config, new AbortController().signal));
+  assert.equal(result.at(-1).event, 'done', JSON.stringify(result));
+  const reads = state.requests.filter(item => item.method === 'tools/call').map(item => item.params.arguments);
+  assert.deepEqual(reads.map(item => [item.dateFrom, item.dateTo]), [['2026-09-01', '2026-09-30'], ['2026-11-01', '2026-11-30']]);
+  assert.equal(state.requests.filter(item => item.messages && !item.stream).length, 1);
+});
+
+test('new topics discard rewritten old dates; explicit new dates retain precedence', async t => {
+  const { state, config } = await fixture(t);
+  const history = [{ role: 'user', content: '总结2026年9月' }];
+  for (const [question, expectedFrom, selected] of [['BM25是什么？', undefined, null], ['2026年10月这个项目如何？', '2026-10-01', 0]]) {
+    const start = state.requests.length;
+    state.contextResult = { query: '2026年9月项目怎样？', scopeSource: selected };
+    state.contexts = expectedFrom ? [{ sourceId: 'S1', date: expectedFrom, month: expectedFrom.slice(0, 7), fileName: '2026-10_学习日志.md', heading: null, headingIndex: null, chunkId: 'synthetic', contentHash: 'a'.repeat(64), content: '合成证据', truncated: false, score: 1 }] : true;
+    const result = await events(query.createRagQueryStream({ question, history, mode: 'logs_only' }, config, new AbortController().signal));
+    assert.equal(result.at(-1).event, 'done');
+    const tool = state.requests.slice(start).find(item => item.method === 'tools/call');
+    assert.equal(tool.params.arguments.dateFrom, expectedFrom);
+  }
+});
+
+test('uncertain scope, assistant source and scoped rewrite failure never fall back to unbounded retrieval', async t => {
+  const { state, config } = await fixture(t);
+  const history = [{ role: 'user', content: '总结2026年9月' }, { role: 'assistant', content: '合成回答' }];
+  for (const source of ['uncertain', 1, 9, undefined]) {
+    const start = state.requests.length;
+    state.contextResult = { query: '项目问题', ...(source !== undefined ? { scopeSource: source } : {}) };
+    const result = await events(query.createRagQueryStream({ question: '这个项目呢？', history, mode: 'logs_only' }, config, new AbortController().signal));
+    assert.equal(result.at(-1).event, 'error'); assert.equal(result.at(-1).data.code, 'RAG_CONTEXT_UNCERTAIN');
+    assert.equal(state.requests.slice(start).some(item => item.method === 'tools/call' || item.stream), false);
+  }
+  state.semanticFailure = true;
+  const start = state.requests.length;
+  const result = await events(query.createRagQueryStream({ question: '这个项目呢？', history, mode: 'logs_only' }, config, new AbortController().signal));
+  assert.equal(result.at(-1).event, 'error'); assert.equal(result.at(-1).data.code, 'AI_PROVIDER_FAILED');
+  assert.equal(state.requests.slice(start).some(item => item.method === 'tools/call' || item.stream), false);
+});
 test('out-of-range MCP search evidence fails before answer generation', async t => {
   const {state,config}=await fixture(t);
   const values=await events(query.createRagQueryStream({question:'2026年十月哪里提到过`合成证据`？',history:[],mode:'logs_only'},config,new AbortController().signal));
@@ -189,7 +247,7 @@ test("truncated answer produces error after partial delta and never done", async
 
 test("contextualization and semantic planning use light model, fallback safely and never swallow cancellation", async t => {
   const { state, config } = await fixture(t);
-  assert.equal(await contextualizeRagQuestion("它呢？", [{ role: "user", content: "合成" }], undefined, config.lightChat), input.question);
+  assert.equal((await contextualizeRagQuestion("它呢？", [{ role: "user", content: "合成" }], undefined, config.lightChat)).query, input.question);
   const plan = await planRagRetrievalWithFallback("合成主题的发展", undefined, new Date("2026-08-01T00:00:00Z"), config.lightChat);
   assert.equal(plan.planner, "llm"); assert.equal(plan.plan.strategy, "timeline_summary");
   assert.ok(state.requests.every(item => item.model === "light-mock"));

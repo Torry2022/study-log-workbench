@@ -12,6 +12,30 @@ import { createRagQueryStream } from "../lib/rag-query.ts";
 
 const config = { baseUrl: "https://example.test/custom/endpoint?version=one", apiKey: "synthetic", model: "mock-tools" };
 
+test('inherited follow-up scope constrains actual MCP reads throughout the SDK loop', async t => {
+  const mcp = await fixture(t), savedFetch = globalThis.fetch, calls = [];
+  const keys = ['RAG_AGENT_ENABLED', 'RAG_AGENT_TOOL_CALLING_VERIFIED', 'RAG_JEV_ENABLED'];
+  const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+  Object.assign(process.env, { RAG_AGENT_ENABLED: 'true', RAG_AGENT_TOOL_CALLING_VERIFIED: 'true', RAG_JEV_ENABLED: 'false' });
+  t.after(() => { for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } });
+  t.mock.method(globalThis, 'fetch', async (url, init) => {
+    const body = init?.body ? JSON.parse(init.body) : undefined;
+    if (String(url) !== config.baseUrl) { if (body?.method === 'tools/call') calls.push(body.params.arguments); return savedFetch(url, init); }
+    if (!body.stream) return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ query: 'Alpha的条件是什么？', scopeSource: 0 }) }, finish_reason: 'stop' }] }));
+    if (body.tools) {
+      assert.ok(body.messages.at(-1).content.includes('"dateFrom":"2026-09-01"'));
+      return stream('search', { query: '2026年10月 Alpha' });
+    }
+    return plain('Alpha条件成立才适用[S1]。');
+  });
+  const raw = await new Response(createRagQueryStream({ question: '它的条件是什么？', history: [{ role: 'user', content: '只看2026年9月的记录，Alpha是什么？' }], mode: 'logs_only' }, { chat: config, lightChat: config, mcp }, new AbortController().signal)).text();
+  const blocks = raw.trim().split('\n\n'), last = JSON.parse(blocks.at(-1).split('\n')[1].slice(6));
+  assert.match(blocks.at(-1), /^event: done/);
+  assert.ok(calls.length >= 2);
+  assert.ok(calls.every(args => args.dateFrom === '2026-09-01' && args.dateTo === '2026-09-30'));
+  assert.ok(last.citations.every(source => source.date.startsWith('2026-09')));
+});
+
 test('an enabled Agent without current tool confirmation uses ordinary RAG against actual MCP', async t => {
   const mcp=await fixture(t), previousFetch=globalThis.fetch;
   const keys=['RAG_AGENT_ENABLED','RAG_AGENT_TOOL_CALLING_VERIFIED','RAG_JEV_ENABLED'];

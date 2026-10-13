@@ -172,9 +172,9 @@ function excludedSourceLabelRanges(answer: string): Array<[number, number]> {
 
 function replaceCitationLabels(answer: string, replace: (sourceId: string) => string): string {
   const excluded = excludedSourceLabelRanges(answer);
-  return answer.replace(/\[(S\d+)\]/g, (full, sourceId: string, offset: number) => {
+  return answer.replace(/\[([Ss]\d+)\]/g, (full, sourceId: string, offset: number) => {
     if (excluded.some(([start, end]) => offset >= start && offset < end)) return full;
-    return replace(sourceId);
+    return replace(sourceId.toUpperCase());
   });
 }
 
@@ -192,9 +192,9 @@ export function normalizeRagAnswer(
   const excluded = excludedSourceLabelRanges(answer);
   // Both reference forms use the original text and the same first-use registry.
   // An uncited bare label must not retain an ID now assigned to another source.
-  const normalizedAnswer = answer.replace(/\[(S\d+)\]|\b(S\d+)\b/g, (full, bracketed: string | undefined, bare: string | undefined, offset: number) => {
+  const normalizedAnswer = answer.replace(/\[([Ss]\d+)\]|\b(S\d+)\b/g, (full, bracketed: string | undefined, bare: string | undefined, offset: number) => {
     if (excluded.some(([start, end]) => offset >= start && offset < end)) return full;
-    const sourceId = bracketed || bare!;
+    const sourceId = bracketed?.toUpperCase() || bare!;
     if (!sourceById.has(sourceId)) return bracketed ? "" : full;
     if (!remappedIds.has(sourceId)) remappedIds.set(sourceId, `S${remappedIds.size + 1}`);
     return bracketed ? `[${remappedIds.get(sourceId)}]` : remappedIds.get(sourceId)!;

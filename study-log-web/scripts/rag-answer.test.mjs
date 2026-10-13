@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildRagMessages, normalizeRagAnswer, parseRagHistory } from "../lib/rag-answer.ts";
+import { buildRagMessages, normalizeRagAnswer, parseRagHistory, stripRagCitationLabels } from "../lib/rag-answer.ts";
 
 const source = (sourceId, headingIndex = 0) => ({ sourceId, date: "2026-08-01", month: "2026-08", fileName: "2026-08.md", heading: "合成主题", headingIndex, chunkId: `chunk-${headingIndex}`, contentHash: `hash-${headingIndex}`, excerpt: "合成摘录" });
 
@@ -30,6 +30,15 @@ test("citation numbering follows first use and preserves exact source identity",
   assert.deepEqual(result.citations, [{ ...second, sourceId: "S1" }, { ...first, sourceId: "S2" }]);
   assert.equal(second.sourceId, "S2");
   assert.deepEqual(normalizeRagAnswer("无引用", [first]).citations, []);
+});
+
+test('lowercase bracketed citations share the canonical source identity without rewriting literal text',()=>{
+  const first=source('S1'),ninth=source('S9',8);
+  const result=normalizeRagAnswer('条件[s9]，后续[S1]，再引[S9]。变量s9与`s9 [s9]`，链接[s9](https://example.test/s9)，未知[s99]。',[first,ninth]);
+  assert.equal(result.answer,'条件[S1]，后续[S2]，再引[S1]。变量s9与`s9 [s9]`，链接[s9](https://example.test/s9)，未知。');
+  assert.deepEqual(result.citations,[{...ninth,sourceId:'S1'},{...first,sourceId:'S2'}]);
+  assert.equal(stripRagCitationLabels('条件[s9]，代码`[s9]`。'),'条件，代码`[s9]`。');
+  assert.equal(parseRagHistory([{role:'assistant',content:'历史条件[s9]，代码`[s9]`。'}])[0].content,'历史条件，代码`[s9]`。');
 });
 
 test("bare source mentions follow their citations after first-use renumbering", () => {

@@ -31,7 +31,7 @@ const model = http.createServer(async (req, res) => {
     assert.ok(!body.tools.some(item => item.function.name === 'read'));
     if (decisionLimited || firstLimited) tools.push(state);
   }
-  const answer = 'Alpha条件成立才适用，不适用于所有场景。[S1]';
+  const answer = 'Alpha条件成立才适用，不适用于所有场景。[s1]';
   if (!body.stream) { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ choices: [{ message: { content: 'Alpha适用条件' } }] })); return; }
   res.setHeader('content-type', 'text/event-stream');
   const frame = value => `data: ${JSON.stringify(value)}\n\n`;
@@ -58,6 +58,7 @@ try {
     const raw = await response.text(), blocks = raw.trim().split('\n\n');
     assert.match(blocks.at(-1),/^event: done/);
     const done = JSON.parse(blocks.at(-1).split('\n')[1].slice(6));
+    assert.match(done.answer,/\[S1\]/); assert.ok(!done.answer.includes('[s1]'));
     assert.equal(done.citations[0].date,'2026-09-01'); assert.equal(Boolean(done.diagnostics.agent?.enabled),agent);assert.equal(tools.length,before);
     assert.equal(calls.length - callsBefore, 1, 'Sufficient evidence must need only one generating-model call');
     checks.push({ question, agent, done: true, modelCalls: calls.length - callsBefore });
@@ -107,6 +108,7 @@ try {
       await expect(page.locator('.rag-workspace').filter({visible:true})).toContainText('Alpha条件成立才适用，不适用于所有场景。');
       const saving = page.getByText('正在保存问答历史…', { exact: true });
       await expect(saving).toBeVisible();
+      await expect(page.getByRole('button',{name:'查看来源 S1',exact:true})).toBeVisible();
       const duringSave = await toolbar.boundingBox();
       assert.ok(Math.abs(duringSave.y - beforeSave.y) <= 1 && Math.abs(duringSave.height - beforeSave.height) <= 1, 'Saving must not move or stretch the module toolbar');
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));

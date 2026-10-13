@@ -9,8 +9,24 @@ import { EvidenceRun, collectRagEvidence } from "../lib/rag-evidence.ts";
 import { createAgentModel, supplementEvidence, agentEnabled } from "../lib/rag-agent.ts";
 import { judgeEvidence, validateEvidenceJudgment } from "../lib/rag-jev.ts";
 import { createRagQueryStream } from "../lib/rag-query.ts";
+import { compactEvidence } from "../lib/rag-evidence-summary.ts";
 
 const config = { baseUrl: "https://example.test/custom/endpoint?version=one", apiKey: "synthetic", model: "mock-tools" };
+
+test("known context windows use the UTF-8 byte upper bound without dividing capacity twice", async t => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async () => { assert.fail("evidence that fits the known window must not be compacted"); };
+  const content = "汉".repeat(35_000);
+  const run = new EvidenceRun(new AbortController().signal);
+  run.contexts = [{ sourceId: "S1", date: "2026-09-01", fileName: "2026-09_学习日志.md", heading: null,
+    headingIndex: null, chunkId: "2026-09-01:range:0", contentHash: "a".repeat(64), content, truncated: false, score: 1 }];
+  const known = { ...config, contextWindowTokens: 220_000 };
+  await compactEvidence(run, "总结这一天", known, known);
+  assert.equal(run.contexts[0].content, content);
+  assert.equal(run.compactedSources.size, 0);
+  assert.equal(run.limited, false);
+});
 
 test("official DeepSeek Flash uses the verified Agent path unless explicitly disabled", () => {
   const official = { baseUrl: "https://api.deepseek.com/chat/completions", model: "deepseek-flash" };

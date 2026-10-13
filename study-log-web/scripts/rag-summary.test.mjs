@@ -5,6 +5,35 @@ import { EvidenceRun } from "../lib/rag-evidence.ts";
 import { compactEvidence } from "../lib/rag-evidence-summary.ts";
 import { parseRagHistory } from "../lib/rag-answer.ts";
 
+test('compaction stops between batches once actual excerpts leave room for remaining originals', async t => {
+  let calls = 0;
+  const server = http.createServer(async (req, res) => {
+    let raw = ''; for await (const chunk of req) raw += chunk;
+    const evidence = JSON.parse(JSON.parse(raw).messages[1].content).evidence;
+    calls++;
+    res.setHeader('content-type', 'application/json');
+    // A needless second batch would fail and discard an otherwise intact source.
+    const values = calls === 1 ? evidence.map(item => ({sourceId:item.sourceId,excerpts:[item.content.slice(-80)]})) : [];
+    res.end(JSON.stringify({choices:[{message:{content:JSON.stringify(values)}}]}));
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const run = new EvidenceRun(new AbortController().signal);
+  const contents = Array.from({length:12}, (_, index) => '原'.repeat(3980) + String(index).padStart(20, '0'));
+  run.add(contents.map((content, index) => ({date:'2026-09-01',fileName:'synthetic.md',chunkId:`part-${index}`,contentHash:`hash-${index}`,excerpt:'原始摘录',content,truncated:false})));
+  await compactEvidence(run, '概括变化', {baseUrl:`http://127.0.0.1:${server.address().port}`,apiKey:'synthetic',model:'mock'});
+  assert.equal(calls, 1);
+  assert.equal(run.contexts.reduce((sum, item) => sum + item.content.length, 0), 28400);
+  assert.equal(run.limited, false);
+  assert.deepEqual([...run.compactedSources], ['S1','S2','S3','S4','S5']);
+  assert.equal(run.compactionOriginals.size, 5);
+  for (let index = 5; index < contents.length; index++) {
+    assert.equal(run.contexts[index].content, contents[index]);
+    assert.equal(run.contexts[index].truncated, false);
+    assert.equal(run.contexts[index].contentHash, `hash-${index}`);
+  }
+});
+
 test('a small input overflow compacts only the required long source and preserves other days verbatim', async t => {
   const requests = [];
   const server = http.createServer(async (req, res) => {
@@ -112,10 +141,14 @@ test('compaction accepts only ordered original excerpts and never registers inve
     const valid = excerpts.length === 2 && excerpts[0] === first && excerpts[1] === last;
     assert.equal(run.limited, !valid);
     assert.ok(run.contexts.every(item => !item.content.includes('未提供另一个日期')));
-    assert.deepEqual([...run.compactedSources], ['S1', 'S2']);
+    assert.deepEqual([...run.compactedSources], valid ? ['S1'] : ['S1', 'S2']);
     assert.equal(JSON.parse(run.report()).scopes[0].status, 'complete');
-    assert.deepEqual(JSON.parse(run.report()).compactedSources, ['S1', 'S2']);
-    if (valid) assert.ok(run.contexts.every(item => item.content === `${first}\n[…]\n${last}` && !item.truncated));
+    assert.deepEqual(JSON.parse(run.report()).compactedSources, valid ? ['S1'] : ['S1', 'S2']);
+    if (valid) {
+      assert.equal(run.contexts[0].content, `${first}\n[…]\n${last}`);
+      assert.equal(run.contexts[1].content, `${first}\n\n${'过程内容。'.repeat(5900)}\n\n${last}`);
+      assert.ok(run.contexts.every(item => !item.truncated));
+    }
     else assert.ok(run.contexts.every(item => item.truncated));
   }
 });

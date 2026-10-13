@@ -27,6 +27,9 @@ export async function compactEvidence(run: EvidenceRun, question: string, config
   }
   for (let index = 0; index < targets.length;) {
     run.signal.throwIfAborted();
+    // Actual excerpts can be shorter than the planned allowance. Keep remaining
+    // originals once they fit rather than issuing another lossy extraction.
+    if (run.contexts.reduce((sum, item) => sum + item.content.length, 0) <= evidenceLimit) break;
     const batch = [targets[index++]];
     let chars = batch[0].content.length;
     while (index < targets.length && batch.length < 5 && chars + targets[index].content.length <= 30000) {

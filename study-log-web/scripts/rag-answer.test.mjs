@@ -23,6 +23,20 @@ test('prompt ties truncation to its source without labelling other excerpts comp
   assert.equal(items[0].contentHash,'hash-0');
 });
 
+test('comparison prompts label each source with its program-computed range', () => {
+  const august = { ...source('S1'), date: '2026-08-15', content: '八月证据' };
+  const september = { ...source('S2', 1), date: '2026-09-20', content: '九月证据' };
+  const messages = buildRagMessages('比较八月和九月', [], [august, september], 'logs_only', undefined, false, [
+    { dateFrom: '2026-08-01', dateTo: '2026-08-31' },
+    { dateFrom: '2026-09-01', dateTo: '2026-09-30' }
+  ]);
+  assert.match(messages[0].content, /先分别概括每个范围.*不得把一个范围的事实、状态或引用归入另一个范围/);
+  const body = messages.at(-1).content;
+  assert.match(body, /日志日期：2026-08-15\n比较范围：范围1（2026-08-01至2026-08-31）/);
+  assert.match(body, /日志日期：2026-09-20\n比较范围：范围2（2026-09-01至2026-09-30）/);
+  assert.doesNotMatch(buildRagMessages('总结八月', [], [august]).at(-1).content, /比较范围/);
+});
+
 test("citation numbering follows first use and preserves exact source identity", () => {
   const first = source("S1"), second = source("S2", 1);
   const result = normalizeRagAnswer("结论[S2]，再次[S2]，另一结论[S1]，不存在[S99]。", [first, second]);

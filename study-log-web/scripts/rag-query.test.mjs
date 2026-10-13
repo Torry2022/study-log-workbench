@@ -152,6 +152,23 @@ test("a changed range revision rejects the query before answer generation", asyn
   assert.equal(state.requests.some(item => item.messages), false);
 });
 
+test("cross-month comparison sends program-computed scope labels in one answer call", async t => {
+  const { state, config } = await fixture(t);
+  const blocks = [
+    { date: "2026-08-15", month: "2026-08", fileName: "2026-08_学习日志.md", content: "## 2026-08-15\n\n### 项目\n\n八月重点" },
+    { date: "2026-09-20", month: "2026-09", fileName: "2026-09_学习日志.md", content: "## 2026-09-20\n\n### 项目\n\n九月重点" }
+  ];
+  state.rangePage = args => readLogRange(blocks, args);
+  state.answer = "八月重点[S1]，九月重点[S2]。";
+  const values = await events(query.createRagQueryStream({ question: "比较2026年8月和9月的重点", history: [], mode: "logs_only" }, config, new AbortController().signal));
+  assert.equal(values.at(-1).event, "done");
+  const generated = state.requests.filter(item => item.stream);
+  assert.equal(generated.length, 1);
+  assert.match(generated[0].messages[0].content, /先分别概括每个范围/);
+  assert.match(generated[0].messages.at(-1).content, /日志日期：2026-08-15\n比较范围：范围1（2026-08-01至2026-08-31）/);
+  assert.match(generated[0].messages.at(-1).content, /日志日期：2026-09-20\n比较范围：范围2（2026-09-01至2026-09-30）/);
+});
+
 test("followup matrix: source pointers cannot silently fall back to unrelated retrieval", async t => {
   const { state, config } = await fixture(t);
   for (const history of [[], [{ role: "assistant", content: "旧客户端回答[S1]" }]]) {

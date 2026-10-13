@@ -6,12 +6,14 @@ import type { RagAnswerMode, RagHistoryMessage } from "./rag-types.ts";
 import type { EvidenceRun } from "./rag-evidence.ts";
 
 /** Select exact excerpts after reading; retain original identity and coverage separately. */
-export async function compactEvidence(run: EvidenceRun, question: string, config: ChatConfig, answerConfig: ChatConfig = config, history: RagHistoryMessage[] = [], mode: RagAnswerMode = "logs_only") {
+export async function compactEvidence(run: EvidenceRun, question: string, config: ChatConfig, answerConfig: ChatConfig = config,
+  history: RagHistoryMessage[] = [], mode: RagAnswerMode = "logs_only",
+  comparisonScopes: Array<{ dateFrom: string; dateTo: string }> = []) {
   const totalChars = run.contexts.reduce((sum, item) => sum + item.content.length, 0);
   const window = chatContextWindowTokens(answerConfig);
   // UTF-8 bytes conservatively bound byte-tokenized input. Reserve output and tool/protocol overhead.
   const promptBytes = Buffer.byteLength(JSON.stringify(buildRagMessages(question, history,
-    run.contexts.map(item => ({ ...item, content: "" })), mode, run.answerReport())), "utf8");
+    run.contexts.map(item => ({ ...item, content: "" })), mode, run.answerReport(), false, comparisonScopes)), "utf8");
   const evidenceLimit = window === undefined ? 30000 : Math.max(0, Math.floor((window - 65536 - 32768 - promptBytes) / 4));
   if (totalChars <= evidenceLimit) return;
   if (evidenceLimit < run.contexts.length) throw new Error("Question and history exceed model input capacity");

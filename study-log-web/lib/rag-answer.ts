@@ -4,6 +4,7 @@ import { RAG_MAX_SOURCES } from "./rag-types.ts";
 import { unified } from "unified";
 import remarkParse from "remark-parse";
 type ContextForPrompt = Pick<RagRetrievedContext, "sourceId" | "date" | "heading" | "content"> & Partial<Pick<RagRetrievedContext, "rangeSection" | "fileName" | "truncated">>;
+type ComparisonScope = { dateFrom: string; dateTo: string };
 export const NO_LOG_EVIDENCE = "本次未找到能回答这个问题的记录。";
 
 /** The final model explicitly selects the prescribed abstention, not a keyword guess. */
@@ -45,10 +46,17 @@ export function buildRagMessages(
   contexts: ContextForPrompt[],
   mode: RagAnswerMode = "logs_only",
   coverage?: string,
-  verifyRangeStatus = false
+  verifyRangeStatus = false,
+  comparisonScopes: ComparisonScope[] = []
 ): RagPromptMessage[] {
+  const scopeLabel = (date: string) => {
+    const index = comparisonScopes.findIndex(scope => date >= scope.dateFrom && date <= scope.dateTo);
+    if (index < 0) return "";
+    const scope = comparisonScopes[index];
+    return `\n比较范围：范围${index + 1}（${scope.dateFrom}至${scope.dateTo}）`;
+  };
   const evidence = contexts
-    .map((item) => `[${item.sourceId}]\n日志日期：${item.date}${item.heading === null ? "" : `\n小节：${item.heading}`}${item.rangeSection ? `\n原文分片所属：${item.fileName || "当日日志"}的第${item.rangeSection.headingIndex + 1}个小节「${item.rangeSection.heading}」，不是另一条独立日志。` : ""}\n内容：\n${item.content}\n以上为[${item.sourceId}]（日志日期${item.date}）的全部已提供内容。${item.truncated ? "本来源正文有截断，尚未完整提供；不能据此断定原文没有记载未展示的要点。" : ""}`)
+    .map((item) => `[${item.sourceId}]\n日志日期：${item.date}${scopeLabel(item.date)}${item.heading === null ? "" : `\n小节：${item.heading}`}${item.rangeSection ? `\n原文分片所属：${item.fileName || "当日日志"}的第${item.rangeSection.headingIndex + 1}个小节「${item.rangeSection.heading}」，不是另一条独立日志。` : ""}\n内容：\n${item.content}\n以上为[${item.sourceId}]（日志日期${item.date}）的全部已提供内容。${item.truncated ? "本来源正文有截断，尚未完整提供；不能据此断定原文没有记载未展示的要点。" : ""}`)
     .join("\n\n---\n\n");
 
   const groundingRules =
@@ -82,6 +90,7 @@ export function buildRagMessages(
         "来源编号与各证据块绑定，不代表日期顺序；引用历史事实时须核对编号对应的日期和小节，不得按日期重新编号。",
         "每条证据的日志日期只属于该条证据；不可把后一条内容放到前一条日期。正文若明确写了其他事件日期，应区分事件发生日和记录日，不得自行推断。",
         "比较阶段重点时按问题要求归纳，不要扩写成逐日流水；只有回答所必需且有明确依据的日期才写入结论。",
+        ...(comparisonScopes.length > 1 ? ["这是多个独立日期范围的比较。证据中的“比较范围”由程序按日志日期计算；先分别概括每个范围内与问题相关的重点，再说明差异或转变。不得把一个范围的事实、状态或引用归入另一个范围。"] : []),
         "总结具体项目或任务的进展时，区分记录当时的状态与所问范围末的状态。早期的未开始、待做或待检查，不能直接列为范围末仍未解决；应核对后续记录是否已经开始、完成或更换方案。后续状态没有依据时明确限定为当时的记录，不推断至今仍然如此。这条时间规则只用于项目进展，不以记录新旧否定一般技术知识。",
         ...(verifyRangeStatus ? ["如果需要列出所问范围末仍未解决的事项，统一放在标题‘仍待解决’下，每个独立结论写成一条单行列表，合计不超过12条。已经解决的问题只写在进展中，不放入该列表；一般技术限制也不要放入该列表。"] : []),
         "使用简洁、结构清楚的Markdown回答，不要描述检索过程。",

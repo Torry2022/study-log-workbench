@@ -94,6 +94,9 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
         if (original.dateFrom || original.matchMode || original.eventDates) planned.plan = original;
         if (referenced) planned.plan = { strategy: "timeline_summary", dateFrom: referenced.date, dateTo: referenced.date };
         diagnostics.timings.planningMs = elapsed(); diagnostics.retrievalPlanner = planned.planner; diagnostics.retrievalStrategy = planned.plan.strategy;
+        const comparisonScopes = planned.plan.strategy === "comparison" && planned.plan.ranges?.length && planned.plan.ranges.length > 1
+          ? planned.plan.ranges
+          : [];
         signal.throwIfAborted(); stage = "retrieving"; stageStart = performance.now();
         send("status", { stage, message: "正在检索日志" });
         const run = new EvidenceRun(signal);
@@ -103,7 +106,7 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
         if (referenced && run.contexts.some(item => item.fileName !== referenced.fileName)) { run.contexts = []; run.limited = true; }
         if (run.coverage.length && run.coverage.every(scope => scope.status === "failed")) throw new McpRetrievalError("MCP_RANGE_FAILED", "无法读取所选日期的日志，请检查检索服务版本或重试");
         const boundedJevInput = isBoundedJevInput(input.question, run.contexts);
-        await measure("compactionMs", () => compactEvidence(run, input.question, config.lightChat, config.chat, input.history, input.mode));
+        await measure("compactionMs", () => compactEvidence(run, input.question, config.lightChat, config.chat, input.history, input.mode, comparisonScopes));
         // Successful enumeration covers the requested scope, including confirmed empty periods.
         // Check after compaction: a failed summary can still leave material missing.
         const scopeFullyRead = !run.limited && run.coverage.length > 0 && run.coverage.every(scope => scope.status === "complete" || scope.status === "empty");
@@ -131,7 +134,7 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
           }
           diagnostics.agent.stopReason = run.stopReason;
         }
-        await measure("compactionMs", () => compactEvidence(run, input.question, config.lightChat, config.chat, input.history, input.mode));
+        await measure("compactionMs", () => compactEvidence(run, input.question, config.lightChat, config.chat, input.history, input.mode, comparisonScopes));
         diagnostics.coverage = run.coverage; diagnostics.toolCalls = run.calls;
         if (run.sourceChanged) throw new McpRetrievalError("MCP_SOURCE_CHANGED", "读取期间日志发生了修改，请重新提问以读取最新内容");
         const retrieved = { contexts: run.contexts };
@@ -154,7 +157,7 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
           if (directAnswer !== undefined) output.push(directAnswer);
           else {
             const coverage = run.answerReport() + (referenced ? `\n用户指向历史来源：${referenced.date} ${referenced.heading || ""}。已重新读取当前原文；历史摘录和编号不可视为当前事实。` : "");
-            const messages = buildRagMessages(input.question, input.history, retrieved.contexts, input.mode, coverage, verifyRangeStatus);
+            const messages = buildRagMessages(input.question, input.history, retrieved.contexts, input.mode, coverage, verifyRangeStatus, comparisonScopes);
             if (!verifyRangeStatus) await streamRagAnswer(config.chat, messages, delta => output.push(delta), { signal });
             else {
               let draft = "";

@@ -16,6 +16,7 @@ function summary(block) {
 }
 
 export class StudyLogStore {
+  #sourceCache = new Map();
   constructor(logRoot, options = {}) {
     const roots = resolveRoots({ logRoot, indexRoot: options.indexRoot });
     this.logRoot = roots.logRoot;
@@ -42,9 +43,18 @@ export class StudyLogStore {
 
   async readAllBlocks() {
     const blocks = [], dates = new Set();
-    for (const file of await this.listLogFiles()) {
+    const files = await this.listLogFiles();
+    const present = new Set(files.map(file => file.fileName));
+    for (const name of this.#sourceCache.keys()) if (!present.has(name)) this.#sourceCache.delete(name);
+    for (const file of files) {
       const source = await readSourceText(file.filePath);
-      for (const block of this.parseBlocks(source, file)) {
+      let cached = this.#sourceCache.get(file.fileName);
+      if (!cached || cached.source !== source) {
+        cached = { source, blocks: this.parseBlocks(source, file) };
+        this.#sourceCache.set(file.fileName, cached);
+      }
+      // Consumers may change returned arrays; never expose the stored parse result.
+      for (const block of structuredClone(cached.blocks)) {
         if (dates.has(block.date)) throw new SourceError("Duplicate day dates exist in the log sources.", "DUPLICATE_DATE");
         dates.add(block.date); blocks.push(block);
       }

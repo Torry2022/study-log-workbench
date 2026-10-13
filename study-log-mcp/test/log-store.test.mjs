@@ -38,6 +38,36 @@ test("empty instance lists nothing, style samples are empty, and keyword retriev
   assert.deepEqual(await fs.readdir(root), ["data"]);
 });
 
+test('parsed sources are reused by content, with fresh results and same-size same-mtime invalidation', async t => {
+  const {data,store}=await fixture(t),file=path.join(data,'2026-09_学习日志.md');
+  const original='## 2026-09-01\n\n### Alpha\n条件为确认甲。\n';
+  const changed=original.replace('确认甲','确认乙');
+  await fs.writeFile(file,original);await fs.utimes(file,new Date('2026-01-01T00:00:00Z'),new Date('2026-01-01T00:00:00Z'));const stat=await fs.stat(file);
+  let parses=0;const parse=store.parseBlocks.bind(store);store.parseBlocks=(...args)=>{parses++;return parse(...args);};
+  const first=await store.readAllBlocks();first[0].content='caller mutation';first[0].headings.push('caller heading');
+  const second=await store.readAllBlocks();assert.equal(parses,1);
+  assert.ok(second[0].content.includes('确认甲'));assert.deepEqual(second[0].headings,['Alpha']);
+  await fs.writeFile(file,changed);await fs.utimes(file,stat.atime,stat.mtime);
+  assert.equal((await fs.stat(file)).size,stat.size);
+  assert.equal((await fs.stat(file)).mtimeMs,stat.mtimeMs);
+  assert.ok((await store.getDay('2026-09-01')).content.includes('确认乙'));assert.equal(parses,2);
+  await fs.writeFile(file,original.replace('2026-09-01','2026-09-31'));await fs.utimes(file,stat.atime,stat.mtime);
+  await assert.rejects(store.readAllBlocks(),/invalid calendar date/);
+  await fs.writeFile(file,changed);assert.ok((await store.getDay('2026-09-01')).content.includes('确认乙'));
+});
+
+test('cached files still enforce cross-file duplicate dates, removals and fenced Markdown structure',async t=>{
+  const {data,store}=await fixture(t),month=path.join(data,'2026-09_学习日志.md'),year=path.join(data,'2026_学习日志.md');
+  await fs.writeFile(month,'## 2026-09-01\n\n### Alpha\n```md\n---\n## 2026-09-02\n### Fake\n```\n真实正文。');
+  const first=await store.readAllBlocks();assert.equal(first.length,1);assert.deepEqual(first[0].headings,['Alpha']);
+  const warm=await store.readLogRange({dateFrom:'2026-09-01',dateTo:'2026-09-30'});assert.equal(warm.coverage.totalDays,1);
+  assert.ok(warm.contexts[0].content.includes('## 2026-09-02'));
+  await fs.writeFile(year,'## 2026-09-01\n\n### Duplicate\n重复日期。');
+  await assert.rejects(store.readAllBlocks(),/Duplicate day dates/);
+  await fs.unlink(month);const remaining=await store.readAllBlocks();assert.equal(remaining.length,1);assert.equal(remaining[0].fileName,'2026_学习日志.md');
+  await fs.unlink(year);assert.deepEqual(await store.readAllBlocks(),[]);
+});
+
 test("year/month sources preserve real days and source text while excluding other files and directories", async t => {
   const { root, data, store } = await fixture(t);
   const a = "# 年度\r\n\r\n## 2025-12-31\r\n\r\n### 1. 旧主题\r\n\r\nOldEvidence\r\n\r\n---\r\n";

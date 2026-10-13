@@ -20,9 +20,13 @@ function validateInput(input, options) {
 }
 
 export class KeywordRetriever {
+  #lexicalCache;
   buildRankedMatches(chunks, input) {
     const queryTerms = countTerms(tokenizeOccurrences(input));
-    const lexicalCorpus = buildLexicalCorpus(chunks);
+    // Chunk hashes represent embedding text; BM25 uses the actual title/body.
+    const signature = hash(JSON.stringify(chunks.map(chunk => [chunk.id, chunk.heading, chunk.text])));
+    if (this.#lexicalCache?.signature !== signature) this.#lexicalCache = { signature, corpus: buildLexicalCorpus(chunks) };
+    const lexicalCorpus = this.#lexicalCache.corpus;
     const byId = new Map();
     const lexicalRanked = chunks
       .map((chunk) => ({ chunk, ...lexicalScore(chunk, queryTerms, lexicalCorpus) }))

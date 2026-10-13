@@ -10,6 +10,25 @@ function block(date, body) {
   return parseDayBlocks(`## ${date}\n\n${body}`, `${date.slice(0, 7)}_学习日志.md`)[0];
 }
 
+test('reused BM25 statistics match a cold corpus after body, title and date-scope changes',async()=>{
+  const retriever=new KeywordRetriever();
+  const initial=[block('2026-09-01','### Alpha\nAlpha Alpha confirms Beta.'),block('2026-10-01','### Beta\nBeta requires confirmation.')];
+  const query='Alpha Beta';
+  assert.deepEqual(retriever.buildRankedMatches(buildSectionChunks(initial),query),new KeywordRetriever().buildRankedMatches(buildSectionChunks(initial),query));
+  assert.deepEqual(retriever.buildRankedMatches(buildSectionChunks(initial),'confirmation'),new KeywordRetriever().buildRankedMatches(buildSectionChunks(initial),'confirmation'));
+  // Keep IDs and supplied hashes stable: neither is a proof of unchanged BM25 text.
+  const edited=buildSectionChunks(initial);edited[0].text='Gamma Gamma Gamma';
+  assert.deepEqual(retriever.buildRankedMatches(edited,query),new KeywordRetriever().buildRankedMatches(edited,query));
+  edited[0].heading='Beta Beta';
+  assert.deepEqual(retriever.buildRankedMatches(edited,query),new KeywordRetriever().buildRankedMatches(edited,query));
+  for(const options of [{dateFrom:'2026-09-01',dateTo:'2026-09-30'},{dateFrom:'2026-10-01',dateTo:'2026-10-31'},{}]) {
+    const warm=await retriever.retrieveContexts(initial,query,options);
+    const cold=await new KeywordRetriever().retrieveContexts(initial,query,options);
+    assert.deepEqual(warm,cold);
+  }
+  assert.deepEqual(retriever.buildRankedMatches([],query),[]);
+});
+
 test('explicit parenthetical object names prioritize the specific object without hiding a referenced rule', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'retrieval-object-'));
   t.after(async () => { assert.equal(path.dirname(root), path.resolve(os.tmpdir())); assert.match(path.basename(root), /^retrieval-object-/); await fs.rm(root, {recursive:true,force:true}); });

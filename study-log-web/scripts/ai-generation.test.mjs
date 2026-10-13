@@ -35,6 +35,16 @@ test('shared chat sends only configured model to local HTTP and accepts non-stre
   assert.equal(await requestChat(config, [{ role: 'user', content: '合成材料' }]), safeOutput);
 });
 
+test('shared chat forwards bounded JSON response options only when requested', async t => {
+  const config = await server(t, async (req, res) => {
+    const sent = await body(req);
+    assert.equal(sent.max_tokens, 2500);
+    assert.deepEqual(sent.response_format, { type: 'json_object' });
+    json(res, completion('{"claims":[]}'));
+  });
+  assert.equal(await requestChat(config, [], { maxTokens: 2500, responseFormat: 'json_object' }), '{"claims":[]}');
+});
+
 test('provider statuses, redirects, malformed JSON, empty/truncated and oversized bodies have safe errors', async t => {
   let behavior = '429';
   const config = await server(t, async (req, res) => {

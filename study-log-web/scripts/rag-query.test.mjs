@@ -35,6 +35,9 @@ async function fixture(t) {
         return reply({ jsonrpc: "2.0", id: body.id, result: { tools: [] } });
       }
       if (!body.stream) {
+        if (body.response_format?.type === "json_object" && body.messages?.[0]?.content?.includes("结论核对器")) {
+          return reply({ choices: [{ message: { content: state.verifierAnswer || JSON.stringify({ claims: [] }) }, finish_reason: "stop" }], usage: { prompt_tokens: 12, completion_tokens: 6 } });
+        }
         if (state.semanticFailure) { res.writeHead(500); res.end("synthetic-private-provider-body"); return; }
         const contextualizing = body.messages[0].content.includes("独立查询");
         return reply({ choices: [{ message: { content: JSON.stringify(contextualizing ? (state.contextResult || { query: state.rewritten || "原文哪里提到合成证据？", scopeSource: null }) : { strategy: "timeline_summary", dateFrom: null, dateTo: null }) }, finish_reason: "stop" }] });
@@ -78,6 +81,59 @@ test('query done keeps a bare partial-source mention distinct from the complete 
   const generated=state.requests.find(item=>item.stream);
   assert.ok(generated.messages[0].content.includes('正文有截断的来源：[S1]'));
   assert.ok(!JSON.stringify(generated.messages).includes('truncatedSources'));
+});
+
+test('long complete Flash summaries buffer one status check and remove stale pending claims', async t => {
+  const { state, config } = await fixture(t);
+  const blocks = Array.from({ length: 14 }, (_, index) => {
+    const date = `2026-09-${String(index + 1).padStart(2, '0')}`;
+    return { date, month: '2026-09', fileName: '2026-09_学习日志.md', content: `## ${date}\n\n### 项目\n\n第${index + 1}天记录` };
+  });
+  state.rangePage = args => readLogRange(blocks, args);
+  state.answer = '## 项目\n\n进展保持不变[S1]。\n\n### 仍待解决\n\n- 早期问题仍存在[S1]。\n- 月底待办仍未完成[S2]。';
+  state.verifierAnswer = JSON.stringify({ claims: [
+    { claimId: 'C1', verdict: 'outdated', sourceIds: ['S1', 'S2'], reason: '后续记录已取代' },
+    { claimId: 'C2', verdict: 'supported', sourceIds: ['S2'], reason: '月底仍明确列为待办' }
+  ] });
+  const originalFetch = globalThis.fetch;
+  const localChatUrl = config.chat.baseUrl;
+  globalThis.fetch = (input, init) => originalFetch(String(input) === 'https://api.deepseek.com/chat/completions' ? localChatUrl : input, init);
+  t.after(() => { globalThis.fetch = originalFetch; });
+  config.chat = { ...config.chat, baseUrl: 'https://api.deepseek.com/chat/completions', model: 'deepseek-flash', thinkingMode: 'low' };
+  config.lightChat = { ...config.chat };
+  const values = await events(query.createRagQueryStream({ question: '总结2026年9月的主要学习内容和仍待解决的问题。', history: [], mode: 'logs_only' }, config, new AbortController().signal));
+  const done = values.at(-1);
+  assert.equal(done.event, 'done', JSON.stringify(values));
+  assert.doesNotMatch(done.data.answer, /早期问题仍存在/);
+  assert.match(done.data.answer, /月底待办仍未完成/);
+  assert.deepEqual(done.data.diagnostics.rangeStatusVerification, { enabled: true, claimCount: 2, removedCount: 1 });
+  assert.ok(done.data.diagnostics.timings.statusVerificationMs >= 0);
+  const generation = state.requests.find(item => item.stream);
+  assert.match(generation.messages[0].content, /标题‘仍待解决’/);
+  assert.equal(state.requests.filter(item => item.response_format?.type === 'json_object').length, 1);
+});
+
+test('long complete Flash summaries skip status verification when the draft has no pending claims', async t => {
+  const { state, config } = await fixture(t);
+  const blocks = Array.from({ length: 14 }, (_, index) => {
+    const date = `2026-09-${String(index + 1).padStart(2, '0')}`;
+    return { date, month: '2026-09', fileName: '2026-09_学习日志.md', content: `## ${date}\n\n### 项目\n\n第${index + 1}天记录` };
+  });
+  state.rangePage = args => readLogRange(blocks, args);
+  state.answer = '## 项目\n\n这段时间完成了连续学习记录[S1]。';
+  const originalFetch = globalThis.fetch;
+  const localChatUrl = config.chat.baseUrl;
+  globalThis.fetch = (input, init) => originalFetch(String(input) === 'https://api.deepseek.com/chat/completions' ? localChatUrl : input, init);
+  t.after(() => { globalThis.fetch = originalFetch; });
+  config.chat = { ...config.chat, baseUrl: 'https://api.deepseek.com/chat/completions', model: 'deepseek-flash', thinkingMode: 'low' };
+  config.lightChat = { ...config.chat };
+  const values = await events(query.createRagQueryStream({ question: '总结2026年9月的主要学习内容。', history: [], mode: 'logs_only' }, config, new AbortController().signal));
+  const done = values.at(-1);
+  assert.equal(done.event, 'done', JSON.stringify(values));
+  assert.match(done.data.answer, /连续学习记录/);
+  assert.deepEqual(done.data.diagnostics.rangeStatusVerification, { enabled: true, claimCount: 0, removedCount: 0 });
+  assert.equal(state.requests.filter(item => item.response_format?.type === 'json_object').length, 0);
+  assert.equal(values.some(item => item.event === 'status' && item.data.message === '正在核对范围末状态'), false);
 });
 
 test("a changed range revision rejects the query before answer generation", async t => {

@@ -11,7 +11,7 @@ export const CHAT_TIMEOUT_MS = 90_000;
 export const MAX_CHAT_RESPONSE_BYTES = 1024 * 1024;
 
 /** Shared non-streaming transport. Never expose provider URLs, bodies or credentials in errors. */
-export async function requestChat(config: ChatConfig, messages: ChatMessage[], options: { signal?: AbortSignal; temperature?: number; timeoutMs?: number } = {}): Promise<string> {
+export async function requestChat(config: ChatConfig, messages: ChatMessage[], options: { signal?: AbortSignal; temperature?: number; timeoutMs?: number; maxTokens?: number; responseFormat?: "json_object" } = {}): Promise<string> {
   const deadline = new AbortController();
   const timer = setTimeout(() => deadline.abort(), options.timeoutMs ?? CHAT_TIMEOUT_MS);
   const signal = options.signal ? AbortSignal.any([options.signal, deadline.signal]) : deadline.signal;
@@ -20,7 +20,10 @@ export async function requestChat(config: ChatConfig, messages: ChatMessage[], o
     const response = await fetch(config.baseUrl, {
       method: "POST", redirect: "error", signal,
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` },
-      body: JSON.stringify({ model: config.model, messages, temperature: options.temperature ?? 0.3, stream: false, ...chatThinkingParameters(config) })
+      body: JSON.stringify({ model: config.model, messages, temperature: options.temperature ?? 0.3, stream: false,
+        ...(options.maxTokens ? { max_tokens: options.maxTokens } : {}),
+        ...(options.responseFormat ? { response_format: { type: options.responseFormat } } : {}),
+        ...chatThinkingParameters(config) })
     });
     signal.throwIfAborted();
     if (!response.ok) {

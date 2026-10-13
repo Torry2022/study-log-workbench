@@ -14,6 +14,7 @@ import { agentEnabled, createAgentModel, supplementEvidence } from "./rag-agent.
 import { compactEvidence } from "./rag-evidence-summary.ts";
 import { judgeEvidence, jevConfiguration, isBoundedJevInput } from "./rag-jev.ts";
 import { planRagRetrieval } from "./rag-retrieval-plan.ts";
+import { extractRangeStatusClaims, rangeStatusVerificationEnabled, verifyRangeStatusClaims } from "./rag-status-verifier.ts";
 
 export interface RagQueryInput { question: string; history: RagHistoryMessage[]; mode: RagAnswerMode }
 export interface RagQueryConfig { chat: ChatConfig; lightChat: ChatConfig; mcp: McpConfig }
@@ -31,8 +32,8 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
       const started = performance.now();
       const diagnostics: RagDiagnostics = { traceId: randomUUID(), status: "completed", answerMode: input.mode, questionChars: input.question.length, historyMessages: input.history.length, contextualized: false, contextualizationFallback: false, retrievalMode: null, retrievalStrategy: "relevance", retrievalPlanner: "rules", sourceCount: 0, timings: { contextualizationMs: 0, planningMs: 0, retrievalMs: 0, firstTokenMs: null, generationMs: 0, totalMs: 0 } };
       diagnostics.usage = [];
-      Object.assign(diagnostics.timings, { compactionMs: 0, judgeMs: 0, agentMs: 0 });
-      const measure = async <T>(key: "retrievalMs" | "compactionMs" | "judgeMs" | "agentMs", operation: () => Promise<T>): Promise<T> => {
+      Object.assign(diagnostics.timings, { compactionMs: 0, judgeMs: 0, agentMs: 0, statusVerificationMs: 0 });
+      const measure = async <T>(key: "retrievalMs" | "compactionMs" | "judgeMs" | "agentMs" | "statusVerificationMs", operation: () => Promise<T>): Promise<T> => {
         const phaseStart = performance.now();
         try { return await operation(); }
         finally { diagnostics.timings[key] = (diagnostics.timings[key] || 0) + Math.round(performance.now() - phaseStart); }
@@ -106,6 +107,8 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
         // Successful enumeration covers the requested scope, including confirmed empty periods.
         // Check after compaction: a failed summary can still leave material missing.
         const scopeFullyRead = !run.limited && run.coverage.length > 0 && run.coverage.every(scope => scope.status === "complete" || scope.status === "empty");
+        const completeDays = run.coverage.filter(scope => scope.status === "complete").reduce((sum, scope) => sum + scope.readDates.length, 0);
+        const verifyRangeStatus = scopeFullyRead && rangeStatusVerificationEnabled(config.chat, planned.plan.strategy, completeDays);
         // Search coverage is not proof that the question is answered. Let the same
         // bounded tool loop choose finish or follow a lead, independent of wording.
         if (agentEnabled(process.env, config.chat) && !scopeFullyRead && !planned.plan.matchMode) {
@@ -149,7 +152,30 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
         });
         try {
           if (directAnswer !== undefined) output.push(directAnswer);
-          else await streamRagAnswer(config.chat, buildRagMessages(input.question, input.history, retrieved.contexts, input.mode, run.answerReport() + (referenced ? `\n用户指向历史来源：${referenced.date} ${referenced.heading || ""}。已重新读取当前原文；历史摘录和编号不可视为当前事实。` : "")), delta => output.push(delta), { signal });
+          else {
+            const coverage = run.answerReport() + (referenced ? `\n用户指向历史来源：${referenced.date} ${referenced.heading || ""}。已重新读取当前原文；历史摘录和编号不可视为当前事实。` : "");
+            const messages = buildRagMessages(input.question, input.history, retrieved.contexts, input.mode, coverage, verifyRangeStatus);
+            if (!verifyRangeStatus) await streamRagAnswer(config.chat, messages, delta => output.push(delta), { signal });
+            else {
+              let draft = "";
+              await streamRagAnswer(config.chat, messages, delta => { draft += delta; }, { signal });
+              const claimCount = extractRangeStatusClaims(draft).length;
+              if (!claimCount) {
+                diagnostics.rangeStatusVerification = { enabled: true, claimCount: 0, removedCount: 0 };
+                output.push(draft);
+              } else try {
+                send("status", { stage: "answering", message: "正在核对范围末状态" });
+                const verified = await measure("statusVerificationMs", () => verifyRangeStatusClaims(draft, messages, config.chat, signal));
+                diagnostics.rangeStatusVerification = { enabled: true, claimCount: verified.verdicts.length,
+                  removedCount: verified.verdicts.filter(verdict => verdict.verdict !== "supported").length };
+                output.push(verified.answer);
+              } catch {
+                signal.throwIfAborted();
+                diagnostics.rangeStatusVerification = { enabled: true, claimCount, removedCount: 0, failed: true };
+                output.push(`${draft.trim()}\n\n> 范围末状态核对未完成，请结合来源确认“仍待解决”部分。`);
+              }
+            }
+          }
         } finally { output.flush(); }
         diagnostics.timings.generationMs = elapsed(); diagnostics.timings.totalMs = Math.round(performance.now() - started);
         if (output.noEvidence) diagnostics.status = "no_evidence";

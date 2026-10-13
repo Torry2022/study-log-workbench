@@ -25,7 +25,7 @@ test("instance prompts are neutral editable copies and reinitialization preserve
   await initialize(root);
   assert.equal(await fs.readFile(target, "utf8"), "synthetic user template");
   const environment = await fs.readFile(path.join(root, ".env"), "utf8");
-  assert.match(environment, /CHAT_API_URL=\nCHAT_MODEL=\nCHAT_API_KEY=\n/);
+  assert.match(environment, /CHAT_API_URL=\nCHAT_MODEL=\nCHAT_API_KEY=\nRAG_AGENT_ENABLED=false\nRAG_AGENT_TOOL_CALLING_VERIFIED=false\nRAG_STATUS_VERIFICATION_ENABLED=false\nRAG_CONTEXT_WINDOW_TOKENS=\n/);
 });
 
 async function fixture(t) {

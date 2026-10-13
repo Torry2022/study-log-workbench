@@ -17,6 +17,11 @@ test("all three explicit settings are required; legacy provider variables never 
     assert.throws(() => getChatConfig(config), ChatConfigurationError);
   }
   assert.deepEqual(getChatConfig(valid), { apiKey: valid.CHAT_API_KEY, model: valid.CHAT_MODEL, baseUrl: valid.CHAT_API_URL });
+  assert.deepEqual(getChatConfig({ ...valid, RAG_CONTEXT_WINDOW_TOKENS: '220000' }),
+    { apiKey: valid.CHAT_API_KEY, model: valid.CHAT_MODEL, baseUrl: valid.CHAT_API_URL, contextWindowTokens: 220000 });
+  for (const value of ['0', '98304', '12.5', 'invalid']) {
+    assert.throws(() => getChatConfig({ ...valid, RAG_CONTEXT_WINDOW_TOKENS: value }), ChatConfigurationError);
+  }
   assert.equal(getLightChatConfig(valid).model, valid.CHAT_MODEL);
   assert.equal(getLightChatConfig({ ...valid, CHAT_LIGHT_MODEL: " custom-light " }).model, "custom-light");
 });

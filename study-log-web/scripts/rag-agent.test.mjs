@@ -28,23 +28,20 @@ test("known context windows use the UTF-8 byte upper bound without dividing capa
   assert.equal(run.limited, false);
 });
 
-test("official DeepSeek Flash uses the verified Agent path unless explicitly disabled", () => {
-  const official = { baseUrl: "https://api.deepseek.com/chat/completions", model: "deepseek-flash" };
-  assert.equal(agentEnabled({}, official), true);
-  assert.equal(agentEnabled({ RAG_AGENT_ENABLED: "false" }, official), false);
-  assert.equal(agentEnabled({}, { ...official, model: "deepseek-v4-pro" }), false);
-  assert.equal(agentEnabled({}, { ...official, baseUrl: "https://proxy.invalid/chat/completions" }), false);
-  assert.equal(agentEnabled({ RAG_AGENT_ENABLED: "true", RAG_AGENT_TOOL_CALLING_VERIFIED: "true" }, config), true);
-  assert.equal(agentEnabled({ RAG_AGENT_ENABLED: "true", RAG_AGENT_TOOL_CALLING_VERIFIED: "false" }, config), false);
+test("Agent activation uses explicit provider-neutral capability confirmation", () => {
+  assert.equal(agentEnabled({}), false);
+  assert.equal(agentEnabled({ RAG_AGENT_ENABLED: "false", RAG_AGENT_TOOL_CALLING_VERIFIED: "true" }), false);
+  assert.equal(agentEnabled({ RAG_AGENT_ENABLED: "true", RAG_AGENT_TOOL_CALLING_VERIFIED: "true" }), true);
+  assert.equal(agentEnabled({ RAG_AGENT_ENABLED: "true", RAG_AGENT_TOOL_CALLING_VERIFIED: "false" }), false);
 });
 
-test("official DeepSeek Flash reaches the bounded Agent loop without instance flags", async t => {
+test("a capability-confirmed compatible model reaches the bounded Agent loop", async t => {
   const mcp = await fixture(t), savedFetch = globalThis.fetch;
   const keys = ["RAG_AGENT_ENABLED", "RAG_AGENT_TOOL_CALLING_VERIFIED", "RAG_JEV_ENABLED"];
   const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
-  for (const key of keys) delete process.env[key];
+  Object.assign(process.env, { RAG_AGENT_ENABLED: "true", RAG_AGENT_TOOL_CALLING_VERIFIED: "true", RAG_JEV_ENABLED: "false" });
   t.after(() => { for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } });
-  const chat = { baseUrl: "https://api.deepseek.com/chat/completions", apiKey: "synthetic", model: "deepseek-flash" };
+  const chat = { baseUrl: "https://provider.example/chat/completions", apiKey: "synthetic", model: "compatible-tools" };
   let modelCalls = 0;
   t.mock.method(globalThis, "fetch", async (url, init) => {
     if (String(url) !== chat.baseUrl) return savedFetch(url, init);

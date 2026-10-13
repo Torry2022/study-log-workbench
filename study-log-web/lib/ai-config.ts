@@ -3,7 +3,7 @@ export interface ChatConfig {
   onUsage?: (usage: { inputTokens: number | null; outputTokens: number | null }) => void;
   /** Verified request-scoped model capability; never inferred from a proxy's model name. */
   contextWindowTokens?: number;
-  /** Explicit RAG-only setting for verified DeepSeek official models. */
+  /** Optional provider-specific RAG setting; absent for generic compatible models. */
   thinkingMode?: "disabled" | "low";
   apiKey: string;
   model: string;
@@ -13,18 +13,12 @@ export interface ChatConfig {
 
 export function chatContextWindowTokens(config: ChatConfig): number | undefined {
   if (Number.isSafeInteger(config.contextWindowTokens) && config.contextWindowTokens! > 98304) return config.contextWindowTokens;
-  try {
-    const endpoint = new URL(config.baseUrl);
-    // Official provider documentation, checked 2026-10-12. Unknown endpoints keep the conservative fallback.
-    if (endpoint.protocol === "https:" && endpoint.hostname === "api.deepseek.com" &&
-      ["deepseek-flash", "deepseek-v4-pro"].includes(config.model)) return 1000000;
-  } catch { /* Configuration validation owns invalid endpoints. */ }
   return undefined;
 }
 
 type AiEnvironment = Record<string, string | undefined>;
 export interface ChatConfigIssue {
-  field: "CHAT_API_KEY" | "CHAT_API_URL" | "CHAT_MODEL" | "CHAT_LIGHT_MODEL" | "RAG_DEEPSEEK_THINKING";
+  field: "CHAT_API_KEY" | "CHAT_API_URL" | "CHAT_MODEL" | "CHAT_LIGHT_MODEL" | "RAG_CONTEXT_WINDOW_TOKENS" | "RAG_DEEPSEEK_THINKING";
   reason: "missing" | "invalid";
   message: string;
 }
@@ -53,6 +47,12 @@ function issuesFor(env: AiEnvironment): ChatConfigIssue[] {
       issues.push({ field, reason: "invalid", message: `${field} 含控制字符` });
     }
   }
+  if (env.RAG_CONTEXT_WINDOW_TOKENS?.trim()) {
+    const value = Number(env.RAG_CONTEXT_WINDOW_TOKENS.trim());
+    if (!Number.isSafeInteger(value) || value <= 98304) {
+      issues.push({ field: "RAG_CONTEXT_WINDOW_TOKENS", reason: "invalid", message: "RAG_CONTEXT_WINDOW_TOKENS 必须是大于 98304 的整数" });
+    }
+  }
   const endpoint = env.CHAT_API_URL?.trim();
   if (endpoint) {
     let valid = /^https?:\/\//i.test(endpoint) && !/[\\\u0000-\u0020\u007f]/.test(endpoint);
@@ -75,7 +75,9 @@ export function inspectChatConfig(env: AiEnvironment = process.env): { configure
 export function getChatConfig(env: AiEnvironment = process.env): ChatConfig {
   const { issues } = inspectChatConfig(env);
   if (issues.length) throw new ChatConfigurationError(issues);
-  return { apiKey: env.CHAT_API_KEY!.trim(), model: env.CHAT_MODEL!.trim(), baseUrl: env.CHAT_API_URL!.trim() };
+  const contextWindowTokens = env.RAG_CONTEXT_WINDOW_TOKENS?.trim();
+  return { apiKey: env.CHAT_API_KEY!.trim(), model: env.CHAT_MODEL!.trim(), baseUrl: env.CHAT_API_URL!.trim(),
+    ...(contextWindowTokens ? { contextWindowTokens: Number(contextWindowTokens) } : {}) };
 }
 
 export function getLightChatConfig(env: AiEnvironment = process.env): ChatConfig {

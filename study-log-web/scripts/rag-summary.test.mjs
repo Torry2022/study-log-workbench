@@ -218,13 +218,13 @@ test('long evidence batches bound input and final material while retaining every
   assert.ok(requests.length > 4);
 });
 
-test('verified answer capacity keeps full monthly material without calling the light model', async () => {
+test('explicit answer capacity keeps full monthly material without calling the light model', async () => {
   const run = new EvidenceRun(new AbortController().signal);
   const contents = Array.from({length:40},(_,i)=>`合成日期${i}。`+'原文条件。'.repeat(200));
   run.add(contents.map((content,i)=>({date:`2026-09-${String(i%30+1).padStart(2,'0')}`,fileName:'synthetic.md',chunkId:`part-${i}`,contentHash:`hash-${i}`,content})));
   const original = run.contexts.map(item=>({...item}));
   await compactEvidence(run,'比较这段期间的变化',{baseUrl:'http://127.0.0.1:1/unused',apiKey:'synthetic',model:'small'},
-    {baseUrl:'https://api.deepseek.com/chat/completions',apiKey:'synthetic',model:'deepseek-flash'},[{role:'user',content:'合成历史'.repeat(1000)}]);
+    {baseUrl:'https://provider.invalid/chat/completions',apiKey:'synthetic',model:'compatible-large',contextWindowTokens:1_000_000},[{role:'user',content:'合成历史'.repeat(1000)}]);
   assert.deepEqual(run.contexts,original);
   assert.equal(run.compactedSources.size,0); assert.equal(run.limited,false);
 });

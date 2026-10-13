@@ -45,7 +45,7 @@ test('verdict application removes stale items and empty status sections without 
   assert.match(answer, /一般技术限制不应受影响\[S4\]/);
 });
 
-test('the official Flash verifier uses disabled thinking and returns a filtered answer', async () => {
+test('the provider-neutral verifier preserves model settings and returns a filtered answer', async () => {
   let received;
   const request = async (config, messages, options) => {
     received = { config, messages, options };
@@ -62,17 +62,16 @@ test('the official Flash verifier uses disabled thinking and returns a filtered 
   assert.equal(result.verdicts.length, 3);
   assert.match(result.answer, /月底仍未完成/);
   assert.doesNotMatch(result.answer, /较早记录的问题|无法确定月底状态/);
-  assert.equal(received.config.thinkingMode, 'disabled');
+  assert.equal(received.config.thinkingMode, 'low');
   assert.equal(received.options.responseFormat, 'json_object');
   assert.equal(received.options.timeoutMs, 20_000);
   assert.match(received.messages[0].content, /不能把曾失败或待验证自动延续/);
 });
 
-test('range status verification is limited to complete long summaries on official Flash', () => {
-  const config = { baseUrl: 'https://api.deepseek.com/chat/completions', model: 'deepseek-flash' };
-  assert.equal(rangeStatusVerificationEnabled(config, 'timeline_summary', 30, {}), true);
-  assert.equal(rangeStatusVerificationEnabled(config, 'timeline_summary', 13, {}), false);
-  assert.equal(rangeStatusVerificationEnabled(config, 'comparison', 30, {}), false);
-  assert.equal(rangeStatusVerificationEnabled({ ...config, model: 'deepseek-v4-pro' }, 'timeline_summary', 30, {}), false);
-  assert.equal(rangeStatusVerificationEnabled(config, 'timeline_summary', 30, { RAG_AGENT_ENABLED: 'false' }), false);
+test('range status verification uses an explicit provider-neutral switch for complete long summaries', () => {
+  const enabled = { RAG_STATUS_VERIFICATION_ENABLED: 'true' };
+  assert.equal(rangeStatusVerificationEnabled('timeline_summary', 30, enabled), true);
+  assert.equal(rangeStatusVerificationEnabled('timeline_summary', 13, enabled), false);
+  assert.equal(rangeStatusVerificationEnabled('comparison', 30, enabled), false);
+  assert.equal(rangeStatusVerificationEnabled('timeline_summary', 30, {}), false);
 });

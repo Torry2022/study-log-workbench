@@ -83,8 +83,11 @@ test('query done keeps a bare partial-source mention distinct from the complete 
   assert.ok(!JSON.stringify(generated.messages).includes('truncatedSources'));
 });
 
-test('long complete Flash summaries buffer one status check and remove stale pending claims', async t => {
+test('enabled long complete summaries buffer one status check and remove stale pending claims', async t => {
   const { state, config } = await fixture(t);
+  const previous = process.env.RAG_STATUS_VERIFICATION_ENABLED;
+  process.env.RAG_STATUS_VERIFICATION_ENABLED = 'true';
+  t.after(() => { if (previous === undefined) delete process.env.RAG_STATUS_VERIFICATION_ENABLED; else process.env.RAG_STATUS_VERIFICATION_ENABLED = previous; });
   const blocks = Array.from({ length: 14 }, (_, index) => {
     const date = `2026-09-${String(index + 1).padStart(2, '0')}`;
     return { date, month: '2026-09', fileName: '2026-09_学习日志.md', content: `## ${date}\n\n### 项目\n\n第${index + 1}天记录` };
@@ -95,12 +98,6 @@ test('long complete Flash summaries buffer one status check and remove stale pen
     { claimId: 'C1', verdict: 'outdated', sourceIds: ['S1', 'S2'], reason: '后续记录已取代' },
     { claimId: 'C2', verdict: 'supported', sourceIds: ['S2'], reason: '月底仍明确列为待办' }
   ] });
-  const originalFetch = globalThis.fetch;
-  const localChatUrl = config.chat.baseUrl;
-  globalThis.fetch = (input, init) => originalFetch(String(input) === 'https://api.deepseek.com/chat/completions' ? localChatUrl : input, init);
-  t.after(() => { globalThis.fetch = originalFetch; });
-  config.chat = { ...config.chat, baseUrl: 'https://api.deepseek.com/chat/completions', model: 'deepseek-flash', thinkingMode: 'low' };
-  config.lightChat = { ...config.chat };
   const values = await events(query.createRagQueryStream({ question: '总结2026年9月的主要学习内容和仍待解决的问题。', history: [], mode: 'logs_only' }, config, new AbortController().signal));
   const done = values.at(-1);
   assert.equal(done.event, 'done', JSON.stringify(values));
@@ -113,20 +110,17 @@ test('long complete Flash summaries buffer one status check and remove stale pen
   assert.equal(state.requests.filter(item => item.response_format?.type === 'json_object').length, 1);
 });
 
-test('long complete Flash summaries skip status verification when the draft has no pending claims', async t => {
+test('enabled long complete summaries skip a second request when the draft has no pending claims', async t => {
   const { state, config } = await fixture(t);
+  const previous = process.env.RAG_STATUS_VERIFICATION_ENABLED;
+  process.env.RAG_STATUS_VERIFICATION_ENABLED = 'true';
+  t.after(() => { if (previous === undefined) delete process.env.RAG_STATUS_VERIFICATION_ENABLED; else process.env.RAG_STATUS_VERIFICATION_ENABLED = previous; });
   const blocks = Array.from({ length: 14 }, (_, index) => {
     const date = `2026-09-${String(index + 1).padStart(2, '0')}`;
     return { date, month: '2026-09', fileName: '2026-09_学习日志.md', content: `## ${date}\n\n### 项目\n\n第${index + 1}天记录` };
   });
   state.rangePage = args => readLogRange(blocks, args);
   state.answer = '## 项目\n\n这段时间完成了连续学习记录[S1]。';
-  const originalFetch = globalThis.fetch;
-  const localChatUrl = config.chat.baseUrl;
-  globalThis.fetch = (input, init) => originalFetch(String(input) === 'https://api.deepseek.com/chat/completions' ? localChatUrl : input, init);
-  t.after(() => { globalThis.fetch = originalFetch; });
-  config.chat = { ...config.chat, baseUrl: 'https://api.deepseek.com/chat/completions', model: 'deepseek-flash', thinkingMode: 'low' };
-  config.lightChat = { ...config.chat };
   const values = await events(query.createRagQueryStream({ question: '总结2026年9月的主要学习内容。', history: [], mode: 'logs_only' }, config, new AbortController().signal));
   const done = values.at(-1);
   assert.equal(done.event, 'done', JSON.stringify(values));

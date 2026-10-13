@@ -149,9 +149,10 @@ export class DesktopManager {
     const release = await acquireInstanceLock(path.join(this.root, "data"), "desktop-config");
     try {
       const env = await this.readEnvironment();
-      if (env.RAG_AGENT_TOOL_CALLING_VERIFIED === "true" &&
-        (env.CHAT_API_URL?.trim() !== apiUrl.trim() || env.CHAT_MODEL?.trim() !== model.trim())) {
+      if (env.CHAT_API_URL?.trim() !== apiUrl.trim() || env.CHAT_MODEL?.trim() !== model.trim()) {
         env.RAG_AGENT_TOOL_CALLING_VERIFIED = "false";
+        env.RAG_STATUS_VERIFICATION_ENABLED = "false";
+        env.RAG_CONTEXT_WINDOW_TOKENS = "";
       }
       Object.assign(env, { CHAT_API_URL: apiUrl.trim(), CHAT_MODEL: model.trim() });
       if (clearKey) env.CHAT_API_KEY = ""; else if (apiKey) env.CHAT_API_KEY = apiKey;

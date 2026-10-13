@@ -78,13 +78,9 @@ export function applyRangeStatusVerdicts(markdown: string, verdicts: RangeStatus
   return result.replace(/\n{3,}/g, "\n\n").trim();
 }
 
-export function rangeStatusVerificationEnabled(config: Pick<ChatConfig, "baseUrl" | "model">, strategy: RagRetrievalStrategy,
-  completeDays: number, env: Record<string, string | undefined> = process.env): boolean {
-  if (env.RAG_AGENT_ENABLED === "false" || strategy !== "timeline_summary" || completeDays < 14) return false;
-  try {
-    const endpoint = new URL(config.baseUrl);
-    return endpoint.protocol === "https:" && endpoint.hostname === "api.deepseek.com" && config.model === "deepseek-flash";
-  } catch { return false; }
+export function rangeStatusVerificationEnabled(strategy: RagRetrievalStrategy, completeDays: number,
+  env: Record<string, string | undefined> = process.env): boolean {
+  return env.RAG_STATUS_VERIFICATION_ENABLED === "true" && strategy === "timeline_summary" && completeDays >= 14;
 }
 
 function parseVerdicts(value: string, claims: RangeStatusClaim[], validSources: Set<string>): RangeStatusVerdict[] {
@@ -122,7 +118,7 @@ export async function verifyRangeStatusClaims(draft: string, evidenceMessages: R
     { role: "system", content: "你是学习日志结论核对器。只依据用户提供的按日期排列的[S编号]原文，判断每条‘截至所问范围末仍待解决’的结论。supported表示范围末仍有原文支持且后续没有明确解决或取代；outdated表示只反映较早状态，后续记录已明确开始、补上、修复或取代；unclear表示原文不足以判断范围末状态，或不同项目、个人版、通用版身份无法可靠对应。必须按日期顺序核对同一对象，不能把曾失败或待验证自动延续到范围末，也不能因后来没有再提到就认定已经解决。sourceIds只能使用提供的S编号并列出支持判定的最少来源。reason用一句简短中文说明。只输出JSON对象，不要Markdown或额外文字，格式为：{\"claims\":[{\"claimId\":\"C1\",\"verdict\":\"supported|outdated|unclear\",\"sourceIds\":[\"S1\"],\"reason\":\"...\"}]}" },
     { role: "user", content: `${evidence}\n\n待核对结论：\n${claims.map(claim => `${claim.claimId}: ${claim.text}`).join("\n")}` }
   ];
-  const text = await request({ ...config, thinkingMode: "disabled" }, messages,
+  const text = await request(config, messages,
     { signal, temperature: 0, timeoutMs: 20_000, maxTokens: 2500, responseFormat: "json_object" });
   const verdicts = parseVerdicts(text, claims, validSources);
   return { answer: applyRangeStatusVerdicts(draft, verdicts), verdicts };

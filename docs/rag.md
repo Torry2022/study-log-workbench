@@ -16,7 +16,7 @@ Web 显式配置 `STUDY_LOG_MCP_URL`（完整 HTTP(S) 接口地址）和 `STUDY_
 
 `POST /api/rag/query` 接收 `question`、`mode` 和可选 `history`。SSE 事件为 `status`、`sources`、`delta`、`done`、`error`。只有 `done` 表示完整回答；错误或连接提前结束不得当作成功保存。客户端取消会传递给检索和模型请求。无日志依据的 `logs_only` 请求直接给出说明，不调用回答模型。
 
-精确官方 HTTPS 端点的 `deepseek-flash` 在相关性问答中默认使用有界 Agent，同一次生成可以直接回答或最多两轮调用只读搜索／读取工具；完整日期范围已经读完及字面查找继续直接生成。显式 `RAG_AGENT_ENABLED=false` 可关闭。其他模型或代理接口仍需 `RAG_AGENT_ENABLED=true` 和 `RAG_AGENT_TOOL_CALLING_VERIFIED=true` 才进入工具循环，不做在线自动探测。Jev 继续独立且默认关闭。
+相关性问答只有在 `RAG_AGENT_ENABLED=true` 且 `RAG_AGENT_TOOL_CALLING_VERIFIED=true` 时使用有界 Agent，同一次生成可以直接回答或最多两轮调用只读搜索／读取工具；完整日期范围已经读完及字面查找继续直接生成。能力不按供应商地址或模型名推断，也不在线自动探测。长范围状态核验和上下文窗口分别由 `RAG_STATUS_VERIFICATION_ENABLED`、`RAG_CONTEXT_WINDOW_TOKENS` 显式声明；更换模型后重新确认。Jev 继续独立且默认关闭。
 
 ## 追问范围
 

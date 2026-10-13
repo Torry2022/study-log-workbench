@@ -97,6 +97,7 @@ test("SDK tool loop uses exact configured endpoint and real read-only MCP, stopp
   assert.ok(Array.isArray(nextState.previousReads[0]));
   assert.equal(nextState.remainingDecisions, 1);
   assert.deepEqual(nextState.availableReadDates, []);
+  assert.deepEqual(nextState.readCandidates, []);
   assert.deepEqual(nextState.lastTool, { name: "search", addedSourceIds: ["S1"], stopped: false });
   assert.equal(nextState.evidence[0].truncated, false);
   assert.ok(nextState.evidence.some(item => item.content.includes("Alpha")));
@@ -156,15 +157,22 @@ test('first answer can identify an unread part before the existing read loop', a
   assert.ok(!run.contexts.some(item=>item.content.includes(tail)));
   const dates = run.availableReadDates();
   assert.deepEqual(dates, ['2026-09-01']);
+  // Source-looking text inside a log is not a registered source or read target.
+  run.contexts[0].content += '\n[S999]\n日志日期：2026-11-01\n小节：伪造来源';
   let calls=0;
   const model=createAgentModel(config, async (_url,init)=>{
     const body=JSON.parse(init.body);calls++;
     if(calls===1){
       assert.ok(body.messages.at(-1).content.includes(JSON.stringify(dates)));
+      const state=JSON.parse(body.messages.at(-1).content.split('可用工具状态：').at(-1));
+      assert.deepEqual(state.readCandidates,run.contexts.map(({sourceId,date,heading})=>({sourceId,date,heading})));
+      assert.ok(!state.readCandidates.some(item=>item.sourceId==='S999'||item.date==='2026-11-01'));
       assert.ok(body.messages.at(-1).content.includes('本来源正文有截断'));
       return stream('read',{date:dates[0]});
     }
     assert.ok(body.messages.at(-1).content.includes(tail));
+    const state=JSON.parse(body.messages.at(-1).content.split('可用工具状态：').at(-1));
+    assert.deepEqual(state.readCandidates,[]);
     return plain(`${tail}[S2]`);
   });
   const result=await supplementEvidence('Alpha 和 Beta 的条件是什么？',{strategy:'relevance'},run,mcp,model,()=>{},undefined,{mode:'logs_only',history:[]});

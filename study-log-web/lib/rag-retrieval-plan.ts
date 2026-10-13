@@ -167,13 +167,18 @@ export function planRagRetrieval(query: string, now = new Date()): RagRetrievalP
   const literalQuery = extractLiteralLookup(activeText);
   // Quoted lookup text is content, not an independent calendar constraint.
   const active = (literalQuery ? activeText.replace(/`[^`\n]+`|“[^”\n]+”|‘[^’\n]+’|"[^"\n]+"|'[^'\n]+'/g, "") : activeText).normalize("NFKC");
-  const withoutEvents = active.replace(/(?:20\d{2}[-/]\d{1,2}(?:[-/]\d{1,2})?|(?:20\d{2}年)?(?:[一二三四五六七八九十]+|\d{1,2})月(?:(?:[一二三四五六七八九十]+|\d{1,2})日)?)(?=\s*(?:正式|首次)?(?:发布|推出|发生|上线|举办|版本))/g, "");
+  const withoutEvents = active.replace(/(?:20\d{2}[-/]\d{1,2}(?:[-/]\d{1,2})?|(?:(?:20\d{2}年|前年|去年|今年|本年度|明年|后年)[ \t]*(?:的[ \t]*)?)?(?:[一二三四五六七八九十]+|\d{1,2})月(?:(?:[一二三四五六七八九十]+|\d{1,2})日)?|(?:20\d{2}年|前年|去年|今年|本年度|明年|后年)[ \t]*(?:的[ \t]*)?)(?=\s*(?:正式|首次)?(?:发布|推出|发生|上线|举办|版本))/g, "");
+  const today = chinaToday(now);
+  const relativeYears: Record<string, number> = { 前年: -2, 去年: -1, 今年: 0, 本年度: 0, 明年: 1, 后年: 2 };
+  // Expand only a year qualifier attached to a month; event dates were removed first.
+  const calendar = withoutEvents.replace(/(前年|去年|今年|本年度|明年|后年)[ \t]*(?:的[ \t]*)?(?=[一二三四五六七八九十\d]+月)/g,
+    (_full, label: string) => `${today.getUTCFullYear() + relativeYears[label]}年`);
   // Resolve calendar months in code, including an omitted year in “九月和十月”.
   const replacedYears = [...new Set([...query.slice(0, query.length - activeText.length).matchAll(/(20\d{2})年/g)].map(match => match[1]))];
-  let year = Number(withoutEvents.match(/(20\d{2})年/)?.[1] || (replacedYears.length === 1 ? replacedYears[0] : undefined) || chinaToday(now).getUTCFullYear());
+  let year = Number(calendar.match(/(20\d{2})年/)?.[1] || (replacedYears.length === 1 ? replacedYears[0] : undefined) || today.getUTCFullYear());
   // Enumerations inherit the named month: “10月1日、2日和3日”.
   // Require 日 on abbreviated items so ordinary numbers are not treated as dates.
-  const expandedDays = withoutEvents.replace(/((20\d{2})年(\d{1,2})月\d{1,2}日)((?:\s*(?:、|和|与|及|至|到|~|—|-)\s*\d{1,2}日)+)/g,
+  const expandedDays = calendar.replace(/((20\d{2})年(\d{1,2})月\d{1,2}日)((?:\s*(?:、|和|与|及|至|到|~|—|-)\s*\d{1,2}日)+)/g,
     (_full, first, namedYear, month, rest: string) => first + rest.replace(/\d{1,2}日/g, day => `${namedYear}年${month}月${day}`));
   const value = expandedDays.replace(/(?:(20\d{2})年)?([一二三四五六七八九十]+|\d{1,2})月(?!\d|[一二三四五六七八九十]+日)/g, (full, namedYear, monthText) => {
     const month = parseDayCount(monthText);
@@ -181,7 +186,6 @@ export function planRagRetrieval(query: string, now = new Date()): RagRetrievalP
     if (namedYear) year = Number(namedYear);
     return `${year}年${month}月`;
   });
-  const today = chinaToday(now);
   let range: Pick<RagRetrievalPlan, "dateFrom" | "dateTo"> = {};
   let invalidDate = false;
 

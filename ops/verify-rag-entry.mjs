@@ -14,6 +14,10 @@ await fs.mkdir(path.join(root, 'backups'));
 const source = '## 2026-09-01\n\n### Alpha\nAlpha条件成立才适用，不适用于所有场景。\n';
 const file = path.join(data, '2026-09_学习日志.md');
 await fs.writeFile(file, source, { flag: 'wx' });
+const previousYear = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Shanghai', year: 'numeric' }).format(new Date())) - 1;
+const relativeFile = path.join(data, `${previousYear}_学习日志.md`);
+const relativeSource = `## ${previousYear}-09-02\n\n### RelativeYearProbe\nRelativeYearProbe synthetic temporal fixture.\n`;
+await fs.writeFile(relativeFile, relativeSource, { flag: 'wx' });
 await fs.writeFile(path.join(data, '.instance.json'), JSON.stringify({ schemaVersion: 1, id: 'b0250000-0000-4000-8000-000000000001' }), { flag: 'wx' });
 const tools = [], checks = [], calls = [], agentScopes = []; let decisionLimited = false, firstLimited = false, contextSelection = null;
 const model = http.createServer(async (req, res) => {
@@ -66,6 +70,15 @@ try {
     assert.equal(done.citations[0].date,'2026-09-01'); assert.equal(Boolean(done.diagnostics.agent?.enabled),agent);assert.equal(tools.length,before);
     assert.equal(calls.length - callsBefore, 1, 'Sufficient evidence must need only one generating-model call');
     checks.push({ question, agent, done: true, modelCalls: calls.length - callsBefore });
+  }
+  for (const question of ['去年9月哪里提到`RelativeYearProbe`？', '哪里提到`RelativeYearProbe`，这是今年发布的模型？']) {
+    const response = await fetch(`${base}/api/rag/query`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${auth.token}` }, body: JSON.stringify({ question, mode: 'logs_only', history: [] }) });
+    const block = (await response.text()).trim().split('\n\n').at(-1);
+    assert.match(block, /^event: done/);
+    const done = JSON.parse(block.split('\n')[1].slice(6));
+    assert.equal(done.citations[0].date, `${previousYear}-09-02`);
+    assert.equal(done.citations[0].fileName, `${previousYear}_学习日志.md`);
+    checks.push({ relativeYear: true, publicationNotLogFilter: question.includes('发布'), done: true });
   }
   for (const [selection, historyQuestion, expectedFrom] of [[0, '只看2026年9月，Alpha的条件是什么？', '2026-09-01'], [null, '只看2026年10月，旧主题是什么？', undefined]]) {
     contextSelection = selection;
@@ -175,6 +188,7 @@ try {
     }} finally {await browser.close();}
   }
   assert.equal(await fs.readFile(file,'utf8'),source);
+  assert.equal(await fs.readFile(relativeFile, 'utf8'), relativeSource);
   await fs.writeFile(path.join(root,'results.json'),JSON.stringify({checks,toolRequests:tools.length,sourceUnchanged:true},null,2));
   console.log(JSON.stringify({root,checks:checks.length,sourceUnchanged:true}));
 } finally {

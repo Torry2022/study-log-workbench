@@ -36,6 +36,17 @@ test('old yearless months and dateless intermediate questions do not become impl
     assert.throws(() => resolveContextScope('它呢？', [{ role: 'user', content }], { query: '项目问题', scopeSource: 0 }, now));
   }
 });
+test('relative historical year cannot borrow an event year as its missing original timestamp', () => {
+  for (const label of ['前年', '去年', '明年', '后年']) {
+    assert.throws(() => resolveContextScope('它呢？', [{ role: 'user', content: `${label}9月，我读过2025年发布的模型` }], { query: '模型使用进展', scopeSource: 0 }, now));
+  }
+});
+test('relative words in quoted text or event subjects do not invalidate a fixed historical scope', () => {
+  for (const content of ['只查2026年9月，哪里写过`前年`？', '只看2026年9月，我记过今年发布的模型吗？']) {
+    const result = resolveContextScope('这个主题还有什么？', [{ role: 'user', content }], { query: '主题内容', scopeSource: 0 }, now);
+    assert.equal(result.plan.dateFrom, '2026-09-01'); assert.equal(result.plan.dateTo, '2026-09-30');
+  }
+});
 test('no history uses original plan without transport', async t => {
   t.mock.method(globalThis, 'fetch', () => assert.fail('unexpected call'));
   const result = await contextualizeRagQuestion('2026年9月学了什么？', [], new AbortController().signal, {});

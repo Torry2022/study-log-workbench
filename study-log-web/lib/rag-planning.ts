@@ -24,7 +24,12 @@ export function resolveRagContextScope(question: string, history: RagHistoryMess
   if (selected === null) return { query: item.query.trim(), plan, scopeSource: null };
   const source = history[Number(selected)].content, inherited = planRagRetrieval(source, now);
   // History has no per-message timestamp or saved retrieval scope. Never roll an old relative period forward.
-  if (!inherited.dateFrom || inherited.invalidDate || !/(?:20\d{2}年|20\d{2}[-/]\d{1,2})/.test(source) || /最近|近\s*[\d一二两三四五六七八九十百]+\s*天|过去\s*[\d一二两三四五六七八九十百]+\s*天|本月|这个月|上月|上个月|今年|本年度|今天|昨天|前天|本周|这周|上周|去年/.test(source)) return invalid();
+  if (!inherited.dateFrom || inherited.invalidDate) return invalid();
+  const otherTime = new Date(now);
+  otherTime.setUTCFullYear(otherTime.getUTCFullYear() + 1); otherTime.setUTCDate(otherTime.getUTCDate() + 1);
+  const shifted = planRagRetrieval(source, otherTime);
+  const scope = (plan: RagRetrievalPlan) => JSON.stringify([plan.dateFrom, plan.dateTo, plan.ranges, plan.invalidDate]);
+  if (scope(inherited) !== scope(shifted)) return invalid();
   if (inherited.dateFrom) {
     // Supply trusted dates for task classification, then restore the exact original scope, including gaps.
     plan = planRagRetrieval(`${inherited.dateFrom}至${inherited.dateTo} ${item.query}`, now);

@@ -191,6 +191,27 @@ test('new topics discard rewritten old dates; explicit new dates retain preceden
   }
 });
 
+test('current relative-year months reach MCP and override rewritten or inherited years', async t => {
+  const { state, config } = await fixture(t);
+  const currentYear = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Shanghai', year: 'numeric' }).format(new Date()));
+  const expected = `${currentYear - 1}-09-01`;
+  state.contextResult = { query: '2026年9月项目如何？', scopeSource: 0 };
+  state.contexts = [{ sourceId: 'S1', date: expected, month: expected.slice(0, 7), fileName: `${expected.slice(0, 7)}_学习日志.md`, heading: null, headingIndex: null, chunkId: 'synthetic', contentHash: 'a'.repeat(64), content: '合成证据', truncated: false, score: 1 }];
+  const result = await events(query.createRagQueryStream({ question: '去年9月，这个项目的恢复如何？', history: [{ role: 'user', content: '只看2026年9月的记录' }], mode: 'logs_only' }, config, new AbortController().signal));
+  assert.equal(result.at(-1).event, 'done', JSON.stringify(result));
+  const tool = state.requests.find(item => item.method === 'tools/call');
+  assert.equal(tool.params.arguments.dateFrom, expected); assert.equal(tool.params.arguments.dateTo, `${currentYear - 1}-09-30`);
+});
+
+test('bare publication years do not inherit prior log dates or constrain current logs', async t => {
+  const { state, config } = await fixture(t);
+  state.contextResult = { query: '2026年9月哪里提到模型？', scopeSource: 0 };
+  const result = await events(query.createRagQueryStream({ question: '我记录过今年发布的模型吗？', history: [{ role: 'user', content: '只看2026年9月的记录' }], mode: 'logs_only' }, config, new AbortController().signal));
+  assert.equal(result.at(-1).event, 'done');
+  const tool = state.requests.find(item => item.method === 'tools/call');
+  assert.equal(tool.params.arguments.dateFrom, undefined); assert.equal(tool.params.arguments.dateTo, undefined);
+});
+
 test('uncertain scope, assistant source and scoped rewrite failure never fall back to unbounded retrieval', async t => {
   const { state, config } = await fixture(t);
   const history = [{ role: 'user', content: '总结2026年9月' }, { role: 'assistant', content: '合成回答' }];

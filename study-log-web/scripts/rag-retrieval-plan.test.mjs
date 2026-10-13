@@ -27,6 +27,35 @@ test("Shanghai day boundary and previous-month rollover are deterministic", () =
   assert.equal(planRagRetrieval("最近学了什么", now).dateFrom, "2026-12-26");
 });
 
+test('relative year qualifiers bind to their own months and respect Shanghai year rollover', () => {
+  const now = new Date('2026-10-13T04:00:00Z');
+  for (const [query, year] of [['去年九月学习概览', 2025], ['去年的九月学习概览', 2025], ['去年 九月总结', 2025], ['前年9月总结', 2024], ['今年九月总结', 2026], ['明年九月的日志', 2027], ['后年九月的日志', 2028]]) {
+    const plan = planRagRetrieval(query, now);
+    assert.equal(plan.dateFrom, `${year}-09-01`, query); assert.equal(plan.dateTo, `${year}-09-30`, query);
+  }
+  const compare = planRagRetrieval('比较去年九月和今年十月的记录', now);
+  assert.deepEqual(compare.ranges, [{ dateFrom: '2025-09-01', dateTo: '2025-09-30' }, { dateFrom: '2026-10-01', dateTo: '2026-10-31' }]);
+  assert.equal(planRagRetrieval('去年9月学习概览', new Date('2026-12-31T16:01:00Z')).dateFrom, '2026-09-01');
+});
+
+test('relative years retain leap-day validation and never become content-literal dates', () => {
+  assert.equal(planRagRetrieval('去年2月29日的记录', new Date('2025-05-01T00:00:00Z')).dateFrom, '2024-02-29');
+  const invalid = planRagRetrieval('去年2月29日的记录', new Date('2026-05-01T00:00:00Z'));
+  assert.equal(invalid.invalidDate, true); assert.equal(invalid.dateFrom, undefined);
+  const literal = planRagRetrieval('哪里写过`去年九月`？', new Date('2026-05-01T00:00:00Z'));
+  assert.equal(literal.literalQuery, '去年九月'); assert.equal(literal.dateFrom, undefined);
+});
+
+test('relative and year-only publication dates describe subjects without constraining log dates', () => {
+  const now = new Date('2026-10-13T04:00:00Z');
+  for (const event of ['去年九月', '去年的九月', '前年9月15日', '今年', '今年的', '去年', '2025年']) {
+    const plan = planRagRetrieval(`我记录过${event}发布的模型吗？`, now);
+    assert.equal(plan.dateFrom, undefined, event); assert.equal(plan.eventDates, true, event);
+    const scoped = planRagRetrieval(`只看2026年十月日志里提到${event}发布的模型`, now);
+    assert.equal(scoped.dateFrom, '2026-10-01', event); assert.equal(scoped.dateTo, '2026-10-31', event);
+  }
+});
+
 test("semantic plans whitelist budgets and cannot introduce another evidence layer", () => {
   assert.deepEqual(normalizeSemanticRetrievalPlan({ strategy: "comparison", dateFrom: null, dateTo: null, useWiki: true, maxChunks: 999999, maxChars: 999999 }), {
     strategy: "comparison", maxChunks: 12, maxChars: 18000

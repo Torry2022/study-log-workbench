@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { ArrowUpDown, ChevronDown, FileText, Grid2X2, LayoutList, Search, Star, X } from "lucide-react";
 import { WorkspaceState } from "./WorkspaceState";
 import { FavoriteGroupDialog } from "./FavoriteGroupDialog";
@@ -8,6 +8,7 @@ import { FavoriteRemovePopover } from "./FavoriteFeedback";
 import type { FavoritesController } from "@/hooks/use-favorites";
 import type { FavoriteHeading } from "@/lib/favorites-types";
 import "@/app/favorites.css";
+import { useDelayedBusy } from "@/hooks/use-delayed-busy";
 
 export function FavoritesModule({ favorites, active = true, onOpen, onOpenLog }: {
   onOpenLog?: () => void;
@@ -16,6 +17,7 @@ export function FavoritesModule({ favorites, active = true, onOpen, onOpenLog }:
   const [query, setQuery] = useState(favorites.filters.query);
   const [groupId, setGroupId] = useState("");
   const [remove, setRemove] = useState<{ favorite: FavoriteHeading; top: number; left: number } | null>(null);
+  const showInitialLoading = useDelayedBusy(favorites.loading && !favorites.loaded);
   useEffect(() => { if (!active || !favorites.active) { setGroupId(""); setRemove(null); } }, [active, favorites.active]);
   const monthGroups = useMemo(() => {
     const result = new Map<string, FavoriteHeading[]>();
@@ -27,14 +29,14 @@ export function FavoritesModule({ favorites, active = true, onOpen, onOpenLog }:
   }, [favorites.visible, favorites.filters.sort]);
   const groupsById = new Map(favorites.groups.map(group => [group.id, group.name]));
   function viewSwitch(className: string) {
-    return <div className={`favorites-view-switch ${className}`} aria-label="收藏展示方式">
+    return <div className={`favorites-view-switch ${className} motion-segmented`} data-selected-index={favorites.view === "list" ? 0 : 1} style={{ "--segment-count": 2 } as CSSProperties} aria-label="收藏展示方式">
       <button className={favorites.view === "list" ? "active" : ""} type="button" onClick={() => favorites.setView("list")} aria-label="列表视图" aria-pressed={favorites.view === "list"}><LayoutList size={16} /></button>
       <button className={favorites.view === "grid" ? "active" : ""} type="button" onClick={() => favorites.setView("grid")} aria-label="卡片视图" aria-pressed={favorites.view === "grid"}><Grid2X2 size={15} /></button>
     </div>;
   }
   if (!active || !favorites.active) return null;
   return <>
-    <div className="reader-toolbar-container"><div className="reader-toolbar favorites-toolbar">
+    <div className={`reader-toolbar-container${favorites.loading && favorites.loaded ? " pending" : ""}`}><div className="reader-toolbar favorites-toolbar">
       <div className="favorites-title-block module-title-block"><div className="reader-heading-row favorites-title-row"><h2>收藏中心</h2></div></div>
       <div className="reader-controls favorites-header-actions">
         <form className="favorites-search" onSubmit={event => { event.preventDefault(); favorites.filter({ query }); }}>
@@ -51,8 +53,8 @@ export function FavoritesModule({ favorites, active = true, onOpen, onOpenLog }:
     </div></div>
     <div className="reader-content reader-content-favorites"><div className="favorites-view">
       {favorites.loaded && favorites.error && <div className="favorites-error" role="alert">{favorites.error}<button className="button secondary" type="button" disabled={favorites.loading || favorites.busy} onClick={() => void favorites.reload()}>重试</button></div>}
-      {!favorites.loaded ? <WorkspaceState kind={favorites.error ? "error" : "loading"} title={favorites.error ? "收藏加载失败" : "正在加载收藏"} description={favorites.error || undefined} className="favorites-empty-state" actions={favorites.error ? <button className="button secondary" type="button" disabled={favorites.loading} onClick={() => void favorites.reload()}>重试</button> : undefined} /> : <>
-        {favorites.favorites.length > 0 && <div className="favorites-results"><span>{favorites.visible.length} 条收藏{favorites.filters.group !== "all" && ` · ${favorites.filters.group === "ungrouped" ? "未分组" : groupsById.get(favorites.filters.group) || ""}`}{favorites.filters.query && ` · ${favorites.filters.query}`}</span>{favorites.loading && <span role="status">正在刷新</span>}</div>}
+      {!favorites.loaded ? favorites.error ? <WorkspaceState kind="error" title="收藏加载失败" description={favorites.error} className="favorites-empty-state" actions={<button className="button secondary" type="button" disabled={favorites.loading} onClick={() => void favorites.reload()}>重试</button>} /> : showInitialLoading ? <WorkspaceState kind="loading" title="正在加载收藏" className="favorites-empty-state" /> : null : <div className="result-surface-reveal" key={`${favorites.view}:${favorites.filters.sort}:${favorites.filters.group}:${favorites.filters.month}:${favorites.filters.query}:${favorites.filters.headingsOnly}:${favorites.filters.ignoreCase}`}>
+        {favorites.favorites.length > 0 && <div className="favorites-results"><span>{favorites.visible.length} 条收藏{favorites.filters.group !== "all" && ` · ${favorites.filters.group === "ungrouped" ? "未分组" : groupsById.get(favorites.filters.group) || ""}`}{favorites.filters.query && ` · ${favorites.filters.query}`}</span></div>}
         {monthGroups.length ? <div className="favorites-groups">{monthGroups.map(([month, items]) => <section className="favorites-month-group" key={month}>
           {favorites.filters.sort === "log-date" && <div className="favorites-month-heading"><span>{month}</span><small>{items.length}</small></div>}
           <div className={`favorites-month-list ${favorites.view}`}>{items.map(favorite => <div key={favorite.id} className={`favorite-item favorite-item-center favorite-item-${favorites.view}${favorite.exists ? "" : " missing"}`}>
@@ -73,7 +75,7 @@ export function FavoritesModule({ favorites, active = true, onOpen, onOpenLog }:
             <li><LayoutList size={18} aria-hidden="true" /><div><strong>回来重读与整理</strong><p>在这里搜索、查看内容，或将相关小节放进同一分组。</p></div></li>
           </ol>}
         </WorkspaceState>}
-      </>}
+      </div>}
     </div></div>
     {groupId && <FavoriteGroupDialog favoriteId={groupId} favorites={favorites} onClose={() => setGroupId("")} />}
     {remove && <FavoriteRemovePopover top={remove.top} left={remove.left} title={remove.favorite.headingText} busy={favorites.busy} error={favorites.error} onClose={() => setRemove(null)} onConfirm={() => favorites.remove(remove.favorite.id)} />}

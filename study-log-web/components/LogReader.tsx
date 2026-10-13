@@ -31,6 +31,7 @@ import "@/app/feedback.css";
 import type { ExportScope } from "@/hooks/use-export";
 import "@/app/reader.css";
 import { isEditingTarget, workspaceShortcutBlocked } from "@/lib/workspace-shortcuts";
+import { useDelayedBusy } from "@/hooks/use-delayed-busy";
 
 export type WorkspaceMode = "preview" | "source" | "split";
 interface Editing {
@@ -75,9 +76,14 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
     window.addEventListener("keydown", keydown);
     return () => window.removeEventListener("keydown", keydown);
   }, [active, editing.mode, editing.busy, loading, navigation?.previousDate, navigation?.nextDate, onNavigate]);
+  const hasSettledDay = Boolean(date && day?.date === date && editing.documentDate === date);
   const content = useMemo(() => editing.documentDate === date ? editing.body : day ? toEditableDayBody(day.date, day.content) : "", [editing.documentDate, editing.body, date, day]);
+  const showInitialLoading = useDelayedBusy(loading && !hasSettledDay);
+  const blockingError = error && !hasSettledDay ? error : "";
   const headings = useMemo(() => buildMarkdownOutline(content), [content]);
   const [outlineOpen, setOutlineOpen] = useState(false);
+  const [loadErrorDismissed, setLoadErrorDismissed] = useState(false);
+  useEffect(() => setLoadErrorDismissed(false), [error]);
   const [inlineOutlineVisible, setInlineOutlineVisible] = useState(false);
   const [favoriteGroup, setFavoriteGroup] = useState("");
   const [favoriteFeedback, setFavoriteFeedback] = useState<{ id: string; title: string; kind: "added" | "remove"; top: number; left: number } | null>(null);
@@ -123,10 +129,10 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
     toolbarBottom: () => toolbar.current?.getBoundingClientRect().bottom || 0 });
   const linkPosition = useReadingPosition({ editor: () => editorView.current, preview: () => preview.current,
     toolbarBottom: () => toolbar.current?.getBoundingClientRect().bottom || 0 });
-  const ready = Boolean(day?.exists && !loading && !error);
+  const ready = Boolean(day?.exists && hasSettledDay);
   const dateLabel = date || (error ? "加载失败" : loading ? "正在加载" : "未选择日期");
-  const exportScopes = [{ scope: "day" as const, label: "当前日志", disabled: !ready }, { scope: "file" as const, label: "当前源文件", disabled: !ready }, { scope: "all" as const, label: "全部日志", disabled: !hasLogs }];
-  const editorReady = Boolean(date && editing.documentDate === date && !loading && !error);
+  const exportScopes = [{ scope: "day" as const, label: "当前日志", disabled: !ready || loading || Boolean(error) }, { scope: "file" as const, label: "当前源文件", disabled: !ready || loading || Boolean(error) }, { scope: "all" as const, label: "全部日志", disabled: !hasLogs }];
+  const editorReady = hasSettledDay && !loading && !error;
   const mode = !date || reading ? "preview" : editing.mode;
   useEffect(() => {
     if (!active || mode !== "split" || !editorReady) return;
@@ -317,7 +323,8 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
 
   const outlineButton = <button className="reading-mode-icon" type="button" title="打开大纲" aria-label="打开日志大纲" disabled={!headings.length || !ready} onClick={() => setOutlineOpen(true)}><LayoutList size={17} /></button>;
   const modes = [["preview", "浏览", Eye], ["source", "源码", Edit3], ["split", "分屏", FileText]] as const;
-  const modeButtons = (mobile = false) => <div className={mobile ? "mobile-mode-switch" : "view-mode-switch"} role="group" aria-label="工作区模式">{modes.filter(([value]) => !mobile || value !== "split").map(([value, label, Icon]) => <button key={value} type="button" className={`${mobile ? "" : "view-mode-button"}${(mode === value || (mobile && mode === "split" && value === "source")) ? " active" : ""}`} title={label} aria-label={label} disabled={!date} aria-pressed={mode === value || (mobile && mode === "split" && value === "source")} onClick={() => changeMode(value)}><Icon size={mobile ? 16 : 15} />{label}</button>)}</div>;
+  const modeIndex = mode === "preview" ? 0 : mode === "source" ? 1 : 2;
+  const modeButtons = (mobile = false) => <div className={`${mobile ? "mobile-mode-switch" : "view-mode-switch"} motion-segmented`} data-selected-index={mobile ? Math.min(modeIndex, 1) : modeIndex} style={{ "--segment-count": mobile ? 2 : 3 } as CSSProperties} role="group" aria-label="工作区模式">{modes.filter(([value]) => !mobile || value !== "split").map(([value, label, Icon]) => <button key={value} type="button" className={`${mobile ? "" : "view-mode-button"}${(mode === value || (mobile && mode === "split" && value === "source")) ? " active" : ""}`} title={label} aria-label={label} disabled={!date} aria-pressed={mode === value || (mobile && mode === "split" && value === "source")} onClick={() => changeMode(value)}><Icon size={mobile ? 16 : 15} />{label}</button>)}</div>;
   const saveButton = (mobile = false) => <button className={mobile ? "mobile-toolbar-icon primary" : "button primary toolbar-save-button"} type="button" title={editing.busy ? "保存中" : "保存"} aria-label={editing.busy ? "保存中" : "保存"} disabled={!editorReady || !active || editing.busy || (!editing.dirty && Boolean(day?.exists))} onClick={editing.onSave}>{mobile && editing.busy ? <RefreshCw className="mobile-spinner" size={17} /> : <Save size={mobile ? 17 : 15} />}{!mobile && (editing.busy ? "保存中" : "保存")}</button>;
   const dayNavigator = () => (returnPoint || navigation?.onReturnRag || navigation?.showAdjacent) && <div className="day-navigator" aria-label="日志浏览导航">
     {returnPoint && <button className="day-nav-button" type="button" disabled={editing.busy} title="返回内部链接跳转前的位置" aria-label="返回链接前位置" onClick={() => void returnFromLink()}><CornerUpLeft size={14} />返回</button>}
@@ -338,7 +345,7 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
   </nav>;
 
   return <>
-    <div className="reader-toolbar-container" ref={toolbar}><div className={`reader-toolbar reader-toolbar-log${reading ? " reading-active" : ""}`}>
+    <div className={`reader-toolbar-container${loading && content.trim() ? " pending" : ""}`} ref={toolbar}><div className={`reader-toolbar reader-toolbar-log${reading ? " reading-active" : ""}`}>
       <div className="reading-mode-toolbar"><div className="reading-mode-identity"><BookOpen size={17} /><h2>{date}</h2></div><div className="reading-mode-actions">{dayNavigator()}{outlineButton}<button className="reading-mode-icon" type="button" aria-label="退出阅读" title="退出阅读模式" onClick={() => changeReading(false)}><Minimize2 size={17} /></button></div></div>
       <div className="reader-log-identity"><span className="eyebrow">{day?.fileName || "学习日志"}</span><div className="reader-heading-row"><h2>{dateLabel}</h2><div className="reader-navigator-desktop">{dayNavigator()}</div></div></div>
       <div className="reader-controls reader-log-controls">
@@ -380,18 +387,19 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
       </div>
       <div className="mobile-log-toolbar"><div className="mobile-log-identity"><strong>{dateLabel}</strong></div><div className="mobile-log-actions">{modeButtons(true)}{saveButton(true)}<button className="mobile-toolbar-icon" type="button" aria-label="更多日志操作" onClick={() => setActionsOpen(true)}><MoreHorizontal size={19} /></button></div></div>
     </div></div>
-    <div className={`reader-content editing-workspace mode-${mode}`}>
+    <div className={`reader-content editing-workspace mode-${mode}`} data-workspace-transition-surface>
     {linkError && <div className="editor-navigation-status" role="alert">{linkError}</div>}
     {favorites.error && <div className="editor-navigation-status" role="alert">{favorites.error}<button className="button secondary" type="button" onClick={() => void favorites.reload()}>重试收藏</button></div>}
     {missingHeading && <div className="editor-navigation-status" role="status">未找到目标小节，已打开该日日志。<button className="button secondary" type="button" onClick={() => setMissingHeading(false)}>关闭</button></div>}
     <input ref={imageInput} type="file" multiple accept={IMAGE_ACCEPT} hidden aria-label="选择日志图片" onChange={event => { const files = Array.from(event.target.files || []); event.target.value = ""; void attachments.upload(files); }} />
     {attachments.status && <div className="editor-attachment-status" role={attachments.failed ? "alert" : "status"}>{attachments.status}</div>}
-    {editing.error && <AppFeedback message={editing.error} tone="error" onDismiss={editing.onDismissError} action={editing.conflict ? { label: "重新读取", onClick: editing.onReload } : undefined} />}
-    {active && editing.saved && !editing.dirty && !editing.error && <AppFeedback message="已保存" tone="success" onDismiss={() => {}} />}
+    <AppFeedback feedback={editing.error ? { message: editing.error, tone: "error", action: editing.conflict ? { label: "重新读取", onClick: editing.onReload } : undefined } : null} onDismiss={editing.onDismissError} />
+    <AppFeedback feedback={error && hasSettledDay && !loadErrorDismissed ? { message: error, tone: "error", action: { label: "重试", onClick: onRetry } } : null} onDismiss={() => setLoadErrorDismissed(true)} />
+    <AppFeedback feedback={active && editing.saved && !editing.dirty && !editing.error ? { message: "已保存", tone: "success" } : null} onDismiss={() => {}} />
     <div className="reader-preview-pane" ref={previewPane} onClick={handlePreviewClick} style={{ display: mode === "source" ? "none" : undefined }}>
-    {loading || error || !content.trim() ? <div className={`preview-workspace${(loading || error) && mode === "preview" ? " has-outline" : ""}`}><div className="preview-pane">
-      {loading ? <WorkspaceState kind="loading" title={date ? `正在加载 ${date}` : "正在加载日志"} className="preview-loading" /> : error ? <WorkspaceState kind="error" title="日志加载失败" description={error} className="preview-empty" actions={<button className="button secondary" type="button" onClick={onRetry}><RefreshCw size={15} />重新加载</button>} /> : <WorkspaceState kind="empty" icon={FileText} title={date ? "暂无正文" : hasLogs ? "未选择日志" : "暂无学习日志"} description={date ? "切换到“源码”，写下这一天的学习内容。" : hasLogs ? "选择一个日期，查看当天的学习内容。" : "点击“今天”，记下今天学到的内容。"} layout="module" className="log-empty-state" />}
-    </div>{(loading || error) && mode === "preview" && <nav className="preview-outline" aria-label="当前日志大纲"><div className="preview-outline-inner"><div className="preview-outline-title">目录</div><WorkspaceState kind={error ? "error" : "loading"} layout="compact" title={error ? "等待日志重新加载" : "正在加载目录"} /></div></nav>}</div> : <div className={`preview-workspace${headings.length && mode === "preview" ? " has-outline" : ""}`}>
+    {showInitialLoading || blockingError || (!content.trim() && (!loading || hasSettledDay)) ? <div className={`preview-workspace${(showInitialLoading || blockingError) && mode === "preview" ? " has-outline" : ""}`}><div className="preview-pane">
+      {showInitialLoading ? <WorkspaceState kind="loading" title={date ? `正在加载 ${date}` : "正在加载日志"} className="preview-loading" /> : blockingError ? <WorkspaceState kind="error" title="日志加载失败" description={blockingError} className="preview-empty" actions={<button className="button secondary" type="button" onClick={onRetry}><RefreshCw size={15} />重新加载</button>} /> : <WorkspaceState kind="empty" icon={FileText} title={date ? "暂无正文" : hasLogs ? "未选择日志" : "暂无学习日志"} description={date ? "切换到“源码”，写下这一天的学习内容。" : hasLogs ? "选择一个日期，查看当天的学习内容。" : "点击“今天”，记下今天学到的内容。"} layout="module" className="log-empty-state" />}
+    </div>{(showInitialLoading || blockingError) && mode === "preview" && <nav className="preview-outline" aria-label="当前日志大纲"><div className="preview-outline-inner"><div className="preview-outline-title">目录</div><WorkspaceState kind={blockingError ? "error" : "loading"} layout="compact" title={blockingError ? "等待日志重新加载" : "正在加载目录"} /></div></nav>}</div> : <div className={`preview-workspace${headings.length && mode === "preview" ? " has-outline" : ""}`}>
       <div className="preview-pane"><MarkdownPreview active={active} containerRef={preview} content={content} headings={headings} themeMode={theme} textHighlight={search || undefined} onInternalLink={openInternalLink} />
         {!reading && <button className="reading-mode-entry preview-reading-mode-entry" type="button" aria-label="进入阅读模式" title="进入阅读模式" onClick={() => changeReading(true)}><Maximize2 size={18} /></button>}
       </div>{headings.length > 0 && mode === "preview" && renderOutline(false)}
@@ -401,9 +409,9 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
       onPasteCapture={event => { const files = imageFiles(event.clipboardData.files); if (files.length) { event.preventDefault(); void attachments.upload(files); } }}
       onDropCapture={event => { const files = imageFiles(event.dataTransfer.files); if (files.length) { event.preventDefault(); void attachments.upload(files); } }}
       onDragOver={event => { if (Array.from(event.dataTransfer.items).some(item => item.type.startsWith("image/"))) event.preventDefault(); }}>
-      {editorReady ? <LogEditor date={date} value={editing.body} active={active && !editing.locked && mode !== "preview"} onChange={editing.onChange} onSave={editing.onSave} onInternalLink={() => { if (!editing.busy && !attachments.busy) openLink(); }} onUpdate={attachments.update} onView={view => { editorView.current = view; }}
+      {hasSettledDay ? <LogEditor date={date} value={editing.body} active={active && editorReady && !editing.locked && mode !== "preview"} onChange={editing.onChange} onSave={editing.onSave} onInternalLink={() => { if (!editing.busy && !attachments.busy) openLink(); }} onUpdate={attachments.update} onView={view => { editorView.current = view; }}
         tools={<MarkdownEditMenu disabled={!active || editing.locked || attachments.busy} onCommand={command => { if (editorView.current) applyMarkdownEdit(editorView.current, command); }} onInternalLink={openLink} onImage={() => imageInput.current?.click()} />}
-      /> : <WorkspaceState kind={error ? "error" : loading ? "loading" : "empty"} title={error ? "日志加载失败" : loading ? `正在加载 ${date}` : "未选择日志"} description={error || (loading ? undefined : hasLogs ? "选择一个日期，查看当天的学习内容。" : "点击“今天”，记下今天学到的内容。")} className="source-empty" actions={error ? <button className="button secondary" type="button" onClick={onRetry}><RefreshCw size={15} />重新加载</button> : undefined} />}
+      /> : blockingError ? <WorkspaceState kind="error" title="日志加载失败" description={blockingError} className="source-empty" actions={<button className="button secondary" type="button" onClick={onRetry}><RefreshCw size={15} />重新加载</button>} /> : showInitialLoading ? <WorkspaceState kind="loading" title={`正在加载 ${date}`} className="source-empty" /> : !loading ? <WorkspaceState kind="empty" title="未选择日志" description={hasLogs ? "选择一个日期，查看当天的学习内容。" : "点击“今天”，记下今天学到的内容。"} className="source-empty" /> : null}
     </div></div>
     {active && favoriteFeedback?.kind === "added" && <FavoriteSuccessNotice {...favoriteFeedback} onClose={() => setFavoriteFeedback(null)} onGroup={() => { setOutlineOpen(false); setFavoriteGroup(favoriteFeedback.id); }} />}
     {active && favoriteFeedback?.kind === "remove" && <FavoriteRemovePopover {...favoriteFeedback} busy={favorites.busy} error={favorites.error} onClose={() => setFavoriteFeedback(null)} onConfirm={() => favorites.remove(favoriteFeedback.id)} />}

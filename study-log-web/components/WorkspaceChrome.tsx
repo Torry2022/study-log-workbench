@@ -15,6 +15,7 @@ import { DateJump } from "./DateJump";
 import { SidebarFilterPopover } from "./SidebarFilterPopover";
 import { SidebarFilterHeading } from "./SidebarFilterHeading";
 import { isValidLogDate, isFutureLogDate, todayInShanghai } from "@/lib/study-date";
+import { useDelayedBusy } from "@/hooks/use-delayed-busy";
 import { SearchBox, type SearchSelection } from "./SearchBox";
 import { lockBodyScroll } from "@/hooks/use-dialog-exit";
 import "@/app/workspace.css";
@@ -71,6 +72,8 @@ const themes = [
 export function WorkspaceChrome({ active, view, onView, moduleNavigation, moduleSidebar, ragNavigation, inspector, openAiRequest = 0, inspectorTab, onInspectorTab, months, days, selectedMonth, selectedDate, dayQuery: query, onDayQueryChange: setQuery, selectedLogLabel, loading, error,
   monthsLoading, monthsError, creationBlocked, theme, themePreference = "system", readingMode = false, dayOperationBusy = false, onMonth, onDate, onNewDate, onNewQuestion, onTheme, onLogout, onRetry, onSearchSelect, onSearchChange, children }: WorkspaceChromeProps) {
   const [compact, setCompact] = useState(false);
+  const showMonthsLoading = useDelayedBusy(monthsLoading && !months.length);
+  const showDaysLoading = useDelayedBusy(loading && !days.length);
   const [compactDateSelection, setCompactDateSelection] = useState(0);
   const [sidebarPreferences, setSidebarPreferences] = useState<Partial<Record<WorkspaceView, boolean>>>({});
   const collapsed = sidebarPreferences[view] ?? false;
@@ -291,10 +294,10 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, module
   const dateIndex = filteredDays.findIndex(day => day.date === selectedDate);
   function renderDayList() {
     return <>
-      {loading && !error && <WorkspaceState kind="loading" title="正在读取日志目录" layout="compact" />}
+      {showDaysLoading && !error && <WorkspaceState kind="loading" title="正在读取日志目录" layout="compact" />}
       {error && <WorkspaceState kind="error" title="日志目录加载失败" description={error} layout="compact" actions={<button className="button secondary" type="button" onClick={onRetry}>重试</button>} />}
       {!loading && !error && !filteredDays.length && <WorkspaceState kind="empty" title={query ? "没有符合条件的日志" : months.length ? "本月暂无日志" : "暂无学习日志"} layout="compact" />}
-      {!loading && !error && filteredDays.map(day => <div key={day.date} className={`day-item${day.date === selectedDate ? " active" : ""}`} onClick={() => void selectSidebarDate(day.date)}>
+      {!error && filteredDays.map(day => <div key={day.date} className={`day-item${day.date === selectedDate ? " active" : ""}`} onClick={() => void selectSidebarDate(day.date)}>
         <button className="day-item-open" type="button" aria-current={day.date === selectedDate ? "date" : undefined} onClick={event => { event.stopPropagation(); void selectSidebarDate(day.date); }}>
           <span className="day-date">{query.trim() ? day.date : day.date.slice(5)}</span><span className="sr-only">打开该日志</span>
         </button>
@@ -353,11 +356,11 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, module
           <div className="sidebar-section" data-log-section="months">
             <div className="sidebar-heading" ref={monthHeading} tabIndex={-1}><div className="section-title inline"><CalendarDays size={15} /><span>月份</span></div><button className="sidebar-collapse-button" onClick={() => changeCollapsed(true)} aria-label="折叠左侧栏" title="折叠左侧栏"><ChevronLeft size={16} /></button></div>
             <div className="month-list">{(compact && !monthsExpanded ? months.slice(0, 6) : months).map(month => <button key={month.id} type="button" className={`nav-item${month.id === selectedMonth ? " active" : ""}`} aria-current={month.id === selectedMonth ? "true" : undefined} onClick={() => { setQuery(""); onMonth(month.id); }}><span>{month.label}</span><small>{month.dayCount}</small></button>)}</div>
-            {monthsError ? <WorkspaceState kind="error" title="月份加载失败" description={monthsError} layout="compact" actions={<button className="button secondary" type="button" onClick={onRetry}>重试</button>} /> : monthsLoading ? <WorkspaceState kind="loading" title="正在加载月份" layout="compact" /> : !months.length && <WorkspaceState kind="empty" title="暂无月份记录" layout="compact" />}
+            {monthsError ? <WorkspaceState kind="error" title="月份加载失败" description={monthsError} layout="compact" actions={<button className="button secondary" type="button" onClick={onRetry}>重试</button>} /> : showMonthsLoading ? <WorkspaceState kind="loading" title="正在加载月份" layout="compact" /> : !monthsLoading && !months.length && <WorkspaceState kind="empty" title="暂无月份记录" layout="compact" />}
             {compact && months.length > 6 && <button className="button secondary full" type="button" aria-expanded={monthsExpanded} onClick={() => setMonthsExpanded(value => !value)}>{monthsExpanded ? "收起月份" : `展开其余 ${months.length - 6} 个月份`}</button>}
           </div>
           <div className="sidebar-section grow" data-log-section="dates">
-            <div className="section-title date-section-title"><span className="section-title-left"><FileText size={15} />日期</span><DateJump months={months} selectedDate={selectedDate} active={active && (!compact || panel === "navigation")} openRequest={dateJumpRequest} onDate={date => selectSidebarDate(date)} /></div>
+            <div className={`section-title date-section-title${loading && days.length ? " pending" : ""}`}><span className="section-title-left"><FileText size={15} />日期</span><DateJump months={months} selectedDate={selectedDate} active={active && (!compact || panel === "navigation")} openRequest={dateJumpRequest} onDate={date => selectSidebarDate(date)} /></div>
             {!compact && logDateCreation}
             <div className="sidebar-search"><Search size={14} /><input ref={dateSearch} value={query} onChange={event => setQuery(event.target.value)} placeholder="按标签定位日期" aria-label="按日期标签搜索日期" />{query && <button className="sidebar-search-clear" type="button" onClick={() => { setQuery(""); dateSearch.current?.focus(); }} aria-label="清空日期搜索"><X size={13} /></button>}</div>
             <div className="day-list" aria-busy={loading}>
@@ -370,7 +373,7 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, module
             busy={dayOperationBusy || loading} query={query} onQuery={setQuery} onDate={date => selectSidebarDate(date)} selectionRevision={compactDateSelection}>{renderDayList()}</CompactDayNavigator>}
         </>}
       </aside>
-      <section className="reader reader-preview" inert={drawerOpen}>{children}</section>
+      <section className="reader reader-preview" data-workspace-transition-shell inert={drawerOpen}>{children}</section>
       {hasInspector && <aside ref={writingPanel} className={`writing-inspector${writingExpanded ? " expanded" : " collapsed"}${panel === "writing" ? " mobile-open" : ""}`} inert={compact && panel !== "writing"} role={compact ? "dialog" : undefined} aria-modal={compact && panel === "writing" ? true : undefined} aria-label="AI 工具">
         {!compact && !writingExpanded && <div className="inspector-rail"><button className="rail-button" type="button" aria-label="展开右侧栏" title="展开右侧栏" onClick={() => setInspectorCollapsed(false)}><ChevronLeft size={18} /></button><button className={`rail-button${inspectorTab === "writing" ? " active" : ""}`} type="button" aria-label="AI生成" title="AI生成" onClick={() => { onInspectorTab("writing"); setInspectorCollapsed(false); }}><Wand2 size={17} /></button><button className={`rail-button${inspectorTab === "highlighting" ? " active" : ""}`} type="button" aria-label="重点标注" title="重点标注" onClick={() => { onInspectorTab("highlighting"); setInspectorCollapsed(false); }}><Highlighter size={17} /></button></div>}
         <div className="writing-inspector-content" hidden={!writingExpanded}>

@@ -20,7 +20,7 @@ export function HelpDialog({ onClose }: { onClose: () => void }) {
   return createPortal(<div ref={backdropRef} className="help-dialog-backdrop" onClick={close}>
     <section className="help-dialog" role="dialog" aria-modal="true" aria-labelledby="help-dialog-title" onClick={event => event.stopPropagation()}>
       <header className="help-dialog-header"><div><span className="help-dialog-icon"><CircleHelp size={20} /></span><div><h2 id="help-dialog-title">使用帮助</h2><p>常用操作与快捷键</p></div></div><button type="button" aria-label="关闭帮助" onClick={close}><X size={18} /></button></header>
-      <div className="help-dialog-content">
+      <div className="help-dialog-content secondary-page-reveal">
         <section><h3>常用操作</h3><div className="help-action-grid">
           <article><strong>记录与保存</strong><p>点击“今天”或选择日期新建日志，在源码中输入并保存。日期由系统维护，正文使用三级及以下标题，也可以只写普通段落。无需配置模型即可记录和搜索。</p></article>
           <article><strong>阅读与整理</strong><p>使用浏览、源码或分屏切换查看方式。鼠标三击普通正文可切到源码并延续阅读位置。大纲用于定位标题；已保存的三级标题可收藏、分组。随记可以独立记录想法，也可以从材料中提取并审阅。</p></article>

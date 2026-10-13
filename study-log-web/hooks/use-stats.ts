@@ -35,6 +35,7 @@ export function useStats(options: Options) {
   const [feedback, setFeedback] = useState("");
   const [reloadRevision, setReloadRevision] = useState(0);
   const [statsRevision, setStatsRevision] = useState(0);
+  const initializedRevision = useRef(-1);
   const operation = useRef<AbortController | null>(null);
   const current = useRef({ options, taxonomy, savedTaxonomy, selectedMonth, busy });
   current.current = { options, taxonomy, savedTaxonomy, selectedMonth, busy };
@@ -47,6 +48,8 @@ export function useStats(options: Options) {
 
   useEffect(() => {
     if (!options.active || !options.visible) return;
+    if (initializedRevision.current === reloadRevision) return;
+    initializedRevision.current = reloadRevision;
     const controller = new AbortController();
     setInitialLoading(true); setTaxonomyError("");
     Promise.all([
@@ -71,7 +74,7 @@ export function useStats(options: Options) {
   useEffect(() => {
     if (!options.active || !options.visible || !selectedMonth) return;
     const controller = new AbortController();
-    setLoading(true); setStatsError(""); setMonthlyStats(null);
+    setLoading(true); setStatsError("");
     requestJson<{ stats: MonthlyStats }>(`/api/stats?month=${encodeURIComponent(selectedMonth)}`, { signal: controller.signal })
       .then(payload => { if (!controller.signal.aborted) setMonthlyStats(payload.stats); })
       .catch(error => { if (!controller.signal.aborted && error?.name !== "AbortError") setStatsError(error instanceof Error ? error.message : "读取统计失败"); })
@@ -134,7 +137,7 @@ export function useStats(options: Options) {
       setTaxonomyError(error instanceof Error ? error.message : "保存映射失败，请重试");
     } finally { if (operation.current === controller) { operation.current = null; setBusy(false); } }
   }
-  return { view, months, selectedMonth, monthlyStats: monthlyStats?.month === selectedMonth ? monthlyStats : null,
+  return { view, months, selectedMonth, monthlyStats,
     taxonomy, savedTaxonomy, catalog, busy, loading, initialLoading, statsError, taxonomyError, conflict, feedback, dirty, ai,
     active: options.active && options.visible, beforeLeave, changeMonth, showOverview, saveTaxonomy, reloadTaxonomy,
     showManager: () => setView("taxonomy"), setTaxonomy, dismissFeedback: () => setFeedback(""),

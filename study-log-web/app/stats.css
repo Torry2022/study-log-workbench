@@ -66,6 +66,7 @@
 
 .stats-review-toolbar,
 .taxonomy-manager-header {
+  position: relative;
   min-height: 52px;
   display: flex;
   align-items: center;
@@ -73,6 +74,21 @@
   padding-bottom: 10px;
   border-bottom: 1px solid var(--hairline-soft);
 }
+.stats-review-toolbar.pending::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  background: var(--primary);
+  animation: stats-loading-line 1200ms ease-in-out infinite;
+}
+@keyframes stats-loading-line {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) { .stats-review-toolbar.pending::after { animation: none; opacity: 0.7; } }
 
 .stats-review-toolbar > div:first-child,
 .taxonomy-manager-header > div:first-of-type {

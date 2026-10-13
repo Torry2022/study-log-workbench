@@ -311,3 +311,151 @@ html.reading-mode-transition::view-transition-new(root) {
 
 /* CodeMirror supplies its own scrolling element. */
 .cm-scroller { scrollbar-gutter: stable; }
+
+/* Shared workspace motion, ported from the verified personal workspace. */
+.motion-segmented {
+  --segment-count: 2;
+  --segment-index: 0;
+  --segment-inset: 4px;
+  position: relative;
+  isolation: isolate;
+}
+.motion-segmented[data-selected-index="1"] { --segment-index: 1; }
+.motion-segmented[data-selected-index="2"] { --segment-index: 2; }
+.motion-segmented::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: var(--segment-inset);
+  bottom: var(--segment-inset);
+  left: var(--segment-inset);
+  width: calc((100% - var(--segment-inset) * 2) / var(--segment-count));
+  border-radius: var(--radius-sm);
+  background: var(--canvas);
+  box-shadow: var(--shadow-soft);
+  transform: translateX(calc(var(--segment-index) * 100%));
+  transition: transform 170ms ease-out;
+  pointer-events: none;
+}
+.motion-segmented > button { position: relative; z-index: 1; }
+.motion-segmented > button.active { background: transparent !important; box-shadow: none !important; }
+.motion-segmented > button.active::before { content: none !important; }
+
+@keyframes workspace-content-reveal {
+  from { opacity: 0.78; transform: translateX(8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes workspace-content-old { to { opacity: 0; transform: translateX(-8px); } }
+@keyframes workspace-content-new {
+  from { opacity: 0.78; transform: translateX(8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.workspace-content-revealing { animation: workspace-content-reveal 160ms ease-out both; }
+.workspace-content-waiting { opacity: 0; }
+.workspace-transition-snapshot {
+  position: fixed;
+  z-index: 28;
+  overflow: hidden;
+  pointer-events: none;
+  contain: paint;
+}
+.workspace-transition-snapshot-exiting { animation: workspace-content-old 160ms ease-out both; }
+::view-transition-old(workspace-content) { animation: workspace-content-old 160ms ease-out both; }
+::view-transition-new(workspace-content) { animation: workspace-content-new 160ms ease-out both; }
+html[data-workspace-transition]::view-transition-old(root),
+html[data-workspace-transition]::view-transition-new(root) { animation: none; }
+
+@keyframes result-surface-enter { from { opacity: 0.72; } to { opacity: 1; } }
+.result-surface-reveal { animation: result-surface-enter 140ms ease-out both; }
+@keyframes secondary-page-enter {
+  from { opacity: 0; transform: translateX(16px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.secondary-page-reveal { animation: secondary-page-enter 180ms ease-out both; }
+
+.reader-toolbar-container.pending > .reader-toolbar,
+.date-section-title.pending { position: relative; }
+.reader-toolbar-container.pending > .reader-toolbar::after,
+.date-section-title.pending::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  background: var(--primary);
+  animation: stable-loading-line 1200ms ease-in-out infinite;
+}
+@keyframes stable-loading-line { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+
+@keyframes dialog-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes dialog-surface-in {
+  from { opacity: 0.84; transform: translateY(8px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes dialog-fade-out { to { opacity: 0; } }
+.help-dialog-backdrop:not(.dialog-exiting),
+.internal-link-dialog-backdrop:not(.dialog-exiting),
+.favorite-group-dialog-backdrop:not(.dialog-exiting),
+.backup-dialog-backdrop:not(.dialog-exiting),
+.confirmation-backdrop:not(.dialog-exiting),
+.highlight-review-overlay:not(.dialog-exiting),
+.generation-presets-backdrop:not(.dialog-exiting),
+.image-lightbox:not(.dialog-exiting) { animation: dialog-backdrop-in 180ms ease-out both; }
+.help-dialog-backdrop:not(.dialog-exiting) > .help-dialog,
+.internal-link-dialog-backdrop:not(.dialog-exiting) > .internal-link-dialog,
+.favorite-group-dialog-backdrop:not(.dialog-exiting) > .favorite-group-dialog,
+.backup-dialog-backdrop:not(.dialog-exiting) > .backup-dialog,
+.confirmation-backdrop:not(.dialog-exiting) > .confirmation-dialog,
+.highlight-review-overlay:not(.dialog-exiting) > .diff-dialog,
+.generation-presets-backdrop:not(.dialog-exiting) > .generation-presets-dialog,
+.image-lightbox:not(.dialog-exiting) > .image-lightbox-stage { animation: dialog-surface-in 180ms ease-out both; }
+.dialog-exiting {
+  pointer-events: none !important;
+  animation: dialog-fade-out 160ms ease-out forwards;
+}
+.image-lightbox.dialog-exiting { animation-duration: 140ms; }
+
+.button,
+.mini-button,
+.nav-item,
+.day-item,
+.result-item,
+.rag-session-item,
+.rag-session-menu-button,
+.favorite-item-center,
+.theme-popover button,
+.note-entry-actions button,
+.taxonomy-domain-chip button,
+.domain-chip button {
+  transition: background-color 100ms ease-out, color 100ms ease-out, border-color 100ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .motion-segmented::before { transition: none; }
+  .dialog-exiting,
+  .workspace-content-revealing,
+  .workspace-transition-snapshot-exiting,
+  .result-surface-reveal,
+  .secondary-page-reveal,
+  .reader-toolbar-container.pending > .reader-toolbar::after,
+  .date-section-title.pending::after,
+  .help-dialog-backdrop,
+  .internal-link-dialog-backdrop,
+  .favorite-group-dialog-backdrop,
+  .backup-dialog-backdrop,
+  .confirmation-backdrop,
+  .highlight-review-overlay,
+  .generation-presets-backdrop,
+  .image-lightbox,
+  .help-dialog,
+  .internal-link-dialog,
+  .favorite-group-dialog,
+  .backup-dialog,
+  .confirmation-dialog,
+  .diff-dialog,
+  .generation-presets-dialog,
+  .image-lightbox-stage { animation-duration: 1ms !important; }
+  ::view-transition-old(workspace-content),
+  ::view-transition-new(workspace-content) { animation-duration: 0s; }
+}

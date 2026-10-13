@@ -4,7 +4,7 @@
   z-index: 105;
   display: grid;
   place-items: center;
-  padding: 24px;
+  padding: 0;
   background: rgba(17, 16, 15, 0.46);
   overscroll-behavior: contain;
 }
@@ -21,6 +21,7 @@
 .backup-dialog {
   width: min(1500px, calc(100vw - 64px));
   height: min(820px, calc(100svh - 48px));
+  min-height: min(560px, calc(100svh - 48px));
   max-height: min(820px, calc(100svh - 48px));
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -31,14 +32,14 @@
   color: var(--body);
   box-shadow: var(--popover-shadow);
   overscroll-behavior: contain;
+  transition: width 260ms ease-out, height 260ms ease-out, min-height 260ms ease-out, max-height 260ms ease-out, border-width 260ms ease-out, border-radius 260ms ease-out;
 }
 
 .backup-dialog.maximized {
-  position: fixed;
-  inset: 0;
   width: 100vw;
   height: 100svh;
-  max-height: none;
+  min-height: 100svh;
+  max-height: 100svh;
   border: 0;
   border-radius: 0;
 }
@@ -272,8 +273,22 @@
 @container backup-window (max-width: 800px) {
   .backup-version-toggle { display: flex; width: 100%; margin-block: 10px; }
   .backup-dialog-main { display: block; overflow: visible; }
-  .backup-version-panel { max-height: 240px; border-right: 0; }
-  .backup-dialog-main[data-versions-expanded="false"] .backup-version-panel { display: none; }
+  .backup-version-panel {
+    max-height: 240px;
+    border-right: 0;
+    opacity: 1;
+    visibility: visible;
+    transition: max-height 180ms ease-out, opacity 140ms ease-out, visibility 0s linear;
+  }
+  .backup-dialog-main[data-versions-expanded="false"] .backup-version-panel {
+    max-height: 0;
+    padding-block: 0;
+    border: 0;
+    opacity: 0;
+    visibility: hidden;
+    overflow: hidden;
+    transition: max-height 180ms ease-out, padding 180ms ease-out, opacity 140ms ease-out, visibility 0s linear 180ms;
+  }
   .backup-diff-viewer { height: min(480px, 55svh); }
 }
 
@@ -417,6 +432,7 @@
   .backup-dialog {
     width: 100%;
     height: auto;
+    min-height: 0;
     max-height: calc(var(--mobile-viewport-height, 100dvh) - var(--safe-area-top) - 16px);
     border-width: 1px 0 0;
     border-radius: 14px 14px 0 0;
@@ -425,6 +441,7 @@
   .backup-dialog.maximized {
     width: 100%;
     height: auto;
+    min-height: 0;
     max-height: calc(var(--mobile-viewport-height, 100dvh) - var(--safe-area-top) - 16px);
   }
 
@@ -485,6 +502,11 @@
   .backup-dialog-actions .button {
     width: 100%;
   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .backup-dialog,
+  .backup-version-panel { transition: none !important; }
 }
 
 @media (max-width: 760px) {

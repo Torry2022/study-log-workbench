@@ -46,11 +46,13 @@ import type { StatsEntry } from "@/lib/stats-types";
 import type { WorkspaceMode } from "./LogReader";
 import "@/app/editing-workspace.css";
 import { workspaceShortcutBlocked } from "@/lib/workspace-shortcuts";
+import { useWorkspaceTransition } from "@/hooks/use-workspace-transition";
 
 export function Workspace() {
   const { active, logout } = useSession();
   const beforeLeave = useRef<() => Promise<boolean>>(async () => true);
-  const logs = useLogWorkspace(active, beforeLeave);
+  const { runTransition, completeTransition } = useWorkspaceTransition();
+  const logs = useLogWorkspace(active, beforeLeave, runTransition);
   const { confirmation, confirm, resolveConfirmation } = useConfirmation();
   const rag = useRag({ active, visible: logs.selection.view === "qa", routeSessionId: logs.selection.sessionId, routeToken: logs.navigationRevision, onConfirm: confirm, onRoute: logs.replaceRagSession });
   const notes = useNotes({ active, visible: logs.selection.view === "notes", onConfirm: confirm, routeNoteId: logs.selection.noteId, routeToken: logs.navigationRevision });
@@ -63,6 +65,10 @@ export function Workspace() {
   const logView = logs.selection.view === "log";
   const exporting = useExport({ active: active && (logView || logs.selection.view === "notes"), contextKey: logs.selection.view, date: logs.selection.date, logDirty: draft.dirty, notesDirty: notes.dirty, onConfirm: confirm });
   const [mode, setMode] = useState<WorkspaceMode>("preview");
+  const changeMode = useCallback((next: WorkspaceMode) => {
+    if (next === mode) return;
+    runTransition("log-mode", () => setMode(next));
+  }, [mode, runTransition]);
   const [dayQuery, setDayQuery] = useState("");
   const [openAiRequest, setOpenAiRequest] = useState(0);
   const dayNeedle = dayQuery.trim().toLocaleLowerCase();
@@ -145,6 +151,9 @@ export function Workspace() {
   };
   useEffect(() => { if (!active) { resolveConfirmation(false); setBackupOpen(false); } }, [active, resolveConfirmation]);
   useEffect(() => { setOperationError(""); }, [logs.selection.date]);
+  useEffect(() => {
+    if (!logs.loading || logs.error || !logs.selection.date || logs.day?.date === logs.selection.date) completeTransition();
+  }, [completeTransition, logs.day?.date, logs.error, logs.loading, logs.selection.date, logs.selection.view]);
   useEffect(() => {
     if (!active || !logView) return;
     const save = (event: KeyboardEvent) => {
@@ -250,8 +259,8 @@ export function Workspace() {
     onSearchChange={clearSearch} onSearchSelect={async result => { if (!(await selectDate(result.date))) return false; setMode("preview"); setReading(false); setSearchSelection(result); return true; }}
     onNewQuestion={async () => { if (!(await logs.selectView("qa"))) return false; clearSearch(); setReading(false); return rag.newSession(); }}
     onNewDate={date => { if (logs.loading || logs.error) return; void logs.selectDate(date).then(accepted => { if (accepted) setMode("source"); }); }} onLogout={() => void exit()}>
-    {navigationError && <AppFeedback message={navigationError} tone="error" onDismiss={() => setNavigationError("")} />}
-    {(exporting.status || exporting.error || exporting.busy) && <AppFeedback message={exporting.error || exporting.status || "正在准备导出…"} tone={exporting.error ? "error" : exporting.status ? "warning" : "info"} onDismiss={exporting.dismiss} action={exporting.busy ? { label: "取消导出", onClick: exporting.cancel } : undefined} />}
+    <AppFeedback feedback={navigationError ? { message: navigationError, tone: "error" } : null} onDismiss={() => setNavigationError("")} />
+    <AppFeedback feedback={exporting.status || exporting.error || exporting.busy ? { message: exporting.error || exporting.status || "正在准备导出…", tone: exporting.error ? "error" : exporting.status ? "warning" : "info", action: exporting.busy ? { label: "取消导出", onClick: exporting.cancel } : undefined } : null} onDismiss={exporting.dismiss} />
     <div className="workspace-view" hidden={logs.selection.view !== "qa"}>
       <RagWorkspace noLogs={!logs.navigationLoading && !logs.navigationError && !logs.months.length} onOpenLog={openLog} active={active} visible={logs.selection.view === "qa"} disabled={!rag.configured || rag.saving || Boolean(rag.saveError)} messages={rag.messages} initializing={rag.initializing}
         feedback={<>
@@ -271,7 +280,7 @@ export function Workspace() {
       scrollTarget={logs.scrollTarget} navigationRevision={logs.navigationRevision} loading={logs.loading} error={logs.error} theme={theme}
       reading={reading} onReading={value => { if (value) setMode("preview"); setReading(value); }} onRetry={logs.retry} onNavigate={selectDate}
       search={searchSelection?.date === logs.selection.date ? searchSelection : null}
-      editing={{ mode, onMode: setMode, documentDate: draft.draft?.date || "", body: draft.draft?.body || "", dirty: draft.dirty,
+      editing={{ mode, onMode: changeMode, documentDate: draft.draft?.date || "", body: draft.draft?.body || "", dirty: draft.dirty,
         busy: draft.busy || deleting, locked: deleting, error: operationError || draft.error || (missingFavorite === logs.selection.date ? "原收藏小节未找到，已打开所属日期。" : ""), conflict: !operationError && draft.conflict, saved: draft.saved, resetRevision: draft.resetRevision,
         onChange: draft.change, onSave: () => { if (!deleting && !backupOpen) void draft.save(); }, onReload: () => void reload(), onDismissError: () => { setOperationError(""); setMissingFavorite(null); draft.dismissError(); },
         onDiscard: () => { void discardLog(); }, onDelete: () => void deleteCurrent(), onBackups: () => { if (!draft.busy && !deleting) setBackupOpen(true); } }} /></div>

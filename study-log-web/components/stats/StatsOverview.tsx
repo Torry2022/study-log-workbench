@@ -16,6 +16,7 @@ type StatsOverviewProps = {
   selectedMonth: string;
   stats: MonthlyStats | null;
   busy: boolean;
+  pending?: boolean;
   classificationReady: boolean;
   onMonthChange: (month: string) => void;
   onRefresh: () => void;
@@ -84,6 +85,7 @@ export function StatsOverview({
   selectedMonth,
   stats,
   busy,
+  pending = false,
   classificationReady,
   onMonthChange,
   onRefresh,
@@ -149,8 +151,8 @@ export function StatsOverview({
   ) : null;
 
   return (
-    <div className="stats-overview">
-      <div className="stats-review-toolbar">
+    <div className="stats-overview result-surface-reveal" aria-busy={pending}>
+      <div className={`stats-review-toolbar${pending ? " pending" : ""}`}>
         <div>
           <h2>{selectedMonth || "月度复盘"}</h2>
           <p>按记录天数与日志小节回看本月学习结构。</p>

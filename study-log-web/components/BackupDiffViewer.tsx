@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type CSSProperties } from "react";
 import { buildDiffRows, type DiffSide } from "@/lib/backup-diff";
 import "@/app/backup.css";
 
@@ -41,7 +41,7 @@ export function BackupDiffViewer({ currentContent, historicalContent, historical
 
   return (
     <div className="backup-diff-viewer" data-side={side}>
-      <div className="version-switch view-mode-switch" role="group" aria-label="查看版本">
+      <div className="version-switch view-mode-switch motion-segmented" data-selected-index={side} style={{ "--segment-count": 2 } as CSSProperties} role="group" aria-label="查看版本">
         {["当前内容", "历史内容"].map((label, index) => (
           <button key={label} type="button" className={`view-mode-button${side === index ? " active" : ""}`} aria-pressed={side === index} onClick={() => switchSide(index)}>{label}</button>
         ))}

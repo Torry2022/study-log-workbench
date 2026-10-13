@@ -12,6 +12,7 @@ import type { StudyNote, StudyNoteFacet } from "@/lib/notes-types";
 import { formatNoteTime, localDateTimeInput, parseTags } from "@/lib/notes-view";
 import { IMAGE_ACCEPT, imageExtension } from "@/lib/asset-upload-rules";
 import "@/app/notes.css";
+import { useDelayedBusy } from "@/hooks/use-delayed-busy";
 
 interface Props { onOpenLog?: () => void; exportAction?: ReactNode; extractAction?: ReactNode; extraction?: ReactNode; notes: NotesController; themeMode: "light" | "dark"; onOpenLogTarget: (target: InternalLinkTarget, noteId: string) => void | Promise<unknown> }
 
@@ -294,9 +295,10 @@ function NoteItem({ note, notes, themeMode, onOpenLogTarget }: { note: StudyNote
 
 
 export function NotesModule({ notes, themeMode, onOpenLogTarget, exportAction, extractAction, extraction, onOpenLog }: Props) {
+  const showInitialLoading = useDelayedBusy(notes.loading && !notes.loaded);
   if (!notes.active || !notes.visible) return null;
   return <>
-    <div className="reader-toolbar-container"><div className="reader-toolbar notes-toolbar">
+    <div className={`reader-toolbar-container${notes.loading && notes.loaded ? " pending" : ""}`}><div className="reader-toolbar notes-toolbar">
       <div className="notes-title-block module-title-block"><div className="reader-heading-row"><h2>随记</h2></div></div>
       <div className="reader-controls notes-header-actions">
         <form className="notes-search" onSubmit={event => { event.preventDefault(); notes.submitSearch(); }}>
@@ -310,12 +312,12 @@ export function NotesModule({ notes, themeMode, onOpenLogTarget, exportAction, e
         {onOpenLog && <button className="button secondary notes-open-log" type="button" onClick={onOpenLog}><FileText size={15} />日志</button>}
       </div>
     </div></div>
-    <div className="reader-content reader-content-notes"><div className={`notes-workspace${notes.editorOpen ? " notes-workspace-editor" : ""}`}>
+    <div className="reader-content reader-content-notes"><div className={`notes-workspace${notes.editorOpen ? " notes-workspace-editor secondary-page-reveal" : extraction ? " notes-workspace-tool secondary-page-reveal" : ""}`}>
       {(notes.loaded || notes.editorOpen || extraction) && notes.loadError && <div className="notes-error" role="alert">{notes.loadError}<button className="button secondary" type="button" disabled={notes.loading} onClick={() => void notes.reload()}>重试</button></div>}
       {notes.error && <div className="notes-error" role="alert">{notes.error}{notes.conflict && <button className="button secondary" type="button" disabled={notes.busy} onClick={() => void notes.reloadDraft()}>重新读取服务器版本</button>}</div>}
       {notes.message && <div className="notes-feedback" role="status">{notes.message}</div>}
       {notes.insertions.status && <div className={notes.insertions.failed ? "notes-error" : "notes-feedback"} role={notes.insertions.failed ? "alert" : "status"}>{notes.insertions.status}</div>}
-      {extraction || (notes.editorOpen ? <NoteEditor notes={notes} /> : !notes.loaded ? <WorkspaceState kind={notes.loadError ? "error" : "loading"} title={notes.loadError ? "随记加载失败" : "正在加载随记"} description={notes.loadError || undefined} className="notes-state" actions={notes.loadError ? <button className="button secondary" type="button" disabled={notes.loading} onClick={() => void notes.reload()}>重试</button> : undefined} /> : notes.visibleNotes.length ? <div className="notes-feed">{notes.visibleNotes.map(note => <NoteItem key={note.id} note={note} notes={notes} themeMode={themeMode} onOpenLogTarget={onOpenLogTarget} />)}</div> : <WorkspaceState kind="empty" icon={Lightbulb} title={notes.notes.length ? "没有匹配的随记" : "留下一条值得回看的想法"} description={notes.notes.length ? "试试其他关键词、年份或标签。" : "读书时的启发、实践中的经验，或一个想继续追问的问题，都可以单独记在这里。"} layout="module" className={`notes-state notes-empty-state${!notes.notes.length ? " workspace-onboarding" : ""}`}
+      {extraction || (notes.editorOpen ? <NoteEditor notes={notes} /> : !notes.loaded ? notes.loadError ? <WorkspaceState kind="error" title="随记加载失败" description={notes.loadError} className="notes-state" actions={<button className="button secondary" type="button" disabled={notes.loading} onClick={() => void notes.reload()}>重试</button>} /> : showInitialLoading ? <WorkspaceState kind="loading" title="正在加载随记" className="notes-state" /> : null : notes.visibleNotes.length ? <div className="notes-feed result-surface-reveal" key={`${notes.yearFilter}:${notes.tagFilter}:${notes.submittedQuery}:${notes.visibleNotes.map(note => note.id).join(",")}`}>{notes.visibleNotes.map(note => <NoteItem key={note.id} note={note} notes={notes} themeMode={themeMode} onOpenLogTarget={onOpenLogTarget} />)}</div> : <WorkspaceState kind="empty" icon={Lightbulb} title={notes.notes.length ? "没有匹配的随记" : "留下一条值得回看的想法"} description={notes.notes.length ? "试试其他关键词、年份或标签。" : "读书时的启发、实践中的经验，或一个想继续追问的问题，都可以单独记在这里。"} layout="module" className={`notes-state notes-empty-state${!notes.notes.length ? " workspace-onboarding" : ""}`}
         actions={!notes.notes.length ? <button className="button primary" type="button" disabled={notes.saving} onClick={() => void notes.openNew()}><Plus size={15} />新建随记</button> : undefined}>
         {!notes.notes.length && <article className="notes-empty-example" aria-label="随记写法示例">
           <small>写法示例 · 不会保存为随记</small>

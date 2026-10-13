@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from "react"
 import { requestLogJson } from "@/lib/client-http";
 import { isValidLogDate } from "@/lib/study-date";
 import type { DayEntry, DaySummary, MonthSummary } from "@/lib/types";
+import type { WorkspaceTransitionKind } from "./use-workspace-transition";
 
 export type WorkspaceView = "log" | "favorites" | "notes" | "stats" | "qa";
 interface Selection { view: WorkspaceView; month: string; date: string; heading: string; noteId: string; statsMonth: string; sessionId: string }
@@ -52,7 +53,9 @@ function writeLocation(selection: Selection, replace = false) {
 
 const cancelled = (error: unknown, signal: AbortSignal) => signal.aborted || (error instanceof Error && error.name === "AbortError");
 
-export function useLogWorkspace(active: boolean, beforeLeave?: RefObject<() => Promise<boolean>>) {
+type TransitionRunner = (kind: WorkspaceTransitionKind, update: () => void, options?: { waitForReady?: boolean }) => void;
+
+export function useLogWorkspace(active: boolean, beforeLeave?: RefObject<() => Promise<boolean>>, runTransition?: TransitionRunner) {
   const [selection, setSelection] = useState<Selection>(empty);
   const [months, setMonths] = useState<MonthSummary[]>([]);
   const monthsRef = useRef<MonthSummary[]>([]);
@@ -131,7 +134,6 @@ export function useLogWorkspace(active: boolean, beforeLeave?: RefObject<() => P
     if (!active || !selection.month || monthsLoading || monthsError) return;
     const month = selection.month;
     const controller = new AbortController();
-    setDays([]);
     setLoading(value => ({ ...value, days: true }));
     setErrors(value => ({ ...value, days: "" }));
     requestLogJson<{ days: DaySummary[] }>(`/api/logs?month=${encodeURIComponent(month)}`, controller.signal)
@@ -152,7 +154,6 @@ export function useLogWorkspace(active: boolean, beforeLeave?: RefObject<() => P
 
   useEffect(() => {
     if (!active || daysLoading || daysError) return;
-    setDay(null);
     setErrors(value => ({ ...value, day: "" }));
     if (!selection.date) { setLoading(value => ({ ...value, day: false })); return; }
     const controller = new AbortController();
@@ -176,13 +177,19 @@ export function useLogWorkspace(active: boolean, beforeLeave?: RefObject<() => P
       (next.date !== currentSelection.current.date || next.month !== currentSelection.current.month);
     window.history.replaceState({ ...window.history.state, studyLogScrollY: window.scrollY }, "");
     if (resetLogScroll) window.scrollTo({ top: 0, behavior: "instant" });
-    setScrollTarget(null);
-    setNavigationRevision(value => value + 1);
-    currentSelection.current = next;
-    setSelection(next); writeLocation(next);
-    acceptedIndex.current = window.history.state?.studyLogIndex || 0;
+    const previous = currentSelection.current;
+    const commit = () => {
+      setScrollTarget(null);
+      setNavigationRevision(value => value + 1);
+      currentSelection.current = next;
+      setSelection(next); writeLocation(next);
+      acceptedIndex.current = window.history.state?.studyLogIndex || 0;
+    };
+    if (runTransition && previous.view !== next.view) runTransition("workspace", commit, { waitForReady: true });
+    else if (runTransition && next.view === "log" && (previous.date !== next.date || previous.month !== next.month)) runTransition("log-document", commit, { waitForReady: true });
+    else commit();
     return true;
-  }, [beforeLeave]);
+  }, [beforeLeave, runTransition]);
   const selectMonth = useCallback((month: string) => {
     const current = currentSelection.current;
     // Re-selecting the current month must not clear a day that is already open.

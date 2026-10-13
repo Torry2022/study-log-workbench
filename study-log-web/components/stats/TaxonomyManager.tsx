@@ -91,7 +91,7 @@ export function TaxonomyManager({
   }
 
   return (
-    <div className="taxonomy-manager">
+    <div className="taxonomy-manager secondary-page-reveal">
       <header className="taxonomy-manager-header">
         <button className="button secondary" disabled={busy} onClick={onBack}><ArrowLeft size={15} />月度复盘</button>
         <div><h2>分类管理</h2><p>让 AI 整理学习领域，审核后保存；已有分类可继续手动完善。</p></div>

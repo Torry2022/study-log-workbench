@@ -135,9 +135,10 @@ try {
   await expect(page.locator(".stats-review-toolbar h2")).toHaveText("2026-08");
   await page.route("**/api/stats?month=2026-08", route => route.abort("failed"));
   await page.locator(".stats-review-actions").getByRole("button", { name: "刷新", exact: true }).click();
-  await expect(page.locator(".stats-workspace .workspace-state-error")).toBeVisible();
+  await expect(page.locator(".stats-review-toolbar h2")).toHaveText("2026-08");
+  await expect(page.locator(".stats-workspace .stats-feedback.error")).toBeVisible();
   await page.unroute("**/api/stats?month=2026-08");
-  await page.locator(".stats-workspace .workspace-state-error").getByRole("button", { name: "重试", exact: true }).click();
+  await page.locator(".stats-workspace .stats-feedback.error").getByRole("button", { name: "重试", exact: true }).click();
   await expect(page.locator(".stats-review-toolbar h2")).toHaveText("2026-08");
 
   const artifacts = path.join(root, "artifacts"); await fs.mkdir(artifacts, { recursive: true });

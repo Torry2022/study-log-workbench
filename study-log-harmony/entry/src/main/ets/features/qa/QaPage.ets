@@ -50,6 +50,7 @@ export struct QaPage {
   onSessionsError: (message: string) => void = () => {};
   onActiveSessionChange: (id: string) => void = () => {};
   onBusyChange: (busy: boolean) => void = () => {};
+  onGeneratingSessionChange: (id: string) => void = () => {};
   onDraftChange: (dirty: boolean) => void = () => {};
   onPendingChange: (pending: boolean) => void = () => {};
   onCitation: (date: string, heading: string, headingIndex: number) => void = () => {};
@@ -61,6 +62,7 @@ export struct QaPage {
     onActiveSessionChange: (id: string) => this.onActiveSessionChange(id),
     onBusyChange: (busy: boolean) => {
       if (busy) this.onDraftChange(false);
+      this.onGeneratingSessionChange(busy ? (this.data.sessionId || this.navigationSessionId) : '');
       this.onBusyChange(busy);
     },
     onPendingChange: (pending: boolean) => this.onPendingChange(pending),

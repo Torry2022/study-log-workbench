@@ -56,6 +56,7 @@ export struct WorkspaceContent {
             onSessionsError: (message: string) => this.qaNavigation.qaNavigationError = message,
             onActiveSessionChange: (id: string) => this.modules.qaSessionId = id,
             onBusyChange: (busy: boolean) => this.modules.qaBusy = busy,
+            onGeneratingSessionChange: (id: string) => this.modules.qaGeneratingSessionId = id,
             onDraftChange: (dirty: boolean) => this.modules.qaDirty = dirty,
             onPendingChange: (pending: boolean) => this.modules.qaPending = pending,
             onScrollStateChange: (scrolled: boolean) => this.modules.qaScrolled = scrolled,

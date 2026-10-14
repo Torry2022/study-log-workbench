@@ -11,6 +11,7 @@ const rootSource = await readFile(new URL('../entry/src/main/ets/pages/Index.ets
 const notesSource = await readFile(new URL('../entry/src/main/ets/features/notes/NotesPage.ets', import.meta.url), 'utf8');
 const statsSource = await readFile(new URL('../entry/src/main/ets/features/stats/StatsPage.ets', import.meta.url), 'utf8');
 const contentSource = await readFile(new URL('../entry/src/main/ets/app/components/WorkspaceContent.ets', import.meta.url), 'utf8');
+const qaNavigationSource = await readFile(new URL('../entry/src/main/ets/features/qa/components/QaNavigation.ets', import.meta.url), 'utf8');
 const bridgeSource = await readFile(new URL('../entry/src/main/ets/app/WorkspaceNavigationBridge.ets', import.meta.url), 'utf8');
 function extract(text, names) {
  return names.map(name => {
@@ -85,23 +86,27 @@ test('note source navigation preserves its module and draft until leave is accep
   assert.equal(page.targetHeading, 'sample');
 });
 
-test('citation navigation is blocked while streaming and protects pending answers', () => {
-  const { page, dialogs, targets } = workspace(3);
+test('citation navigation leaves a streaming answer running and protects pending answers', () => {
+  const { page, targets } = workspace(3);
   page.modules.qaBusy = true;
   page.navigationCommands.citation('2026-01-15', 'sample', 2);
-  assert.equal(page.selectedModule, 3);
-  assert.equal(targets.length, 0);
-  page.modules.qaBusy = false;
-  page.modules.qaPending = true;
-  page.navigationCommands.citation('2026-01-15', 'sample', 2);
-  dialogs[0].primaryButton.action();
-  assert.equal(page.selectedModule, 3);
-  assert.equal(page.modules.qaPending, true);
-  page.navigationCommands.citation('2026-01-15', 'sample', 2);
-  dialogs[1].secondaryButton.action();
   assert.equal(page.selectedModule, 0);
-  assert.equal(page.modules.qaDiscardRevision, 1);
-  assert.equal(page.targetHeadingIndex, 2);
+  assert.deepEqual(targets, ['2026-01-15']);
+
+  const pending = workspace(3);
+  pending.page.modules.qaPending = true;
+  pending.page.navigationCommands.citation('2026-01-15', 'sample', 2);
+  const dialogs = pending.dialogs;
+  dialogs[0].primaryButton.action();
+  assert.equal(pending.page.selectedModule, 3);
+  assert.equal(pending.page.modules.qaPending, true);
+  pending.page.navigationCommands.citation('2026-01-15', 'sample', 2);
+  dialogs[1].secondaryButton.action();
+  assert.equal(pending.page.selectedModule, 0);
+  assert.equal(pending.page.modules.qaDiscardRevision, 1);
+  assert.equal(pending.page.targetHeadingIndex, 2);
+  assert.match(contentSource, /onGeneratingSessionChange:\s*\(id: string\) => this\.modules\.qaGeneratingSessionId = id/);
+  assert.match(qaNavigationSource, /this\.qaGeneratingSessionId === session\.id[\s\S]*LoadingProgress\(\)/);
 });
 
 test('favorite and statistics sources use the same module transition as navigation', () => {

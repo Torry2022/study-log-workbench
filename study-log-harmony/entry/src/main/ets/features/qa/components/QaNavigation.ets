@@ -10,6 +10,7 @@ export struct QaNavigation {
   @Prop qaSessionQuery: string = '';
   @Prop qaActiveSessionId: string = '';
   @Prop qaBusy: boolean = false;
+  @Prop qaGeneratingSessionId: string = '';
   @Prop qaNavigationLoading: boolean = false;
   @Prop qaNavigationError: string = '';
   @Prop qaRenameId: string = '';
@@ -107,6 +108,10 @@ export struct QaNavigation {
               Row() {
                 Button({ type: ButtonType.Normal }) {
                   Row({ space: 8 }) {
+                    if (this.qaGeneratingSessionId === session.id) {
+                      LoadingProgress().width(14).height(14).color($r('app.color.primary'))
+                        .accessibilityText('正在生成回答')
+                    }
                     Text(session.title).fontSize(13).fontWeight(FontWeight.Medium).fontColor($r('app.color.body'))
                       .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).layoutWeight(1)
                     Text(this.qaUpdatedLabel(session)).fontSize(11).fontColor($r('app.color.muted_soft')).flexShrink(0)
@@ -124,7 +129,7 @@ export struct QaNavigation {
                 .width(26).height(26).margin({ right: 2 }).padding(0).backgroundColor(Color.Transparent).borderRadius(6).clip(true)
                 .accessibilityText(`管理会话：${session.title}`).bindTips(`管理会话：${session.title}`, WORKSPACE_TIPS)
                 .onClick(() => this.onMenu(this.qaMenuId === session.id ? '' : session.id))
-                .enabled(!this.qaBusy)
+                .enabled(this.qaGeneratingSessionId !== session.id)
                 .bindPopup(this.qaMenuId === session.id, {
                   builder: this.qaSessionMenu(session),
                   placement: Placement.BottomRight,

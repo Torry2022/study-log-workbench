@@ -537,7 +537,6 @@ struct Index {
       }
     }
     if ((this.selectedModule === 3)) {
-      if (this.modules.qaBusy) { appFeedback.show('请先停止当前回答', 'error'); return; }
       if ((this.modules.qaDirty || this.modules.qaPending) && !discardQa) {
         AlertDialog.show({ message: this.modules.qaPending ? '当前问答尚未保存，确定放弃吗？' :
           '问答输入尚未提交，确定放弃吗？',
@@ -667,7 +666,10 @@ struct Index {
   private switchQaSession(id: string, focusQuestion: boolean = false): void {
     const view = this.workspaceNavigationView;
     if (!view) return;
-    if (this.modules.qaBusy) return;
+    if (this.modules.qaBusy) {
+      appFeedback.show('当前回答会继续在后台生成，完成后即可切换会话');
+      return;
+    }
     const change = (): void => {
       if (this.workspaceNavigationView !== view) return;
       this.modules.qaDirty = false; this.modules.qaPending = false;

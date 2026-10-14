@@ -14,6 +14,7 @@ export class WorkspaceModuleState {
   taxonomyDirty: boolean = false;
   taxonomyBusy: boolean = false;
   qaBusy: boolean = false;
+  qaGeneratingSessionId: string = '';
   qaDirty: boolean = false;
   qaPending: boolean = false;
   qaSessionId: string = '';

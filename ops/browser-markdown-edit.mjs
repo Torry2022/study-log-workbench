@@ -66,6 +66,8 @@ try {
   await expect(page.locator('.preview-outline')).toContainText('实现细节');
   await page.getByRole('button', {name: '源码', exact: true}).filter({visible: true}).click();
   await page.getByRole('button', {name: '编辑 Markdown', exact: true}).click();
+  const desktopMenu = page.getByRole('group', {name: 'Markdown 格式'});
+  assert.equal(await desktopMenu.evaluate(element => element.scrollHeight <= element.clientHeight), true);
   await page.screenshot({path: path.join(output, 'desktop-menu.png')});
   await page.keyboard.press('Escape');
   await page.setViewportSize({width: 390, height: 844});

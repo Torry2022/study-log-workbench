@@ -6,6 +6,9 @@
 .markdown-edit-options .markdown-edit-group button { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 40px; height: auto; text-align: left; justify-content: flex-start; border: 0; padding: 7px 8px; border-radius: var(--radius-sm); background: transparent; color: var(--body); font: inherit; font-size: 13px; line-height: 1.4; }
 .markdown-edit-menu button:hover, .markdown-edit-menu button:focus-visible { background: var(--surface-soft); color: var(--ink); }
 .editor-date-line { gap: 16px; padding-top: 6px; padding-bottom: 6px; }
-.editor-date-line .markdown-edit-trigger { height: 30px; min-height: 30px; padding-top: 0; padding-bottom: 0; }
+.editor-date-line .markdown-edit-trigger { height: 30px; min-height: 30px; padding-top: 0; padding-bottom: 0; border-color: rgba(250, 249, 245, 0.16); background: transparent; color: var(--on-dark-soft); }
+.editor-date-line .markdown-edit-trigger:hover,
+.editor-date-line .markdown-edit-trigger:focus-visible,
+.editor-date-line .markdown-edit-trigger[aria-expanded="true"] { border-color: rgba(250, 249, 245, 0.24); background: var(--surface-dark-elevated); color: var(--on-dark); }
 .editor-date-line .markdown-edit-menu { margin-left: auto; }
-.editor-date-line .markdown-edit-options { right: 0; left: auto; }
+.editor-date-line .markdown-edit-options { right: 0; left: auto; max-height: min(520px, calc(100dvh - 196px)); }

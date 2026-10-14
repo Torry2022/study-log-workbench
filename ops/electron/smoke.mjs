@@ -73,6 +73,8 @@ try {
   await page.getByRole('button', { name:'保存', exact:true }).filter({ visible:true }).click();
   assert.equal((await saved).status(), 200);
   await editor.press('Control+End'); await page.keyboard.insertText('\n待确认的草稿');
+  await expect(editor).toContainText('待确认的草稿');
+  await expect(page.getByRole('button', { name:'保存', exact:true }).filter({ visible:true })).toBeEnabled();
   await application.evaluate(({ dialog }) => { globalThis.closePrompts = 0; dialog.showMessageBoxSync = () => { globalThis.closePrompts++; return 0; }; });
   await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
   await expect.poll(() => application.evaluate(() => globalThis.closePrompts)).toBe(1);

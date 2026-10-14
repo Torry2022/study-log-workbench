@@ -132,7 +132,7 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
   const ready = Boolean(day?.exists && hasSettledDay);
   const dateLabel = date || (error ? "加载失败" : loading ? "正在加载" : "未选择日期");
   const exportScopes = [{ scope: "day" as const, label: "当前日志", disabled: !ready || loading || Boolean(error) }, { scope: "file" as const, label: "当前源文件", disabled: !ready || loading || Boolean(error) }, { scope: "all" as const, label: "全部日志", disabled: !hasLogs }];
-  const editorReady = hasSettledDay && !loading && !error;
+  const editorReady = hasSettledDay;
   const mode = !date || reading ? "preview" : editing.mode;
   useEffect(() => {
     if (!active || mode !== "split" || !editorReady) return;

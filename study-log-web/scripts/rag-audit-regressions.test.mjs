@@ -20,6 +20,43 @@ async function fixture(t, long = false) {
 }
 const events = async stream => (await new Response(stream).text()).trim().split('\n\n').map(block => ({event:block.split('\n')[0].slice(7),data:JSON.parse(block.split('\n')[1].slice(6))}));
 
+for (const [name, laterUsage, expected] of [
+  ['partial', { completion_tokens: 13 }, { inputTokens: 29, outputTokens: 13 }],
+  ['empty', {}, { inputTokens: 29, outputTokens: 11 }]
+]) test(`SDK query retains known usage after a ${name} frame and filtering`, { timeout: 5000 }, async t => {
+  const { config } = await fixture(t), savedFetch = globalThis.fetch;
+  const keys = ['RAG_AGENT_ENABLED', 'RAG_AGENT_TOOL_CALLING_VERIFIED', 'RAG_JEV_ENABLED'];
+  const previous = keys.map(key => process.env[key]);
+  Object.assign(process.env, { RAG_AGENT_ENABLED: 'true', RAG_AGENT_TOOL_CALLING_VERIFIED: 'true', RAG_JEV_ENABLED: 'false' });
+  t.after(() => keys.forEach((key, index) => { if (previous[index] === undefined) delete process.env[key]; else process.env[key] = previous[index]; }));
+  let modelCalls = 0, cancelled = false;
+  t.mock.method(globalThis, 'fetch', async (url, init) => {
+    if (String(url) !== config.chat.baseUrl) return savedFetch(url, init);
+    modelCalls++;
+    assert.ok(JSON.parse(init.body).tools, 'exercise the actual SDK tool path');
+    const frames = [
+      { choices: [], usage: { prompt_tokens: 29, completion_tokens: 11 } },
+      { choices: [], usage: laterUsage },
+      { choices: [{ index: 0, delta: {}, finish_reason: 'content_filter' }] }
+    ];
+    const bytes = new TextEncoder().encode(frames.map(frame => `data: ${JSON.stringify(frame)}\r\n\r\n`).join(''));
+    let offset = 0;
+    return new Response(new ReadableStream({
+      pull(controller) {
+        if (offset >= bytes.length) return new Promise(() => {});
+        controller.enqueue(bytes.slice(offset, offset + 17)); offset += 17;
+      },
+      cancel() { cancelled = true; }
+    }), { headers: { 'content-type': 'text/event-stream' } });
+  });
+  const result = await events(createRagQueryStream({ question: '合成记录的条件是什么？', history: [], mode: 'logs_only' }, config, new AbortController().signal));
+  assert.equal(modelCalls, 1); assert.equal(cancelled, true);
+  assert.equal(result.at(-1).event, 'error');
+  assert.deepEqual(result.at(-1).data.diagnostics.usage, [{ model: 'mock', ...expected }]);
+  assert.deepEqual(result.at(-1).data.diagnostics.agent.usage, expected);
+  assert.ok(!result.some(item => ['delta', 'sources', 'done'].includes(item.event)));
+});
+
 test('mixed month/day question reads both actual MCP scopes before answering', async t => {
   const {config}=await fixture(t), savedFetch=globalThis.fetch, calls=[]; let generations=0;
   t.mock.method(globalThis,'fetch',async(url,init)=>{

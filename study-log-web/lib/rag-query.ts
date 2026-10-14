@@ -131,7 +131,11 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
             const usages = new Map<number, { model: string; inputTokens: number | null; outputTokens: number | null }>();
             const model = createAgentModel(config.chat, fetch, (call, usage) => {
               const previous = usages.get(call);
-              const entry = { model: config.chat.model, ...usage };
+              // Later partial/invalid frames cannot erase values already received
+              // for this call. A new known value replaces, rather than adds to it.
+              const entry = { model: config.chat.model,
+                inputTokens: usage.inputTokens ?? previous?.inputTokens ?? null,
+                outputTokens: usage.outputTokens ?? previous?.outputTokens ?? null };
               if (previous) diagnostics.usage!.splice(diagnostics.usage!.indexOf(previous), 1, entry);
               else diagnostics.usage!.push(entry);
               usages.set(call, entry);

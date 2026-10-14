@@ -36,6 +36,14 @@ cd ..
 node ops/verify-rag-entry.mjs
 ```
 
+## 独立验收后的用量补修
+
+个人版对 `0b4e453` 独立验收时，前三项通过，但发现同请求先收到 29 输入／11 输出，后续只收到 13 输出时输入变为 null；后续收到空 usage 时两项都变为 null。因此原批未通过整体验收，尚未迁移。
+
+本次先新增两项 `createRagQueryStream` 级回归，经真实本机 MCP 和 SDK、17 字节 CRLF 分片及过滤后停滞尾流，均复现上述错误。只修改 `rag-query.ts` 的同 callId 合并：新非空计数更新对应字段，其余保留已知值；从未收到的仍为 null，不补零、不逐帧相加，不改变 SDK 循环。修复后分别保留 29／13 和 29／11，且失败取消上游、没有正文或 done。
+
+补修验证：问答 252 项通过（包含原有多步累计、重复帧、失败和取消），MCP 60 项通过／1 项原 Windows 权限跳过，类型检查和生产构建通过，实际生产入口及 Chromium／WebKit 22 组检查通过，合成源文件保持不变。证据在 `.local/rag-usage-followup-tests.log`、`.local/rag-usage-followup-mcp.log`、`.local/rag-usage-followup-typecheck.log`、`.local/rag-usage-followup-build.log` 和 `.local/rag-entry-production-1791986564680/results.json`。补修等待独立复验，不代表整体验收已通过。
+
 ## 文档与交付边界
 
 Agent 对所有供应商均需要 `RAG_AGENT_ENABLED=true` 和 `RAG_AGENT_TOOL_CALLING_VERIFIED=true`。引用上限为 160；旧文档中的官方 Flash 自动启用、30 条最终引用上限说明已修正。历史样本的质量、费用和设备结果保留其原有时间范围。

@@ -158,6 +158,11 @@ for (const [engine, launcher] of Object.entries({ chromium, webkit })) {
       for (const mode of width < 1024 ? ['源码'] : ['源码','分屏']) {
         await page.getByRole('button',{name:mode,exact:true}).filter({visible:true}).click();
         await expect(page.locator('.cm-content')).toContainText('二月前一篇正文');
+        if (mode === '分屏') {
+          const sourceBox = await rect(page.locator('.source-workspace'));
+          const previewBox = await rect(page.locator('.reader-preview-pane'));
+          assert.ok(sourceBox.x < previewBox.x, `split panes must place source before preview: ${JSON.stringify({sourceBox,previewBox})}`);
+        }
         const release = await gate('day');
         if (width < 1024) { await page.getByRole('button',{name:'更多日志操作',exact:true}).click(); await page.getByRole('dialog',{name:'日志操作'}).getByRole('button',{name:'刷新',exact:true}).click(); }
         else await page.getByRole('button',{name:'刷新',exact:true}).filter({visible:true}).click();

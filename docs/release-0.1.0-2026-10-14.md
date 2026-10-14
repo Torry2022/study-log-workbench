@@ -19,12 +19,16 @@
 
 ## 发布与安装结果
 
-- 源码提交 `af518dc` 已推送，正式标签为 `v0.1.0`，公开发布页为 <https://github.com/Torry2022/study-log-workbench-public/releases/tag/v0.1.0>。
-- Windows 安装包 SHA-256：`c58bc597caf81a4557ea4a472e130559d450abd1041e17188cd23763290c9a9b`。
-- 服务器部署包 SHA-256：`949ba620ecf5b3339987e65eb908ee38d9be454e47e40cb4bdbf854ad32b5381`。
-- `SHA256SUMS.txt` SHA-256：`ca60357d7016c2f18e90b1d6eade5ec0dce23de55f73d6f398cd43340dc58012`。三个附件从公开地址重新下载后与本地发布文件一致。
+- 修复提交 `5c8ed07` 已推送，正式标签为 `v0.1.0`，公开发布页为 <https://github.com/Torry2022/study-log-workbench-public/releases/tag/v0.1.0>。
+- Windows 安装包 SHA-256：`00e6ad2ca5b30fd061ac745000b531e3fc19eb3d8f086c21ea504742eb5ce2ea`。
+- 服务器部署包 SHA-256：`304bb421d005c119949337106fac8414bc30d4bc72e54043ad57a45d4e04f58d`。
+- `SHA256SUMS.txt` SHA-256：`3c27bd5857fa24841d887f430a9ccff6aeef7e1b0192d00bd269007d4bfcd766`。三个修正附件从公开地址重新下载后与本地发布文件一致。
 - web 镜像摘要：`sha256:4d10b0d56f9f40035cc83de53cc2c1cb9901879227bc34e1e9b7687125b9a758`。
 - mcp 镜像摘要：`sha256:478b9f28a727b057f51fb9f4bf0edc3f39b877256e3416a657c8146b7fbe69d7`。
 - tools 镜像摘要：`sha256:4fa21fd537b77d1465cf066578c80089bd73b4e4a7e5d69e9c1940c69adf3275`。三个镜像均通过空凭据 Docker 配置匿名拉取复核。
 - 已在 `D:\Software\study-log-desktop` 覆盖安装。安装前备份并核对的 15 个记录、配置和历史文件全部未变，安装目录 5233 个候选文件与最终包一致。
 - 安装后的独立实例报告版本 `0.1.0`，工作台地址返回 HTTP 200。rc.9 可检测到 0.1.0 更新，0.1.0 不再提示更新。
+
+## 同版本启动修正
+
+首次公开附件安装后，实际旧运行状态暴露出 Windows `LastBootUpTime` 在同一次开机内查询会相差约 1—2 秒。原实现要求时间完全相等，因而拒绝了本可安全恢复的旧状态。修正后只将 10 秒以内的差异视为同一次开机的测量误差，其余进程身份、工作进程、机器、目录、实例、未完成写入和并发恢复检查保持不变；旧状态仍移入恢复记录而非删除。7 项恢复专项测试和最终安装包完整桌面流程通过；实际遗留状态恢复后，修正包覆盖安装并正常启动本地 Web、MCP 与工作台，页面返回 HTTP 200。

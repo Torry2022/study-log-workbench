@@ -54,6 +54,13 @@ test("previous boot on this machine recovers despite reused PID; current boot li
   assert.equal(await recoverDesktopLock(f.data), true);
 });
 
+test("small LastBootUpTime drift is treated as the same Windows boot", windows, async t => {
+  const f = await fixture(t);
+  f.owner.desktop.boot = new Date(Date.parse(f.owner.desktop.boot) - 5_000).toISOString();
+  await f.save();
+  assert.equal(await recoverDesktopLock(f.data), true);
+});
+
 test("orphan worker still draining blocks recovery until it has exited", windows, async t => {
   const f = await fixture(t);
   const child = spawn(process.execPath, ["-e", "process.stdin.resume()"], { windowsHide: true, stdio: ["pipe", "ignore", "ignore"] });

@@ -101,7 +101,11 @@ export async function recoverDesktopLock(data) {
       previous.host !== current.host || previous.root !== current.root || previous.instance !== current.instance ||
       !Number.isSafeInteger(owner.pid) || owner.pid < 1 || !Number.isFinite(Date.parse(previous.processStarted)) ||
       !Array.isArray(previous.workers) || previous.workers.length > 2 || previous.workers.some(w => !Number.isSafeInteger(w.pid) || w.pid < 1 || !Number.isFinite(Date.parse(w.started)))) return false;
-    if (previous.boot !== current.boot && !(Date.parse(previous.boot) < Date.parse(current.boot) && Date.parse(owner.startedAt) < Date.parse(current.boot))) return false;
+    const previousBoot = Date.parse(previous.boot), currentBoot = Date.parse(current.boot);
+    // Win32_OperatingSystem.LastBootUpTime can drift by a few seconds between
+    // queries on the same boot. Treat that measurement jitter as one boot.
+    const sameBoot = Math.abs(previousBoot - currentBoot) <= 10_000;
+    if (!sameBoot && !(previousBoot < currentBoot && Date.parse(owner.startedAt) < currentBoot)) return false;
     const expected = [{ pid: owner.pid, started: previous.processStarted }, ...previous.workers];
     const running = await processStamps(expected.map(p => p.pid));
     if (running.some(p => expected.some(old => old.pid === p.pid && Date.parse(old.started) === Date.parse(p.started)))) throw Error("这个保存位置正在使用，请先关闭正在使用它的工作台。");

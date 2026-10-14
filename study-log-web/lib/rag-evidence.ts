@@ -1,4 +1,4 @@
-import { readStudyLogRange, retrieveStudyLogContexts, type RangePage, type RetrievedContextsResult } from "./mcp-client.ts";
+import { McpRetrievalError, readStudyLogRange, retrieveStudyLogContexts, type RangePage, type RetrievedContextsResult } from "./mcp-client.ts";
 import type { McpConfig } from "./mcp-config.ts";
 import type { RagRetrievalPlan } from "./rag-retrieval-plan.ts";
 import type { RagRetrievedContext } from "./rag-types.ts";
@@ -157,13 +157,26 @@ export async function collectRagEvidence(query: string, plan: RagRetrievalPlan, 
           coverage.readDates = [...new Set([...coverage.readDates, ...page.coverage.completedDates])];
           cursor = page.coverage.nextCursor || undefined;
           if (!cursor) coverage.status = page.coverage.totalDays === 0 ? "empty" : run.sourceChanged || run.stopReason === "evidence_limit" || coverage.readDates.length !== coverage.totalDays ? "partial" : "complete";
-        } catch (error) { run.signal.throwIfAborted(); coverage.status = "failed"; break; }
+        } catch (error) {
+          run.signal.throwIfAborted(); coverage.status = "failed";
+          if (error instanceof McpRetrievalError && error.code === "MCP_SOURCE_CHANGED") {
+            run.sourceChanged = true; run.limited = true; run.stopReason = "source_changed";
+          }
+          break;
+        }
       // A prior search truncation is a reason to read on, not to stop pagination.
       } while (cursor && run.stopReason !== "evidence_limit");
     } else {
       const scoped = { ...plan, ...range, ranges: undefined };
       if (!run.take("retrieve_contexts", [query, scoped])) { coverage.status = "partial"; continue; }
-      const result = await readers.search(query, scoped, run.signal, config);
+      let result: RetrievedContextsResult;
+      try { result = await readers.search(query, scoped, run.signal, config); }
+      catch (error) {
+        if (error instanceof McpRetrievalError && error.code === "MCP_SOURCE_CHANGED") {
+          run.sourceChanged = true; run.limited = true; run.stopReason = "source_changed"; coverage.status = "failed";
+        }
+        throw error;
+      }
       run.signal.throwIfAborted();
       register(result.contexts);
       coverage.readDates = [...new Set(result.contexts.map(item => item.date))];

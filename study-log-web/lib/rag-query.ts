@@ -128,12 +128,24 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
             }
           }
           if (diagnostics.agent.judgment?.support !== "supported" || diagnostics.agent.judgment?.conflict !== "absent") {
-            const result = await measure("agentMs", () => supplementEvidence(input.question, planned.plan, run, config.mcp, createAgentModel(config.chat), message => send("status", { stage: "retrieving", message }), config.lightChat, { mode: input.mode, history: input.history, chat: config.chat }));
-            diagnostics.agent.usage = result.usage; directAnswer = result.answer;
+            const usages = new Map<number, { model: string; inputTokens: number | null; outputTokens: number | null }>();
+            const model = createAgentModel(config.chat, fetch, (call, usage) => {
+              const previous = usages.get(call);
+              const entry = { model: config.chat.model, ...usage };
+              if (previous) diagnostics.usage!.splice(diagnostics.usage!.indexOf(previous), 1, entry);
+              else diagnostics.usage!.push(entry);
+              usages.set(call, entry);
+              const sum = (key: "inputTokens" | "outputTokens") => [...usages.values()].some(item => item[key] === null)
+                ? null : [...usages.values()].reduce((total, item) => total + item[key]!, 0);
+              diagnostics.agent!.usage = { inputTokens: sum("inputTokens"), outputTokens: sum("outputTokens") };
+            });
+            const result = await measure("agentMs", () => supplementEvidence(input.question, planned.plan, run, config.mcp, model, message => send("status", { stage: "retrieving", message }), config.lightChat, { mode: input.mode, history: input.history, chat: config.chat }));
+            diagnostics.agent.usage ??= result.usage; directAnswer = result.answer;
             diagnostics.agent.answeredDirectly = directAnswer !== undefined;
           }
           diagnostics.agent.stopReason = run.stopReason;
         }
+        if (run.sourceChanged) throw new McpRetrievalError("MCP_SOURCE_CHANGED", "读取期间日志发生了修改，请重新提问以读取最新内容");
         await measure("compactionMs", () => compactEvidence(run, input.question, config.lightChat, config.chat, input.history, input.mode, comparisonScopes));
         diagnostics.coverage = run.coverage; diagnostics.toolCalls = run.calls;
         if (run.sourceChanged) throw new McpRetrievalError("MCP_SOURCE_CHANGED", "读取期间日志发生了修改，请重新提问以读取最新内容");

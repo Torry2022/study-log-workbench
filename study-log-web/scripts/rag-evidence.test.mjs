@@ -2,12 +2,22 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { planRagRetrieval } from "../lib/rag-retrieval-plan.ts";
 import { EvidenceRun, collectRagEvidence } from "../lib/rag-evidence.ts";
-import { validateRangePage } from "../lib/mcp-client.ts";
+import { McpRetrievalError, validateRangePage } from "../lib/mcp-client.ts";
 import { readLogRange } from "../../study-log-mcp/src/range-reader.mjs";
 
 const block = (date, content = "条件成立才适用，并非所有情况都成立。") => ({ date, month: date.slice(0, 7), fileName: `${date.slice(0, 7)}_学习日志.md`, content });
 const config = { url: "http://unused.test", token: "synthetic" };
 const readers = blocks => ({ search: async () => { throw Error("must enumerate"); }, read: async args => validateRangePage(readLogRange(blocks, args)) });
+
+test('source change during an Agent search keeps its fatal classification and blocks later reads',async()=>{
+  const run=new EvidenceRun(new AbortController().signal);
+  await assert.rejects(collectRagEvidence('new lead',{strategy:'relevance'},run,config,{
+    search:async()=>{throw new McpRetrievalError('MCP_SOURCE_CHANGED','source changed');},
+    read:async()=>assert.fail('must not read')
+  }),{code:'MCP_SOURCE_CHANGED'});
+  assert.equal(run.sourceChanged,true);assert.equal(run.stopReason,'source_changed');
+  assert.equal(run.take('read_log_range',{dateFrom:'2026-09-01',dateTo:'2026-09-01'}),false);
+});
 
 test('answer coverage preserves each scope and source limitation without internal field names',()=>{
   const run=new EvidenceRun(new AbortController().signal);

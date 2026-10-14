@@ -104,6 +104,57 @@ function plain(text, finish = 'stop') {
   return new Response('data: '+JSON.stringify({choices:[{index:0,delta:{role:'assistant',content:text},finish_reason:null}]})+'\n\ndata: '+JSON.stringify({choices:[{index:0,delta:{},finish_reason:finish}],usage:{prompt_tokens:10,completion_tokens:5,total_tokens:15}})+'\n\ndata: [DONE]\n\n',{headers:{'content-type':'text/event-stream'}});
 }
 
+test('SDK filtered answers retain received usage in query error diagnostics',async t=>{
+  const mcp=await fixture(t),savedFetch=globalThis.fetch;
+  const keys=['RAG_AGENT_ENABLED','RAG_AGENT_TOOL_CALLING_VERIFIED','RAG_JEV_ENABLED'];
+  const previous=Object.fromEntries(keys.map(key=>[key,process.env[key]]));
+  Object.assign(process.env,{RAG_AGENT_ENABLED:'true',RAG_AGENT_TOOL_CALLING_VERIFIED:'true',RAG_JEV_ENABLED:'false'});
+  t.after(()=>{for(const[key,value]of Object.entries(previous)){if(value===undefined)delete process.env[key];else process.env[key]=value;}});
+  t.mock.method(globalThis,'fetch',async(url,init)=>String(url)!==config.baseUrl?savedFetch(url,init):
+    new Response('data: '+JSON.stringify({choices:[{index:0,delta:{content:'内部回答'},finish_reason:null}]})+'\n\ndata: '+JSON.stringify({choices:[{index:0,delta:{},finish_reason:'content_filter'}],usage:{prompt_tokens:123,completion_tokens:45,total_tokens:168}})+'\n\ndata: [DONE]\n\n',{headers:{'content-type':'text/event-stream'}}));
+  const raw=await new Response(createRagQueryStream({question:'Alpha的条件是什么？',history:[],mode:'logs_only'},{chat:config,lightChat:config,mcp},new AbortController().signal)).text();
+  const last=raw.trim().split('\n\n').at(-1),result=JSON.parse(last.split('\n')[1].slice(6));
+  assert.match(last,/^event: error/);assert.equal(result.code,'AI_STREAM_INTERRUPTED');assert.ok(!raw.includes('event: done'));
+  assert.deepEqual(result.diagnostics.usage,[{model:config.model,inputTokens:123,outputTokens:45}]);
+  assert.equal(result.diagnostics.agent.usage.inputTokens,123);assert.equal(result.diagnostics.agent.usage.outputTokens,45);
+});
+
+test('SDK multi-step failure sums calls once and leaves missing token fields unknown',async t=>{
+  const mcp=await fixture(t,`## 2026-09-01\n\n### Alpha\n${'Alpha过程。'.repeat(2200)}\n\nBeta的条件是明确确认。`),savedFetch=globalThis.fetch;
+  const keys=['RAG_AGENT_ENABLED','RAG_AGENT_TOOL_CALLING_VERIFIED','RAG_JEV_ENABLED'];
+  const previous=Object.fromEntries(keys.map(key=>[key,process.env[key]]));
+  Object.assign(process.env,{RAG_AGENT_ENABLED:'true',RAG_AGENT_TOOL_CALLING_VERIFIED:'true',RAG_JEV_ENABLED:'false'});
+  t.after(()=>{for(const[key,value]of Object.entries(previous)){if(value===undefined)delete process.env[key];else process.env[key]=value;}});
+  let calls=0;
+  t.mock.method(globalThis,'fetch',async(url,init)=>{
+    if(String(url)!==config.baseUrl)return savedFetch(url,init);
+    if(++calls===1)return stream('read',{date:'2026-09-01'});
+    const usageFrame='data: '+JSON.stringify({choices:[],usage:{prompt_tokens:123}})+'\n\n';
+    return new Response(usageFrame+usageFrame+'data: '+JSON.stringify({choices:[{index:0,delta:{},finish_reason:'content_filter'}]})+'\n\ndata: [DONE]\n\n',{headers:{'content-type':'text/event-stream'}});
+  });
+  const raw=await new Response(createRagQueryStream({question:'Alpha的条件是什么？',history:[],mode:'logs_only'},{chat:config,lightChat:config,mcp},new AbortController().signal)).text();
+  const result=JSON.parse(raw.trim().split('\n\n').at(-1).split('\n')[1].slice(6));
+  assert.equal(calls,2);assert.equal(result.code,'AI_STREAM_INTERRUPTED');
+  assert.deepEqual(result.diagnostics.usage,[{model:config.model,inputTokens:10,outputTokens:5},{model:config.model,inputTokens:123,outputTokens:null}]);
+  assert.deepEqual(result.diagnostics.agent.usage,{inputTokens:133,outputTokens:null});
+});
+
+test('SDK usage observer retains a frame before provider failure, filtering or cancellation without waiting for a tail',{timeout:2000},async()=>{
+  for(const mode of ['failure','filter','cancel']){
+    const abort=new AbortController(),seen=new Map();let pulls=0,cancelled=false;
+    const provider=new ReadableStream({pull(controller){
+      if(++pulls===1)controller.enqueue(new TextEncoder().encode('data: '+JSON.stringify({choices:[{index:0,delta:{content:'片段'},finish_reason:mode==='filter'?'content_filter':null}],usage:{prompt_tokens:7,completion_tokens:3}})+'\n\n'));
+      else if(mode==='failure')controller.error(new Error('synthetic failure'));
+      else return new Promise(()=>{});
+    },cancel(){cancelled=true;}});
+    const model=createAgentModel(config,async()=>new Response(provider,{headers:{'content-type':'text/event-stream'}}),(call,usage)=>{seen.set(call,usage);if(mode==='cancel'&&usage.inputTokens!==null)abort.abort();});
+    const run=new EvidenceRun(abort.signal);
+    await assert.rejects(supplementEvidence('条件是什么？',{strategy:'relevance'},run,{url:'http://127.0.0.1:1/mcp',token:'synthetic'},model,()=>{}));
+    assert.deepEqual([...seen.values()],[{inputTokens:7,outputTokens:3}]);
+    if(mode!=='failure')assert.equal(cancelled,true);
+  }
+});
+
 test('query timing separates initial MCP retrieval from delayed SDK answers and failed decisions',async t=>{
   const mcp=await fixture(t),savedFetch=globalThis.fetch;
   const keys=['RAG_AGENT_ENABLED','RAG_AGENT_TOOL_CALLING_VERIFIED','RAG_JEV_ENABLED'];
@@ -128,7 +179,11 @@ test('query timing separates initial MCP retrieval from delayed SDK answers and 
     } else {
       assert.ok(timing.agentMs>=modelElapsed-5);
       assert.ok(timing.retrievalMs+timing.agentMs+timing.compactionMs<=timing.totalMs+10,'phase timing must not charge SDK time to retrieval twice');
-      if(path==='agent_failure') {assert.match(block,/^event: error/);assert.equal(result.diagnostics.failureStage,'retrieving');assert.equal(timing.firstTokenMs,null);}
+      if(path==='agent_failure') {
+        assert.match(block,/^event: error/);assert.equal(result.diagnostics.failureStage,'retrieving');assert.equal(timing.firstTokenMs,null);
+        assert.deepEqual(result.diagnostics.usage,[{model:config.model,inputTokens:null,outputTokens:null}]);
+        assert.deepEqual(result.diagnostics.agent.usage,{inputTokens:null,outputTokens:null});
+      }
       else {assert.match(block,/^event: done/);assert.equal(result.diagnostics.agent.answeredDirectly,true);assert.ok(timing.firstTokenMs>=timing.agentMs-5);}
     }
   }

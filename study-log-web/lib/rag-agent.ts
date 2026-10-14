@@ -3,7 +3,7 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { ChatConfig } from "./ai-config.ts";
 import { chatThinkingParameters } from "./ai-config.ts";
 import type { McpConfig } from "./mcp-config.ts";
-import { AiChatError } from "./ai-chat.ts";
+import { AiChatError, readChatUsage } from "./ai-chat.ts";
 import { EvidenceRun, collectRagEvidence } from "./rag-evidence.ts";
 import type { RagRetrievalPlan } from "./rag-retrieval-plan.ts";
 import { isValidLogDate } from "./study-date.ts";
@@ -15,12 +15,57 @@ import type { RagAnswerMode, RagHistoryMessage } from "./rag-types.ts";
 export function agentEnabled(env = process.env): boolean {
   return env.RAG_AGENT_ENABLED === "true" && env.RAG_AGENT_TOOL_CALLING_VERIFIED === "true";
 }
-export function createAgentModel(config: ChatConfig, transport: typeof fetch = fetch): LanguageModel {
+export function createAgentModel(config: ChatConfig, transport: typeof fetch = fetch,
+  onUsage?: (call: number, usage: { inputTokens: number | null; outputTokens: number | null }) => void): LanguageModel {
   const thinking = chatThinkingParameters(config);
+  let call = 0;
   return createOpenAICompatible({ name: "study-log", baseURL: new URL(config.baseUrl).origin,
     apiKey: config.apiKey,
-    fetch: async (_url, init) => transport(config.baseUrl, { ...init, redirect: "error",
-      ...(config.thinkingMode ? { body: JSON.stringify({ ...JSON.parse(String(init?.body)), ...thinking }) } : {}) })
+    fetch: async (_url, init) => {
+      const callId = ++call;
+      onUsage?.(callId, { inputTokens: null, outputTokens: null });
+      const response = await transport(config.baseUrl, { ...init, redirect: "error",
+        ...(config.thinkingMode ? { body: JSON.stringify({ ...JSON.parse(String(init?.body)), ...thinking }) } : {}) });
+      if (!onUsage || !response.ok || !response.body || !response.headers.get("content-type")?.startsWith("text/event-stream")) return response;
+      // The provider adapter emits SDK usage only when its stream flushes. Observe
+      // usage frames as they arrive so a later error or abort cannot erase them.
+      const reader = response.body.getReader(), decoder = new TextDecoder();
+      let buffer = "";
+      const signal = init?.signal;
+      let aborted: (() => void) | undefined;
+      const detach = () => { if (aborted) signal?.removeEventListener("abort", aborted); };
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          aborted = () => { void reader.cancel().catch(() => {}); controller.error(signal?.reason); };
+          if (signal?.aborted) aborted();
+          else signal?.addEventListener("abort", aborted, { once: true });
+        },
+        async pull(controller) {
+          try {
+            const chunk = await reader.read();
+            if (chunk.done) { detach(); controller.close(); reader.releaseLock(); return; }
+            buffer += decoder.decode(chunk.value, { stream: true });
+            let boundary: number, failed = false;
+            while ((boundary = buffer.indexOf("\n")) >= 0) {
+              const line = buffer.slice(0, boundary).trimEnd(); buffer = buffer.slice(boundary + 1);
+              if (!line.startsWith("data:")) continue;
+              let payload;
+              try {
+                payload = JSON.parse(line.slice(5));
+              } catch { /* SDK retains responsibility for malformed response errors. */ }
+              if (payload?.usage) onUsage(callId, readChatUsage(payload.usage));
+              failed ||= !!payload?.error || Array.isArray(payload?.choices) && payload.choices.some((choice: { finish_reason?: string } | null) => choice?.finish_reason === "content_filter");
+            }
+            controller.enqueue(chunk.value);
+            // Let the SDK classify the received terminal frame, without draining
+            // a failed provider just to wait for a later usage or [DONE] frame.
+            if (failed) { detach(); void reader.cancel().catch(() => {}); controller.close(); }
+          } catch (error) { detach(); await reader.cancel().catch(() => {}); controller.error(error); }
+        },
+        async cancel() { detach(); await reader.cancel().catch(() => {}); }
+      });
+      return new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers });
+    }
   }).chatModel(config.model);
 }
 

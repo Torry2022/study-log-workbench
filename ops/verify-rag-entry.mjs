@@ -14,12 +14,15 @@ await fs.mkdir(path.join(root, 'backups'));
 const source = '## 2026-09-01\n\n### Alpha\nAlpha条件成立才适用，不适用于所有场景。\n';
 const file = path.join(data, '2026-09_学习日志.md');
 await fs.writeFile(file, source, { flag: 'wx' });
+const octoberFile = path.join(data, '2026-10_学习日志.md');
+const octoberSource = '## 2026-10-01\n\n### 合成学习\n十月合成学习记录。\n';
+await fs.writeFile(octoberFile, octoberSource, { flag: 'wx' });
 const previousYear = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Shanghai', year: 'numeric' }).format(new Date())) - 1;
 const relativeFile = path.join(data, `${previousYear}_学习日志.md`);
 const relativeSource = `## ${previousYear}-09-02\n\n### RelativeYearProbe\nRelativeYearProbe synthetic temporal fixture.\n`;
 await fs.writeFile(relativeFile, relativeSource, { flag: 'wx' });
 await fs.writeFile(path.join(data, '.instance.json'), JSON.stringify({ schemaVersion: 1, id: 'b0250000-0000-4000-8000-000000000001' }), { flag: 'wx' });
-const tools = [], checks = [], calls = [], agentScopes = []; let decisionLimited = false, firstLimited = false, contextSelection = null;
+const tools = [], checks = [], calls = [], agentScopes = [], mcpCalls = []; let decisionLimited = false, firstLimited = false, contextSelection = null, filtered = false, mutateCursor = false;
 const model = http.createServer(async (req, res) => {
   assert.equal(req.url, '/full/custom/endpoint');
   assert.equal(req.headers.authorization, 'Bearer synthetic');
@@ -36,7 +39,8 @@ const model = http.createServer(async (req, res) => {
     assert.ok(!body.tools.some(item => item.function.name === 'read'));
     if (decisionLimited || firstLimited) tools.push(state);
   }
-  const answer = 'Alpha条件成立才适用，不适用于所有场景。[s1]';
+  const answer = body.messages.at(-1).content.includes('比较2026年9月和2026年10月1日')
+    ? '九月与十月的合成学习记录不同。[S1][S2]' : 'Alpha条件成立才适用，不适用于所有场景。[s1]';
   if (!body.stream) {
     const content = body.messages[0].content.includes('scopeSource') ? JSON.stringify({ query: 'Alpha的适用条件是什么？', scopeSource: contextSelection }) : 'Alpha适用条件';
     res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ choices: [{ message: { content }, finish_reason: 'stop' }] })); return;
@@ -45,19 +49,63 @@ const model = http.createServer(async (req, res) => {
   const frame = value => `data: ${JSON.stringify(value)}\n\n`;
   const limited = body.tools && (decisionLimited || firstLimited);
   const delta = limited ? { content: firstLimited ? '内部首轮截断文本' : '内部草稿不可发布', reasoning_content: '内部思考不可发布' } : { content: answer };
-  res.end(frame({ id: 'synthetic', object: 'chat.completion.chunk', model: 'synthetic', choices: [{ index: 0, delta, finish_reason: null }] }) + frame({ choices: [{ index: 0, delta: {}, finish_reason: limited ? 'length' : 'stop' }], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }) + 'data: [DONE]\n\n');
+  res.end(frame({ id: 'synthetic', object: 'chat.completion.chunk', model: 'synthetic', choices: [{ index: 0, delta, finish_reason: null }] }) + frame({ choices: [{ index: 0, delta: {}, finish_reason: filtered ? 'content_filter' : limited ? 'length' : 'stop' }], usage: filtered ? { prompt_tokens: 123, completion_tokens: 45, total_tokens: 168 } : { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }) + 'data: [DONE]\n\n');
 });
 await new Promise(resolve => model.listen(0, '127.0.0.1', resolve));
 const mcp = await startHttpServer({ logRoot: data, indexRoot: path.join(root, 'index'), port: 0, token: 'synthetic', retrieval: { embedding: { apiKey: '' }, reranker: { apiKey: '' }, rerankEnabled: false } });
+const proxy = http.createServer(async (req, res) => {
+  try {
+    let raw = ''; for await (const chunk of req) raw += chunk;
+    const body = raw ? JSON.parse(raw) : null;
+    if (body?.method === 'tools/call') {
+      mcpCalls.push(body.params);
+      if (mutateCursor && body.params.arguments.cursor) await fs.appendFile(octoberFile, '\n合成版本已改变。');
+    }
+    const response = await fetch(`http://127.0.0.1:${mcp.address.port}/mcp`, { method: req.method, headers: {
+      authorization: req.headers.authorization || '', accept: req.headers.accept || 'application/json', 'content-type': 'application/json',
+      ...(req.headers['mcp-protocol-version'] ? { 'mcp-protocol-version': req.headers['mcp-protocol-version'] } : {})
+    }, ...(raw ? { body: raw } : {}) });
+    res.writeHead(response.status, {'content-type': response.headers.get('content-type') || 'application/json'});
+    res.end(Buffer.from(await response.arrayBuffer()));
+  } catch { res.destroy(); }
+});
+await new Promise(resolve => proxy.listen(0, '127.0.0.1', resolve));
 const safe = Object.fromEntries(['SystemRoot','WINDIR','TEMP','TMP','USERPROFILE','LOCALAPPDATA','APPDATA','PATH','Path','COMSPEC'].filter(key => process.env[key]).map(key => [key, process.env[key]]));
 const port = 3371, base = `http://127.0.0.1:${port}/study-log`;
-const server = spawn(process.execPath, ['node_modules/next/dist/bin/next','start','-H','127.0.0.1','-p',String(port)], { cwd: path.join(repository,'study-log-web'), windowsHide: true, stdio: ['ignore','pipe','pipe'], env: { ...safe, LOG_ROOT: data, BACKUP_ROOT: path.join(root,'backups'), APP_PASSWORD: 'synthetic-entry-password', SESSION_SECRET: 'synthetic-entry-session-secret-20261011-for-isolated-verification', COOKIE_SECURE: 'false', CHAT_API_URL: `http://127.0.0.1:${model.address().port}/full/custom/endpoint`, CHAT_MODEL: 'synthetic', CHAT_API_KEY: 'synthetic', STUDY_LOG_MCP_URL: `http://127.0.0.1:${mcp.address.port}/mcp`, STUDY_LOG_MCP_TOKEN: 'synthetic', RAG_AGENT_ENABLED: 'true', RAG_AGENT_TOOL_CALLING_VERIFIED: 'true', RAG_JEV_ENABLED: 'false' } });
+const server = spawn(process.execPath, ['node_modules/next/dist/bin/next','start','-H','127.0.0.1','-p',String(port)], { cwd: path.join(repository,'study-log-web'), windowsHide: true, stdio: ['ignore','pipe','pipe'], env: { ...safe, LOG_ROOT: data, BACKUP_ROOT: path.join(root,'backups'), APP_PASSWORD: 'synthetic-entry-password', SESSION_SECRET: 'synthetic-entry-session-secret-20261011-for-isolated-verification', COOKIE_SECURE: 'false', CHAT_API_URL: `http://127.0.0.1:${model.address().port}/full/custom/endpoint`, CHAT_MODEL: 'synthetic', CHAT_API_KEY: 'synthetic', STUDY_LOG_MCP_URL: `http://127.0.0.1:${proxy.address().port}/mcp`, STUDY_LOG_MCP_TOKEN: 'synthetic', RAG_AGENT_ENABLED: 'true', RAG_AGENT_TOOL_CALLING_VERIFIED: 'true', RAG_JEV_ENABLED: 'false', RAG_CONTEXT_WINDOW_TOKENS: '1000000' } });
 let log = ''; server.stdout.on('data', value => log += value); server.stderr.on('data', value => log += value);
 try {
   let ready = false; for (let i=0;i<120;i++) { try { ready = (await fetch(base)).ok; } catch {} if (ready) break; if (server.exitCode !== null) break; await new Promise(resolve => setTimeout(resolve,250)); }
   assert.ok(ready, log);
   const auth = await (await fetch(`${base}/api/auth/app-login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: 'synthetic-entry-password' }) })).json();
   assert.equal(typeof auth.token, 'string');
+  const ask = async question => {
+    const response = await fetch(`${base}/api/rag/query`, {method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${auth.token}`},body:JSON.stringify({question,history:[],mode:'logs_only'})});
+    assert.equal(response.status,200);
+    return (await response.text()).trim().split('\n\n').map(block=>({event:block.split('\n')[0].slice(7),data:JSON.parse(block.split('\n')[1].slice(6))}));
+  };
+  const mixedStart = mcpCalls.length;
+  const mixed = await ask('比较2026年9月和2026年10月1日的学习内容');
+  assert.equal(mixed.at(-1).event,'done');
+  assert.deepEqual(mcpCalls.slice(mixedStart).map(call=>[call.name,call.arguments.dateFrom,call.arguments.dateTo]),[
+    ['read_log_range','2026-09-01','2026-09-30'],['read_log_range','2026-10-01','2026-10-01']]);
+  assert.deepEqual(mixed.at(-1).data.citations.map(item=>item.date),['2026-09-01','2026-10-01']);
+  checks.push({mixedMonthAndDay:true,actualMcpScopes:true});
+  const invalidCalls = [mcpCalls.length,calls.length];
+  const invalidMonth = await ask('比较2026年9月和2026年13月的学习内容');
+  assert.equal(invalidMonth.at(-1).event,'done');assert.match(invalidMonth.at(-1).data.answer,/日期.*有误/);
+  assert.deepEqual([mcpCalls.length,calls.length],invalidCalls);checks.push({invalidMonth:true,noServiceCalls:true});
+  mutateCursor = true;await fs.writeFile(octoberFile,'## 2026-10-01\n\n### 合成学习\n'+ '分页合成记录。'.repeat(5000));
+  const changedStart=[mcpCalls.length,calls.length];
+  const changed = await ask('比较2026年9月和2026年10月的学习内容');
+  assert.equal(changed.at(-1).event,'error');assert.equal(changed.at(-1).data.code,'MCP_SOURCE_CHANGED');
+  assert.equal(mcpCalls.length-changedStart[0],3);assert.equal(calls.length,changedStart[1]);
+  assert.ok(!changed.some(item=>['delta','sources','done'].includes(item.event)));checks.push({cursorSourceChanged:true,noAnswerOrDone:true});
+  mutateCursor=false;await fs.writeFile(octoberFile,octoberSource);
+  filtered=true;const filteredResult=await ask('Alpha的适用条件是什么？');filtered=false;
+  assert.equal(filteredResult.at(-1).event,'error');assert.equal(filteredResult.at(-1).data.code,'AI_STREAM_INTERRUPTED');
+  assert.deepEqual(filteredResult.at(-1).data.diagnostics.usage,[{model:'synthetic',inputTokens:123,outputTokens:45}]);
+  assert.ok(!filteredResult.some(item=>item.event==='done'));checks.push({sdkFilteredUsage:true,noDone:true});
   for (const [question, agent] of [['Alpha的适用条件是什么？',true],['哪里提到过`Alpha`？',false],['总结2026年9月',false]]) {
     const before = tools.length;
     const callsBefore = calls.length;
@@ -188,11 +236,12 @@ try {
     }} finally {await browser.close();}
   }
   assert.equal(await fs.readFile(file,'utf8'),source);
+  assert.equal(await fs.readFile(octoberFile,'utf8'),octoberSource);
   assert.equal(await fs.readFile(relativeFile, 'utf8'), relativeSource);
   await fs.writeFile(path.join(root,'results.json'),JSON.stringify({checks,toolRequests:tools.length,sourceUnchanged:true},null,2));
   console.log(JSON.stringify({root,checks:checks.length,sourceUnchanged:true}));
 } finally {
   server.kill(); if (server.exitCode === null) await new Promise(resolve => server.once('exit',resolve));
-  await mcp.close(); model.closeAllConnections(); await new Promise(resolve => model.close(resolve));
+  proxy.closeAllConnections(); await new Promise(resolve=>proxy.close(resolve)); await mcp.close(); model.closeAllConnections(); await new Promise(resolve => model.close(resolve));
   await fs.writeFile(path.join(root,'server.log'),log);
 }

@@ -91,9 +91,16 @@ export async function callStudyLogTool(name: "retrieve_contexts" | "read_log_ran
     await client.connect(transport, { signal: combined, timeout: Math.min(timeoutMs, 15000) });
     const result = await client.callTool({ name, arguments: args }, { signal: combined, timeout: Math.min(timeoutMs, 45000) });
     combined.throwIfAborted();
-    if (result.isError) throw new McpRetrievalError("MCP_TOOL_FAILED", "检索服务未能完成查询，请稍后重试");
     const output = result.structuredContent;
     const block = result.content?.find(item => item.type === "text");
+    if (result.isError) {
+      let failure: unknown;
+      try { failure = output ?? (block?.type === "text" ? JSON.parse(block.text) : null); } catch { /* Keep untrusted errors generic. */ }
+      if (record(failure) && failure.code === "SOURCE_CHANGED") {
+        throw new McpRetrievalError("MCP_SOURCE_CHANGED", "读取期间日志发生了修改，请重新提问以读取最新内容");
+      }
+      throw new McpRetrievalError("MCP_TOOL_FAILED", "检索服务未能完成查询，请稍后重试");
+    }
     let value: unknown;
     try { value = output ?? (block?.type === "text" ? JSON.parse(block.text) : null); } catch { throw invalid(); }
     return value;

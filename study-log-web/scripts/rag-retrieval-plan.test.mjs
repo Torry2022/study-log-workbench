@@ -7,6 +7,15 @@ import {
   planRagRetrieval
 } from "../lib/rag-retrieval-plan.ts";
 
+test('mixed month and day comparison preserves each scope and rejects invalid members', () => {
+  assert.deepEqual(planRagRetrieval('比较2026年9月和2026年10月1日的学习内容').ranges, [
+    {dateFrom:'2026-09-01',dateTo:'2026-09-30'}, {dateFrom:'2026-10-01',dateTo:'2026-10-01'}
+  ]);
+  for (const question of ['比较2026年9月和2026年13月的学习内容', '比较2026年9月和2026年10月32日的学习内容']) {
+    assert.equal(planRagRetrieval(question).invalidDate, true, question);
+  }
+});
+
 test("rules never roll invalid log dates into a different day or month", () => {
   for (const query of ["2026年2月30日总结", "2026年13月总结", "2026年2月28日到2月30日总结", "2026年0月1日总结"]) {
     const plan = planRagRetrieval(query);

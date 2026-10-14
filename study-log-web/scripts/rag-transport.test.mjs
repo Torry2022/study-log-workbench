@@ -77,6 +77,24 @@ test("MCP remote failures and oversized protocol responses remain sanitized", as
   await assert.rejects(retrieveStudyLogContexts("query", undefined, undefined, { url, token: "synthetic-token" }, 3000), { code: "MCP_INVALID_RESPONSE" });
 });
 
+test('only the allowlisted MCP source-change code escapes generic tool failure',async t=>{
+  let code='SOURCE_CHANGED',malformed=false;
+  const url=await server(t,async(req,res)=>{
+    if(req.method==='GET'){res.writeHead(405);res.end();return;}
+    const body=await json(req);
+    if(body.method==='server/discover')return reply(res,{jsonrpc:'2.0',id:body.id,error:{code:-32601,message:'legacy'}});
+    if(body.method==='initialize')return reply(res,{jsonrpc:'2.0',id:body.id,result:{protocolVersion:'2025-03-26',capabilities:{tools:{}},serverInfo:{name:'synthetic',version:'1'}}});
+    if(!Object.hasOwn(body,'id')){res.writeHead(202);res.end();return;}
+    reply(res,{jsonrpc:'2.0',id:body.id,result:{isError:true,content:[{type:'text',text:malformed?'private-path':JSON.stringify({code,error:'private-path secret'})}]}});
+  });
+  for(const candidate of ['SOURCE_CHANGED','REQUEST_FAILED','MCP_SOURCE_CHANGED','unknown']){
+    code=candidate;
+    await assert.rejects(retrieveStudyLogContexts('query',undefined,undefined,{url,token:'synthetic'}),error=>
+      error.code===(candidate==='SOURCE_CHANGED'?'MCP_SOURCE_CHANGED':'MCP_TOOL_FAILED')&&!/private-path|secret/.test(error.message));
+  }
+  malformed=true;await assert.rejects(retrieveStudyLogContexts('query',undefined,undefined,{url,token:'synthetic'}),{code:'MCP_TOOL_FAILED'});
+});
+
 test("model stream handles chunked UTF-8, comments, CRLF and terminal marker without trailing newline", async t => {
   let sent;
   const url = await server(t, async (req, res) => {

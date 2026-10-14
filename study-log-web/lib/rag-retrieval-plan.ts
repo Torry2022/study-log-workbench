@@ -232,8 +232,7 @@ export function planRagRetrieval(query: string, now = new Date()): RagRetrievalP
   if (literalQuery) Object.assign(plan, { matchMode: "literal", literalQuery });
   if (withoutEvents !== active) plan.eventDates = true;
   // Separate explicit scopes must not silently include days between them.
-  const days = [...value.matchAll(/(20\d{2})[-年/](\d{1,2})[-月/](\d{1,2})日?/g)];
-  const months = [...value.matchAll(/(20\d{2})[-年/](\d{1,2})月?(?![-/\d])/g)];
+  const scopes = [...value.matchAll(/(20\d{2})[-年/](\d{1,2})(?:[-月/](\d{1,2})日?|月)?(?!\d)/g)];
   const groupedRanges = (matches: RegExpMatchArray[], ranges: Array<{ dateFrom: string; dateTo: string }>) => {
     const groups: typeof ranges = [];
     ranges.forEach((range, index) => {
@@ -247,16 +246,17 @@ export function planRagRetrieval(query: string, now = new Date()): RagRetrievalP
     });
     return groups.filter((range, index) => groups.findIndex(other => other.dateFrom === range.dateFrom && other.dateTo === range.dateTo) === index);
   };
-  if (days.length > 1) {
-    const dates = days.map(day => explicitDate(Number(day[1]), Number(day[2]), Number(day[3])));
-    if (dates.every(Boolean)) plan.ranges = groupedRanges(days, (dates as string[]).map(date => ({ dateFrom: date, dateTo: date }))).sort((a, b) => a.dateFrom.localeCompare(b.dateFrom));
+  if (scopes.length > 1) {
+    const ranges = scopes.map(scope => {
+      const year = Number(scope[1]), month = Number(scope[2]);
+      if (scope[3] !== undefined) {
+        const date = explicitDate(year, month, Number(scope[3]));
+        return date ? { dateFrom: date, dateTo: date } : null;
+      }
+      return month >= 1 && month <= 12 ? monthRange(year, month) : null;
+    });
+    if (ranges.every(Boolean)) plan.ranges = groupedRanges(scopes, ranges as Array<{ dateFrom: string; dateTo: string }>).sort((a, b) => a.dateFrom.localeCompare(b.dateFrom));
     else plan.invalidDate = true;
-  } else if (!days.length && months.length > 1) {
-    const ranges = months.map(month => Number(month[2]) >= 1 && Number(month[2]) <= 12 ? monthRange(Number(month[1]), Number(month[2])) : null);
-    if (ranges.every(Boolean)) {
-      const valid = ranges as Array<{ dateFrom: string; dateTo: string }>;
-      plan.ranges = groupedRanges(months, valid);
-    }
   }
   if (plan.ranges?.length) {
     plan.dateFrom = plan.ranges.map(item => item.dateFrom).sort()[0];

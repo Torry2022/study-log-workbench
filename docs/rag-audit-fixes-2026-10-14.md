@@ -44,8 +44,14 @@ node ops/verify-rag-entry.mjs
 
 补修验证：问答 252 项通过（包含原有多步累计、重复帧、失败和取消），MCP 60 项通过／1 项原 Windows 权限跳过，类型检查和生产构建通过，实际生产入口及 Chromium／WebKit 22 组检查通过，合成源文件保持不变。证据在 `.local/rag-usage-followup-tests.log`、`.local/rag-usage-followup-mcp.log`、`.local/rag-usage-followup-typecheck.log`、`.local/rag-usage-followup-build.log` 和 `.local/rag-entry-production-1791986564680/results.json`。补修等待独立复验，不代表整体验收已通过。
 
+## 独立复验结果
+
+主线2已对 `0b4e453` 与补修 `a1dc8dc` 完成独立验收：原始独立脚本未改断言，14／14 通过；两项原失败正确保留 29／13 和 29／11，多步累计、重复帧、失败与取消、范围和来源变化规则均保持通过。另独立复跑问答 252 项、类型检查、生产构建及该构建的实际入口 22 组检查通过，并查看浅色桌面及深色手机截图。MCP 未改，沿用上一轮独立 60 通过／1 项原权限跳过；本轮独立用例继续使用真实本机 MCP。
+
+正式报告位于个人版忽略目录 `.backups/rag-public-sync-audit-2026-10-14/acceptance-a1dc8dc.md`；首次未通过报告仍保留。此结论仅覆盖四项缺陷，不包括导航动效或个人版整体兼容验收，没有迁移、推送或发布。
+
 ## 文档与交付边界
 
 Agent 对所有供应商均需要 `RAG_AGENT_ENABLED=true` 和 `RAG_AGENT_TOOL_CALLING_VERIFIED=true`。引用上限为 160；旧文档中的官方 Flash 自动启用、30 条最终引用上限说明已修正。历史样本的质量、费用和设备结果保留其原有时间范围。
 
-本批等待个人版 Session 独立验收。独立验收应在通用版提交上重跑复现及回归，只使用隔离合成资料，不修改个人版业务代码或生产配置。验收完成前不迁移；Windows 打包、鸿蒙安装和真实模型质量不在本批验证范围。
+本批四项缺陷已通过个人版 Session 独立验收。独立验收仅使用隔离合成资料，没有修改个人版业务代码或生产配置。个人版迁移尚未执行；Windows 打包、鸿蒙安装和真实模型质量不在本批验证范围。

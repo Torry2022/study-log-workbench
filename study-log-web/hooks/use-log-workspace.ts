@@ -53,7 +53,7 @@ function writeLocation(selection: Selection, replace = false) {
 
 const cancelled = (error: unknown, signal: AbortSignal) => signal.aborted || (error instanceof Error && error.name === "AbortError");
 
-type TransitionRunner = (kind: WorkspaceTransitionKind, update: () => void, options?: { waitForReady?: boolean }) => void;
+type TransitionRunner = (kind: WorkspaceTransitionKind, update: () => void, options?: { waitForReady?: boolean }) => Promise<boolean>;
 
 export function useLogWorkspace(active: boolean, beforeLeave?: RefObject<() => Promise<boolean>>, runTransition?: TransitionRunner) {
   const [selection, setSelection] = useState<Selection>(empty);
@@ -185,8 +185,8 @@ export function useLogWorkspace(active: boolean, beforeLeave?: RefObject<() => P
       setSelection(next); writeLocation(next);
       acceptedIndex.current = window.history.state?.studyLogIndex || 0;
     };
-    if (runTransition && previous.view !== next.view) runTransition("workspace", commit, { waitForReady: true });
-    else if (runTransition && next.view === "log" && (previous.date !== next.date || previous.month !== next.month)) runTransition("log-document", commit, { waitForReady: true });
+    if (runTransition && previous.view !== next.view) return await runTransition("workspace", commit, { waitForReady: true });
+    else if (runTransition && next.view === "log" && (previous.date !== next.date || previous.month !== next.month)) return await runTransition("log-document", commit, { waitForReady: true });
     else commit();
     return true;
   }, [beforeLeave, runTransition]);

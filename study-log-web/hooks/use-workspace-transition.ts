@@ -61,36 +61,81 @@ export function useWorkspaceTransition() {
       previousNativeTransition.restoreNames();
     }
 
-    const applyUpdate = () => flushSync(update);
+    let resolveApplied!: (applied: boolean) => void;
+    const applied = new Promise<boolean>((resolve) => { resolveApplied = resolve; });
+    const applyUpdate = () => {
+      if (tokenRef.current !== token) { resolveApplied(false); return false; }
+      flushSync(update);
+      resolveApplied(true);
+      return true;
+    };
     if (reducedMotion) {
+      delete document.documentElement.dataset.workspaceTransition;
       applyUpdate();
-      return;
+      return applied;
     }
 
     document.documentElement.dataset.workspaceTransition = kind;
-    const surfaceSelector = kind === "workspace" || kind === "log-document"
-      ? "[data-workspace-transition-shell]"
-      : "[data-workspace-transition-surface]";
+    const surfaceSelector = ".workspace-view:not([hidden]) [data-workspace-transition-surface], .workspace-view:not([hidden]) .reader-content, .workspace-view:not([hidden]) .rag-workspace, .workspace-view:not([hidden]) .stats-shell";
     const clearTransitionState = () => {
       if (tokenRef.current === token) delete document.documentElement.dataset.workspaceTransition;
     };
-
-    if (supportsStableViewTransitions(transitionDocument)) {
-      const namedSurface = document.querySelector<HTMLElement>(surfaceSelector);
-      const nestedContent = namedSurface?.matches("[data-workspace-transition-shell]")
-        ? namedSurface.querySelector<HTMLElement>("[data-workspace-transition-surface]")
-        : null;
-      const previousSurfaceName = namedSurface?.style.viewTransitionName || "";
-      const previousContentName = nestedContent?.style.viewTransitionName || "";
-      if (namedSurface) namedSurface.style.viewTransitionName = "workspace-content";
-      if (nestedContent) nestedContent.style.viewTransitionName = "none";
-      const restoreTransitionNames = () => {
-        if (namedSurface) namedSurface.style.viewTransitionName = previousSurfaceName;
-        if (nestedContent) nestedContent.style.viewTransitionName = previousContentName;
+    const visibleBounds = () => {
+      const shell = document.querySelector<HTMLElement>("[data-workspace-transition-shell]");
+      const rect = shell?.getBoundingClientRect();
+      const toolbar = shell?.querySelector<HTMLElement>(".workspace-view:not([hidden]) .reader-toolbar");
+      return {
+        top: Math.max(0, toolbar?.getBoundingClientRect().bottom ?? rect?.top ?? 0),
+        left: Math.max(0, rect?.left ?? 0),
+        right: Math.max(0, window.innerWidth - (rect?.right ?? window.innerWidth))
       };
+    };
+
+    // Document and mode changes restore the reading anchor after rendering.
+    // Native snapshots freeze viewport positions while that scroll settles.
+    const restoresReadingPosition = kind === "log-document" || kind === "log-mode";
+    if (!restoresReadingPosition && supportsStableViewTransitions(transitionDocument)) {
+      const namedSurface = document.querySelector<HTMLElement>(surfaceSelector);
+      const previousNames = new Map<HTMLElement, string>();
+      const nameSurface = (surface: HTMLElement | null) => {
+        if (!surface || previousNames.has(surface)) return;
+        previousNames.set(surface, surface.style.viewTransitionName);
+        surface.style.viewTransitionName = "workspace-content";
+      };
+      nameSurface(namedSurface);
+      let namesRestored = false;
+      const restoreTransitionNames = () => {
+        if (namesRestored) return;
+        namesRestored = true;
+        previousNames.forEach((name, surface) => { surface.style.viewTransitionName = name; });
+      };
+      let clipFrame = 0;
+      const updateClip = () => {
+        if (tokenRef.current !== token) return;
+        const bounds = visibleBounds();
+        // Native snapshots paint above sticky controls. Clip in the animated
+        // group's coordinates while scroll restoration changes its position.
+        const surfaceRect = namedSurface?.getBoundingClientRect();
+        const group = getComputedStyle(document.documentElement, "::view-transition-group(workspace-content)");
+        const transform = group.transform !== "none" ? new DOMMatrix(group.transform) : null;
+        const left = transform?.m41 ?? surfaceRect?.left ?? 0;
+        const top = transform?.m42 ?? surfaceRect?.top ?? 0;
+        const width = parseFloat(group.width) || surfaceRect?.width || 0;
+        const height = parseFloat(group.height) || surfaceRect?.height || 0;
+        const style = document.documentElement.style;
+        style.setProperty("--workspace-transition-top", `${Math.max(0, bounds.top - top)}px`);
+        style.setProperty("--workspace-transition-left", `${Math.max(0, bounds.left - left)}px`);
+        style.setProperty("--workspace-transition-right", `${Math.max(0, left + width - window.innerWidth + bounds.right)}px`);
+        style.setProperty("--workspace-transition-bottom", `${Math.max(0, top + height - window.innerHeight)}px`);
+        clipFrame = requestAnimationFrame(updateClip);
+      };
+      updateClip();
       try {
         const transition = transitionDocument.startViewTransition!(() => {
-          applyUpdate();
+          if (!applyUpdate()) return;
+          // Public module slots keep separate bodies mounted. Name the newly
+          // visible body too, rather than capturing a hidden log surface.
+          nameSurface(document.querySelector<HTMLElement>(surfaceSelector));
           if (!options.waitForReady) return;
           return new Promise<void>((resolve) => {
             const timer = setTimeout(() => {
@@ -102,12 +147,15 @@ export function useWorkspaceTransition() {
         });
         nativeTransitionRef.current = { transition, restoreNames: restoreTransitionNames };
         void transition.finished.finally(() => {
+          cancelAnimationFrame(clipFrame);
+          resolveApplied(false);
           if (nativeTransitionRef.current?.transition === transition) nativeTransitionRef.current = null;
           restoreTransitionNames();
           clearTransitionState();
-        });
-        return;
+        }).catch(() => {});
+        return applied;
       } catch {
+        cancelAnimationFrame(clipFrame);
         restoreTransitionNames();
         clearTransitionState();
       }
@@ -117,6 +165,7 @@ export function useWorkspaceTransition() {
     let snapshot: HTMLElement | null = null;
     if (options.waitForReady && currentSurface) {
       const rect = currentSurface.getBoundingClientRect();
+      const bounds = visibleBounds();
       snapshot = currentSurface.cloneNode(true) as HTMLElement;
       snapshot.removeAttribute("data-workspace-transition-surface");
       snapshot.querySelectorAll("[id]").forEach((element) => element.removeAttribute("id"));
@@ -129,11 +178,20 @@ export function useWorkspaceTransition() {
         left: `${rect.left}px`,
         width: `${rect.width}px`,
         height: `${rect.height}px`,
+        clipPath: `inset(${Math.max(0, bounds.top - rect.top)}px ${Math.max(0, rect.right - window.innerWidth + bounds.right)}px ${Math.max(0, rect.bottom - window.innerHeight)}px ${Math.max(0, bounds.left - rect.left)}px)`,
         background: getComputedStyle(currentSurface).backgroundColor
       });
       document.body.append(snapshot);
       snapshotRef.current?.remove();
       snapshotRef.current = snapshot;
+      const retainedSnapshot = snapshot;
+      const updateSnapshotClip = () => {
+        if (!retainedSnapshot.isConnected) return;
+        const bounds = visibleBounds();
+        retainedSnapshot.style.clipPath = `inset(${Math.max(0, bounds.top - rect.top)}px ${Math.max(0, rect.right - window.innerWidth + bounds.right)}px ${Math.max(0, rect.bottom - window.innerHeight)}px ${Math.max(0, bounds.left - rect.left)}px)`;
+        requestAnimationFrame(updateSnapshotClip);
+      };
+      requestAnimationFrame(updateSnapshotClip);
     }
 
     applyUpdate();
@@ -142,7 +200,7 @@ export function useWorkspaceTransition() {
       snapshot?.remove();
       if (snapshotRef.current === snapshot) snapshotRef.current = null;
       clearTransitionState();
-      return;
+      return applied;
     }
 
     if (snapshot) {
@@ -167,7 +225,7 @@ export function useWorkspaceTransition() {
         release();
       }, READY_DEADLINE_MS);
       readyRef.current = { token, resolve: release, timer };
-      return;
+      return applied;
     }
 
     surface.classList.remove("workspace-content-revealing");
@@ -179,6 +237,7 @@ export function useWorkspaceTransition() {
         clearTransitionState();
       }, { once: true });
     });
+    return applied;
   }, [finishWaiting]);
 
   useEffect(() => () => {

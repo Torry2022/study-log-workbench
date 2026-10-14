@@ -347,7 +347,7 @@ html.reading-mode-transition::view-transition-new(root) {
 }
 @keyframes workspace-content-old { to { opacity: 0; transform: translateX(-8px); } }
 @keyframes workspace-content-new {
-  from { opacity: 0.78; transform: translateX(8px); }
+  from { opacity: 1; transform: translateX(8px); }
   to { opacity: 1; transform: translateX(0); }
 }
 .workspace-content-revealing { animation: workspace-content-reveal 160ms ease-out both; }
@@ -361,7 +361,11 @@ html.reading-mode-transition::view-transition-new(root) {
 }
 .workspace-transition-snapshot-exiting { animation: workspace-content-old 160ms ease-out both; }
 ::view-transition-old(workspace-content) { animation: workspace-content-old 160ms ease-out both; }
-::view-transition-new(workspace-content) { animation: workspace-content-new 160ms ease-out both; }
+::view-transition-new(workspace-content) { mix-blend-mode: normal; animation: workspace-content-new 160ms ease-out both; }
+html[data-workspace-transition] { view-transition-name: none; }
+html[data-workspace-transition]::view-transition-group(workspace-content) {
+  clip-path: inset(var(--workspace-transition-top, 0px) var(--workspace-transition-right, 0px) var(--workspace-transition-bottom, 0px) var(--workspace-transition-left, 0px));
+}
 html[data-workspace-transition]::view-transition-old(root),
 html[data-workspace-transition]::view-transition-new(root) { animation: none; }
 

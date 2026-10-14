@@ -17,4 +17,14 @@
 - 校验：`SHA256SUMS.txt`
 - 镜像：`web:0.1.0`、`mcp:0.1.0`、`tools:0.1.0`
 
-公开附件、镜像摘要、安装结果及公开下载复核在发布完成后记录到本页。
+## 发布与安装结果
+
+- 源码提交 `af518dc` 已推送，正式标签为 `v0.1.0`，公开发布页为 <https://github.com/Torry2022/study-log-workbench-public/releases/tag/v0.1.0>。
+- Windows 安装包 SHA-256：`c58bc597caf81a4557ea4a472e130559d450abd1041e17188cd23763290c9a9b`。
+- 服务器部署包 SHA-256：`949ba620ecf5b3339987e65eb908ee38d9be454e47e40cb4bdbf854ad32b5381`。
+- `SHA256SUMS.txt` SHA-256：`ca60357d7016c2f18e90b1d6eade5ec0dce23de55f73d6f398cd43340dc58012`。三个附件从公开地址重新下载后与本地发布文件一致。
+- web 镜像摘要：`sha256:4d10b0d56f9f40035cc83de53cc2c1cb9901879227bc34e1e9b7687125b9a758`。
+- mcp 镜像摘要：`sha256:478b9f28a727b057f51fb9f4bf0edc3f39b877256e3416a657c8146b7fbe69d7`。
+- tools 镜像摘要：`sha256:4fa21fd537b77d1465cf066578c80089bd73b4e4a7e5d69e9c1940c69adf3275`。三个镜像均通过空凭据 Docker 配置匿名拉取复核。
+- 已在 `D:\Software\study-log-desktop` 覆盖安装。安装前备份并核对的 15 个记录、配置和历史文件全部未变，安装目录 5233 个候选文件与最终包一致。
+- 安装后的独立实例报告版本 `0.1.0`，工作台地址返回 HTTP 200。rc.9 可检测到 0.1.0 更新，0.1.0 不再提示更新。

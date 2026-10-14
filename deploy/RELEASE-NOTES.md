@@ -20,4 +20,10 @@ Windows 下载 `study-log-desktop-0.1.0-x64-setup.exe`。安装前保存内容�
 
 镜像前缀：`crpi-2sv5e1hzpqiwbovs.cn-qingdao.personal.cr.aliyuncs.com/study-log-public`，标签均为 `0.1.0`。
 
+| 镜像 | Registry digest |
+| --- | --- |
+| web | `sha256:4d10b0d56f9f40035cc83de53cc2c1cb9901879227bc34e1e9b7687125b9a758` |
+| mcp | `sha256:478b9f28a727b057f51fb9f4bf0edc3f39b877256e3416a657c8146b7fbe69d7` |
+| tools | `sha256:4fa21fd537b77d1465cf066578c80089bd73b4e4a7e5d69e9c1940c69adf3275` |
+
 安装包尚未签名。鸿蒙客户端不包含在本次桌面和服务器发布附件中，需按源码说明单独构建和签名。

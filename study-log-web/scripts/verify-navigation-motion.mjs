@@ -215,7 +215,3 @@ try {
   assert.ok(path.basename(root).startsWith("study-log-navigation-"));
   await fs.rm(root, { recursive: true, force: true });
 }
-
-
-
-

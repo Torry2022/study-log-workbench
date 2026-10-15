@@ -27,4 +27,6 @@
 
 ## 网页镜像未完成
 
+此节记录 Windows 打包时的阻塞。随后 Docker 引擎恢复，网页候选已构建并通过容器验收，当前结果见[网页候选记录](docker-candidate-2026-10-15.md)。以下保留当时检查结果。
+
 Docker 引擎首次检查缺少 Linux 引擎管道；正常启动命令报告 Docker Desktop 已运行，但随后 `docker info` 持续无响应，已取消这条检查命令。没有重置、删除虚拟磁盘或清理 Docker 数据。本轮未生成新的 Linux amd64 网页镜像，也未更新服务器部署包、镜像标签或线上附件。后续须先恢复引擎，再按 `ops/web.Dockerfile` 构建并完成容器验收；不能用 Windows 包通过代替该验收。

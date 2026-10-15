@@ -38,6 +38,11 @@ async function answer(question) {
   const raw = await response.text(); assert.doesNotMatch(raw, /event: error/); assert.match(raw, /event: done/);
   const frames = raw.split("\n\n"); return JSON.parse(frames.find(frame => frame.startsWith("event: done\n")).split("\ndata: ")[1]);
 }
+async function assertMcpMode(expected) {
+  const id = await compose(["ps", "-q", "study-log-mcp"]);
+  const probe = `const assert=(await import('node:assert/strict')).default;const r=await fetch('http://127.0.0.1:3020/mcp',{method:'POST',headers:{Authorization:'Bearer '+process.env.MCP_HTTP_TOKEN,'Content-Type':'application/json',Accept:'application/json, text/event-stream','MCP-Protocol-Version':'2025-11-25'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'retrieve_contexts',arguments:{input:'SyntheticDockerEvidence'}}})});assert.equal(r.status,200);const raw=await r.text();const payload=JSON.parse(raw.trim().startsWith('{')?raw:raw.split('\\n').find(line=>line.startsWith('data:')).slice(5));assert.ok(!payload.error);assert.ok(!payload.result.isError);const result=JSON.parse(payload.result.content.find(item=>item.type==='text').text);assert.equal(result.retrieval.mode,${JSON.stringify(expected)});assert.ok(result.contexts.length);`;
+  await docker(["exec", id, "node", "--input-type=module", "-e", probe]);
+}
 await new Promise((resolve, reject) => { const probe = net.createServer(); probe.once("error", reject); probe.listen(port, "127.0.0.1", () => probe.close(resolve)); });
 await fs.mkdir(root, { recursive: true, mode: 0o700 });
 if (process.platform !== "win32" && process.getuid?.() === 0) await fs.chown(root, 1000, 1000);
@@ -68,7 +73,8 @@ try {
   await compose(["--profile", "retrieval", "up", "-d", "--no-build"]); await waitWeb(); await login();
   const content = "## 2026-01-01\n\n### SyntheticDockerEvidence\nSyntheticDockerEvidence source.\n\n### SlowSyntheticDockerEvidence\nSlowSyntheticDockerEvidence stream source.";
   assert.equal((await request("/api/logs/day", "PUT", { date: "2026-01-01", content, baseVersion: null })).status, 200);
-  const keyword = await answer("SyntheticDockerEvidence"); assert.equal(keyword.diagnostics.retrievalMode, "lexical_fallback"); assert.ok(keyword.citations.length);
+  const keyword = await answer("SyntheticDockerEvidence"); assert.equal(keyword.diagnostics.retrievalMode, "bounded_evidence"); assert.ok(keyword.citations.length);
+  await assertMcpMode("lexical_fallback");
   mark("Docker Web→MCP keyword→mock chat SSE done with source citations");
   await fs.appendFile(mcpEnv, "EMBEDDING_API_KEY=synthetic-vector-only\nEMBEDDING_API_URL=http://mock-model:8080/embedding\nEMBEDDING_MODEL=synthetic-vector\nEMBEDDING_DIMENSIONS=2\n");
   await compose(["--profile", "retrieval", "up", "-d", "--no-build", "--force-recreate", "study-log-mcp"]);
@@ -77,7 +83,8 @@ try {
     try { await docker(["exec", mcpId, "node", "-e", "fetch('http://127.0.0.1:3020/health',{headers:{Authorization:'Bearer '+process.env.MCP_HTTP_TOKEN}}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]); break; }
     catch (error) { if (i >= 20) throw error; await delay(500); }
   }
-  const hybrid = await answer("SyntheticDockerEvidence"); assert.equal(hybrid.diagnostics.retrievalMode, "hybrid"); assert.ok(hybrid.citations.length);
+  const hybrid = await answer("SyntheticDockerEvidence"); assert.equal(hybrid.diagnostics.retrievalMode, "bounded_evidence"); assert.ok(hybrid.citations.length);
+  await assertMcpMode("hybrid");
   await fs.stat(path.join(instance, "index", "index-v3.json")); mark("Docker optional embedding mock produces hybrid diagnostics and independent cache");
   const before = await fs.readFile(path.join(instance, "data", "2026-01_学习日志.md"));
   const response = await request("/api/rag/query", "POST", { question: "SlowSyntheticDockerEvidence" }); assert.equal(response.status, 200);

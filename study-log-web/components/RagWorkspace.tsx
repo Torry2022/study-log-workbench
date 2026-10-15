@@ -141,7 +141,9 @@ export function RagWorkspace({
       const delta = currentScrollY - lastScrollY;
       lastScrollY = currentScrollY;
 
-      if (remaining < 160 || Boolean(question.trim()) || generating) {
+      // Focusing a sticky composer can itself scroll the page in WebKit. Do not
+      // hide and blur the field while the user is trying to enter a follow-up.
+      if (remaining < 160 || Boolean(question.trim()) || generating || document.activeElement === textareaRef.current) {
         travel = 0;
         setComposerHidden(false);
         return;
@@ -158,9 +160,6 @@ export function RagWorkspace({
 
       const shouldHide = nextDirection < 0;
       setComposerHidden(shouldHide);
-      if (shouldHide && document.activeElement === textareaRef.current) {
-        textareaRef.current?.blur();
-      }
       travel = 0;
     }
     window.addEventListener("scroll", handleScroll, { passive: true });

@@ -50,6 +50,7 @@ export function useRag(options: Options) {
   const [historyError, setHistoryError] = useState("");
   const [historyRevision, setHistoryRevision] = useState(0);
   const [initializing, setInitializing] = useState(false);
+  const [navigationError, setNavigationError] = useState("");
   const [configured, setConfigured] = useState(false);
   const [configurationError, setConfigurationError] = useState("");
   const [focusToken, setFocusToken] = useState(0);
@@ -90,16 +91,17 @@ export function useRag(options: Options) {
   }, [notify]);
   useEffect(() => {
     if (!options.active || !options.visible) return;
+    setNavigationError("");
     if (options.routeSessionId === loadedRoute.current) { setInitializing(false); return; }
     loadRequest.current?.abort(); const controller = new AbortController(); loadRequest.current = controller;
     const target = options.routeSessionId;
     const cached = states.current.get(target);
     if (cached) { loadedRoute.current = target; install(cached); setInitializing(false); return; }
-    setInitializing(true); setError("");
+    setInitializing(true);
     void requestJson<{ session: RagSession }>(`/api/rag/sessions/${encodeURIComponent(target)}`, { signal: controller.signal }).then(result => {
       if (!validSession(result.session) || result.session.id !== target) throw new Error("会话响应不完整，请重试");
       if (!controller.signal.aborted) { loadedRoute.current = target; install(sessionState(target, result.session)); }
-    }).catch(failure => { if (!controller.signal.aborted) setError(failure.message); }).finally(() => { if (!controller.signal.aborted) setInitializing(false); });
+    }).catch(failure => { if (!controller.signal.aborted) setNavigationError(failure.message); }).finally(() => { if (!controller.signal.aborted) setInitializing(false); });
     return () => controller.abort();
   }, [options.active, options.visible, options.routeSessionId, options.routeToken, install]);
   useEffect(() => {
@@ -162,7 +164,7 @@ export function useRag(options: Options) {
         JSON.stringify(snapshot.messages.map(message => [message.id, message.content, message.status || "complete"]))) throw new Error("保存响应不完整，请保留回答并重试保存");
       owner.pendingSave = null; owner.session = result.session; owner.unsaved = false;
       owner.unread = selectedId.current !== owner.id || !live.current.visible;
-      if (selectedId.current === owner.id) { loadedRoute.current = owner.id; if (live.current.visible) live.current.onRoute(owner.id); }
+      if (selectedId.current === owner.id && live.current.routeSessionId === owner.id) { loadedRoute.current = owner.id; if (live.current.visible) live.current.onRoute(owner.id); }
       setSessions(list => [result.session, ...list.filter(item => item.id !== result.session.id)]);
       if (result.session.titleSource === "fallback") {
         const job = (async () => {
@@ -245,16 +247,20 @@ export function useRag(options: Options) {
   }
   async function reloadSession() {
     const owner = states.current.get(selectedId.current)!;
-    const id = owner.pendingSave?.id || owner.session?.id || owner.id || live.current.routeSessionId;
-    if (!id || owner.generating || owner.saving || !(await beforeLeave())) return;
-    if ((owner.unsaved || owner.question.trim()) && !await live.current.onConfirm({ title: "重新读取当前会话？", message: "将放弃该会话未保存的回答和草稿，重新读取已保存内容。", confirmLabel: "重新读取", tone: "danger" })) return;
+    // A failed navigation retains the previous session for reading. Retry the
+    // requested route, rather than reloading and discarding that retained draft.
+    const target = live.current.routeSessionId;
+    const retryingNavigation = Boolean(target && target !== loadedRoute.current);
+    const id = retryingNavigation ? target : owner.pendingSave?.id || owner.session?.id || owner.id || target;
+    if (!id || (!retryingNavigation && (owner.generating || owner.saving)) || !(await beforeLeave())) return;
+    if (!retryingNavigation && (owner.unsaved || owner.question.trim()) && !await live.current.onConfirm({ title: "重新读取当前会话？", message: "将放弃该会话未保存的回答和草稿，重新读取已保存内容。", confirmLabel: "重新读取", tone: "danger" })) return;
     loadRequest.current?.abort(); const controller = new AbortController(); loadRequest.current = controller;
-    setInitializing(true);
+    setInitializing(true); setNavigationError("");
     try {
       const result = await requestJson<{ session: RagSession }>(`/api/rag/sessions/${id}`, { signal: controller.signal });
       if (!validSession(result.session) || result.session.id !== id) throw new Error("会话响应不完整，请重试");
       if (!controller.signal.aborted && live.current.active && selectedId.current === owner.id) { install(sessionState(id, result.session)); loadedRoute.current = id; live.current.onRoute(id); pendingMutations.current.delete(id); await refreshList(); }
-    } catch (failure) { if (!controller.signal.aborted && selectedId.current === owner.id) setError(failure instanceof Error ? failure.message : "读取历史失败"); }
+    } catch (failure) { if (!controller.signal.aborted && selectedId.current === owner.id) setNavigationError(failure instanceof Error ? failure.message : "读取历史失败"); }
     finally { if (!controller.signal.aborted) setInitializing(false); }
   }
   const sessionActivity: Record<string, "generating" | "saving" | "unsaved" | "unread"> = {};
@@ -271,10 +277,10 @@ export function useRag(options: Options) {
   }
   const displayedSessions = [...localSessions, ...sessions.filter(item => !localSessions.some(local => local.id === item.id))];
   return { sessions: displayedSessions, activeSessionId: selectedId.current, sessionActivity, session, messages, question, setQuestion,
-    answerMode, setAnswerMode, query, setQuery, loading, historyError, retryHistory: () => setHistoryRevision(value => value + 1), initializing, generating, saving, stage, error, saveError, configured, configurationError, focusToken, navigationToken, dirty,
+    answerMode, setAnswerMode, query, setQuery, loading, historyError, retryHistory: () => setHistoryRevision(value => value + 1), initializing, generating, saving, stage, error: navigationError || error, saveError, configured, configurationError, focusToken, navigationToken, dirty,
     beforeLeave, confirmExit, refreshConfiguration, refreshList, reloadSession, submit: () => submit(), regenerate: () => submit(true), stop: () => states.current.get(selectedId.current)?.request?.abort(),
     retrySave: () => { const owner = states.current.get(selectedId.current)!; if (owner.pendingSave && live.current.active && !owner.saving) void save(owner, owner.pendingSave); },
     newSession: async () => { if (await beforeLeave()) { install(sessionState("")); loadedRoute.current = ""; live.current.onRoute(""); setFocusToken(value => value + 1); return true; } return false; },
     rename: (id: string, title: string) => mutateSession(id, "PATCH", title), delete: (id: string) => mutateSession(id, "DELETE"),
-    clearError: () => setError("") };
+    clearError: () => { setNavigationError(""); setError(""); } };
 }

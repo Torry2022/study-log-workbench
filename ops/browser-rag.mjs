@@ -39,7 +39,7 @@ const owned = new Set();
 const artifactRoot = path.resolve("artifacts/rag", engine === "chromium" ? "" : engine);
 try {
   page = await browser.newPage({ viewport: { width: 1440, height: 1000 } }); page.setDefaultTimeout(15000);
-  const errors = []; page.on("pageerror", error => errors.push(error.message));
+  const errors = []; page.on("pageerror", error => { errors.push(error.message); console.log('RAG pageerror', error.message); });
   const question = page.getByRole("textbox", { name: "输入知识库问题", exact: true });
   const workspace = page.locator(".rag-workspace").filter({ visible: true });
   const login = async () => { await page.getByLabel("访问密码").fill(env.APP_PASSWORD); await page.getByRole("button", { name: "登录", exact: true }).click(); await page.locator(".workspace").waitFor(); };
@@ -50,7 +50,7 @@ try {
   const center = async () => { await page.getByRole("button", { name: "问答", exact: true }).filter({ visible: true }).first().click(); await expect(question).toBeVisible(); };
   const history = async () => { if (page.viewportSize().width <= 1023) { if (!await page.locator(".sidebar.mobile-open").count()) await page.getByRole("button", { name: "打开问答历史", exact: true }).click(); } else if (await page.getByRole("button", { name: "展开左侧栏", exact: true }).count()) await page.getByRole("button", { name: "展开左侧栏", exact: true }).click(); };
   const fresh = async () => { await history(); await page.getByRole("button", { name: "新建问答", exact: true }).filter({ visible: true }).first().click(); await expect(question).toHaveValue(""); await expect(workspace.locator(".rag-message")).toHaveCount(0); };
-  const send = async suffix => { await question.fill(`${prefix}${suffix}`); await page.getByRole("button", { name: "发送问题", exact: true }).click(); };
+  const send = async suffix => { await page.waitForFunction(() => !document.documentElement.dataset.workspaceTransition && !document.querySelector(".workspace-transition-snapshot"), null, { timeout: 5000 }); await question.fill(`${prefix}${suffix}`); await expect(question).toHaveValue(`${prefix}${suffix}`); await expect(question).toBeFocused(); await page.getByRole("button", { name: "发送问题", exact: true }).click(); };
   const openSession = async session => { await history(); await page.locator(".rag-session-main").filter({ hasText: session.title }).first().click(); await expect(page).toHaveURL(new RegExp(`session=${session.id}`)); await expect(question).toBeVisible(); await expect(page.locator(".rag-session-item.active")).toContainText(session.title); await expect.poll(() => page.locator(".rag-session-item.active").evaluate(element => { const box = element.getBoundingClientRect(); return box.top >= -1 && box.bottom <= innerHeight + 1; })).toBe(true).catch(async error => { console.log("Active history bounds", await page.locator(".rag-session-item.active").evaluate(element => ({ item: element.getBoundingClientRect().toJSON(), list: element.closest(".rag-history-groups").getBoundingClientRect().toJSON(), sidebar: element.closest(".sidebar").getBoundingClientRect().toJSON(), windowHeight: innerHeight, scroll: scrollY }))); throw error; }); };
   const hold = () => { streamMode = "hold"; return new Promise(resolve => { streamStarted = resolve; }); };
   const savedRequests = [];
@@ -110,7 +110,7 @@ try {
   }
   await center(); await send("第一问"); await expect(workspace).toContainText("合成依据边界提示"); await expect.poll(async () => (await ownSessions()).length).toBe(23); await expect(page).toHaveURL(/session=/); const firstId = new URL(page.url()).searchParams.get("session"); owned.add(firstId); await expect(page.getByRole("button", { name: "发送问题", exact: true })).toBeDisabled();
   assert.equal((await get(firstId)).messages[1].status, "complete");
-  const sourceButton = workspace.locator(".rag-citation").first(); await sourceButton.click(); await workspace.getByRole("button", { name: "查看原日志", exact: true }).click(); await expect(page).toHaveURL(new RegExp(`date=${date}`)); await expect(page.locator(".markdown-preview").filter({ visible: true })).toContainText(marker); await page.getByRole("button", { name: "返回问答", exact: true }).click(); await expect(workspace).toContainText("合成依据边界提示");
+  const sourceButton = workspace.locator(".rag-citation").first(); await sourceButton.click(); await workspace.getByRole("button", { name: "查看原日志", exact: true }).click(); await expect(page).toHaveURL(new RegExp(`date=${date}`)); await page.waitForFunction(() => !document.documentElement.dataset.workspaceTransition && !document.querySelector(".workspace-transition-snapshot"), null, { timeout: 5000 }); await expect(page.locator(".markdown-preview").filter({ visible: true })).toContainText(marker); await page.getByRole("button", { name: "返回问答", exact: true }).click(); await expect(workspace).toContainText("合成依据边界提示");
   await question.fill(`${prefix}未发送问题`); await page.getByRole("button", { name: "日志", exact: true }).filter({ visible: true }).first().click(); await center(); await expect(question).toHaveValue(`${prefix}未发送问题`);
   await page.evaluate(() => window.dispatchEvent(new Event("study-log:auth-expired"))); await login(); await expect(question).toHaveValue(`${prefix}未发送问题`); await question.fill("");
   console.log("RAG done/save, source jump/return and unsent/auth draft preservation passed");
@@ -141,6 +141,15 @@ try {
   await question.fill(`${prefix}手机问题`); await question.press("Shift+Enter"); await question.pressSequentially("换行保留"); await expect(question).toHaveValue(/\n换行保留$/); await question.fill(""); await history(); await expect(page.locator(".sidebar.mobile-open")).toBeVisible(); await expect.poll(() => page.locator(".sidebar.mobile-open").evaluate(element => Math.abs(element.getBoundingClientRect().left))).toBeLessThan(1); await expect.poll(() => page.locator(".sidebar.mobile-open .rag-session-item.active").evaluate(element => { const box = element.getBoundingClientRect(); return box.top >= 0 && box.bottom <= innerHeight; })).toBe(true); await page.screenshot({ path: path.join(artifactRoot, "mobile-history.png") });
   await page.locator(".rag-session-main").filter({ hasText: seeded[6].title }).click(); await expect(page.locator(".sidebar.mobile-open")).toHaveCount(0); await expect.poll(() => page.evaluate(() => scrollY)).toBeLessThan(5); assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)); assert.notEqual(await page.evaluate(() => document.body.style.overflow), "hidden");
   assert.deepEqual(errors, []); console.log("Passed: RAG desktop/mobile composition, Shift+Enter, history navigation, independent scrolling and modal cleanup");
+} catch (error) {
+  if (page) {
+    console.log('RAG browser failure', JSON.stringify(await page.evaluate(() => ({ url: location.href, transition: document.documentElement.dataset.workspaceTransition,
+      viewport: {scrollY,innerHeight,height:document.documentElement.scrollHeight,bodyHeight:document.body.scrollHeight,scrollingTag:document.scrollingElement.tagName,form:document.querySelector(".rag-composer")?.getBoundingClientRect().toJSON(),formClass:document.querySelector(".rag-composer")?.className}, composer: [...document.querySelectorAll("textarea[aria-label=\"输入知识库问题\"]")].map(e => ({value:e.value,disabled:e.disabled,snapshot:Boolean(e.closest(".workspace-transition-snapshot"))})), feedback: [...document.querySelectorAll(".editor-navigation-status")].map(e=>e.textContent), snapshots: document.querySelectorAll('.workspace-transition-snapshot').length,
+      snapshotClasses: [...document.querySelectorAll('.workspace-transition-snapshot')].map(element => element.className),
+      previews: [...document.querySelectorAll('.markdown-preview')].map(element => ({ inReader: Boolean(element.closest('.reader')), snapshot: Boolean(element.closest('.workspace-transition-snapshot')), hiddenView: element.closest('.workspace-view')?.hasAttribute('hidden'), rect: element.getBoundingClientRect().toJSON() })) })).catch(() => null)));
+    await page.screenshot({ path: path.join(artifactRoot, 'failure.png') }).catch(() => {});
+  }
+  throw error;
 } finally {
   releaseTitle?.();
   finishStream?.();

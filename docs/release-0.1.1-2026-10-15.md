@@ -27,4 +27,12 @@
 
 产物在 `.local/release-0.1.1-20261015/`。构建、测试、推送和匿名拉取日志使用 `.local/release-0.1.1-*.log`；桌面报告在 `.local/electron-smoke-1792027128497/report.json`，发布 Compose 验收报告在 `.local/public-rebuild-b27-20261015011803739/report.json` 与 `.local/public-rebuild-rag-20261015011803696/report.json`。
 
-覆盖安装前已备份并核对原实例的 15 个记录、配置与历史文件，备份保存在忽略目录并限制访问。实际安装后的逐文件核对和启动结果在完成后补记，不能以隔离检查替代真实安装结果。本轮没有新增鸿蒙构建或真机验收，Agent 长材料效果评估仍未完成。
+覆盖安装前已备份并核对原实例的 15 个记录、配置与历史文件，备份保存在忽略目录并限制访问。
+
+## 已完成的发布和安装
+
+源码及 `v0.1.1` 标签已推送，标签指向 `77707a0`。[GitHub Release](https://github.com/Torry2022/study-log-workbench-public/releases/tag/v0.1.1)已公开，Windows、服务器 ZIP 和 SHA256SUMS 均已上传；GitHub 附件 digest 与本机哈希一致，重新下载的服务器 ZIP 也一致。v0.1.0 标签和原附件保留。
+
+已在 `D:\Software\study-log-desktop` 覆盖安装，安装器退出码 0；15 个原资料文件未变，5233 个候选文件与安装目录一致，网页构建 ID 为 `MEiOW-sSDclOvUjfqN0QP`。从实际安装目录启动，桌面和本地服务版本均为 0.1.1，工作区正常出现、capabilities 返回 200；随后正常退出。没有编辑真实记录或调用模型。
+
+安装报告位于 `.local/release-0.1.1-20261015/install-report.json`，实际启动报告为同目录 `real-start-report.json`。本轮没有新增鸿蒙构建或真机验收，Agent 长材料效果评估仍未完成。

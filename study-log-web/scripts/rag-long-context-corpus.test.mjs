@@ -39,6 +39,14 @@ test('three phrasings reach the same bounded tool loop and supply the linked rul
         response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(evidence.map(item => ({ sourceId: item.sourceId, excerpts: [item.content.slice(-180)] }))) } }] }));
         return;
       }
+      if(body.tools?.some(item=>item.function.name==='record_material')){
+        summaries++;const input=JSON.parse(body.messages.at(-1).content);
+        const next=input.batches.find(batch=>!batch.processed&&batch.index!==input.currentBatch)?.index??null;
+        const notes=input.parts.map(part=>({sourceId:part.sourceId,quote:part.text.slice(-180)}));
+        response.setHeader('content-type','text/event-stream');
+        response.end(`data: ${JSON.stringify({choices:[{index:0,delta:{tool_calls:[{index:0,id:'material',type:'function',function:{name:'record_material',arguments:JSON.stringify({assessment:'保留规则关联及条件',notes,drop:[],nextBatch:next})}}]},finish_reason:null}]})}\n\ndata: ${JSON.stringify({choices:[{index:0,delta:{},finish_reason:'tool_calls'}]})}\n\ndata: [DONE]\n\n`);
+        return;
+      }
       let delta, finish;
       if (body.tools) {
         const userText = body.messages.filter(message => message.role === 'user').at(-1).content;
@@ -52,11 +60,13 @@ test('three phrasings reach the same bounded tool loop and supply the linked rul
           } else {
             assert.deepEqual(current.availableReadDates, ['2026-09-01']);
             assert.ok(userText.includes('本来源正文有截断'));
-            assert.ok(body.messages.some(message => message.role === 'system' && message.content.includes('先读取对应命中日期')));
-            assert.ok(body.tools.some(item => item.function.name === 'read'));
+            assert.ok(body.messages.some(message => message.role === 'system' && message.content.includes('回答当前问题必需')));
+            assert.ok(!body.tools.some(item => item.function.name === 'read'));
+            assert.ok(body.tools.some(item => item.function.name === 'read_more'));
+            assert.ok(!body.tools.some(item => item.function.name === 'assess'));
           }
           delta = { tool_calls: [{ index: 0, id: `call-${steps}`, type: 'function', function: {
-            name: steps === 1 ? 'read' : 'search', arguments: JSON.stringify(steps === 1 ? { date: '2026-09-01', missingPoint: '北辰项目关联的具体规则' } : { query: '河图检查规则', missingPoint: '规则中的明确保存条件' })
+            name: steps === 1 ? 'read_more' : 'search', arguments: JSON.stringify(steps === 1 ? { assessment: '尚缺归档流程与具体规则的关联。', evidence: [], unresolved: [{ point: '北辰项目关联的具体规则', sourceId: JSON.parse(body.messages.at(-1).content.split('可用工具状态：').at(-1)).readCandidates.find(item=>item.date==='2026-09-01').sourceId }] } : { query: '河图检查规则', missingPoint: '规则中的明确保存条件' })
           } }] };
           finish = 'tool_calls';
       } else {

@@ -1,5 +1,7 @@
 # 日志问答
 
+当前整体架构、实际调用流程、默认与实验路径及未完成边界，统一见[当前日志问答整体架构](rag-architecture.md)。本页及日期化记录保留接口细节和历史证据。
+
 2026-10-11 更新：范围总结与比较改用分页原文读取，字面匹配和日期可组合，明确事件日期不再直接过滤日志。异步标题不阻塞下一次提问；来源追问可带可选 `history[].sourceRefs`，每项为 `{date,fileName,heading,contentHash}`，服务端重新读取当前内容。所有客户端继续使用原 SSE 事件；大范围的 `sources` 可能在回答生成后发送，最终来源仍以 `done.citations` 为准。当时 Agent/Jev 均默认关闭；当前启用边界、配置、验收与已知限制见[实施记录](rag-agent-implementation-2026-10-11.md)。下列测试数量保留原批次记录。
 
 问答只引用当前实例的日志原文。`logs_only` 限于日志证据；`logs_and_general` 把通用知识补充与日志依据分开。随记与 Wiki 不参与检索。
@@ -16,9 +18,13 @@ Web 显式配置 `STUDY_LOG_MCP_URL`（完整 HTTP(S) 接口地址）和 `STUDY_
 
 `POST /api/rag/query` 接收 `question`、`mode` 和可选 `history`。SSE 事件为 `status`、`sources`、`delta`、`done`、`error`。只有 `done` 表示完整回答；错误或连接提前结束不得当作成功保存。客户端取消会传递给检索和模型请求。无日志依据的 `logs_only` 请求直接给出说明，不调用回答模型。
 
-相关性问答只有在 `RAG_AGENT_ENABLED=true` 且 `RAG_AGENT_TOOL_CALLING_VERIFIED=true` 时使用有界 Agent，同一次生成可以直接回答或最多两轮调用只读搜索／读取工具；完整日期范围已经读完及字面查找继续直接生成。能力不按供应商地址或模型名推断，也不在线自动探测。长范围状态核验和上下文窗口分别由 `RAG_STATUS_VERIFICATION_ENABLED`、`RAG_CONTEXT_WINDOW_TOKENS` 显式声明；更换模型后重新确认。Jev 继续独立且默认关闭。
+相关性问答在 `RAG_AGENT_ENABLED` 未设置或为 true、且 `RAG_AGENT_TOOL_CALLING_VERIFIED=true` 时允许有界 Agent。同一次首步调用在 `reply`、`read_more`、`search` 中选择；只有读取、搜索或超限分批实际执行时才记为进入 Agent。SDK 最多两步；完整日期范围已经读完及字面查找继续直接生成。能力不按普通兼容接口的供应商地址或模型名推断，也不在线自动探测。长范围状态核验和上下文窗口分别由 `RAG_STATUS_VERIFICATION_ENABLED`、`RAG_CONTEXT_WINDOW_TOKENS` 显式声明；更换模型后重新确认。Jev 继续独立且默认关闭。
 
 ## 追问范围
+
+规划统一由 `prepareRagQuery` 输出最终查询、约束和来源指针，主流程不再重复解析或覆盖计划。日期与精确匹配条件来自当前问题或经核对的历史范围；追问改写不能新增字面条件。日期合并保留解析出的比较或总结意图。原文位置询问及明确查找动作才进入精确匹配，其他表达继续相关检索。
+
+追问理解的内部 JSON 同时包含 `query`、`scopeSource`、`strategy`，策略只允许 `relevance`、`timeline_summary`、`comparison`。由模型理解任务语义，代码核对策略取值并保留可信约束；不再按改写文本的关键词重新分类，也不为同一追问追加规划调用。缺少或非法策略按 `RAG_CONTEXT_UNCERTAIN` 结束，未改客户端请求或会话格式。首次提问的规则直通和既有辅助规划保留。
 
 追问沿用历史问题时，现有改写调用只选择历史用户问题，日期范围由代码从该问题计算；多个分开的月份仍分别读取。当前问题明确的新日期、字面条件和事件日期优先，换题不因改写文本出现旧日期而重新限制到旧月份。此选择是服务端内部信息，客户端无需增加字段。
 
@@ -26,9 +32,11 @@ Web 显式配置 `STUDY_LOG_MCP_URL`（完整 HTTP(S) 接口地址）和 `STUDY_
 
 ## 耗时诊断
 
-2026-10-13 起，`diagnostics.timings.retrievalMs` 只记录初次 MCP 取证；`compactionMs` 累计 SDK 外的材料整理，`judgeMs` 记录可选证据判断，`agentMs` 记录整个 SDK 执行（含其补查工具、内部整理及直接回答）。`generationMs` 记录后续回答阶段：SDK 已直接回答时，该阶段仅输出已完成的正文，接近零不代表模型生成没有耗时；此时 `diagnostics.agent.answeredDirectly` 为 true。新增字段可选，旧会话和客户端继续兼容。
+`diagnostics.timings.retrievalMs` 只记录初次 MCP 取证；`compactionMs` 累计 SDK 外的材料整理，`judgeMs` 记录可选证据判断，`agentMs` 记录整个 SDK 执行（含补查工具、内部整理和材料判断）。当前 `generationMs` 记录独立的最终正文生成，`diagnostics.agent.assessed` 表示取证判断已形成，不表示最终回答已完成。旧会话的 `answeredDirectly` 和 `answer_generated` 保留原历史含义，不再由新请求产生。新增字段可选，客户端事件及会话结构保持兼容。
 
 这些阶段成功或失败时都保留已测时间，不把 SDK 或整理失败的耗时重新写入初次检索。`firstTokenMs` 是本服务首次发送回答正文的时间，不是供应商首次返回数据、心跳或推理的时间。SDK 工具轮的临时文字仍不发送；直接回答目前在该轮完成后发送，因此这项计时修正本身不改善流式延迟。旧诊断的 retrievalMs 含 SDK 与整理，不可与新字段直接当作同口径检索性能对比。
+
+首步 `reply` 直接提交经来源检查的答复；`read_more` 只对已登记来源中尚未提供的正文发起读取；`search` 查找新线索。补查后由 `assess` 归纳已有材料、核对来源锚点、列出缺口并选择 `finish`／`read`。日期、来源与预算仍由代码检查。模型主动提交的每条摘录都必须与其所指来源逐字匹配，标题和日期只接受既有的精确元数据锚点。内部结果 `assessed` 和 `needs_answer` 都进入统一正文流式生成；`diagnostics.agent.stopReason=evidence_assessed` 仅表示材料判断已接收。自动工具模式中未按协议输出的普通文本不会发布，改走普通正文生成；空工具输出仍为 `empty_answer`。来源检查不证明答复全文语义正确；错误、取消和用量处理保持，旧值只作为历史记录保留。见[当前架构](rag-architecture.md#6-agent-与-jev)。
 
 ## 历史存储
 

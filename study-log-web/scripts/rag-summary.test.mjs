@@ -8,6 +8,7 @@ import { parseRagHistory } from "../lib/rag-answer.ts";
 test('compaction stops between batches once actual excerpts leave room for remaining originals', async t => {
   let calls = 0;
   const server = http.createServer(async (req, res) => {
+    req.setEncoding('utf8');
     let raw = ''; for await (const chunk of req) raw += chunk;
     const evidence = JSON.parse(JSON.parse(raw).messages[1].content).evidence;
     calls++;
@@ -37,6 +38,7 @@ test('compaction stops between batches once actual excerpts leave room for remai
 test('a small input overflow compacts only the required long source and preserves other days verbatim', async t => {
   const requests = [];
   const server = http.createServer(async (req, res) => {
+    req.setEncoding('utf8');
     let raw = ''; for await (const chunk of req) raw += chunk;
     const evidence = JSON.parse(JSON.parse(raw).messages[1].content).evidence;
     requests.push(evidence);
@@ -61,6 +63,7 @@ test('short rules remain verbatim between long sources, even when adjacent summa
   let malformed = false; const requests = [];
   const rule = '只有来源一致且用户确认才能保存；没有确认不能保存。下一步参照南渡连接检查。';
   const server = http.createServer(async (req, res) => {
+    req.setEncoding('utf8');
     let raw = ''; for await (const chunk of req) raw += chunk;
     const body = JSON.parse(raw), evidence = JSON.parse(body.messages[1].content).evidence;
     requests.push(evidence);
@@ -92,6 +95,7 @@ test('short rules remain verbatim between long sources, even when adjacent summa
 test("batch synthesis keeps original source identity and marks failed compression as partial", async t => {
   let malformed = false;
   const server = http.createServer(async (req, res) => {
+    req.setEncoding("utf8");
     let raw = ""; for await (const chunk of req) raw += chunk;
     const evidence = JSON.parse(JSON.parse(raw).messages[1].content).evidence;
     res.setHeader("content-type", "application/json");
@@ -124,6 +128,7 @@ test('compaction accepts only ordered original excerpts and never registers inve
   const last = '下一步参照合成连接检查，不能套用另一项规则。';
   let response;
   const server = http.createServer(async (req, res) => {
+    req.setEncoding('utf8');
     let raw = ''; for await (const chunk of req) raw += chunk;
     const ids = JSON.parse(JSON.parse(raw).messages[1].content).evidence.map(item => item.sourceId);
     res.setHeader('content-type', 'application/json');
@@ -158,6 +163,7 @@ test('repeated compaction checks the original body rather than its inserted omis
   const first = '甲'.repeat(420), last = '乙'.repeat(420);
   const original = `${first}\n${'中间过程。'.repeat(3200)}\n${last}`;
   const server = http.createServer(async (req, res) => {
+    req.setEncoding('utf8');
     let raw = ''; for await (const chunk of req) raw += chunk;
     const evidence = JSON.parse(JSON.parse(raw).messages[1].content).evidence;
     const excerpts = ++calls <= 2 ? [first, last] : [`${'甲'.repeat(20)}\n[…]\n${'乙'.repeat(20)}`];

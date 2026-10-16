@@ -1,4 +1,5 @@
 import test from "node:test";
+import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 import { planRagRetrieval } from "../lib/rag-retrieval-plan.ts";
 import { EvidenceRun, collectRagEvidence } from "../lib/rag-evidence.ts";
@@ -8,6 +9,42 @@ import { readLogRange } from "../../study-log-mcp/src/range-reader.mjs";
 const block = (date, content = "条件成立才适用，并非所有情况都成立。") => ({ date, month: date.slice(0, 7), fileName: `${date.slice(0, 7)}_学习日志.md`, content });
 const config = { url: "http://unused.test", token: "synthetic" };
 const readers = blocks => ({ search: async () => { throw Error("must enumerate"); }, read: async args => validateRangePage(readLogRange(blocks, args)) });
+
+test('complete range distinguishes unrecorded calendar dates from unread records',async()=>{
+  for(const [from,to,dates,absent]of [
+    ['2026-11-28','2026-12-03',['2026-11-29','2026-12-02'],4],
+    ['2024-02-28','2024-03-01',['2024-02-29'],2],
+    ['2026-06-01','2026-06-02',[],2],
+    ['2026-07-01','2026-07-01',['2026-07-01'],0]
+  ]){
+    const run=new EvidenceRun(new AbortController().signal);
+    await collectRagEvidence('合成范围总结',{strategy:'timeline_summary',dateFrom:from,dateTo:to},run,config,readers(dates.map(date=>block(date))));
+    assert.equal(run.snapshot().scopes[0].unrecordedDayCount,absent);
+    assert.ok(run.answerReport().includes(`已确认无已保存日志的日历日期数${absent}`));
+    assert.match(run.answerReport(),/不属于读取遗漏/);
+    assert.match(run.answerReport(),/不代表当天没有学习/);
+    assert.equal(JSON.parse(run.report()).scopes[0].unrecordedDayCount,absent);
+    run.limited=true;
+    if(run.contexts.length){run.contexts[0].truncated=true;run.compactedSources.add(run.contexts[0].sourceId);}
+    assert.equal(run.snapshot().scopes[0].unrecordedDayCount,absent,'Reduced model material does not undo a completed enumeration');
+  }
+});
+
+test('search, incomplete enumeration and changed source never assert absent records',()=>{
+  const run=new EvidenceRun(new AbortController().signal);
+  const complete={dateFrom:'2026-06-01',dateTo:'2026-06-03',totalDays:1,readDates:['2026-06-01'],status:'complete'};
+  for(const change of [
+    {status:'search'},{status:'partial'},{status:'failed'},
+    {totalDays:null},{readDates:[]},{readDates:['2026-05-31']},
+    {dateFrom:undefined},{dateTo:'2026-02-30'},{dateTo:'2026-05-31'}
+  ]){
+    run.coverage=[{...complete,...change}];
+    assert.equal(run.snapshot().scopes[0].unrecordedDayCount,null);
+    assert.ok(!/已确认无已保存日志的日历日期数\d/.test(run.answerReport()));
+  }
+  run.coverage=[complete];run.sourceChanged=true;
+  assert.equal(run.snapshot().scopes[0].unrecordedDayCount,null);
+});
 
 test('source change during an Agent search keeps its fatal classification and blocks later reads',async()=>{
   const run=new EvidenceRun(new AbortController().signal);
@@ -40,7 +77,7 @@ test('answer coverage preserves each scope and source limitation without interna
 
 test('answer coverage distinguishes model termination from hard budgets',()=>{
   const run=new EvidenceRun(new AbortController().signal);
-  const reasons={tool_budget:'工具调用次数达到上限',repeated_query:'重复查询已停止',no_new_evidence:'未取得新的证据',step_limit:'补查轮数达到上限',decision_output_limit:'模型未完整结束补查决策',tool_failure:'补查工具失败',invalid_read_date:'模型选择的日期不在允许读取的集合中',evidence_limit:'保留材料达到容量上限',sufficient_evidence:'取证模型判断已有足够依据',no_more_leads:'取证模型判断没有更多线索',source_changed:'读取期间原文改变'};
+  const reasons={tool_budget:'工具调用次数达到上限',repeated_query:'重复查询已停止',no_new_evidence:'未取得新的证据',step_limit:'补查轮数达到上限',decision_output_limit:'模型未完整结束补查决策',tool_failure:'补查工具失败',invalid_read_date:'模型选择的日期不在允许读取的集合中',evidence_limit:'保留材料达到容量上限',evidence_assessed:'模型已完成材料判断，最终回答仍须依据原文',unstructured_answer:'模型未按受检格式提交，已改用普通回答流程',empty_answer:'模型未生成回答正文',source_changed:'读取期间原文改变'};
   for(const [reason,description]of Object.entries(reasons)){run.stopReason=reason;assert.ok(run.answerReport().includes(description));}
   run.stopReason=undefined;assert.match(run.answerReport(),/取证停止原因：未提供/);
   assert.match(run.answerReport(),/取证模型决定结束不代表程序证明完整/);
@@ -172,4 +209,27 @@ test('coverage reports independent last-read dates without inventing requested m
   assert.deepEqual(run.coverage,original);
   run.coverage=[{dateFrom:'2026-09-01',dateTo:'2026-09-30',totalDays:null,readDates:['2026-10-01','2026-02-30','invalid'],status:'failed'}];
   assert.equal(JSON.parse(run.report()).scopes[0].lastReadDate,null);
+});
+
+
+test('model evidence supersedes only contained excerpts from the same day version and section', () => {
+  const hash = text => createHash('sha256').update(text).digest('hex');
+  const content = '## 2026-09-01\n\n### 1. Alpha\n\n背景及完整条件。\n\n### Beta\n\n另一节的内容。';
+  const dayHash = hash(content), fileName = '2026-09_学习日志.md';
+  const run = new EvidenceRun(new AbortController().signal);
+  run.add([{date:'2026-09-01',fileName,heading:'Alpha',headingIndex:0,chunkId:'section',content:'背景',contentHash:hash('背景'),dayContentHash:dayHash,truncated:true}]);
+  run.add([{date:'2026-09-01',fileName,heading:null,headingIndex:null,chunkId:'2026-09-01:range:0',content,contentHash:dayHash,dayContentHash:dayHash,truncated:false}]);
+  assert.equal(run.contexts.length,2,'registry identities must remain intact');
+  assert.deepEqual(run.modelContexts().map(item=>item.sourceId),['S2']);
+  assert.equal(run.resolveModelSource('S1').sourceId,'S2');
+  assert.equal(run.resolveModelSource('S99'),undefined);
+  assert.deepEqual(run.snapshot(run.modelContexts()).truncatedSources,[]);
+  for (const change of [{heading:'Beta',headingIndex:1},{dayContentHash:undefined},{content:'不存在的原文'},{headingIndex:null}]) {
+    const saved={...run.contexts[0]};Object.assign(run.contexts[0],change);
+    assert.deepEqual(run.modelContexts().map(item=>item.sourceId),['S1','S2']);
+    assert.equal(run.resolveModelSource('S1').sourceId,'S1');
+    Object.assign(run.contexts[0],saved);
+  }
+  run.contexts[1].truncated=true;
+  assert.deepEqual(run.modelContexts().map(item=>item.sourceId),['S1','S2']);
 });

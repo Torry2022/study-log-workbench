@@ -116,15 +116,18 @@ export function needsSemanticRetrievalPlanning(plan: RagRetrievalPlan): boolean 
 }
 
 function extractLiteralLookup(value: string): string | null {
-  const hasLookupIntent =
-    /(?:原文|哪天|什么时候|哪篇日志|哪个(?:日块|日志)|在哪(?:天|篇|个日块|个日志)?|哪里).{0,16}(?:写过|写了|提到过|提过|提到|记录过|记录了|记过|出现过|出现于|包含)|(?:搜索|查找|定位)(?:一下|原文|日志)?/.test(value);
+  // Exact matching needs a source-location question or an explicit lookup action.
+  // A verb occurring as a topic noun (e.g. a tool's positioning) is not an action.
+  const sourceLookup = /(?:原文|哪天|什么时候|哪篇日志|哪个(?:日块|日志)|在哪(?:天|篇|个日块|个日志)?|哪里).{0,16}(?:写过|写了|提到过|提过|提到|记录过|记录了|记过|出现过|出现于|包含)/.test(value);
+  const action = value.match(/(?:^|[，,；;。]\s*)(?:(?:(?:请|帮我|麻烦|只|先|再)\s*)+(?:搜索|查找|定位)(?:一下)?\s*|(?:搜索|查找|定位)(?:一下)?(?:\s+|(?=原文|日志|记录|[`“‘"'])))(?:原文|(?:日志|记录)(?:中|里)?的?)?\s*(.+?)[？?。！!]*$/);
+  const hasLookupIntent = sourceLookup || !!action;
   if (!hasLookupIntent) return null;
 
   const quoted = value.match(/`([^`\n]{1,120})`|“([^”\n]{1,120})”|‘([^’\n]{1,120})’|"([^"\n]{1,120})"|'([^'\n]{1,120})'/);
   const quotedValue = quoted?.slice(1).find(Boolean)?.trim();
   if (quotedValue) return quotedValue;
 
-  const trailing = value.match(/(?:写过|写了|提到过|提过|提到|记录过|记录了|记过|出现过|出现于|包含|搜索|查找|定位)(?:一下|原文|日志)?\s*(?:关于)?\s*(.+?)[？?。！!]*$/);
+  const trailing = sourceLookup ? value.match(/(?:写过|写了|提到过|提过|提到|记录过|记录了|记过|出现过|出现于|包含)(?:一下|原文|日志)?\s*(?:关于)?\s*(.+?)[？?。！!]*$/) : action;
   const candidate = trailing?.[1]?.trim();
   if (!candidate || candidate.length > 120) return null;
   return candidate;

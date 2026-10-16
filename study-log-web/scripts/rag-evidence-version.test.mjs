@@ -90,7 +90,7 @@ test('actual query stops after source modification during Agent read, without fi
     await fs.writeFile(log, blocks('Alpha不必核对地址。')[0].content);
     const frame = delta => `data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: null }] })}\n\n`;
     res.setHeader('content-type', 'text/event-stream');
-    res.end(frame({ tool_calls: [{ index: 0, id: 'read', type: 'function', function: { name: 'read', arguments: JSON.stringify({date,missingPoint:'尚未提供的小节原因'}) } }] }) + 'data: '+JSON.stringify({choices:[{index:0,delta:{},finish_reason:'tool_calls'}]})+'\n\ndata: [DONE]\n\n');
+    res.end(frame({ tool_calls: [{ index: 0, id: 'read', type: 'function', function: { name: 'read_more', arguments: JSON.stringify({assessment:'尚未提供的小节原因。',evidence:[],unresolved:[{point:'尚未提供的小节原因',sourceId:'S1'}]}) } }] }) + 'data: '+JSON.stringify({choices:[{index:0,delta:{},finish_reason:'tool_calls'}]})+'\n\ndata: [DONE]\n\n');
   });
   await new Promise(resolve => model.listen(0, '127.0.0.1', resolve));
   t.after(async () => {

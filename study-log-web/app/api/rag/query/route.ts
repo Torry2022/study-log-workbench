@@ -27,7 +27,11 @@ export async function POST(request: NextRequest) {
     const question = typeof body?.question === "string" ? body.question.trim() : "";
     if (!question || question.length > 2000) return fail("问题必须为 1 至 2000 字", 400, "RAG_INVALID_INPUT");
     if (body.mode !== undefined && body.mode !== "logs_only" && body.mode !== "logs_and_general") return fail("回答模式无效", 400, "RAG_INVALID_INPUT");
-    const config = { chat: configureRagThinking(getChatConfig()), lightChat: getLightChatConfig(), mcp: getMcpConfig() };
+    const chat = configureRagThinking(getChatConfig()), lightChat = getLightChatConfig();
+    // Same-model understanding/compaction belongs to this RAG request too.
+    // An independently selected light model keeps its own provider defaults.
+    if (lightChat.model === chat.model && chat.thinkingMode) lightChat.thinkingMode = chat.thinkingMode;
+    const config = { chat, lightChat, mcp: getMcpConfig() };
     const stream = createRagQueryStream({ question, history: parseRagHistory(body.history), mode: body.mode || "logs_only" }, config, request.signal);
     return new Response(stream, { headers: { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-store, no-transform", "X-Accel-Buffering": "no" } });
   } catch (error) {

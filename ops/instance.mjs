@@ -193,7 +193,7 @@ export async function initialize(root) {
     await writeNew(envFile, [
       `APP_PASSWORD=${crypto.randomBytes(18).toString("base64url")}`,
       `SESSION_SECRET=${crypto.randomBytes(36).toString("base64url")}`,
-      "COOKIE_SECURE=false", "CHAT_API_URL=", "CHAT_MODEL=", "CHAT_API_KEY=", "RAG_AGENT_ENABLED=false",
+      "COOKIE_SECURE=false", "CHAT_API_URL=", "CHAT_MODEL=", "CHAT_API_KEY=", "RAG_AGENT_ENABLED=true",
       "RAG_AGENT_TOOL_CALLING_VERIFIED=false", "RAG_STATUS_VERIFICATION_ENABLED=false", "RAG_CONTEXT_WINDOW_TOKENS=", ""
     ].join("\n"));
     if (created) {

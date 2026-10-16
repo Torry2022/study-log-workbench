@@ -64,10 +64,11 @@ export interface RagSession extends RagSessionSummary {
 }
 
 export interface RagDiagnostics {
-  agent?: { enabled: boolean; answeredDirectly?: boolean; usage?: unknown; firstPassUsage?: unknown; firstPassLimited?: boolean; judgment?: { support: string; conflict: string }; judgeUsage?: unknown; judgeUnavailable?: boolean; judgeSkipped?: "outside_short_evidence_scope"; stopReason?: string };
+  agent?: { enabled: boolean; entered?: boolean; assessed?: boolean; usage?: unknown; firstPassUsage?: unknown; firstPassLimited?: boolean; judgment?: { support: string; conflict: string }; judgeUsage?: unknown; judgeUnavailable?: boolean; judgeSkipped?: "outside_short_evidence_scope"; stopReason?: string };
   rangeStatusVerification?: { enabled: boolean; claimCount: number; removedCount: number; failed?: boolean };
   coverage?: unknown;
   toolCalls?: number;
+  materialProcessing?: { calls: number; totalBatches: number; processedBatches: number; complete: boolean };
   usage?: Array<{ model: string; inputTokens: number | null; outputTokens: number | null }>;
   traceId: string;
   status: "completed" | "no_evidence" | "error";

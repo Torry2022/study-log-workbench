@@ -14,7 +14,7 @@ CHAT_API_KEY=replace-with-your-key
 
 问答可选 `RAG_DEEPSEEK_THINKING=disabled` 或 `low`，仅适用于 HTTPS 官方 `api.deepseek.com` 的 `deepseek-flash`、`deepseek-v4-pro`。留空沿用供应商默认行为；不会自动关闭思考或更换模型。`disabled` 发送 `thinking.type=disabled`，不发送无效的 `reasoning_effort=none`；`low` 发送 `thinking.type=enabled` 和 `reasoning_effort=low`。普通问答最终生成与 SDK 工具循环使用相同参数。此设置不改变轻量规划、材料压缩、会话标题或其他模块的 AI 调用；代理接口不凭模型名推断兼容性，显式配置不支持的组合时问答返回配置错误，不静默忽略。保存后重启实例生效，现有桌面模型设置窗口仍只管理地址、模型和密钥。参数依据：[DeepSeek 思考模式](https://api-docs.deepseek.com/guides/thinking_mode/)。
 
-Agent 不按供应商地址或模型名自动启用。确认当前模型支持 OpenAI 兼容工具调用后，同时设置 `RAG_AGENT_ENABLED=true` 与 `RAG_AGENT_TOOL_CALLING_VERIFIED=true`，相关性问答才使用有界 Agent；两项缺一项均使用普通 RAG。完整日期范围已经读完和字面查找不进入工具循环。Jev 不随 Agent 自动启用。当前真实模型验收使用 DeepSeek Flash，但这只是已验证样本，不是产品依赖或默认模型。
+Agent 不按供应商地址或模型名启用。`RAG_AGENT_TOOL_CALLING_VERIFIED=true` 仍需显式确认；`RAG_AGENT_ENABLED` 未设置或为 true 时允许按需运行，false 关闭，其他值不启用。新实例总开关为 true、能力确认为 false；已有实例不自动改写。材料充分时首个 SDK 调用可直接答复，实际补查或超限材料处理才计为进入 Agent；完整范围已读且材料容纳得下、以及字面查找继续直接生成。Jev 不自动启用，DeepSeek 只是验收样本。
 
 长范围总结的“仍待解决”窄核对由 `RAG_STATUS_VERIFICATION_ENABLED=true` 单独启用，不从 Agent 开关、供应商或模型名推断。只有完整读取至少 14 个日志日块且回答确实产生该小节时才增加一次结构化核对；模型不兼容结构化输出时保留原回答并提示核对未完成。
 

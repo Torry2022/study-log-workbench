@@ -4,16 +4,16 @@ import type { ChatConfig } from "./ai-config.ts";
 import type { McpConfig } from "./mcp-config.ts";
 import { McpRetrievalError } from "./mcp-client.ts";
 import { buildRagMessages, normalizeRagAnswer, createRagAnswerOutput, NO_LOG_EVIDENCE } from "./rag-answer.ts";
-import { contextualizeRagQuestion, planRagRetrievalWithFallback, type RagContextualizedQuestion } from "./rag-planning.ts";
+import { prepareRagQuery } from "./rag-planning.ts";
 import { streamRagAnswer } from "./rag-stream.ts";
 import type { RagAnswerMode, RagCitation, RagDiagnostics, RagHistoryMessage } from "./rag-types.ts";
 import { RAG_MAX_SOURCES } from "./rag-types.ts";
 
 import { EvidenceRun, collectRagEvidence } from "./rag-evidence.ts";
-import { agentEnabled, createAgentModel, supplementEvidence } from "./rag-agent.ts";
+import { agentEnabled, createAgentModel, supplementEvidence, type RagAgentResult } from "./rag-agent.ts";
 import { compactEvidence } from "./rag-evidence-summary.ts";
+import { processRagMaterial } from "./rag-material.ts";
 import { judgeEvidence, jevConfiguration, isBoundedJevInput } from "./rag-jev.ts";
-import { planRagRetrieval } from "./rag-retrieval-plan.ts";
 import { extractRangeStatusClaims, rangeStatusVerificationEnabled, verifyRangeStatusClaims } from "./rag-status-verifier.ts";
 
 export interface RagQueryInput { question: string; history: RagHistoryMessage[]; mode: RagAnswerMode }
@@ -43,79 +43,64 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
       const elapsed = () => Math.round(performance.now() - stageStart);
       try {
         signal.throwIfAborted();
-        let query = input.question;
-        let contextualized: RagContextualizedQuestion | undefined;
-        const original = planRagRetrieval(input.question);
-        if (original.invalidDate) {
+        const prepared = await prepareRagQuery(input.question, input.history, signal, config.lightChat, phase => {
+          diagnostics.timings[stage === "contextualizing" ? "contextualizationMs" : "planningMs"] = elapsed();
+          stage = phase; stageStart = performance.now();
+          send("status", { stage: "contextualizing", message: phase === "planning" ? "正在规划检索" : "正在理解问题" });
+        });
+        if (prepared.kind === "clarification") {
           diagnostics.timings.totalMs = Math.round(performance.now() - started);
           send("sources", { citations: [] });
-          send("done", { answer: "问题中的日期似乎有误，请检查月份和天数后再提问。", citations: [], diagnostics });
+          send("done", { answer: prepared.answer, citations: [], diagnostics });
           close(); return;
         }
-        const referenceNumber = input.question.match(/(?:刚才|上(?:一|个)(?:次|回答)?|第)\s*(?:的)?\s*(?:第)?([一二三四五六七八九十]|\d+)\s*(?:条|个)?来源/);
-        const referenceIndex = referenceNumber ? (/^\d+$/.test(referenceNumber[1]) ? Number(referenceNumber[1]) : "一二三四五六七八九十".indexOf(referenceNumber[1]) + 1) - 1 : -1;
-        const referenced = [...input.history].reverse().find(message => message.role === "assistant")?.sourceRefs?.[referenceIndex];
-        if (referenceNumber && !referenced) {
-          // A missing source pointer is not permission to search for a different source.
-          diagnostics.timings.totalMs = Math.round(performance.now() - started);
-          send("sources", { citations: [] });
-          send("done", { answer: "无法确定你指的是哪条来源。请打开对应的日志，或补充日期和小节标题后再提问。", citations: [], diagnostics });
-          close(); return;
-        }
-        const originalRanges = original.ranges || [{ dateFrom: original.dateFrom, dateTo: original.dateTo }];
-        if (referenced && !originalRanges.some(range => (!range.dateFrom || referenced.date >= range.dateFrom) && (!range.dateTo || referenced.date <= range.dateTo))) {
-          diagnostics.timings.totalMs = Math.round(performance.now() - started);
-          send("sources", { citations: [] });
-          send("done", { answer: "这条历史来源不在你指定的日期范围内。请确认是查看这条来源，还是只查该日期范围内的记录。", citations: [], diagnostics });
-          close(); return;
-        }
-        if (input.history.length && !referenced) {
-          send("status", { stage, message: "正在理解问题" });
-          try {
-            contextualized = await contextualizeRagQuestion(input.question, input.history, signal, config.lightChat);
-            query = contextualized.query; diagnostics.contextualized = query !== input.question || contextualized.scopeSource !== null;
-          } catch (error) {
-            const priorScope = input.history.some(item => item.role === "user" && planRagRetrieval(item.content).dateFrom);
-            if (signal.aborted || error instanceof AiChatError && error.code === "RAG_CONTEXT_UNCERTAIN" || priorScope && !original.dateFrom && !original.matchMode && !original.eventDates) throw error;
-            diagnostics.contextualizationFallback = true;
-          }
-          diagnostics.timings.contextualizationMs = elapsed();
-        }
-        signal.throwIfAborted(); stage = "planning"; stageStart = performance.now();
-        send("status", { stage: "contextualizing", message: "正在规划检索" });
-        // A new topic is planned from the current question, not dates inserted into rewritten prose.
-        const planningQuestion = contextualized ? input.question : query;
-        const planned = contextualized && contextualized.scopeSource !== null
-          ? { plan: contextualized.plan, planner: "rules" as const }
-          : !referenced && /总结|回顾|比较|对比|阶段|期间|那几天|之前|之后/.test(planningQuestion)
-            ? await planRagRetrievalWithFallback(planningQuestion, signal, new Date(), config.lightChat)
-            : { plan: contextualized?.plan || planRagRetrieval(query), planner: "rules" as const };
-        // Rewriting may resolve pronouns but cannot erase original explicit constraints.
-        if (original.dateFrom || original.matchMode || original.eventDates) planned.plan = original;
-        if (referenced) planned.plan = { strategy: "timeline_summary", dateFrom: referenced.date, dateTo: referenced.date };
-        diagnostics.timings.planningMs = elapsed(); diagnostics.retrievalPlanner = planned.planner; diagnostics.retrievalStrategy = planned.plan.strategy;
-        const comparisonScopes = planned.plan.strategy === "comparison" && planned.plan.ranges?.length && planned.plan.ranges.length > 1
-          ? planned.plan.ranges
+        const { query, referenced, plan, planner } = prepared;
+        diagnostics.contextualized = prepared.contextualized;
+        diagnostics.contextualizationFallback = prepared.contextualizationFallback;
+        diagnostics.timings.planningMs = elapsed(); diagnostics.retrievalPlanner = planner; diagnostics.retrievalStrategy = plan.strategy;
+        const comparisonScopes = plan.strategy === "comparison" && plan.ranges?.length && plan.ranges.length > 1
+          ? plan.ranges
           : [];
         signal.throwIfAborted(); stage = "retrieving"; stageStart = performance.now();
         send("status", { stage, message: "正在检索日志" });
         const run = new EvidenceRun(signal);
-        let directAnswer: string | undefined;
-        await measure("retrievalMs", () => collectRagEvidence(query, planned.plan, run, config.mcp));
+        let agentResult: RagAgentResult | undefined;
+        await measure("retrievalMs", () => collectRagEvidence(query, plan, run, config.mcp));
         if (run.sourceChanged) throw new McpRetrievalError("MCP_SOURCE_CHANGED", "读取期间日志发生了修改，请重新提问以读取最新内容");
         if (referenced && run.contexts.some(item => item.fileName !== referenced.fileName)) { run.contexts = []; run.limited = true; }
         if (run.coverage.length && run.coverage.every(scope => scope.status === "failed")) throw new McpRetrievalError("MCP_RANGE_FAILED", "无法读取所选日期的日志，请检查检索服务版本或重试");
+        const usages = new Map<number, { model: string; inputTokens: number | null; outputTokens: number | null }>();
+        const agentModel = createAgentModel(config.chat, fetch, (call, usage) => {
+          diagnostics.agent ??= { enabled: true };
+          const previous = usages.get(call);
+          // Later partial/invalid frames cannot erase values already received
+          // for this call. A new known value replaces, rather than adds to it.
+          const entry = { model: config.chat.model,
+            inputTokens: usage.inputTokens ?? previous?.inputTokens ?? null,
+            outputTokens: usage.outputTokens ?? previous?.outputTokens ?? null };
+          if (previous) diagnostics.usage!.splice(diagnostics.usage!.indexOf(previous), 1, entry);
+          else diagnostics.usage!.push(entry);
+          usages.set(call, entry);
+          const sum = (key: "inputTokens" | "outputTokens") => [...usages.values()].some(item => item[key] === null)
+            ? null : [...usages.values()].reduce((total, item) => total + item[key]!, 0);
+          diagnostics.agent!.usage = { inputTokens: sum("inputTokens"), outputTokens: sum("outputTokens") };
+        });
         const boundedJevInput = isBoundedJevInput(input.question, run.contexts);
-        await measure("compactionMs", () => compactEvidence(run, input.question, config.lightChat, config.chat, input.history, input.mode, comparisonScopes));
+        let materialProcessed = false;
+        const materialOptions = { question: input.question, history: input.history, mode: input.mode, comparisonScopes, coverage: run.answerReport() };
+        if (agentEnabled()) materialProcessed = await measure("compactionMs", () => processRagMaterial(run, config.chat,
+          agentModel, materialOptions, message => send("status", { stage: "retrieving", message }), plan.strategy !== "relevance"));
+        if (!materialProcessed) await measure("compactionMs", () => compactEvidence(run, input.question, config.lightChat, config.chat, input.history, input.mode, comparisonScopes));
         // Successful enumeration covers the requested scope, including confirmed empty periods.
         // Check after compaction: a failed summary can still leave material missing.
         const scopeFullyRead = !run.limited && run.coverage.length > 0 && run.coverage.every(scope => scope.status === "complete" || scope.status === "empty");
         const completeDays = run.coverage.filter(scope => scope.status === "complete").reduce((sum, scope) => sum + scope.readDates.length, 0);
-        const verifyRangeStatus = scopeFullyRead && rangeStatusVerificationEnabled(planned.plan.strategy, completeDays);
+        const verifyRangeStatus = scopeFullyRead && rangeStatusVerificationEnabled(plan.strategy, completeDays);
         // Search coverage is not proof that the question is answered. Let the same
-        // bounded tool loop choose finish or follow a lead, independent of wording.
-        if (agentEnabled() && !scopeFullyRead && !planned.plan.matchMode) {
-          diagnostics.agent = { enabled: true };
+        // bounded tool loop answer or follow a lead, independent of wording.
+        if (materialProcessed) diagnostics.agent = { ...diagnostics.agent, enabled: true, entered: true };
+        if (agentEnabled() && !scopeFullyRead && !plan.matchMode) {
+          diagnostics.agent = { ...diagnostics.agent, enabled: true };
           const jev = jevConfiguration();
           if (process.env.RAG_JEV_ENABLED === "true" && jev) {
             if (!boundedJevInput) diagnostics.agent.judgeSkipped = "outside_short_evidence_scope";
@@ -128,32 +113,25 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
             }
           }
           if (diagnostics.agent.judgment?.support !== "supported" || diagnostics.agent.judgment?.conflict !== "absent") {
-            const usages = new Map<number, { model: string; inputTokens: number | null; outputTokens: number | null }>();
-            const model = createAgentModel(config.chat, fetch, (call, usage) => {
-              const previous = usages.get(call);
-              // Later partial/invalid frames cannot erase values already received
-              // for this call. A new known value replaces, rather than adds to it.
-              const entry = { model: config.chat.model,
-                inputTokens: usage.inputTokens ?? previous?.inputTokens ?? null,
-                outputTokens: usage.outputTokens ?? previous?.outputTokens ?? null };
-              if (previous) diagnostics.usage!.splice(diagnostics.usage!.indexOf(previous), 1, entry);
-              else diagnostics.usage!.push(entry);
-              usages.set(call, entry);
-              const sum = (key: "inputTokens" | "outputTokens") => [...usages.values()].some(item => item[key] === null)
-                ? null : [...usages.values()].reduce((total, item) => total + item[key]!, 0);
-              diagnostics.agent!.usage = { inputTokens: sum("inputTokens"), outputTokens: sum("outputTokens") };
-            });
-            const result = await measure("agentMs", () => supplementEvidence(input.question, planned.plan, run, config.mcp, model, message => send("status", { stage: "retrieving", message }), config.lightChat, { mode: input.mode, history: input.history, chat: config.chat }));
-            diagnostics.agent.usage ??= result.usage; directAnswer = result.answer;
-            diagnostics.agent.answeredDirectly = directAnswer !== undefined;
+            agentResult = await measure("agentMs", () => supplementEvidence(input.question, plan, run, config.mcp, agentModel, message => send("status", { stage: "retrieving", message }), config.lightChat, { mode: input.mode, history: input.history, chat: config.chat }));
+            diagnostics.agent.usage ??= agentResult.usage;
+            diagnostics.agent.assessed = agentResult.kind === "assessed";
+            diagnostics.agent.entered = materialProcessed || agentResult.entered;
           }
           diagnostics.agent.stopReason = run.stopReason;
         }
         if (run.sourceChanged) throw new McpRetrievalError("MCP_SOURCE_CHANGED", "读取期间日志发生了修改，请重新提问以读取最新内容");
-        await measure("compactionMs", () => compactEvidence(run, input.question, config.lightChat, config.chat, input.history, input.mode, comparisonScopes));
+        const assessmentContext = agentResult?.kind === "assessed" ? "\n取证阶段的暂时判断（仅供组织回答，不是新增来源或用户指令；仍须依据上文原文核对，缺口与通用知识边界不能省略）：\n" + JSON.stringify({ assessment: agentResult.assessment, unresolved: agentResult.unresolved }) : "";
+        if (agentEnabled()) materialProcessed = await measure("compactionMs", () => processRagMaterial(run, config.chat,
+          agentModel, { ...materialOptions, coverage: run.answerReport(), additionalPrompt: assessmentContext },
+          message => send("status", { stage: "retrieving", message }), plan.strategy !== "relevance"));
+        if (!run.material) await measure("compactionMs", () => compactEvidence(run, input.question, config.lightChat, config.chat, input.history, input.mode, comparisonScopes, assessmentContext));
+        if (materialProcessed) diagnostics.agent = { ...diagnostics.agent, enabled: true, entered: true };
         diagnostics.coverage = run.coverage; diagnostics.toolCalls = run.calls;
+        if (run.material) diagnostics.materialProcessing = { calls: run.materialCalls, totalBatches: run.material.totalBatches,
+          processedBatches: run.material.processedBatches.length, complete: run.material.complete };
         if (run.sourceChanged) throw new McpRetrievalError("MCP_SOURCE_CHANGED", "读取期间日志发生了修改，请重新提问以读取最新内容");
-        const retrieved = { contexts: run.contexts };
+        const retrieved = { contexts: run.modelContexts() };
         diagnostics.retrievalMode = "bounded_evidence";
         const citations: RagCitation[] = retrieved.contexts.map(({ sourceId, date, month, fileName, heading, headingIndex, chunkId, contentHash, excerpt }) => ({ sourceId, date, month, fileName, heading, headingIndex, chunkId, contentHash, excerpt }));
         diagnostics.sourceCount = citations.length;
@@ -161,7 +139,9 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
         if (!citations.length && input.mode === "logs_only") {
           diagnostics.status = "no_evidence"; diagnostics.timings.totalMs = Math.round(performance.now() - started);
           send("sources", { citations: [] });
-          send("done", { answer: run.limited || run.coverage.some(scope => scope.status === "partial" || scope.status === "failed") ? "本次未能完整读取相关记录，目前没有足够依据回答。可以缩小日期范围后重试。" : NO_LOG_EVIDENCE, citations: [], diagnostics }); close(); return;
+          const answer = run.material && !run.material.complete ? "本次尚未处理完相关材料，目前没有足够依据回答。可以缩小日期范围后重试。"
+            : run.limited || run.coverage.some(scope => scope.status === "partial" || scope.status === "failed") ? "本次未能完整读取相关记录，目前没有足够依据回答。可以缩小日期范围后重试。" : NO_LOG_EVIDENCE;
+          send("done", { answer, citations: [], diagnostics }); close(); return;
         }
         signal.throwIfAborted(); stage = "answering"; stageStart = performance.now();
         send("status", { stage, message: "正在生成回答" });
@@ -170,29 +150,28 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
           send("delta", { text: delta });
         });
         try {
-          if (directAnswer !== undefined) output.push(directAnswer);
+          const coverage = run.answerReport() + (referenced ? `\n用户指向历史来源：${referenced.date} ${referenced.heading || ""}。已重新读取当前原文；历史摘录和编号不可视为当前事实。` : "");
+          const messages = buildRagMessages(input.question, input.history, retrieved.contexts, input.mode, coverage, verifyRangeStatus, comparisonScopes);
+          messages[messages.length - 1].content += assessmentContext;
+          if (agentResult?.kind === "answered") output.push(agentResult.answer);
+          else if (!verifyRangeStatus) await streamRagAnswer(config.chat, messages, delta => output.push(delta), { signal });
           else {
-            const coverage = run.answerReport() + (referenced ? `\n用户指向历史来源：${referenced.date} ${referenced.heading || ""}。已重新读取当前原文；历史摘录和编号不可视为当前事实。` : "");
-            const messages = buildRagMessages(input.question, input.history, retrieved.contexts, input.mode, coverage, verifyRangeStatus, comparisonScopes);
-            if (!verifyRangeStatus) await streamRagAnswer(config.chat, messages, delta => output.push(delta), { signal });
-            else {
-              let draft = "";
-              await streamRagAnswer(config.chat, messages, delta => { draft += delta; }, { signal });
-              const claimCount = extractRangeStatusClaims(draft).length;
-              if (!claimCount) {
-                diagnostics.rangeStatusVerification = { enabled: true, claimCount: 0, removedCount: 0 };
-                output.push(draft);
-              } else try {
-                send("status", { stage: "answering", message: "正在核对范围末状态" });
-                const verified = await measure("statusVerificationMs", () => verifyRangeStatusClaims(draft, messages, config.chat, signal));
-                diagnostics.rangeStatusVerification = { enabled: true, claimCount: verified.verdicts.length,
-                  removedCount: verified.verdicts.filter(verdict => verdict.verdict !== "supported").length };
-                output.push(verified.answer);
-              } catch {
-                signal.throwIfAborted();
-                diagnostics.rangeStatusVerification = { enabled: true, claimCount, removedCount: 0, failed: true };
-                output.push(`${draft.trim()}\n\n> 范围末状态核对未完成，请结合来源确认“仍待解决”部分。`);
-              }
+            let draft = "";
+            await streamRagAnswer(config.chat, messages, delta => { draft += delta; }, { signal });
+            const claimCount = extractRangeStatusClaims(draft).length;
+            if (!claimCount) {
+              diagnostics.rangeStatusVerification = { enabled: true, claimCount: 0, removedCount: 0 };
+              output.push(draft);
+            } else try {
+              send("status", { stage: "answering", message: "正在核对范围末状态" });
+              const verified = await measure("statusVerificationMs", () => verifyRangeStatusClaims(draft, messages, config.chat, signal));
+              diagnostics.rangeStatusVerification = { enabled: true, claimCount: verified.verdicts.length,
+                removedCount: verified.verdicts.filter(verdict => verdict.verdict !== "supported").length };
+              output.push(verified.answer);
+            } catch {
+              signal.throwIfAborted();
+              diagnostics.rangeStatusVerification = { enabled: true, claimCount, removedCount: 0, failed: true };
+              output.push(`${draft.trim()}\n\n> 范围末状态核对未完成，请结合来源确认“仍待解决”部分。`);
             }
           }
         } finally { output.flush(); }

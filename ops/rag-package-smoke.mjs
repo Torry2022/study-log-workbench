@@ -1,3 +1,4 @@
+import { agentAssessmentFixture } from '../study-log-web/scripts/rag-model-fixture.mjs';
 import fs from "node:fs/promises";
 import path from "node:path";
 import assert from "node:assert/strict";
@@ -40,12 +41,10 @@ const model = http.createServer(async (req, res) => {
   if (state && state.question.includes('Gamma') && state.remainingDecisions === 2) {
     assert.ok(state.availableReadDates.includes('2026-09-02'));
   }
-  if (firstTurn && (firstLimited || state.question.includes('Alpha'))) {
+  if (firstTurn && firstLimited) {
     res.setHeader('content-type','text/event-stream');
     res.end('data: '+JSON.stringify({choices:[{index:0,delta:{content:firstLimited?'内部首轮截断文本':'Alpha条件成立才适用，不适用于所有场景。[S1]'},finish_reason:firstLimited?'length':'stop'}],usage:{prompt_tokens:10,completion_tokens:5}})+'\n\ndata: [DONE]\n\n'); return;
   }
-  const name = state?.question.includes('Gamma') && state.remainingDecisions === 2 ? 'read' : 'finish';
-  const args = name === 'read' ? {date:invalidReadDate?'2026-11-01':'2026-09-02',missingPoint:'Gamma的补充条件'} : {reason:'sufficient_evidence'};
   const provided = body.messages.map(message => message.content).join('\n');
   const gammaSource = [...provided.matchAll(/\[(S\d+)\]\n日志日期：2026-09-02(?:\n小节：[^\n]*)?\n内容：\n([\s\S]*?)\n以上为/g)].find(match => match[2].includes('先确认地址'));
   const answerAfterRead = body.tools && state?.question.includes('Gamma') && state.remainingDecisions === 1;
@@ -53,9 +52,14 @@ const model = http.createServer(async (req, res) => {
     assert.ok(gammaSource, 'Second SDK turn must contain the actual reread condition');
     assert.ok(!body.tools.some(item => item.function.name === 'finish'));
   }
-  const delta = body.tools && !answerAfterRead
-    ? { tool_calls: [{ index: 0, id: `call-${++toolRequests}`, type: "function", function: { name, arguments: JSON.stringify(args) } }] }
-    : { content: invalidReadDate ? '补查未完成，现有片段无法确定补充条件。[S1]' : gammaSource ? `Gamma补充条件是先确认地址。[${gammaSource[1]}]。S1 是片段，${gammaSource[1]} 提供完整条件。` : '条件成立才适用[S1]' };
+  const answer = invalidReadDate ? '补查未完成，现有片段无法确定补充条件。[S1]' : gammaSource ? `Gamma补充条件是先确认地址。[${gammaSource[1]}]。` : '条件成立才适用[S1]';
+  if (body.tools && !(state?.question.includes('Gamma') && state.remainingDecisions === 2)) {
+    res.setHeader('content-type','text/event-stream');res.end(await agentAssessmentFixture(answer,body).text());return;
+  }
+  const args = body.tools ? {assessment:'现有片段尚缺Gamma的明确补充条件。',evidence:[],next:'read',unresolved:[{point:'Gamma的补充条件',sourceId:invalidReadDate?'2026-11-01':state.readCandidates.find(item=>item.date==='2026-09-02').sourceId}]} : null;
+  const delta = body.tools
+    ? { tool_calls: [{ index: 0, id: `call-${++toolRequests}`, type: 'function', function: { name:'assess', arguments:JSON.stringify(args) } }] }
+    : { content:answer };
   const frame = value => `data: ${JSON.stringify(value)}\n\n`;
   res.setHeader("content-type", "text/event-stream");
   res.end(frame({ id: "mock", object: "chat.completion.chunk", created: 1, model: "synthetic-model", choices: [{ index: 0, delta, finish_reason: null }] }) + frame({ choices: [{ index: 0, delta: {}, finish_reason: delta.tool_calls ? "tool_calls" : "stop" }], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }) + "data: [DONE]\n\n");
@@ -93,7 +97,7 @@ try {
   assert.equal((await fetch(status.url)).status, 200);
   const auth = await (await fetch(`${status.url}/api/auth/app-login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password }) })).json();
   assert.equal(typeof auth.token, "string");
-  for (const [question, calls, date] of [["总结2026年9月",1,"2026-09-02"], ["Alpha为什么只在条件成立时适用？",1,"2026-09-01"], ["Gamma的补充条件是什么？",2,"2026-09-02"]]) {
+  for (const [question, calls, date] of [["总结2026年9月",1,"2026-09-02"], ["Alpha为什么只在条件成立时适用？",2,"2026-09-01"], ["Gamma的补充条件是什么？",3,"2026-09-02"]]) {
     const before = modelCalls;
     const response = await fetch(`${status.url}/api/rag/query`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${auth.token}` }, body: JSON.stringify({ question, mode: "logs_only", history: [] }) });
     assert.equal(response.status, 200);
@@ -103,14 +107,13 @@ try {
     for(const field of ['retrievalMs','compactionMs','judgeMs','agentMs','generationMs'])assert.ok(Number.isFinite(diagnostics.timings[field])&&diagnostics.timings[field]>=0,field);
     assert.ok(diagnostics.timings.retrievalMs+diagnostics.timings.compactionMs+diagnostics.timings.judgeMs+diagnostics.timings.agentMs+diagnostics.timings.generationMs<=diagnostics.timings.totalMs+10);
     if(question.startsWith('总结'))assert.equal(diagnostics.timings.agentMs,0);
-    else assert.equal(diagnostics.agent.answeredDirectly,true);
+    else assert.equal(diagnostics.agent.assessed,true);
     assert.equal(events.at(-1).data.citations[0].date, date);
     assert.equal(modelCalls-before,calls);
     if(question.includes('Gamma')) {
-      assert.match(events.at(-1).data.answer,/S2 是片段，S1 提供完整条件/);
+      assert.match(events.at(-1).data.answer,/先确认地址/);assert.equal(events.at(-1).data.citations.length,1);
       assert.equal(events.at(-1).data.citations[0].chunkId,'2026-09-02:range:0');
-      assert.equal(events.at(-1).data.citations[1].sourceId,'S2');
-      assert.ok(!events.at(-1).data.citations[1].chunkId.includes(':range:'));
+
     }
     checks.push({ question, modelCalls:modelCalls-before, diagnostics: events.at(-1).data.diagnostics });
   }
@@ -118,11 +121,11 @@ try {
   const beforeInvalidRead=modelCalls;
   const invalidRead=await fetch(`${status.url}/api/rag/query`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${auth.token}`},body:JSON.stringify({question:'Gamma的补充条件是什么？',mode:'logs_only',history:[]})});
   assert.equal(invalidRead.status,200);
-  const invalidReadTerminal=(await invalidRead.text()).trim().split('\n\n').at(-1);assert.match(invalidReadTerminal,/^event: done/);
+  const invalidReadTerminal=(await invalidRead.text()).trim().split('\n\n').at(-1);assert.match(invalidReadTerminal,/^event: error/);
   const invalidReadDone=JSON.parse(invalidReadTerminal.split('\n')[1].slice(6));
-  assert.equal(invalidReadDone.diagnostics.agent.stopReason,'invalid_read_date');assert.equal(invalidReadDone.diagnostics.toolCalls,1);
-  assert.equal(modelCalls-beforeInvalidRead,2);assert.equal(invalidReadDone.citations[0].date,'2026-09-02');
-  checks.push({invalidReadDateStops:true,modelCalls:2});invalidReadDate=false;
+  assert.equal(invalidReadDone.code,'AGENT_ANSWER_INVALID');assert.ok(!invalidReadTerminal.includes('event: done'));
+  assert.equal(modelCalls-beforeInvalidRead,1);
+  checks.push({invalidGapIdentityStops:true,modelCalls:1});invalidReadDate=false;
   finalLength=true;
   const beforeFinalLength=modelCalls;
   const failed=await fetch(`${status.url}/api/rag/query`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${auth.token}`},body:JSON.stringify({question:'哪里提到过`Alpha`？',mode:'logs_only',history:[]})});

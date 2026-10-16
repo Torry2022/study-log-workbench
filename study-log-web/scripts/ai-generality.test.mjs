@@ -9,7 +9,7 @@ test('nontechnical questions reach actual planning requests without a subject re
   const server = http.createServer(async (req, res) => {
     let body = ''; for await (const part of req) body += part;
     const input = JSON.parse(body); requests.push(input.messages);
-    const content = requests.length === 1 ? { query: '叙述者的判断为什么不等于作者的立场？', scopeSource: null } : { strategy: 'relevance', dateFrom: null, dateTo: null };
+    const content = requests.length === 1 ? { query: '叙述者的判断为什么不等于作者的立场？', scopeSource: null, strategy: 'relevance' } : { strategy: 'relevance', dateFrom: null, dateTo: null };
     res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(content) } }] }));
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));

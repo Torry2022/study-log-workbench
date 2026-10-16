@@ -6,6 +6,7 @@ import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { startHttpServer } from '../study-log-mcp/src/http-server.mjs';
+import { agentAssessmentFixture } from '../study-log-web/scripts/rag-model-fixture.mjs';
 const repository = path.resolve(import.meta.dirname, '..');
 const root = path.join(repository, '.local', `rag-entry-production-${Date.now()}`);
 const data = path.join(root, 'data');
@@ -22,7 +23,7 @@ const relativeFile = path.join(data, `${previousYear}_学习日志.md`);
 const relativeSource = `## ${previousYear}-09-02\n\n### RelativeYearProbe\nRelativeYearProbe synthetic temporal fixture.\n`;
 await fs.writeFile(relativeFile, relativeSource, { flag: 'wx' });
 await fs.writeFile(path.join(data, '.instance.json'), JSON.stringify({ schemaVersion: 1, id: 'b0250000-0000-4000-8000-000000000001' }), { flag: 'wx' });
-const tools = [], checks = [], calls = [], agentScopes = [], mcpCalls = []; let decisionLimited = false, firstLimited = false, contextSelection = null, filtered = false, mutateCursor = false;
+const tools = [], checks = [], calls = [], agentScopes = [], mcpCalls = []; let decisionLimited = false, firstLimited = false, contextSelection = null, filtered = false, mutateCursor = false, directReply = false;
 const model = http.createServer(async (req, res) => {
   assert.equal(req.url, '/full/custom/endpoint');
   assert.equal(req.headers.authorization, 'Bearer synthetic');
@@ -42,12 +43,17 @@ const model = http.createServer(async (req, res) => {
   const answer = body.messages.at(-1).content.includes('比较2026年9月和2026年10月1日')
     ? '九月与十月的合成学习记录不同。[S1][S2]' : 'Alpha条件成立才适用，不适用于所有场景。[s1]';
   if (!body.stream) {
-    const content = body.messages[0].content.includes('scopeSource') ? JSON.stringify({ query: 'Alpha的适用条件是什么？', scopeSource: contextSelection }) : 'Alpha适用条件';
+    const content = body.messages[0].content.includes('scopeSource') ? JSON.stringify({ query: 'Alpha的适用条件是什么？', scopeSource: contextSelection, strategy: 'relevance' }) : 'Alpha适用条件';
     res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ choices: [{ message: { content }, finish_reason: 'stop' }] })); return;
   }
   res.setHeader('content-type', 'text/event-stream');
   const frame = value => `data: ${JSON.stringify(value)}\n\n`;
   const limited = body.tools && (decisionLimited || firstLimited);
+  if(body.tools && directReply){
+    res.end(frame({choices:[{index:0,delta:{tool_calls:[{index:0,id:'reply',type:'function',function:{name:'reply',arguments:JSON.stringify({answer,evidence:[{point:'合成适用条件',sourceId:'S1',quote:'Alpha条件成立才适用'}]})}}]},finish_reason:null}]})+
+      frame({choices:[{index:0,delta:{},finish_reason:'tool_calls'}],usage:{prompt_tokens:10,completion_tokens:5}})+'data: [DONE]\n\n');return;
+  }
+  if (body.tools && !limited && !filtered) { res.end(await agentAssessmentFixture(answer, body).text()); return; }
   const delta = limited ? { content: firstLimited ? '内部首轮截断文本' : '内部草稿不可发布', reasoning_content: '内部思考不可发布' } : { content: answer };
   res.end(frame({ id: 'synthetic', object: 'chat.completion.chunk', model: 'synthetic', choices: [{ index: 0, delta, finish_reason: null }] }) + frame({ choices: [{ index: 0, delta: {}, finish_reason: filtered ? 'content_filter' : limited ? 'length' : 'stop' }], usage: filtered ? { prompt_tokens: 123, completion_tokens: 45, total_tokens: 168 } : { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } }) + 'data: [DONE]\n\n');
 });
@@ -106,6 +112,12 @@ try {
   assert.equal(filteredResult.at(-1).event,'error');assert.equal(filteredResult.at(-1).data.code,'AI_STREAM_INTERRUPTED');
   assert.deepEqual(filteredResult.at(-1).data.diagnostics.usage,[{model:'synthetic',inputTokens:123,outputTokens:45}]);
   assert.ok(!filteredResult.some(item=>item.event==='done'));checks.push({sdkFilteredUsage:true,noDone:true});
+  directReply=true;
+  const directStart=calls.length,directResult=await ask('Alpha的适用条件是什么？');directReply=false;
+  assert.equal(directResult.at(-1).event,'done');assert.equal(calls.length-directStart,1);
+  assert.equal(directResult.at(-1).data.diagnostics.agent.entered,false);
+  assert.equal(directResult.at(-1).data.citations[0].date,'2026-09-01');
+  checks.push({directReply:true,oneModelCall:true,noSupplementaryAgent:true});
   for (const [question, agent] of [['Alpha的适用条件是什么？',true],['哪里提到过`Alpha`？',false],['总结2026年9月',false]]) {
     const before = tools.length;
     const callsBefore = calls.length;
@@ -116,7 +128,12 @@ try {
     const done = JSON.parse(blocks.at(-1).split('\n')[1].slice(6));
     assert.match(done.answer,/\[S1\]/); assert.ok(!done.answer.includes('[s1]'));
     assert.equal(done.citations[0].date,'2026-09-01'); assert.equal(Boolean(done.diagnostics.agent?.enabled),agent);assert.equal(tools.length,before);
-    assert.equal(calls.length - callsBefore, 1, 'Sufficient evidence must need only one generating-model call');
+    assert.equal(calls.length - callsBefore, 1, 'A checked first-step reply and bypass paths each use one model call');
+    if (agent) {
+      assert.equal(done.diagnostics.agent.entered, false);
+      assert.equal(done.diagnostics.agent.assessed, false);
+      assert.equal(done.diagnostics.agent.stopReason, 'direct_answer');
+    }
     checks.push({ question, agent, done: true, modelCalls: calls.length - callsBefore });
   }
   for (const question of ['去年9月哪里提到`RelativeYearProbe`？', '哪里提到`RelativeYearProbe`，这是今年发布的模型？']) {

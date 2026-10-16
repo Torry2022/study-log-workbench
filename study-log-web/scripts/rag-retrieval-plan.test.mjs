@@ -156,6 +156,20 @@ test("keeps conceptual questions on semantic retrieval planning", () => {
   assert.equal(needsSemanticRetrievalPlanning(plan), true);
 });
 
+test('a topic noun or quoted concept alone cannot impose exact-text matching', () => {
+  for (const subject of ['这个工具', '这项服务', '笔记管理模块']) {
+    for (const question of [`${subject}的定位是什么？`, `${subject}的定位和适用场景`, `比较${subject}与其他方案的定位`]) {
+      assert.equal(planRagRetrieval(question).matchMode, undefined, question);
+    }
+  }
+  for (const question of ['“搜索”功能有什么用？', '搜索算法如何工作？', '定位是什么？']) {
+    assert.equal(planRagRetrieval(question).matchMode, undefined, question);
+  }
+  for (const [question, text] of [['查找原文并发控制', '并发控制'], ['定位日志中的“读书笔记”', '读书笔记'], ['请搜索“缓存失效”', '缓存失效'], ['搜索 Alpha', 'Alpha']]) {
+    assert.equal(planRagRetrieval(question).literalQuery, text, question);
+  }
+});
+
 test("uses semantic planning only when rules leave an unconstrained relevance query", () => {
   assert.equal(needsSemanticRetrievalPlanning(planRagRetrieval("RRF是什么？")), true);
   assert.equal(needsSemanticRetrievalPlanning(planRagRetrieval("我近七天大概学了什么")), false);

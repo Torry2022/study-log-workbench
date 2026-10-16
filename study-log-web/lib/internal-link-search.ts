@@ -1,6 +1,7 @@
 import { listSavedDayContents } from "./log-store.ts";
 import { findRootAtxHeadings } from "./day-content.ts";
 import { buildMarkdownOutline } from "./markdown-outline.ts";
+import { isValidLogDate } from "./study-date.ts";
 import type { InternalLinkCandidate } from "./internal-links.ts";
 
 function cleanInternalLinkText(markdown: string): string {
@@ -31,25 +32,32 @@ function getInternalLinkSections(markdown: string): Array<{ heading: string; hea
 
 export async function searchInternalLinkCandidates(
   query: string,
-  limit = 40
+  limit = 40,
+  options: { ignoreCase?: boolean; headingsOnly?: boolean; date?: string; offset?: number } = {}
 ): Promise<InternalLinkCandidate[]> {
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  const safeLimit = Number.isFinite(limit) ? Math.min(Math.max(Math.floor(limit), 1), 80) : 40;
+  if (options.date && !isValidLogDate(options.date)) throw new Error("日期无效，请选择有效日期");
+  const normalize = (text: string) => options.ignoreCase === false ? text : text.toLocaleLowerCase();
+  const normalizedQuery = normalize(query.trim());
+  const safeLimit = Number.isFinite(limit) ? Math.min(Math.max(Math.trunc(limit), 1), 81) : 40;
+  const offset = Number.isSafeInteger(options.offset) && options.offset! > 0 ? options.offset! : 0;
   const blocks = (await listSavedDayContents()).sort((a, b) => b.date.localeCompare(a.date));
   const scored: Array<{ candidate: InternalLinkCandidate; score: number }> = [];
 
   for (const block of blocks) {
+    if (options.date && block.date !== options.date) continue;
     const sections = getInternalLinkSections(block.content);
     const dayContent = cleanInternalLinkText(block.content);
     const dayPreview = dayContent.slice(0, 180);
-    const dateText = block.date.toLocaleLowerCase();
-    const dayText = `${dateText} ${dayContent}`.toLocaleLowerCase();
+    const dateText = normalize(block.date);
+    const dayText = normalize(`${dateText} ${dayContent}`);
 
-    if (!normalizedQuery || dayText.includes(normalizedQuery)) {
+    if (!options.headingsOnly && (!normalizedQuery || dayText.includes(normalizedQuery))) {
       let score = normalizedQuery ? 30 : 10;
-      if (dateText === normalizedQuery) score = 110;
-      else if (dateText.startsWith(normalizedQuery)) score = 85;
-      else if (dateText.includes(normalizedQuery)) score = 70;
+      if (normalizedQuery) {
+        if (dateText === normalizedQuery) score = 110;
+        else if (dateText.startsWith(normalizedQuery)) score = 85;
+        else if (dateText.includes(normalizedQuery)) score = 70;
+      }
       scored.push({
         candidate: {
           kind: "day",
@@ -62,20 +70,22 @@ export async function searchInternalLinkCandidates(
     }
 
     for (const section of sections) {
-      const headingText = section.heading.toLocaleLowerCase();
+      const headingText = normalize(section.heading);
       const sectionContent = cleanInternalLinkText(section.body);
       const preview = sectionContent.slice(0, 180);
-      const sectionText = `${headingText} ${sectionContent}`.toLocaleLowerCase();
+      const sectionText = options.headingsOnly ? headingText : normalize(`${headingText} ${sectionContent}`);
       if (normalizedQuery && !dateText.includes(normalizedQuery) && !sectionText.includes(normalizedQuery)) {
         continue;
       }
 
       let score = normalizedQuery ? 45 : 9;
-      if (headingText === normalizedQuery) score = 105;
-      else if (headingText.startsWith(normalizedQuery)) score = 90;
-      else if (headingText.includes(normalizedQuery)) score = 80;
-      else if (dateText === normalizedQuery) score = 75;
-      else if (dateText.includes(normalizedQuery)) score = 60;
+      if (normalizedQuery) {
+        if (headingText === normalizedQuery) score = 105;
+        else if (headingText.startsWith(normalizedQuery)) score = 90;
+        else if (headingText.includes(normalizedQuery)) score = 80;
+        else if (dateText === normalizedQuery) score = 75;
+        else if (dateText.includes(normalizedQuery)) score = 60;
+      }
 
       scored.push({
         candidate: {
@@ -91,8 +101,8 @@ export async function searchInternalLinkCandidates(
   }
 
   return scored
-    .sort((a, b) => b.score - a.score || b.candidate.date.localeCompare(a.candidate.date)
-      || Number(b.candidate.kind === "heading") - Number(a.candidate.kind === "heading"))
-    .slice(0, safeLimit)
+    .sort((a, b) => (normalizedQuery ? b.score - a.score : 0) || b.candidate.date.localeCompare(a.candidate.date)
+      || Number(a.candidate.kind === "heading") - Number(b.candidate.kind === "heading"))
+    .slice(offset, offset + safeLimit)
     .map(({ candidate }) => candidate);
 }

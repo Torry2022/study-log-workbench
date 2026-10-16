@@ -6,7 +6,30 @@ export interface EditorLinkCandidate {
   preview: string;
 }
 
-export interface EditorLinksResponse { results: EditorLinkCandidate[]; }
+export interface EditorLinksResponse {
+  results: EditorLinkCandidate[];
+  hasMore?: boolean;
+}
+
+export interface EditorLinkSearchOptions {
+  headingsOnly: boolean;
+  caseSensitive: boolean;
+  date: string;
+  offset: number;
+  limit?: number;
+}
+
+export function editorLinkSearchPath(query: string, options: EditorLinkSearchOptions): string {
+  const parts: string[] = [
+    `query=${encodeURIComponent(query)}`,
+    `limit=${options.limit || 40}`,
+    `offset=${Math.max(0, options.offset)}`,
+    `ignoreCase=${options.caseSensitive ? 'false' : 'true'}`
+  ];
+  if (options.headingsOnly) parts.push('scope=heading');
+  if (options.date) parts.push(`date=${encodeURIComponent(options.date)}`);
+  return `/links?${parts.join('&')}`;
+}
 
 export function editorLinkMarkup(candidate: EditorLinkCandidate, alias: string): string {
   const date = candidate.date;

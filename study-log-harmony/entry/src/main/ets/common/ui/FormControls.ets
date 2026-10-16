@@ -21,11 +21,15 @@ export struct SearchField {
   @Prop headingOnly: boolean = false;
   @Prop showCaseToggle: boolean = false;
   @Prop caseSensitive: boolean = false;
+  @Prop showDateToggle: boolean = false;
+  @Prop dateActive: boolean = false;
+  @Prop allowEmptySubmit: boolean = false;
   onChange: (value: string) => void = () => {};
   onSubmit: () => void = () => {};
   onClear: () => void = () => {};
   onHeadingToggle: () => void = () => {};
   onCaseToggle: () => void = () => {};
+  onDateToggle: () => void = () => {};
   onSearchKey: (event: KeyEvent) => boolean = () => false;
   onFocusChange: (focused: boolean) => void = () => {};
   private composing: boolean = false;
@@ -116,7 +120,7 @@ export struct SearchField {
         .layoutWeight(1)
         .constraintSize({ minWidth: 0 })
         .height(this.compact ? 36 : 40)
-      if (this.showHeadingToggle || this.showCaseToggle || this.showSubmit) {
+      if (this.showHeadingToggle || this.showCaseToggle || this.showDateToggle || this.showSubmit) {
         Row({ space: 5 }) {
           if (this.showHeadingToggle) {
             Row() {
@@ -148,13 +152,27 @@ export struct SearchField {
               .accessibilityText(this.caseSensitive ? '当前区分大小写' : '区分大小写').bindTips(this.caseSensitive ? '当前区分大小写' : '区分大小写', WORKSPACE_TIPS)
               .onClick(this.onCaseToggle)
           }
+          if (this.showDateToggle) {
+            Row() {
+              Image($r('app.media.calendar_days')).width(14).height(14).objectFit(ImageFit.Contain)
+                .colorFilter(iconTint(this.dateActive ? $r('app.color.primary_active') : $r('app.color.muted')))
+            }
+              .width(28).height(28).justifyContent(FlexAlign.Center)
+              .backgroundColor(this.dateActive ? $r('app.color.search_toggle_active_background') : $r('app.color.canvas'))
+              .border({ width: 1, color: this.dateActive ? $r('app.color.search_toggle_active_border') : $r('app.color.hairline') })
+              .borderRadius(6).clip(true)
+              .accessibilityText(this.dateActive ? '修改筛选日期' : '按日期筛选')
+              .bindTips(this.dateActive ? '修改筛选日期' : '按日期筛选', WORKSPACE_TIPS)
+              .onClick(this.onDateToggle)
+          }
           if (this.showSubmit) {
             Button({ type: ButtonType.Normal }) {
               if (this.loading) {
                 LoadingProgress().width(15).height(15).color($r('app.color.primary_active'))
               } else {
                 Image($r('app.media.search')).width(14).height(14).objectFit(ImageFit.Contain)
-                  .colorFilter(iconTint(this.value.trim().length > 0 ? $r('app.color.primary_active') : $r('app.color.muted_soft')))
+                  .colorFilter(iconTint(this.value.trim().length > 0 || this.allowEmptySubmit ?
+                    $r('app.color.primary_active') : $r('app.color.muted_soft')))
               }
             }
             .width(28)
@@ -164,8 +182,8 @@ export struct SearchField {
             .borderRadius(8)
             .clip(true)
             .backgroundColor($r('app.color.canvas'))
-            .enabled(this.value.trim().length > 0 && !this.loading)
-            .opacity(this.value.trim().length > 0 && !this.loading ? 1 : 0.72)
+            .enabled((this.value.trim().length > 0 || this.allowEmptySubmit) && !this.loading)
+            .opacity((this.value.trim().length > 0 || this.allowEmptySubmit) && !this.loading ? 1 : 0.72)
             .accessibilityText('搜索').bindTips('搜索', WORKSPACE_TIPS)
             .onClick(this.onSubmit)
           }

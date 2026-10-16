@@ -112,6 +112,38 @@ test("link search reads only explicit synthetic source files, ranks targets and 
   await assert.rejects(searchInternalLinkCandidates(""), /重复日期/);
 });
 
+test("link search groups recent targets and applies date, heading, case and offset filters", async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "workbench-link-filters-test-"));
+  const previous = process.env.LOG_ROOT;
+  process.env.LOG_ROOT = root;
+  t.after(async () => {
+    if (previous === undefined) delete process.env.LOG_ROOT; else process.env.LOG_ROOT = previous;
+    await fs.rm(root, { recursive: true, force: true });
+  });
+  const content = "## 2024-04-03\n\n### Alpha 小节\n\n正文中有 Needle 和 bodyOnly。\n\n### 第二小节\n\n普通正文。\n\n---\n\n## 2024-04-02\n\n### 短标题\n\n正文中有 needle。\n";
+  await fs.writeFile(path.join(root, "2024-04_学习日志.md"), content);
+  const recent = await searchInternalLinkCandidates("");
+  assert.deepEqual(recent.map(({ kind, date }) => [kind, date]), [
+    ["day", "2024-04-03"], ["heading", "2024-04-03"], ["heading", "2024-04-03"],
+    ["day", "2024-04-02"], ["heading", "2024-04-02"]
+  ]);
+  const pages = [];
+  for (let offset = 0; offset < recent.length; offset += 2) pages.push(...await searchInternalLinkCandidates("", 2, { offset }));
+  assert.deepEqual(pages, recent);
+  assert.deepEqual(await searchInternalLinkCandidates("", 2, { offset: recent.length }), []);
+  assert.deepEqual((await searchInternalLinkCandidates("", 40, { date: "2024-04-02" })).map(item => item.kind), ["day", "heading"]);
+  assert.equal((await searchInternalLinkCandidates("bodyOnly", 40, { date: "2024-04-02" })).length, 0);
+  assert.ok((await searchInternalLinkCandidates("bodyOnly")).some(item => item.kind === "heading"));
+  assert.equal((await searchInternalLinkCandidates("bodyOnly", 40, { headingsOnly: true })).length, 0);
+  assert.equal((await searchInternalLinkCandidates("alpha", 40, { headingsOnly: true })).length, 1);
+  assert.equal((await searchInternalLinkCandidates("alpha", 40, { headingsOnly: true, ignoreCase: false })).length, 0);
+  assert.equal((await searchInternalLinkCandidates("Alpha", 40, { headingsOnly: true, ignoreCase: false })).length, 1);
+  assert.ok((await searchInternalLinkCandidates("needle", 40, { ignoreCase: false })).every(item => item.date === "2024-04-02"));
+  assert.equal((await searchInternalLinkCandidates("", 40, { headingsOnly: true })).length, 3);
+  await assert.rejects(searchInternalLinkCandidates("", 40, { date: "2024-02-30" }), /日期无效/);
+  assert.equal(await fs.readFile(path.join(root, "2024-04_学习日志.md"), "utf8"), content);
+});
+
 test("real GET route authenticates cookie and Bearer, rejects long queries, and sanitizes source failures", async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "workbench-link-route-test-"));
   const previous = process.env.LOG_ROOT;
@@ -147,9 +179,13 @@ test("real GET route authenticates cookie and Bearer, rejects long queries, and 
   const route = await load("../app/api/links/route.ts", {
     "@/lib/auth": auth,
     "@/lib/log-read-response": readResponse,
-    "@/lib/internal-link-search": { searchInternalLinkCandidates: query => { calls++; return searchInternalLinkCandidates(query); } }
+    "@/lib/internal-link-search": { searchInternalLinkCandidates: (...args) => { calls++; return searchInternalLinkCandidates(...args); } },
+    "@/lib/study-date": { isValidLogDate: value => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value }
   });
-  const request = (query = "", headers = {}) => new NextRequest(`http://localhost/study-log/api/links?query=${encodeURIComponent(query)}`, { headers });
+  const request = (query = "", headers = {}, params = {}) => {
+    const search = new URLSearchParams({ query, ...params });
+    return new NextRequest(`http://localhost/study-log/api/links?${search}`, { headers });
+  };
   for (const headers of [{}, { authorization: "Bearer invalid" }, { cookie: "study_log_session=invalid" }]) {
     const response = await route.GET(request("合成", headers));
     assert.equal(response.status, 401);
@@ -161,7 +197,9 @@ test("real GET route authenticates cookie and Bearer, rejects long queries, and 
   for (const headers of [cookie, bearer]) {
     const response = await route.GET(request("合成目标", headers));
     assert.equal(response.status, 200);
-    assert.equal((await response.json()).results[0].heading, "合成目标");
+    const body = await response.json();
+    assert.equal(body.results[0].heading, "合成目标");
+    assert.equal(body.hasMore, false);
     assert.equal(response.headers.get("cache-control"), "no-store");
     assert.match(response.headers.get("server-timing"), /^log_read;dur=\d+/);
   }
@@ -173,6 +211,14 @@ test("real GET route authenticates cookie and Bearer, rejects long queries, and 
   assert.equal(invalid.status, 400);
   assert.equal(calls, beforeInvalid);
   assert.match((await invalid.json()).error, /500/);
+  for (const offset of ["-1", "1.5", "NaN"]) assert.equal((await route.GET(request("", cookie, { offset }))).status, 400);
+  assert.equal((await route.GET(request("", cookie, { date: "2024-02-30" }))).status, 400);
+  const firstPage = await route.GET(request("", cookie, { limit: "1" }));
+  assert.equal(firstPage.status, 200);
+  const firstPageBody = await firstPage.json();
+  assert.equal(firstPageBody.results.length, 1);
+  assert.equal(firstPageBody.results[0].kind, "day");
+  assert.equal(firstPageBody.hasMore, true);
   process.env.LOG_ROOT = path.join(root, "missing-synthetic-directory");
   const failed = await route.GET(request("", cookie));
   assert.equal(failed.status, 500);

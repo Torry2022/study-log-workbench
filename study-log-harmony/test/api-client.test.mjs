@@ -5,6 +5,13 @@ import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { activeInstance } from '../entry/src/main/ets/common/network/InstanceConfig.ts';
 
+const cancellationSource = await readFile(new URL('../entry/src/main/ets/common/network/ReadCancellation.ets', import.meta.url), 'utf8');
+const cancellationCode = ts.transpileModule(cancellationSource, { compilerOptions: { module: ts.ModuleKind.CommonJS,
+  target: ts.ScriptTarget.ES2022 } }).outputText;
+const cancellationModule = { exports: {} };
+runInNewContext(cancellationCode, { module: cancellationModule, exports: cancellationModule.exports, Error });
+const { ReadCancellation } = cancellationModule.exports;
+
 async function loadEts(name, dependencies = {}) {
   const source = await readFile(new URL(`../entry/src/main/ets/common/network/${name}.ets`, import.meta.url), 'utf8');
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS,
@@ -17,11 +24,44 @@ async function loadEts(name, dependencies = {}) {
         const decoder = new TextDecoder();
         return { decodeToString: (bytes, options) => decoder.decode(bytes, options) };
       } } } };
+      if (name === './ReadCancellation') return cancellationModule.exports;
       if (!(name in dependencies)) throw new Error(`Missing dependency: ${name}`); return dependencies[name];
     }
   });
   return module.exports;
 }
+
+test('owned GET cancellation stops only that request and discards a late unauthorized response', async () => {
+  const pending = [], sessions = [];
+  const { ApiClient } = await loadEts('ApiClient', {
+    '@kit.RemoteCommunicationKit': { rcp: {
+      Request: class { constructor(...args) { this.args = args; } },
+      createSession() { const session = {
+        cancelled: 0,
+        fetch: () => new Promise((resolve, reject) => pending.push({ resolve, reject })),
+        cancel() { session.cancelled++; }, close() {}
+      }; sessions.push(session); return session; }
+    } },
+    './InstanceConfig': { activeInstance }
+  });
+  activeInstance.activate('https://cancel.example', 'cancel');
+  const client = new ApiClient(); client.setToken('current-token');
+  let unauthorized = 0; client.setUnauthorizedHandler(() => unauthorized++);
+  const owner = new ReadCancellation();
+  const old = client.get('/links?query=old', owner);
+  const current = client.get('/links?query=current');
+  owner.cancel(); owner.cancel();
+  assert.equal(sessions[0].cancelled, 1);
+  assert.equal(sessions[1].cancelled, 0);
+  pending[1].resolve({ statusCode: 200, toString: () => '{"results":[]}' });
+  assert.equal((await current).results.length, 0);
+  pending[0].resolve({ statusCode: 401, toString: () => '{}' });
+  await assert.rejects(old, /读取已取消/);
+  assert.equal(unauthorized, 0);
+  const alreadyCancelled = new ReadCancellation(); alreadyCancelled.cancel();
+  await assert.rejects(client.get('/links?query=never', alreadyCancelled), /读取已取消/);
+  assert.equal(sessions.length, 2);
+});
 
 test('native requests stay on the selected origin and ignore a late old-instance 401', async () => {
   const pending = [], requests = [], sessions = [];

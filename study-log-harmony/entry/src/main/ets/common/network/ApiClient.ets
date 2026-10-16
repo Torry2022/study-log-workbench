@@ -1,6 +1,7 @@
 import { rcp } from '@kit.RemoteCommunicationKit';
 import { util } from '@kit.ArkTS';
 import { activeInstance } from './InstanceConfig';
+import { ReadCancellation } from './ReadCancellation';
 
 interface ApiErrorPayload { error?: string; code?: string; }
 
@@ -56,7 +57,9 @@ export class ApiClient {
     return () => { if (this.onUnauthorized === handler) this.onUnauthorized = () => {}; };
   }
 
-  get<T>(path: string): Promise<T> { return this.request<T>(path, 'GET'); }
+  get<T>(path: string, cancellation?: ReadCancellation): Promise<T> {
+    return this.request<T>(path, 'GET', undefined, cancellation);
+  }
   post<T>(path: string, body: object): Promise<T> { return this.request<T>(path, 'POST', body); }
   put<T>(path: string, body: object): Promise<T> { return this.request<T>(path, 'PUT', body); }
   patch<T>(path: string, body: object): Promise<T> { return this.request<T>(path, 'PATCH', body); }
@@ -169,7 +172,9 @@ export class ApiClient {
     } finally { session.close(); }
   }
 
-  private async request<T>(path: string, method: rcp.HttpMethod, body?: object): Promise<T> {
+  private async request<T>(path: string, method: rcp.HttpMethod, body?: object,
+    cancellation?: ReadCancellation): Promise<T> {
+    cancellation?.check();
     const instanceRevision = activeInstance.revision;
     const sessionRevision = this.sessionRevision;
     const requestToken = this.token;
@@ -182,9 +187,15 @@ export class ApiClient {
     try {
       const request = new rcp.Request(activeInstance.apiUrl(path), method, headers,
         body ? JSON.stringify(body) : undefined);
+      cancellation?.bind(() => {
+        try { session.cancel(request); }
+        catch (_) { /* The read may have just completed. */ }
+      });
       const response = await session.fetch(request).catch(() => {
+        cancellation?.check();
         throw new ApiError('无法连接服务器，请检查网络后重试', 0, 'NETWORK_ERROR');
       });
+      cancellation?.check();
       if (instanceRevision !== activeInstance.revision || sessionRevision !== this.sessionRevision) {
         throw new Error('会话已切换，请重新操作');
       }
@@ -198,6 +209,7 @@ export class ApiClient {
       try { return JSON.parse(raw) as T; }
       catch (_) { throw new ApiError('服务器响应格式异常', response.statusCode, 'INVALID_RESPONSE'); }
     } finally {
+      cancellation?.release();
       session.close();
     }
   }

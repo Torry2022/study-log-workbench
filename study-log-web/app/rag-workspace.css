@@ -35,7 +35,7 @@
   display: grid;
   grid-template-rows: minmax(360px, 1fr) auto;
   gap: 20px;
-  padding: 28px 32px 24px;
+  padding: 28px 32px 16px;
 }
 
 .rag-workspace.has-messages {
@@ -110,14 +110,28 @@
   margin-left: 0;
 }
 
+.rag-answer .markdown-preview h1,
+.rag-answer .markdown-preview h2,
+.rag-answer .markdown-preview h3 {
+  color: var(--ink);
+  font-family: Cormorant Garamond, Georgia, "Times New Roman", serif;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.rag-answer .markdown-preview h1 {
+  margin: 0 0 20px;
+  font-size: 32px;
+}
+
 .rag-answer .markdown-preview h2 {
-  margin-bottom: 18px;
-  font-size: 30px;
+  margin: 26px 0 14px;
+  font-size: 26px;
 }
 
 .rag-answer .markdown-preview h3 {
-  margin-top: 24px;
-  font-size: 23px;
+  margin: 22px 0 12px;
+  font-size: 21px;
 }
 
 .rag-answer-pending {
@@ -431,7 +445,7 @@
 
   .rag-workspace {
     grid-template-rows: minmax(360px, 1fr) auto;
-    padding: 10px 14px 18px;
+    padding: 10px 14px;
   }
 
   .rag-message {
@@ -544,7 +558,7 @@
   .rag-workspace {
     min-height: 100%;
     gap: 12px;
-    padding: 0 16px 18px;
+    padding: 0 16px 10px;
   }
 
   .rag-message {

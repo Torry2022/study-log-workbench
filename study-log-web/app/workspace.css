@@ -450,7 +450,9 @@
   container-name: reader-workspace;
   container-type: inline-size;
 }
-.view-log .reader {
+/* Long document bodies must not truncate WebKit's page scroll range. */
+.view-log .reader,
+.view-qa .reader {
   container-type: normal;
 }
 .view-log .reader:has(.mode-split) {

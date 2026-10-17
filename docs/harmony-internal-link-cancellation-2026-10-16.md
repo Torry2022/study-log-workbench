@@ -14,3 +14,11 @@
 - `cd study-log-harmony && node 'D:\Software\DevEco Studio\tools\hvigor\bin\hvigorw.js' --mode module -p product=default -p module=entry@default -p buildMode=debug assembleHap --no-daemon`：`BUILD SUCCESSFUL`，生成未签名 debug HAP；既有 SDK／弃用警告保留。
 
 本批未安装到设备，因此原生日期标签位置及取消时序仍待设备入口复核；构建和协议测试不代替真机验收。
+
+## 0.1.2 发布前补验（2026-10-17）
+
+从当前源码建立独立副本，复用本地匹配签名，在手机模拟器覆盖安装 0.1.2 并连接隔离合成服务器。实际打开链接窗口时发现搜索区的无高度 Flex 占满剩余空间，列表未获得可见高度；改为按宽度使用自然高度的 Column／Row，列表继续分配剩余高度。没有改动请求与取消逻辑。
+
+修正后原生列表区域为 `[3,930][1317,2706]`，候选、日期与底部说明可见；搜索无匹配内容、关闭并回到编辑器通过，截图已查看。249 项协议测试与 release 无签名构建通过。证据位于 `.local/release-0.1.2-harmony-20261017/`，设备操作脚本为相邻的 `release-0.1.2-harmony-device.mjs`。
+
+此次设备补验仅覆盖手机模拟器、USB 反向端口和指定合成实例。物理手机／平板／PC、独立使用者签名、外部 HTTPS 网络，以及设备上的慢请求取消和迟到 401 时序仍未补验；取消语义沿用协议测试证据。旧独立安装清单中的外部条件继续保留，不将模拟器检查计为这些项目通过。公开附件只提供 release 未签名 HAP，不提供维护者设备调试签名包。

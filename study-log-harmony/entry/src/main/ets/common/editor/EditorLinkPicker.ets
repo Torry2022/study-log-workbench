@@ -2,7 +2,6 @@ import { ActionPanelHeader } from '../ui/WorkspaceChrome';
 import { SearchField } from '../ui/FormControls';
 import { InlineStatus } from '../ui/FeedbackStates';
 import { WORKSPACE_TIPS } from '../ui/WorkspaceTips';
-import { LengthMetrics } from '@kit.ArkUI';
 import { WorkspaceBreakpoint } from '../AppConfig';
 import { workspaceSerifFamily } from '../ui/Typography';
 import { iconTint } from '../ui/IconTint';
@@ -278,15 +277,24 @@ export struct EditorLinkPicker {
           .border({ width: { bottom: 1 }, color: $r('app.color.hairline') })
         }
         Column({ space: 8 }) {
-          Flex({ direction: this.narrow ? FlexDirection.Column : FlexDirection.Row, space: { main: LengthMetrics.vp(10) } }) {
-            Column({ space: 8 }) {
-              this.searchInput()
-              this.dateFilter()
-            }.width(this.narrow || this.initialAlias ? '100%' : '65%')
-              .flexShrink(1)
-            if (!this.initialAlias) {
-              Column() { this.aliasInput() }.width(this.narrow ? '100%' : '35%').flexShrink(1)
-            }
+          if (this.narrow) {
+            Column({ space: 10 }) {
+              Column({ space: 8 }) {
+                this.searchInput()
+                this.dateFilter()
+              }.width('100%')
+              if (!this.initialAlias) { this.aliasInput() }
+            }.width('100%')
+          } else {
+            Row({ space: 10 }) {
+              Column({ space: 8 }) {
+                this.searchInput()
+                this.dateFilter()
+              }.layoutWeight(1)
+              if (!this.initialAlias) {
+                Column() { this.aliasInput() }.width('35%')
+              }
+            }.width('100%').alignItems(VerticalAlign.Top)
           }
         }.width('100%')
           .padding({ left: this.breakpoint === WorkspaceBreakpoint.COMPACT ? 16 : 20,
@@ -337,7 +345,7 @@ export struct EditorLinkPicker {
               .onClick(() => this.insert(candidate))
           }
         }, (candidate: EditorLinkCandidate, index: number) => `${JSON.stringify(candidate)}:${index}`)
-      }.layoutWeight(1).width('100%').padding(8).scrollBar(BarState.Auto)
+      }.layoutWeight(1).width('100%').padding(8).scrollBar(BarState.Auto).id('editor_link_results')
         .onReachEnd(() => this.loadMore())
       this.resultFooter()
       }.width('100%').height('100%')

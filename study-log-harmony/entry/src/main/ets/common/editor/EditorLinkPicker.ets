@@ -227,7 +227,7 @@ export struct EditorLinkPicker {
 
   @Builder
   private resultFooter() {
-    if (this.results.length > 0) {
+    if (this.results.length > 0 && (this.breakpoint !== WorkspaceBreakpoint.COMPACT || this.loadingMore || this.moreError)) {
       Row() {
         if (this.loadingMore) {
           LoadingProgress().width(16).height(16).color($r('app.color.primary')).margin({ right: 7 })
@@ -243,8 +243,10 @@ export struct EditorLinkPicker {
             this.hasMore ? `已显示 ${this.results.length} 个结果，继续滚动可加载更多` :
               `已显示全部 ${this.results.length} 个结果`).fontSize(12).fontColor($r('app.color.muted'))
         }
-      }.width('100%').height(42).justifyContent(FlexAlign.Center)
-        .border({ width: { top: 1 }, color: $r('app.color.hairline_soft') })
+      }.width('100%').height(this.breakpoint === WorkspaceBreakpoint.COMPACT ? 30 : 42)
+        .justifyContent(this.breakpoint === WorkspaceBreakpoint.COMPACT ? FlexAlign.Start : FlexAlign.Center)
+        .border({ width: { top: this.breakpoint === WorkspaceBreakpoint.COMPACT ? 0 : 1,
+          bottom: 0 }, color: $r('app.color.hairline_soft') })
     }
   }
 
@@ -296,6 +298,7 @@ export struct EditorLinkPicker {
               }
             }.width('100%').alignItems(VerticalAlign.Top)
           }
+          if (this.breakpoint === WorkspaceBreakpoint.COMPACT) { this.resultFooter() }
         }.width('100%')
           .padding({ left: this.breakpoint === WorkspaceBreakpoint.COMPACT ? 16 : 20,
             right: this.breakpoint === WorkspaceBreakpoint.COMPACT ? 16 : 20, top: 14, bottom: 14 })
@@ -347,7 +350,7 @@ export struct EditorLinkPicker {
         }, (candidate: EditorLinkCandidate, index: number) => `${JSON.stringify(candidate)}:${index}`)
       }.layoutWeight(1).width('100%').padding(8).scrollBar(BarState.Auto).id('editor_link_results')
         .onReachEnd(() => this.loadMore())
-      this.resultFooter()
+      if (this.breakpoint !== WorkspaceBreakpoint.COMPACT) { this.resultFooter() }
       }.width('100%').height('100%')
         .backgroundColor($r('app.color.canvas')).border({ width: 1, color: $r('app.color.hairline') })
         .borderRadius({ topLeft: 12, topRight: 12,

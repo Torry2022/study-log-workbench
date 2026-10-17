@@ -15,7 +15,7 @@ const code = ts.transpileModule(`export class Login { generation = 1; topInset =
 function fixture(getLastWindow) {
   const module = { exports: {} };
   runInNewContext(code, { module, exports: module.exports,
-    window: { getLastWindow, AvoidAreaType: { TYPE_SYSTEM: 0 } } });
+    window: { getLastWindow, AvoidAreaType: { TYPE_SYSTEM: 0 } }, Edge: { Bottom: 'bottom' } });
   const login = new module.exports.Login();
   login.getUIContext = () => ({ getHostContext: () => ({}), px2vp: px => px / 2 });
   return login;
@@ -33,12 +33,19 @@ test('top viewport extends while initial content keeps its dynamic status-bar in
   assert.match(source, /id\('login_origin_input'\)/);
   assert.match(source, /type\(InputType.Password\)/);
   assert.match(build, /\.clip\(true\)\s*\.expandSafeArea\(\[SafeAreaType.SYSTEM\], \[SafeAreaEdge.TOP\]\)/);
-  assert.match(build, /\.margin\(\{ bottom: 16 \}\)/);
+  assert.match(build, /\.margin\(\{ bottom: 8 \}\)/);
   assert.match(build, /hitTestBehavior\(HitTestMode.None\)/);
   assert.doesNotMatch(build, /setKeyboardAvoidMode|previousKeyboardAvoidMode/);
-  const narrowScroll = build.slice(build.indexOf('Scroll()'), build.indexOf(".id('login_scroll')"));
+  const narrowScroll = build.slice(build.indexOf('Scroll(this.formScroller)'), build.indexOf(".id('login_scroll')"));
   assert.match(narrowScroll, /this.accessContent\(false\)[\s\S]*Text\('© 2026 学习日志工作台开源版'\)/);
   assert.match(build, /if \(this.viewportWidth >= 720\) \{\s*Stack\(\{ alignContent: Alignment.Bottom \}\)/);
+});
+
+test('password context uses the shared form keyboard policy', () => {
+  assert.match(source, /new FormKeyboardContext\(this\.formScroller, 'login_scroll'\)/);
+  assert.match(source, /formKeyboard\.focus\(this\.getUIContext\(\), 'login_password_input', 'login_credentials'\)/);
+  assert.match(source, /formKeyboard\.reveal\(this\.getUIContext\(\)\)/);
+  assert.doesNotMatch(source, /scrollEdge|revealPasswordContext/);
 });
 
 test('status-bar inset updates in vp, ignores keyboard avoid events and removes the exact listener', async () => {

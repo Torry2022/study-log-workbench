@@ -1,3 +1,4 @@
+import { AppSheetFrame } from '../../common/ui/AppSheetFrame';
 import { appFeedback } from '../../common/ui/AppFeedback';
 import { LengthMetrics } from '@kit.ArkUI';
 import { KeyCode } from '@kit.InputKit';
@@ -423,6 +424,11 @@ export struct StatsPage {
   }
 
   @Builder
+  private safeCalendarDetailsPanel() {
+    AppSheetFrame({ bottomSheet: !this.desktopWindowChrome && this.workspaceBreakpoint === WorkspaceBreakpoint.COMPACT, fillAvailableHeight: false, content: (): void => this.calendarDetailsPanel() })
+  }
+
+  @Builder
   private calendarDetailsPanel() {
     Column() {
       ActionPanelHeader({
@@ -672,7 +678,7 @@ export struct StatsPage {
       .margin({ right: this.isLargeWorkspace() ? 24 : 14, bottom: this.isLargeWorkspace() ? 24 : 14 })
       .zIndex(1)
     }.width('100%').height('100%').id('stats_result_surface')
-    .bindSheet($$this.calendarDetailsOpen, this.calendarDetailsPanel(), {
+    .bindSheet($$this.calendarDetailsOpen, this.safeCalendarDetailsPanel(), {
       preferType: !this.desktopWindowChrome && this.workspaceBreakpoint === WorkspaceBreakpoint.COMPACT ? SheetType.BOTTOM : SheetType.CENTER,
       height: SheetSize.FIT_CONTENT,
       dragBar: false,

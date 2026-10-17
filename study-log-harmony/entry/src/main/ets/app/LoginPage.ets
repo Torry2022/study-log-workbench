@@ -1,3 +1,4 @@
+import { FormKeyboardContext } from '../common/ui/FormKeyboardContext';
 import { apiClient, ApiError } from '../common/network/ApiClient';
 import { WorkspaceBreakpoint } from '../common/AppConfig';
 import { InstanceCapabilities, activeInstance, normalizeInstanceOrigin, validCapabilities } from '../common/network/InstanceConfig';
@@ -54,6 +55,8 @@ export struct LoginPage {
   @StorageLink('softwareKeyboardVisible') private softwareKeyboardVisible: boolean = false;
   private textureAnimationStarted: boolean = false;
   private generation: number = 0;
+  private formScroller: Scroller = new Scroller();
+  private formKeyboard: FormKeyboardContext = new FormKeyboardContext(this.formScroller, 'login_scroll');
 
   async aboutToAppear(): Promise<void> {
     const generation = ++this.generation;
@@ -277,8 +280,8 @@ export struct LoginPage {
           .border({ width: this.originFocused ? 2 : 1,
             color: this.originFocused ? $r('app.color.primary') : $r('app.color.hairline') })
           .borderRadius(8)
-          .onFocus(() => this.originFocused = true)
-          .onBlur(() => this.originFocused = false)
+          .onFocus(() => { this.originFocused = true; this.formKeyboard.focus(this.getUIContext(), 'login_origin_input', 'login_origin_hint'); })
+          .onBlur(() => { this.originFocused = false; this.formKeyboard.blur('login_origin_input'); })
           .onChange((value: string) => { this.origin = value; this.errorMessage = ''; })
         Row({ space: 8 }) {
           Checkbox().select(this.localHttp).selectedColor($r('app.color.primary'))
@@ -287,7 +290,7 @@ export struct LoginPage {
             .onClick(() => this.localHttp = !this.localHttp)
             .fontFamily(workspaceSansFamily(this.workspaceBreakpoint))
             .fontSize(12).fontColor($r('app.color.muted')).layoutWeight(1)
-        }.width('100%').margin({ bottom: 8 })
+        }.width('100%').margin({ bottom: 8 }).id('login_origin_hint')
         Text('访问密码').fontFamily(workspaceSansFamily(this.workspaceBreakpoint))
           .fontSize(13).fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.muted')).width('100%')
@@ -305,14 +308,15 @@ export struct LoginPage {
               (this.passwordFocused ? $r('app.color.primary') : $r('app.color.hairline'))
           })
           .borderRadius(8)
-          .onFocus(() => this.passwordFocused = true)
-          .onBlur(() => this.passwordFocused = false)
+          .onFocus(() => { this.passwordFocused = true; this.formKeyboard.focus(this.getUIContext(), 'login_password_input', 'login_credentials'); })
+          .onBlur(() => { this.passwordFocused = false; this.formKeyboard.blur('login_password_input'); })
           .onChange((value: string) => {
             this.password = value;
             if (this.errorMessage) this.errorMessage = '';
           })
           .onSubmit(() => this.submit())
         Text(this.errorMessage).constraintSize({ minHeight: 16, maxHeight: 48 })
+          .id('login_feedback')
           .fontSize(13).fontColor($r('app.color.error')).width('100%')
         Button({ type: ButtonType.Normal }) {
           if (this.submitting || !this.ready) {
@@ -331,7 +335,7 @@ export struct LoginPage {
         .opacity(this.submitting || !this.ready || !this.password || !this.origin ? 0.58 : 1)
         .enabled(!this.submitting && this.ready && this.password.length > 0 && this.origin.length > 0)
         .onClick(() => this.submit())
-      }.width('100%')
+      }.width('100%').id('login_credentials').onAreaChange(() => this.formKeyboard.reveal(this.getUIContext()))
     }
     .width(wide ? 400 : '100%')
     .padding(wide ? 0 : { left: 24, right: 24, top: 28, bottom: 24 })
@@ -375,23 +379,28 @@ export struct LoginPage {
           .constraintSize({ minHeight: 320, maxHeight: 400 })
           .clip(true)
           .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP])
-        Scroll() {
+        Scroll(this.formScroller) {
           Column() {
-            Stack() { this.identityContent(false) }
-              .width('100%').height('34%').constraintSize({ minHeight: 260, maxHeight: 320 })
-            this.accessContent(false)
+            Column() {
+              Stack() { this.identityContent(false) }
+                .width('100%').height('34%').constraintSize({ minHeight: 260, maxHeight: 320 })
+              this.accessContent(false)
+            }.width('100%').flexShrink(0)
             Text('© 2026 学习日志工作台开源版')
+              .id('login_footer')
               .width('100%')
               .fontFamily(workspaceSansFamily(this.workspaceBreakpoint))
               .fontSize(11)
               .fontWeight(FontWeight.Regular)
               .fontColor($r('app.color.muted_soft'))
               .textAlign(TextAlign.Center)
-              .margin({ bottom: 16 })
+              .margin({ bottom: 8 })
               .visibility(this.softwareKeyboardVisible ? Visibility.None : Visibility.Visible)
           }.width('100%').constraintSize({ minHeight: '100%' }).padding({ top: this.topInset })
+            .justifyContent(FlexAlign.SpaceBetween)
         }.id('login_scroll').width('100%').height(LayoutPolicy.matchParent).scrollBar(BarState.Off)
           .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.TOP])
+          .onAreaChange(() => this.formKeyboard.reveal(this.getUIContext()))
       }
 
       if (this.viewportWidth >= 720) {
@@ -399,6 +408,7 @@ export struct LoginPage {
           Row() {
             Blank().layoutWeight(11)
             Text('© 2026 学习日志工作台开源版')
+              .id('login_footer')
               .layoutWeight(9)
               .fontFamily(workspaceSansFamily(this.workspaceBreakpoint))
               .fontSize(11)

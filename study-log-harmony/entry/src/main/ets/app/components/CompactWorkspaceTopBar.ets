@@ -1,3 +1,4 @@
+import { AppSheetFrame } from '../../common/ui/AppSheetFrame';
 import { WorkspaceBreakpoint } from '../../common/AppConfig';
 import { WorkspaceModuleState } from '../WorkspaceModuleState';
 import { AppTopBar } from './WorkspaceNavigation';
@@ -66,6 +67,11 @@ export struct CompactWorkspaceTopBar {
   }
 
   @Builder
+  private safeAppSettingsPanel() {
+    AppSheetFrame({ bottomSheet: !this.desktopWindowChrome && this.workspaceBreakpoint === WorkspaceBreakpoint.COMPACT, fillAvailableHeight: false, content: (): void => this.compactAppSettingsPanel() })
+  }
+
+  @Builder
   private compactAppSettingsPanel() {
     Column() {
       ActionPanelHeader({ title: '应用设置', showDragBar: true,
@@ -93,7 +99,7 @@ export struct CompactWorkspaceTopBar {
       onOpenNavigation: () => this.onOpenNavigation(),
       onOpenSearch: () => this.onOpenSearch(),
       onOpenMore: () => this.compactSettingsOpen = true })
-      .bindSheet($$this.compactSettingsOpen, this.compactAppSettingsPanel(), {
+      .bindSheet($$this.compactSettingsOpen, this.safeAppSettingsPanel(), {
         preferType: !this.desktopWindowChrome && this.workspaceBreakpoint === WorkspaceBreakpoint.COMPACT ? SheetType.BOTTOM : SheetType.CENTER,
         height: SheetSize.FIT_CONTENT,
         dragBar: false, showClose: false, maskColor: $r('app.color.scrim'),

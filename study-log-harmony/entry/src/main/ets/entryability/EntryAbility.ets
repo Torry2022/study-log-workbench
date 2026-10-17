@@ -41,6 +41,11 @@ export default class EntryAbility extends UIAbility {
   private keyboardHeightChanged = (height: number): void => {
     AppStorage.setOrCreate('softwareKeyboardVisible', height > 0);
     AppStorage.setOrCreate('softwareKeyboardHeightPx', Math.max(0, height));
+    let keyboardTop = 0;
+    try {
+      if (height > 0 && this.mainWindow) keyboardTop = this.mainWindow.getWindowProperties().windowRect.height - height;
+    } catch (_) { /* A queued keyboard event can outlive its window. */ }
+    AppStorage.setOrCreate('softwareKeyboardTopPx', keyboardTop);
   };
   private bottomAvoidAreaChanged = (): void => {
     if (!this.mainWindow) return;
@@ -84,6 +89,7 @@ export default class EntryAbility extends UIAbility {
     if (KEEP_SCREEN_ON_DURING_ACCEPTANCE) this.mainWindow.setWindowKeepScreenOn(true);
     AppStorage.setOrCreate('softwareKeyboardVisible', false);
     AppStorage.setOrCreate('softwareKeyboardHeightPx', 0);
+    AppStorage.setOrCreate('softwareKeyboardTopPx', 0);
     this.contentReady = false;
     const createdWindow = this.mainWindow;
     this.updateSystemBars(this.context.config.colorMode);
@@ -145,6 +151,7 @@ export default class EntryAbility extends UIAbility {
     AppStorage.setOrCreate('windowBottomAvoidPx', 0);
     AppStorage.setOrCreate('softwareKeyboardVisible', false);
     AppStorage.setOrCreate('softwareKeyboardHeightPx', 0);
+    AppStorage.setOrCreate('softwareKeyboardTopPx', 0);
     DesktopWindow.mainWindow = undefined;
   }
 }

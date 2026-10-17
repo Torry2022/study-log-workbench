@@ -1,3 +1,4 @@
+import { AppSheetFrame } from '../../../common/ui/AppSheetFrame';
 import { WorkspaceBreakpoint } from '../../../common/AppConfig';
 import { textNavigationKey } from '../../../common/ui/WorkspaceKeys';
 import { ToolbarAction } from '../../../common/ui/ToolbarAction';
@@ -224,6 +225,7 @@ export struct NoteEditorFields {
         .backgroundColor($r('app.color.canvas')).border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8)
         .onAreaChange((_old: Area, area: Area) => this.tagWidth = Number(area.width))
         .bindPopup(this.tagsOpen, { builder: this.tagDropdown(), placement: Placement.TopLeft, enableArrow: false,
+          keyboardAvoidMode: KeyboardAvoidMode.DEFAULT,
           radius: 8, backgroundBlurStyle: BlurStyle.NONE, targetSpace: 4,
           shadow: { radius: 12, color: $r('app.color.popover_shadow'), offsetY: 4 },
           width: this.tagWidth, popupColor: $r('app.color.canvas'), autoCancel: true,
@@ -256,6 +258,11 @@ export struct NoteEditorFields {
         }
       }.width('100%')
     }.constraintSize({ maxHeight: 220 }).width('100%')
+  }
+
+  @Builder
+  private safeLinkPanel() {
+    AppSheetFrame({ bottomSheet: this.breakpoint === WorkspaceBreakpoint.COMPACT, fillAvailableHeight: true, content: (): void => this.linkPanel() })
   }
 
   @Builder
@@ -301,7 +308,7 @@ export struct NoteEditorFields {
     }.width('100%').enabled(this.editable && !this.uploading)
       .onKeyEvent((event: KeyEvent) => textNavigationKey(event))
       .onAreaChange((_old: Area, area: Area) => this.contentWidth = Number(area.width))
-      .bindSheet($$this.linkOpen, this.linkPanel(), {
+      .bindSheet($$this.linkOpen, this.safeLinkPanel(), {
         preferType: this.breakpoint === WorkspaceBreakpoint.COMPACT ? SheetType.BOTTOM : SheetType.CENTER,
         width: this.breakpoint === WorkspaceBreakpoint.COMPACT ? '100%' : 780,
         height: this.breakpoint === WorkspaceBreakpoint.COMPACT ? SheetSize.LARGE : 620,

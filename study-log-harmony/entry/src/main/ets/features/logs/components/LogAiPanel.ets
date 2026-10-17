@@ -1,3 +1,4 @@
+import { FormKeyboardContext } from '../../../common/ui/FormKeyboardContext';
 import { ToolbarAction } from '../../../common/ui/ToolbarAction';
 import { SegmentIndicator } from '../../../common/ui/SegmentIndicator';
 import { InteractiveSurface, animateHover } from '../../../common/ui/InteractiveSurface';
@@ -38,6 +39,9 @@ export struct LogAiPanel {
   onGenerate: () => void = () => {};
   onHighlight: () => void = () => {};
   onApply: () => void = () => {};
+
+  private formScroller: Scroller = new Scroller();
+  private formKeyboard: FormKeyboardContext = new FormKeyboardContext(this.formScroller, 'log_ai_scroll');
 
   aboutToAppear(): void {
     this.instructionHasText = !!this.instruction.trim();
@@ -99,7 +103,7 @@ export struct LogAiPanel {
         .padding({ left: 14, right: 14, top: this.desktop ? 0 : 14, bottom: this.desktop ? 0 : 14 })
         .alignItems(VerticalAlign.Center).id('log_ai_header')
         .border({ width: { bottom: 1 }, color: $r('app.color.hairline') })
-      Scroll() {
+      Scroll(this.formScroller) {
         Column({ space: 12 }) {
           if (this.mode === 'generate') {
             Row({ space: 8 }) {
@@ -144,6 +148,7 @@ export struct LogAiPanel {
               ToolbarAction({ label: this.importing ? '导入中' : '导入文件', icon: $r('app.media.upload'), iconSize: 14,
                 controlHeight: 30, available: !this.importing && !this.busy, onAction: this.onImport }).id('log_ai_import')
             }.width('100%')
+            Column({ space: 12 }) {
             TextArea({ text: this.material, placeholder: '粘贴笔记、代码片段、课程内容或项目进展' })
               .width('100%').height(210).padding(12).fontFamily('JetBrains Mono')
               .fontSize(13).lineHeight(21).fontColor($r('app.color.body')).placeholderColor($r('app.color.muted'))
@@ -153,6 +158,8 @@ export struct LogAiPanel {
                 this.materialHasText = !!value.trim();
                 this.onMaterial(value);
               }).id('log_ai_material')
+              .onFocus(() => this.formKeyboard.focus(this.getUIContext(), 'log_ai_material', 'log_ai_generate_context'))
+              .onBlur(() => this.formKeyboard.blur('log_ai_material'))
             this.action(() => this.busy ? '生成中' : '生成日志草稿', $r('app.media.wand_sparkles'),
               () => this.ready && this.generateConfigured && !this.busy && !this.importing && !this.presetsLoading && !this.presetError &&
               (this.materialHasText || this.instructionHasText || !!this.material.trim() || !!this.instruction.trim()),
@@ -160,6 +167,7 @@ export struct LogAiPanel {
             if (this.message) {
               Text(this.message).fontSize(12).lineHeight(19).fontColor($r('app.color.muted')).width('100%')
             }
+            }.width('100%').id('log_ai_generate_context').onAreaChange(() => this.formKeyboard.reveal(this.getUIContext()))
             this.label('生成草稿')
             TextArea({ text: this.output, placeholder: this.busy ? '正在生成，请稍候…' : '生成的草稿将在这里显示' })
               .width('100%').height(260).padding(12).fontFamily('JetBrains Mono')
@@ -186,7 +194,7 @@ export struct LogAiPanel {
             Text(this.message).fontSize(12).lineHeight(19).fontColor($r('app.color.muted')).width('100%')
           }
         }.width('100%').padding(16).alignItems(HorizontalAlign.Start)
-      }.width('100%').layoutWeight(1).scrollBar(BarState.Auto).align(Alignment.TopStart).id('log_ai_scroll')
+      }.width('100%').layoutWeight(1).scrollBar(BarState.Auto).align(Alignment.TopStart).id('log_ai_scroll').onAreaChange(() => this.formKeyboard.reveal(this.getUIContext()))
       if (this.mode === 'generate') {
         Column() {
           Button({ type: ButtonType.Normal }) {

@@ -1,3 +1,4 @@
+import { AppSheetFrame } from '../../common/ui/AppSheetFrame';
 import { WORKSPACE_TIPS } from '../../common/ui/WorkspaceTips';
 import { workspacePreferences } from '../../common/storage/WorkspacePreferences';
 import { appFeedback } from '../../common/ui/AppFeedback';
@@ -273,6 +274,11 @@ export struct FavoritesPage {
   }
 
   @Builder
+  private safeGroupEditorSheet() {
+    AppSheetFrame({ bottomSheet: !this.desktopWindowChrome && this.workspaceBreakpoint === WorkspaceBreakpoint.COMPACT, fillAvailableHeight: false, content: (): void => this.groupEditorSheet() })
+  }
+
+  @Builder
   private groupEditorSheet() {
     Column({ space: 12 }) {
       ActionPanelHeader({
@@ -498,7 +504,7 @@ export struct FavoritesPage {
       this.viewportWidth = Number(newValue.width);
     })
     .onScroll(() => this.handlePageScroll())
-    .bindSheet($$this.groupEditorOpen, this.groupEditorSheet(), {
+    .bindSheet($$this.groupEditorOpen, this.safeGroupEditorSheet(), {
       preferType: !this.desktopWindowChrome && this.workspaceBreakpoint === WorkspaceBreakpoint.COMPACT ? SheetType.BOTTOM : SheetType.CENTER,
       height: SheetSize.FIT_CONTENT,
       dragBar: false,

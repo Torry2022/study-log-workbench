@@ -1,3 +1,4 @@
+import { FormKeyboardContext } from '../../../common/ui/FormKeyboardContext';
 import { NavigationRowStyle, NavigationLabelStyle, NavigationCountStyle } from '../../../common/ui/NavigationRowStyle';
 import { InteractiveSurface, animateHover } from '../../../common/ui/InteractiveSurface';
 import { appFeedback, FeedbackTone } from '../../../common/ui/AppFeedback';
@@ -13,7 +14,9 @@ export struct FavoritesNavigation {
   @State private hoveredGroup: string = '';
   @ObjectLink data: FavoritesController;
   private viewRevision: number = 0;
-  aboutToDisappear(): void { this.viewRevision += 1; }
+  private formScroller: Scroller = new Scroller();
+  private formKeyboard: FormKeyboardContext = new FormKeyboardContext(this.formScroller, 'favorites_navigation');
+  aboutToDisappear(): void { this.viewRevision += 1; this.formKeyboard.clear(); }
   @Prop wide: boolean = false;
   onRetry: () => void = () => {};
   @State private monthsExpanded: boolean = false;
@@ -172,6 +175,7 @@ export struct FavoritesNavigation {
         .onClick(() => this.openGroupMenu(group))
         .bindPopup(this.groupMenuId === group.id, {
           builder: () => { this.groupMenu(group) }, placement: Placement.BottomRight,
+          keyboardAvoidMode: KeyboardAvoidMode.DEFAULT,
           popupColor: $r('app.color.canvas'), enableArrow: false, autoCancel: true,
           targetSpace: 4, width: 244, radius: 12, backgroundBlurStyle: BlurStyle.NONE,
           shadow: { radius: 12, color: $r('app.color.popover_shadow'), offsetY: 4 },
@@ -189,7 +193,7 @@ export struct FavoritesNavigation {
   }
 
   build() {
-    Scroll() {
+    Scroll(this.formScroller) {
       Column({ space: 4 }) {
         Row() {
           Text('收藏分组').layoutWeight(1).fontSize(12).fontWeight(FontWeight.Medium)
@@ -210,7 +214,9 @@ export struct FavoritesNavigation {
         if (this.creatingGroup) {
           Column({ space: 8 }) {
             TextInput({ text: this.groupDraftName, placeholder: '分组名称' })
-              .id('favorite_group_name').height(38).fontSize(13)
+              .id('favorite_group_name')
+              .onFocus(() => this.formKeyboard.focus(this.getUIContext(), 'favorite_group_name', 'favorite_group_create_context'))
+              .onBlur(() => this.formKeyboard.blur('favorite_group_name')).height(38).fontSize(13)
               .backgroundColor($r('app.color.canvas')).borderRadius(8)
               .border({ width: 1, color: $r('app.color.hairline') })
               .onChange((value: string) => this.groupDraftName = value).onSubmit(() => this.createGroup())
@@ -224,7 +230,8 @@ export struct FavoritesNavigation {
                 .enabled(!this.data.groupSaving && this.groupDraftName.trim().length > 0)
                 .onClick(() => this.createGroup())
             }.width('100%')
-          }.width('100%').padding({ left: 10, right: 10, bottom: 8 })
+          }.width('100%').padding({ left: 10, right: 10, bottom: 8 }).id('favorite_group_create_context')
+            .onAreaChange(() => this.formKeyboard.reveal(this.getUIContext()))
         }
         Row() {
           FavoriteFilterRow({
@@ -277,6 +284,7 @@ export struct FavoritesNavigation {
       }.width('100%').padding({ left: this.wide ? 14 : 12, right: this.wide ? 14 : 12, top: this.wide ? 14 : 12, bottom: 24 })
         .alignItems(HorizontalAlign.Start)
     }.id('favorites_navigation').width('100%').layoutWeight(1).align(Alignment.TopStart)
+      .onAreaChange(() => this.formKeyboard.reveal(this.getUIContext()))
       .scrollBar(BarState.Auto).edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
   }
 }

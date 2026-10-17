@@ -307,14 +307,7 @@ export struct NotesPage {
           onUploadBusyChange: (busy: boolean) => { this.imageUploading = busy; this.onEditorBusyChange(busy); },
           bodyHeight: 224,
           onFieldChange: (field: string, value: string) => this.changeField(field, value) })
-        Row({ space: 8 }) {
-          Blank().layoutWeight(1)
-          ToolbarAction({ label: '取消', useSymbol: true, symbol: $r('sys.symbol.xmark'),
-            available: !this.data.saving && !this.imageUploading, onAction: () => this.closeEditor() })
-          ToolbarAction({ label: '保存随记', icon: $r('app.media.save'), primary: true, busy: this.data.saving,
-            available: this.noteEditor.body.trim().length > 0 && !this.imageUploading,
-            disabledReason: '请先填写正文', onAction: () => this.save() }).id('note_save')
-        }.width('100%')
+
         }.width('100%').padding(this.isLargeWorkspace() ? 24 : 16)
       }
       .id('note_editor_scroll').layoutWeight(1).width('100%').scrollBar(BarState.Auto).align(Alignment.TopStart)
@@ -333,7 +326,7 @@ export struct NotesPage {
       })
       .onAreaChange((oldArea: Area, newArea: Area) => {
         if (Number(oldArea.width) <= 0 ||
-          (Number(oldArea.width) === Number(newArea.width) && Number(oldArea.height) === Number(newArea.height))) return;
+          Number(oldArea.width) === Number(newArea.width)) return;
         const restoreOffset = this.editorScrollOffset;
         if (restoreOffset <= 0) return;
         setTimeout((): void => {
@@ -341,6 +334,14 @@ export struct NotesPage {
           this.editorScrollOffset = restoreOffset;
         }, 0);
       })
+        Row({ space: 8 }) {
+          Blank().layoutWeight(1)
+          ToolbarAction({ label: '取消', useSymbol: true, symbol: $r('sys.symbol.xmark'),
+            available: !this.data.saving && !this.imageUploading, onAction: () => this.closeEditor() })
+          ToolbarAction({ label: '保存随记', icon: $r('app.media.save'), primary: true, busy: this.data.saving,
+            available: this.noteEditor.body.trim().length > 0 && !this.imageUploading,
+            disabledReason: '请先填写正文', onAction: () => this.save() }).id('note_save')
+        }.width('100%').padding({ left: this.isLargeWorkspace() ? 24 : 16, right: this.isLargeWorkspace() ? 24 : 16, top: 10, bottom: 10 }).flexShrink(0)
     }
     .width('100%').height('100%').backgroundColor($r('app.color.canvas'))
   }

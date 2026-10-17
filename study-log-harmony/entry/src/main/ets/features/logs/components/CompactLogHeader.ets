@@ -1,3 +1,4 @@
+import { AppSheetFrame } from '../../../common/ui/AppSheetFrame';
 import { LengthMetrics } from '@kit.ArkUI';
 import { WorkspaceBreakpoint } from '../../../common/AppConfig';
 import { workspaceDateFamily } from '../../../common/ui/Typography';
@@ -24,6 +25,16 @@ export struct CompactLogHeader {
   @Builder
   private emptyContent() {}
 
+  @Builder
+  private safeBackupSheet() {
+    AppSheetFrame({ bottomSheet: true, fillAvailableHeight: true, content: (): void => this.backupSheet() })
+  }
+
+  @Builder
+  private safeMoreActionsPanel() {
+    AppSheetFrame({ bottomSheet: !this.desktopWindowChrome && this.workspaceBreakpoint === WorkspaceBreakpoint.COMPACT, fillAvailableHeight: false, content: (): void => this.moreActionsPanel() })
+  }
+
   build() {
     Row({ space: 6 }) {
           Text(this.selectedDate)
@@ -34,7 +45,7 @@ export struct CompactLogHeader {
         .fontFeature('"tnum" 1')
         .fontColor($r('app.color.ink'))
         .layoutWeight(1)
-        .bindSheet($$this.backupOpen, this.backupSheet(), {
+        .bindSheet($$this.backupOpen, this.safeBackupSheet(), {
           height: SheetSize.LARGE,
           onWillDismiss: (action: DismissSheetAction) => { if (!this.backupRestoring) action.dismiss(); },
           dragBar: false,
@@ -124,7 +135,7 @@ export struct CompactLogHeader {
       .accessibilityText('更多日志操作').bindTips('更多日志操作', WORKSPACE_TIPS)
       .id('log_compact_more_actions')
       .onClick(() => this.moreOpen = true)
-      .bindSheet($$this.moreOpen, this.moreActionsPanel(), {
+      .bindSheet($$this.moreOpen, this.safeMoreActionsPanel(), {
         preferType: !this.desktopWindowChrome && this.workspaceBreakpoint === WorkspaceBreakpoint.COMPACT ? SheetType.BOTTOM : SheetType.CENTER,
         height: SheetSize.FIT_CONTENT,
         dragBar: false,

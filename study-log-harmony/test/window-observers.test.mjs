@@ -18,6 +18,7 @@ function setup() {
     },
     off(event) { if (destroyed) throw new Error('1300002'); listeners.delete(event); },
     setWindowSystemBarProperties() {},
+    getWindowProperties() { if (destroyed) throw new Error('1300002'); return { windowRect: { height: 1000 } }; },
     getWindowAvoidArea(type) { if (destroyed) throw new Error('1300002'); return { bottomRect: { height: type === 1 ? 24 : 12 } }; }
   };
   const stage = { getMainWindowSync: () => mainWindow, loadContent(_path, callback) { contentCallback = callback; } };
@@ -43,10 +44,12 @@ test('window observers wait for loaded content, publish insets and do not duplic
   assert.deepEqual(r.calls, ['keyboardHeightChange', 'avoidAreaChange']);
   r.listeners.get('keyboardHeightChange')(280);
   assert.equal(r.state.get('softwareKeyboardHeightPx'), 280);
+  assert.equal(r.state.get('softwareKeyboardTopPx'), 720);
   assert.equal(r.state.get('windowBottomAvoidPx'), 24);
   r.ability.onWindowStageDestroy();
   assert.equal(r.listeners.size, 0); assert.equal(r.state.get('softwareKeyboardVisible'), false);
   assert.equal(r.state.get('windowBottomAvoidPx'), 0);
+  assert.equal(r.state.get('softwareKeyboardTopPx'), 0);
 });
 
 test('destroyed stages cannot resume deferred theme loading or publish stale content readiness', async () => {
@@ -64,6 +67,7 @@ test('abnormal window registration does not crash startup and retries only the f
   r.failKeyboard(false); r.ability.onForeground(); r.ability.onForeground();
   assert.deepEqual(r.calls, ['avoidAreaChange', 'keyboardHeightChange']);
   r.destroy(); assert.doesNotThrow(() => r.listeners.get('avoidAreaChange')());
+  assert.doesNotThrow(() => r.listeners.get('keyboardHeightChange')(280));
   assert.doesNotThrow(() => r.ability.onWindowStageDestroy());
   assert.equal(r.state.get('windowBottomAvoidPx'), 0);
 });

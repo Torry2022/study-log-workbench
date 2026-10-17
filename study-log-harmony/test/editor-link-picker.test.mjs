@@ -114,8 +114,11 @@ test('closing cancels owned reads and a closed date picker callback cannot searc
 test('picker UI routes automatic and explicit pagination separately without duplicating an empty footer', () => {
   assert.match(source, /onReachEnd\(\(\) => this\.loadMore\(\)\)/);
   assert.match(source, /onClick\(\(\) => this\.loadMore\(true\)\)/);
-  assert.match(source, /if \(this\.results\.length > 0\)/);
+  assert.match(source, /if \(this\.results\.length > 0 && \(this\.breakpoint !== WorkspaceBreakpoint\.COMPACT \|\| this\.loadingMore \|\| this\.moreError\)\)/);
   assert.match(source, /showDateToggle: true/);
   assert.match(source, /!this\.query\.trim\(\) && !this\.date \? '最近的日志与小节'/);
   assert.match(source, /Column\(\{ space: 8 \}\) \{\s*this\.searchInput\(\)\s*this\.dateFilter\(\)/);
+  const searchSection = source.slice(source.indexOf('  build()'), source.indexOf(".id('editor_link_results')"));
+  assert.match(searchSection, /if \(this\.breakpoint === WorkspaceBreakpoint\.COMPACT\) \{ this\.resultFooter\(\) \}/);
+  assert.match(source, /if \(this\.breakpoint !== WorkspaceBreakpoint\.COMPACT\) \{ this\.resultFooter\(\) \}/);
 });

@@ -33,7 +33,7 @@ export struct LogFavoriteGroupPanel {
   build() {
     Stack({ alignContent: Alignment.Center }) {
       AppModalScrim()
-      Column({ space: 16 }) {
+      Flex({ direction: FlexDirection.Column, alignItems: ItemAlign.Start }) {
         Row({ space: 12 }) {
           Text('选择分组').fontSize(28).fontWeight(FontWeight.Medium).fontColor($r('app.color.ink'))
             .layoutWeight(1)
@@ -43,7 +43,7 @@ export struct LogFavoriteGroupPanel {
           .width(34).height(34).padding(0).backgroundColor($r('app.color.surface_soft'))
           .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8).clip(true)
           .accessibilityText('关闭选择分组').bindTips('关闭选择分组', WORKSPACE_TIPS).onClick(() => this.onClose())
-        }.width('100%').alignItems(VerticalAlign.Top)
+        }.width('100%').alignItems(VerticalAlign.Top).margin({ bottom: 16 }).flexShrink(0)
 
         if (this.data.groups.length > 0) {
           List({ space: 8 }) {
@@ -68,14 +68,14 @@ export struct LogFavoriteGroupPanel {
             }, (group: FavoriteGroup) => group.id)
           }
           .width('100%').height(Math.min(248, this.data.groups.length * 62))
-          .scrollBar(BarState.Auto).edgeEffect(EdgeEffect.None)
+          .scrollBar(BarState.Auto).edgeEffect(EdgeEffect.None).flexShrink(1).margin({ bottom: 16 })
         } else {
           Text('还没有自定义分组，可先创建一个。').width('100%').height(64)
-            .textAlign(TextAlign.Center).fontSize(12).fontColor($r('app.color.muted'))
+            .textAlign(TextAlign.Center).fontSize(12).fontColor($r('app.color.muted')).margin({ bottom: 16 }).flexShrink(0)
         }
 
         Row({ space: 10 }) {
-          TextInput({ text: this.draftName, placeholder: '新建分组名称' })
+          TextInput({ text: this.draftName, placeholder: '新建分组名称' }).id('log_favorite_group_name')
             .layoutWeight(1).height(40).padding({ left: 12, right: 12 })
             .fontSize(13).fontColor($r('app.color.body')).placeholderColor($r('app.color.muted_soft'))
             .backgroundColor($r('app.color.surface_soft'))
@@ -88,7 +88,7 @@ export struct LogFavoriteGroupPanel {
             .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8).clip(true)
             .enabled(!!this.draftName.trim() && !this.data.groupSaving)
             .onClick(() => this.createAndJoinGroup())
-        }.width('100%')
+        }.width('100%').margin({ bottom: 16 }).flexShrink(0)
 
         Row({ space: 8 }) {
           Button({ type: ButtonType.Normal }) {
@@ -115,12 +115,12 @@ export struct LogFavoriteGroupPanel {
             .backgroundColor($r('app.color.primary')).borderRadius(8).clip(true)
             .enabled(!this.data.groupUpdating && !this.data.groupSaving)
             .onClick(() => this.onClose())
-        }.width('100%').alignItems(VerticalAlign.Center)
+        }.width('100%').alignItems(VerticalAlign.Center).flexShrink(0)
       }
       .width(this.wide ? 560 : '90%')
       .id('log_favorite_group_panel')
       .constraintSize({ maxWidth: 560, maxHeight: '86%' })
-      .padding(22).alignItems(HorizontalAlign.Start)
+      .padding(22).height(LayoutPolicy.wrapContent)
       .backgroundColor($r('app.color.canvas'))
       .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(12).clip(true)
       .shadow({ radius: 22, color: $r('app.color.popover_shadow'), offsetY: 8 })

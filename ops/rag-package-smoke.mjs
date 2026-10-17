@@ -56,9 +56,9 @@ const model = http.createServer(async (req, res) => {
   if (body.tools && !(state?.question.includes('Gamma') && state.remainingDecisions === 2)) {
     res.setHeader('content-type','text/event-stream');res.end(await agentAssessmentFixture(answer,body).text());return;
   }
-  const args = body.tools ? {assessment:'现有片段尚缺Gamma的明确补充条件。',evidence:[],next:'read',unresolved:[{point:'Gamma的补充条件',sourceId:invalidReadDate?'2026-11-01':state.readCandidates.find(item=>item.date==='2026-09-02').sourceId}]} : null;
+  const args = body.tools ? {assessment:'现有片段尚缺Gamma的明确补充条件。',evidence:[],unresolved:[{point:'Gamma的补充条件',sourceId:invalidReadDate?'2026-11-01':state.readCandidates.find(item=>item.date==='2026-09-02').sourceId}]} : null;
   const delta = body.tools
-    ? { tool_calls: [{ index: 0, id: `call-${++toolRequests}`, type: 'function', function: { name:'assess', arguments:JSON.stringify(args) } }] }
+    ? { tool_calls: [{ index: 0, id: `call-${++toolRequests}`, type: 'function', function: { name:'read_more', arguments:JSON.stringify(args) } }] }
     : { content:answer };
   const frame = value => `data: ${JSON.stringify(value)}\n\n`;
   res.setHeader("content-type", "text/event-stream");
@@ -97,7 +97,7 @@ try {
   assert.equal((await fetch(status.url)).status, 200);
   const auth = await (await fetch(`${status.url}/api/auth/app-login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password }) })).json();
   assert.equal(typeof auth.token, "string");
-  for (const [question, calls, date] of [["总结2026年9月",1,"2026-09-02"], ["Alpha为什么只在条件成立时适用？",2,"2026-09-01"], ["Gamma的补充条件是什么？",3,"2026-09-02"]]) {
+  for (const [question, calls, date] of [["总结2026年9月",1,"2026-09-02"], ["Alpha为什么只在条件成立时适用？",1,"2026-09-01"], ["Gamma的补充条件是什么？",3,"2026-09-02"]]) {
     const before = modelCalls;
     const response = await fetch(`${status.url}/api/rag/query`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${auth.token}` }, body: JSON.stringify({ question, mode: "logs_only", history: [] }) });
     assert.equal(response.status, 200);
@@ -107,7 +107,10 @@ try {
     for(const field of ['retrievalMs','compactionMs','judgeMs','agentMs','generationMs'])assert.ok(Number.isFinite(diagnostics.timings[field])&&diagnostics.timings[field]>=0,field);
     assert.ok(diagnostics.timings.retrievalMs+diagnostics.timings.compactionMs+diagnostics.timings.judgeMs+diagnostics.timings.agentMs+diagnostics.timings.generationMs<=diagnostics.timings.totalMs+10);
     if(question.startsWith('总结'))assert.equal(diagnostics.timings.agentMs,0);
-    else assert.equal(diagnostics.agent.assessed,true);
+    else if(question.includes('Alpha')) {
+      assert.equal(diagnostics.agent.entered,false);
+      assert.equal(diagnostics.agent.stopReason,'direct_answer');
+    } else assert.equal(diagnostics.agent.assessed,true);
     assert.equal(events.at(-1).data.citations[0].date, date);
     assert.equal(modelCalls-before,calls);
     if(question.includes('Gamma')) {

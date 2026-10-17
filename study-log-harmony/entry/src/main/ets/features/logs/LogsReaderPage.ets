@@ -1,3 +1,4 @@
+import { AppSheetFrame } from '../../common/ui/AppSheetFrame';
 import { AppModalFrame } from '../../common/ui/AppModalFrame';
 import { WorkspaceSidebarState } from '../../app/WorkspaceSidebarState';
 import { WorkspaceReadingState } from '../../app/WorkspaceReadingState';
@@ -2495,7 +2496,7 @@ export struct LogsReaderPage {
               SourceEditor({ session: this.editor, documentKey: this.session.day.date,
                 initialText: this.session.editorInitialText })
                 .width('100%').layoutWeight(1)
-                .bindSheet($$this.linkOpen, this.editorLinkPanel(), {
+                .bindSheet($$this.linkOpen, this.safeEditorLinkPanel(), {
                   preferType: this.workspaceBreakpoint === WorkspaceBreakpoint.COMPACT ? SheetType.BOTTOM : SheetType.CENTER,
                   width: this.workspaceBreakpoint === WorkspaceBreakpoint.COMPACT ? '100%' : 780,
                   height: this.workspaceBreakpoint === WorkspaceBreakpoint.COMPACT ? SheetSize.LARGE : 620,
@@ -2672,6 +2673,11 @@ export struct LogsReaderPage {
   }
 
   @Builder
+  private safeEditorLinkPanel() {
+    AppSheetFrame({ bottomSheet: this.workspaceBreakpoint === WorkspaceBreakpoint.COMPACT, fillAvailableHeight: true, content: (): void => this.editorLinkPanel() })
+  }
+
+  @Builder
   private editorLinkPanel() {
     EditorLinkPicker({ initialAlias: this.linkAlias, onClose: () => this.closeLink(),
       onInsert: (markup: string) => this.insertLink(markup) })
@@ -2679,6 +2685,11 @@ export struct LogsReaderPage {
 
   @Builder
   private favoriteGroupDialog() {
+    AppModalFrame({ content: (): void => this.favoriteGroupDialogContent() })
+  }
+
+  @Builder
+  private favoriteGroupDialogContent() {
     LogFavoriteGroupPanel({ data: this.favoritesData, favoriteId: this.favoriteGroupDialogId,
       wide: this.isWide(), onClose: () => this.favoriteGroupDialogOpen = false,
       onOpenFavorites: () => { this.favoriteGroupDialogOpen = false; this.closeOutline(); this.selectTab(2); },

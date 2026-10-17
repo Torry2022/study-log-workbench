@@ -69,11 +69,24 @@ export default function loginKeyboardGeometryTest(): void {
       const scroll = await driver.findComponent(ON.id('login_scroll'));
       // This is a narrow-layout suite: a wide window must be resized before running it.
       expect(!!scroll).assertTrue();
+      const initialFooter = await (await driver.findComponent(ON.id('login_footer'))).getBounds();
+      const initialViewport = await scroll.getBounds();
+      expect(initialFooter.bottom <= initialViewport.bottom + 1).assertTrue();
+      expect(initialViewport.bottom - initialFooter.bottom <= context.vp2px(24)).assertTrue();
       expect(initialIcon.windowOffset.y >= main.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM).topRect.height).assertTrue();
       const initialOrigin = await (await driver.findComponent(ON.id('login_origin_input'))).getText();
       const initialPassword = await (await driver.findComponent(ON.id('login_password_input'))).getText();
       expect(initialPassword.length).assertEqual(0);
       try {
+        // Invalid origin fails locally, without contacting any configured server.
+        await (await driver.findComponent(ON.id('login_origin_input'))).inputText('not-a-server');
+        await driver.pressBack();
+        await reveal(driver, context, 'login_password_input');
+        await (await driver.findComponent(ON.id('login_password_input'))).inputText('synthetic-invalid-password');
+        await driver.pressBack();
+        await (await driver.findComponent(ON.id('login_submit_button'))).click();
+        await driver.delayMs(500);
+        expect((await (await driver.findComponent(ON.id('login_feedback'))).getText()).length > 0).assertTrue();
         for (const inputId of ['login_origin_input', 'login_password_input', 'login_origin_input', 'login_password_input']) {
           await reveal(driver, context, inputId);
           const input = await driver.findComponent(ON.id(inputId));
@@ -91,6 +104,12 @@ export default function loginKeyboardGeometryTest(): void {
           expect(viewport.windowOffset.y).assertEqual(0);
           expect(title.size.height > 0 && Math.abs(title.size.height - initialTitle.size.height) < 1).assertTrue();
           expect(field.windowOffset.y + field.size.height <= hitBounds.bottom + 1).assertTrue();
+          if (inputId === 'login_password_input') {
+            const feedback = geometry.getRectangleById('login_feedback');
+            const button = geometry.getRectangleById('login_submit_button');
+            expect(feedback.windowOffset.y + feedback.size.height <= hitBounds.bottom + 1).assertTrue();
+            expect(button.windowOffset.y + button.size.height <= hitBounds.bottom + 1).assertTrue();
+          }
           await reveal(driver, context, 'login_submit_button');
           const submit = await driver.findComponent(ON.id('login_submit_button'));
           expect(!!submit).assertTrue();
@@ -113,6 +132,8 @@ export default function loginKeyboardGeometryTest(): void {
           await scroll.scrollToTop();
           const restored = geometry.getRectangleById('login_app_icon');
           expect(Math.abs(restored.windowOffset.y - initialIcon.windowOffset.y) < 2).assertTrue();
+          const restoredFooter = await (await driver.findComponent(ON.id('login_footer'))).getBounds();
+          expect(Math.abs(restoredFooter.bottom - initialFooter.bottom) < 2).assertTrue();
         }
         // Re-create the real page without resetting instance preferences or tokens.
         await main.loadContent('pages/Index');

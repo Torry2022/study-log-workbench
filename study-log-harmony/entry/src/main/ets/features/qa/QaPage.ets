@@ -341,14 +341,22 @@ export struct QaPage {
             } else if (this.data.messages.length === 0) {
               Column({ space: 12 }) {
                 EmptyState({ embedded: true, symbol: $r('sys.symbol.message'), title: '关于日志，你想了解什么？', description: '从已有记录中回顾收获、查找线索。也可以选择下面的问题，修改后再发送。' })
-                ForEach(['帮我回顾最近记录的主要内容。', '哪些记录讨论了同一个主题？', '我记录过哪些尚未解决的问题？'], (question: string) => {
-                  Button(question, { type: ButtonType.Normal })
-                    .fontSize(13).fontColor($r('app.color.body')).backgroundColor($r('app.color.surface_soft'))
-                    .padding({ left: 16, right: 16, top: 10, bottom: 10 }).borderRadius(8)
-                    .border({ width: 1, color: $r('app.color.hairline') })
-                    .enabled(!this.data.sending && !this.data.question.trim())
-                    .onClick(() => this.useExampleQuestion(question))
-                })
+                Column({ space: 8 }) {
+                  ForEach(['帮我回顾最近记录的主要内容。', '哪些记录讨论了同一个主题？', '我记录过哪些尚未解决的问题？'], (question: string, index: number) => {
+                    Button({ type: ButtonType.Normal }) {
+                      Text(question).width('100%').fontSize(13).fontColor($r('app.color.body'))
+                        .textAlign(TextAlign.Start)
+                    }
+                      .width('100%').constraintSize({ minHeight: 44 })
+                      .backgroundColor($r('app.color.surface_soft'))
+                      .padding({ left: 16, right: 16, top: 12, bottom: 12 })
+                      .border({ width: 1, color: $r('app.color.hairline') })
+                      .borderRadius(8)
+                      .id(`qa_example_${index}`)
+                      .enabled(!this.data.sending && !this.data.question.trim())
+                      .onClick(() => this.useExampleQuestion(question))
+                  })
+                }.width('100%').constraintSize({ maxWidth: 480 })
               }
               .width('100%')
               .height('100%')

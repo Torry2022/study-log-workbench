@@ -18,7 +18,7 @@ import { extractRangeStatusClaims, rangeStatusVerificationEnabled, verifyRangeSt
 
 export interface RagQueryInput { question: string; history: RagHistoryMessage[]; mode: RagAnswerMode }
 export interface RagQueryConfig { chat: ChatConfig; lightChat: ChatConfig; mcp: McpConfig }
-export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfig, requestSignal: AbortSignal): ReadableStream<Uint8Array> {
+export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfig, requestSignal: AbortSignal, onSettled?: () => void): ReadableStream<Uint8Array> {
   const cancellation = new AbortController(), deadline = new AbortController();
   const external = AbortSignal.any([requestSignal, cancellation.signal]);
   const signal = AbortSignal.any([external, deadline.signal]);
@@ -190,8 +190,9 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
           const known = error instanceof AiChatError || error instanceof McpRetrievalError;
           send("error", { message: deadline.signal.aborted ? "本次问答用时过长，请缩小范围后重试" : known ? error.message : "问答请求失败，请稍后重试", code: deadline.signal.aborted ? "RAG_TIMEOUT" : known ? error.code : "RAG_QUERY_FAILED", diagnostics });
         }
-      } finally { clearTimeout(timer); close(); }
+      } finally { clearTimeout(timer); close(); onSettled?.(); }
     },
-    cancel() { clearTimeout(timer); ended = true; cancellation.abort(); }
+    // The shared execution slot is released by finally, after upstream cancellation settles.
+    cancel() { ended = true; cancellation.abort(); }
   });
 }

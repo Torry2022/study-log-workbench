@@ -1,4 +1,5 @@
 export interface FeatureCapability { supported: boolean; configured: boolean; }
+export interface TaskCapability extends FeatureCapability { protocolVersion: number; }
 export interface AiProviderConfiguration { configured: boolean; }
 export interface AiConfiguration { provider: AiProviderConfiguration; }
 export interface InstanceFeatures {
@@ -7,6 +8,7 @@ export interface InstanceFeatures {
   aiNoteExtraction: FeatureCapability;
   aiTaxonomy: FeatureCapability;
   rag: FeatureCapability;
+  ragTasks?: TaskCapability;
 }
 export interface InstanceCapabilities {
   instanceId: string;
@@ -42,7 +44,8 @@ export function validCapabilities(value: InstanceCapabilities): boolean {
     /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(value.instanceId) &&
     !!value.features && validFeature(value.features.aiWriting) && validFeature(value.features.aiHighlighting) &&
     validFeature(value.features.aiNoteExtraction) && validFeature(value.features.aiTaxonomy) &&
-    validFeature(value.features.rag) && (value.aiConfiguration === undefined ||
+    validFeature(value.features.rag) && (value.features.ragTasks === undefined ||
+      validFeature(value.features.ragTasks) && Number.isSafeInteger(value.features.ragTasks.protocolVersion) && value.features.ragTasks.protocolVersion > 0) && (value.aiConfiguration === undefined ||
       (!!value.aiConfiguration && !!value.aiConfiguration.provider &&
         typeof value.aiConfiguration.provider.configured === 'boolean'));
 }

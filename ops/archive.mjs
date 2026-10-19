@@ -117,7 +117,7 @@ function entryPath(value) {
 }
 
 function validateManifest(value, archiveSize) {
-  if (!value || typeof value !== "object" || value.format !== "study-log-instance" || value.version !== 1 || !uuid.test(value.instanceId || "") ||
+  if (!value || typeof value !== "object" || value.format !== "study-log-instance" || ![1, 2].includes(value.version) || !uuid.test(value.instanceId || "") ||
     typeof value.createdAt !== "string" || !Number.isFinite(Date.parse(value.createdAt)) || !Array.isArray(value.entries)) invalid();
   if (value.entries.length > MAX_ARCHIVE_ENTRIES) limits();
   const names = new Map(), aliases = new Set(); let total = 0;
@@ -136,6 +136,7 @@ function validateManifest(value, archiveSize) {
   if (names.get(".env")?.type !== "file" || names.get("data/.instance.json")?.type !== "file" || names.get("data")?.type !== "directory" || names.get("backups")?.type !== "directory" ||
     names.get(".env").size > CONTROL_BYTES || names.get("data/.instance.json").size > CONTROL_BYTES || value.totalBytes !== total || total > archiveSize) invalid();
   if (names.has(".env.mcp") && (names.get(".env.mcp").type !== "file" || names.get(".env.mcp").size > CONTROL_BYTES)) invalid();
+  if (value.version === 2 && names.get("data/state/rag-tasks.sqlite")?.type !== "file") invalid();
   return value;
 }
 
@@ -210,7 +211,9 @@ export async function backupInstance(instanceRoot, archivePath, { protectFile } 
   try {
     const instanceId = readIdentityAndEnvironment(await controlFile(path.join(root, "data/.instance.json")), await controlFile(path.join(root, ".env")));
     const scanned = await scan(root);
-    const manifest = { format: "study-log-instance", version: 1, createdAt: new Date().toISOString(), instanceId, entries: scanned.entries, totalBytes: scanned.totalBytes };
+    // Old tools must refuse archives whose restored queue needs normalization.
+    const version = scanned.entries.some(entry => entry.path === "data/state/rag-tasks.sqlite") ? 2 : 1;
+    const manifest = { format: "study-log-instance", version, createdAt: new Date().toISOString(), instanceId, entries: scanned.entries, totalBytes: scanned.totalBytes };
     validateManifest(manifest, MAX_ARCHIVE_BYTES);
     const bytes = Buffer.from(JSON.stringify(manifest)), header = Buffer.alloc(MAGIC.length + 4);
     if (bytes.length > MAX_MANIFEST_BYTES || header.length + bytes.length + manifest.totalBytes > MAX_ARCHIVE_BYTES) limits();
@@ -261,6 +264,28 @@ export async function verifyArchive(archivePath) {
   finally { await handle.close(); }
 }
 
+async function interruptRestoredTasks(root) {
+  const file = path.join(root, "data", "state", "rag-tasks.sqlite");
+  if (!await exists(file)) return;
+  await regular(file);
+  const { DatabaseSync } = await import("node:sqlite");
+  const db = new DatabaseSync(file);
+  let transaction = false;
+  try {
+    db.exec("PRAGMA trusted_schema=OFF; PRAGMA synchronous=FULL;");
+    const schema = db.prepare("PRAGMA user_version").get().user_version;
+    if (![1, 2].includes(schema) || db.prepare("PRAGMA quick_check").get().quick_check !== "ok") throw new Error("Unsupported task database");
+    db.exec("BEGIN IMMEDIATE"); transaction = true;
+    db.prepare(`UPDATE tasks SET state='interrupted',owner=NULL,generation=generation+1,revision=revision+1,
+      stage='',error='从归档恢复的未完成任务不会自动执行，请确认后重试',updated_at=?
+      WHERE state IN ('queued','running')`).run(new Date().toISOString());
+    db.exec("DELETE FROM leases; DELETE FROM worker; COMMIT"); transaction = false;
+  } finally {
+    if (transaction) db.exec("ROLLBACK");
+    db.close();
+  }
+}
+
 /** Full verification precedes reservation. A failed extraction keeps its target and lock. */
 export async function restoreInstance(archivePath, targetRoot, { onReserved } = {}) {
   const archive = absolute(archivePath), target = absolute(targetRoot);
@@ -299,6 +324,7 @@ export async function restoreInstance(archivePath, targetRoot, { onReserved } = 
     }
     await unchanged(handle, stat, archive);
     await fs.mkdir(path.join(target, "index"), { mode: 0o700 });
+    await interruptRestoredTasks(target);
     await fs.unlink(marker); await release();
     return { restored: true, root: target, instanceId: manifest.instanceId, files: manifest.entries.filter(entry => entry.type === "file").length };
   } catch (error) {

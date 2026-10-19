@@ -66,7 +66,8 @@ try {
       const fresh = async () => { await page.getByRole('button', { name: '新建问答', exact: true }).filter({ visible: true }).click(); await expect(main.locator('.rag-message')).toHaveCount(0); };
       const send = async suffix => { const question = `生命周期合成${engine}${suffix}`; await input.fill(question); await page.getByRole('button', { name: '发送问题', exact: true }).click(); await expect(main).toContainText(`片段：${question}`); return { question, id: new URL(page.url()).searchParams.get('session') }; };
       const stored = async id => { const response = await page.request.get(`${base}/api/rag/sessions/${id}`); return response.ok() ? (await response.json()).session : null; };
-      await page.route('**/api/capabilities', async route => { const response = await route.fetch(), body = await response.json(); if (response.ok()) body.features.rag = { supported: true, configured: true }; await route.fulfill({ response, json: body }); });
+      // This injected stream exercises legacy-server fallback; the task UI has a separate real-backend suite.
+      await page.route('**/api/capabilities', async route => { const response = await route.fetch(), body = await response.json(); if (response.ok()) { body.features.rag = { supported: true, configured: true }; delete body.features.ragTasks; } await route.fulfill({ response, json: body }); });
       await page.route('**/api/rag/query', route => route.continue({ url: `http://127.0.0.1:${fixture.address().port}/query` }));
       await page.route('**/api/rag/sessions/*/title', async route => { const response = await page.request.get(route.request().url().replace(/\/title$/, '')); await route.fulfill({ response }); });
       await page.goto(base); await login();

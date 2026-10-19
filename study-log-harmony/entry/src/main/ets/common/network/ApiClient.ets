@@ -51,6 +51,7 @@ export class ApiClient {
 
   getToken(): string { return this.token; }
   getSessionRevision(): number { return this.sessionRevision; }
+  getConnectionBinding(): string { return `${activeInstance.revision}:${this.sessionRevision}`; }
 
   setUnauthorizedHandler(handler: () => void): () => void {
     this.onUnauthorized = handler;
@@ -64,6 +65,10 @@ export class ApiClient {
   put<T>(path: string, body: object): Promise<T> { return this.request<T>(path, 'PUT', body); }
   patch<T>(path: string, body: object): Promise<T> { return this.request<T>(path, 'PATCH', body); }
   delete<T>(path: string, body?: object): Promise<T> { return this.request<T>(path, 'DELETE', body); }
+
+  getForInstance<T>(path: string, instanceId: string): Promise<T> { return this.request<T>(path, 'GET', undefined, undefined, instanceId); }
+  postForInstance<T>(path: string, body: object, instanceId: string): Promise<T> { return this.request<T>(path, 'POST', body, undefined, instanceId); }
+  deleteForInstance<T>(path: string, instanceId: string): Promise<T> { return this.request<T>(path, 'DELETE', undefined, undefined, instanceId); }
 
   cancelStream(): void {
     this.streamRevision++;
@@ -173,13 +178,14 @@ export class ApiClient {
   }
 
   private async request<T>(path: string, method: rcp.HttpMethod, body?: object,
-    cancellation?: ReadCancellation): Promise<T> {
+    cancellation?: ReadCancellation, expectedInstanceId: string = ''): Promise<T> {
     cancellation?.check();
     const instanceRevision = activeInstance.revision;
     const sessionRevision = this.sessionRevision;
     const requestToken = this.token;
     const headers: rcp.RequestHeaders = { 'accept': 'application/json', 'content-type': 'application/json' };
     if (requestToken) headers['authorization'] = `Bearer ${requestToken}`;
+    if (expectedInstanceId) headers['X-Study-Log-Instance'] = expectedInstanceId;
     const session = rcp.createSession({ requestConfiguration: {
       transfer: { autoRedirect: false, timeout: { connectMs: 15000, transferMs: 60000 } }
     } });

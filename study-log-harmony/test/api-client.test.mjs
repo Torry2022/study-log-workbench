@@ -31,6 +31,19 @@ async function loadEts(name, dependencies = {}) {
   return module.exports;
 }
 
+test('durable task methods bind reads and actions to the captured server identity', async () => {
+  const requests = [];
+  const { ApiClient } = await loadEts('ApiClient', {
+    '@kit.RemoteCommunicationKit': { rcp: { Request: class { constructor(...args) { this.args = args; requests.push(args); } },
+      createSession: () => ({ fetch: async () => ({ statusCode: 200, toString: () => '{}' }), close() {} }) } }, './InstanceConfig': { activeInstance }
+  });
+  activeInstance.activate('https://tasks.example', 'tasks'); const client = new ApiClient(); client.setToken('synthetic-token');
+  const id = '11111111-1111-1111-1111-111111111111';
+  await client.getForInstance('/rag/tasks', id); await client.postForInstance('/rag/tasks', { question: 'synthetic' }, id); await client.deleteForInstance('/rag/tasks/task', id);
+  assert.deepEqual(requests.map(value => value[1]), ['GET', 'POST', 'DELETE']);
+  assert.ok(requests.every(value => value[2]['X-Study-Log-Instance'] === id && value[2].authorization === 'Bearer synthetic-token'));
+});
+
 test('owned GET cancellation stops only that request and discards a late unauthorized response', async () => {
   const pending = [], sessions = [];
   const { ApiClient } = await loadEts('ApiClient', {

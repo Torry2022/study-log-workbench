@@ -12,6 +12,8 @@ import { WorkspaceBreakpoint, READING_MAX_WIDTH } from '../../common/AppConfig';
 import { FrameAction } from '../../common/ui/FrameAction';
 import { RagChatMessage, RagCitation, RagSessionSummary } from './QaModels';
 import { QaSessionController } from './QaSessionController';
+import { createQaTaskConnection } from './QaTaskConnection';
+import { QaTaskChoice } from './QaTaskModels';
 
 interface QaRenderMessage {
   role: string;
@@ -45,8 +47,11 @@ export struct QaPage {
   @Prop navigationSessionId: string = '';
   @Prop @Watch('navigationRequestChanged') navigationRequestRevision: number = 0;
   @Prop @Watch('discardRequested') discardRevision: number = 0;
+  @Prop deletedSessionId: string = '';
+  @Prop @Watch('sessionDeleted') deletedSessionRevision: number = 0;
   @Prop @Watch('questionFocusRequestChanged') questionFocusRevision: number = 0;
   onSessionsChange: (sessions: RagSessionSummary[]) => void = () => {};
+  onTaskSessionsChange: (sessions: RagSessionSummary[]) => void = () => {};
   onSessionsError: (message: string) => void = () => {};
   onActiveSessionChange: (id: string) => void = () => {};
   onBusyChange: (busy: boolean) => void = () => {};
@@ -58,6 +63,8 @@ export struct QaPage {
   onOpenLog: () => void = () => {};
   @State private data: QaSessionController = new QaSessionController(apiClient, {
     onSessionsChange: (sessions: RagSessionSummary[]) => this.onSessionsChange(sessions),
+    onTasksChange: (sessions: RagSessionSummary[]) => this.onTaskSessionsChange(sessions),
+    onQuestionChange: (question: string) => this.onDraftChange(!!question.trim()),
     onSessionsError: (message: string) => this.onSessionsError(message),
     onActiveSessionChange: (id: string) => this.onActiveSessionChange(id),
     onBusyChange: (busy: boolean) => {
@@ -69,10 +76,10 @@ export struct QaPage {
     onSessionReady: () => this.onSessionReady(),
     onBeforeSessionChange: () => this.onBeforeSessionChange(),
     resetComposerScroll: () => this.resetComposerScroll(),
-    beforeSend: () => this.getUIContext().getFocusController().clearFocus(),
+    beforeSend: () => { this.onDraftChange(false); this.getUIContext().getFocusController().clearFocus(); },
     showComposer: () => this.setComposerHidden(false),
     afterFrame: (action: () => void) => this.getUIContext().postFrameCallback(new FrameAction(action))
-  });
+  }, createQaTaskConnection());
   @State private composerHidden: boolean = false;
   @State private composerHeight: number = 132;
   @State private contentViewportWidth: number = 0;
@@ -92,6 +99,19 @@ export struct QaPage {
   private isLargeWorkspace(): boolean {
     return this.workspaceBreakpoint === WorkspaceBreakpoint.LARGE ||
       this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE;
+  }
+
+  private taskSelectOptions(): SelectOption[] {
+    const options: SelectOption[] = [{ value: '已保存会话' }];
+    this.data.taskChoices.forEach((choice: QaTaskChoice) => options.push({ value: choice.label }));
+    return options;
+  }
+
+  private taskSelection(choices: QaTaskChoice[]): (index: number, value: string) => void {
+    const ids = ['', ...choices.map((choice: QaTaskChoice) => choice.id)];
+    return (index: number, _value: string): void => {
+      if (index >= 0 && index < ids.length) this.data.selectTask(ids[index]);
+    };
   }
 
   aboutToAppear(): void { this.data.activate(); }
@@ -119,6 +139,10 @@ export struct QaPage {
   private discardRequested(): void {
     this.onDraftChange(false);
     this.data.newSession();
+  }
+
+  private sessionDeleted(): void {
+    if (this.deletedSessionId) this.data.forgetTaskSession(this.deletedSessionId);
   }
 
   private questionFocusRequestChanged(): void {
@@ -355,6 +379,48 @@ export struct QaPage {
             }
 
             Column({ space: 6 }) {
+              if (this.data.taskChoices.length > 0) {
+                Row({ space: 8 }) {
+                  Text('查看回答').fontSize(12).fontColor($r('app.color.muted'))
+                  Select(this.taskSelectOptions())
+                    .selected(Math.max(0, this.data.taskChoices.findIndex((choice) => choice.id === this.data.selectedTaskId) + 1))
+                    .value(this.data.taskChoices.find((choice) => choice.id === this.data.selectedTaskId)?.label || '已保存会话')
+                    .layoutWeight(1).height(36).font({ size: 12 }).fontColor($r('app.color.body'))
+                    .backgroundColor($r('app.color.surface_soft')).borderRadius(8)
+                    .enabled(!this.data.taskSaving)
+                    .accessibilityText('查看问答结果').id('qa_task_view')
+                    .onSelect(this.taskSelection(this.data.taskChoices))
+                }.width('100%')
+              }
+              if (this.data.taskMode) {
+                InlineStatus({ text: this.data.taskError, error: true, retry: !!this.data.taskError,
+                  onRetry: () => this.data.refreshTasks() })
+                InlineStatus({ text: this.data.taskSaveError, error: true })
+                if (this.data.taskCanSave || this.data.taskSaveError || this.data.taskCanRetry) {
+                  Row({ space: 8 }) {
+                    if (this.data.taskCanSave) {
+                      Button('重试保存', { type: ButtonType.Normal }).fontSize(12).height(34)
+                        .fontColor($r('app.color.body')).backgroundColor($r('app.color.surface_soft')).borderRadius(8)
+                        .enabled(!this.data.taskSaving).onClick(() => this.data.retryTaskSave())
+                    }
+                    if (this.data.taskSaveError) {
+                      Button('放弃此结果', { type: ButtonType.Normal }).fontSize(12).height(34)
+                        .fontColor($r('app.color.body')).backgroundColor($r('app.color.surface_soft')).borderRadius(8)
+                        .enabled(!this.data.taskSaving).onClick(() => {
+                          const id = this.data.selectedTaskId;
+                          AlertDialog.show({ message: '放弃当前选中的未保存回答？其他结果与已保存会话不受影响。',
+                            primaryButton: { value: '保留', action: () => {} },
+                            secondaryButton: { value: '放弃', action: () => this.data.discardTask(id) } });
+                        })
+                    }
+                    if (this.data.taskCanRetry) {
+                      Button('重试生成', { type: ButtonType.Normal }).fontSize(12).height(34)
+                        .fontColor($r('app.color.body')).backgroundColor($r('app.color.surface_soft')).borderRadius(8)
+                        .enabled(!this.data.taskSaving && !this.data.taskBlocked).onClick(() => this.data.retryTask())
+                    }
+                  }.width('100%')
+                }
+              }
               InlineStatus({ text: this.data.noticeMessage, error: false })
               InlineStatus({ text: this.data.failedAttempt || (this.data.failedSessionId && this.data.messages.length === 0) ? '' : this.data.errorMessage,
                 error: true, retry: this.data.failedSessionId.length > 0 && !this.data.sending,
@@ -429,7 +495,7 @@ export struct QaPage {
                   .opacity(this.data.sending && (this.data.receivedDone || !!this.data.pendingWrite) ||
                     !this.data.sending && (this.data.sessionLoading || this.data.question.trim().length === 0) ? 0.58 : 1)
                   .enabled(this.data.sending ? !this.data.receivedDone && !this.data.pendingWrite :
-                    this.configured && !this.data.sessionLoading && this.data.question.trim().length > 0)
+                    this.configured && !this.data.sessionLoading && !this.data.taskSaving && !this.data.taskBlocked && !this.data.taskSaveError && this.data.question.trim().length > 0)
                   .accessibilityText(this.data.sending ? (this.data.receivedDone || !!this.data.pendingWrite ?
                     '正在保存回答' : '停止生成') : '发送问题')
                   .bindTips(this.data.sending ? (this.data.receivedDone || !!this.data.pendingWrite ?

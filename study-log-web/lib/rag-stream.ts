@@ -24,6 +24,9 @@ export async function streamRagAnswer(config: ChatConfig, messages: RagPromptMes
     }
     if (!response.headers.get("content-type")?.toLowerCase().startsWith("text/event-stream") || !response.body) { await response.body?.cancel(); throw invalid(); }
     const reader = response.body.getReader(), decoder = new TextDecoder("utf-8", { fatal: true });
+    const cancelBody = () => { void reader.cancel().catch(() => {}); };
+    signal.addEventListener("abort", cancelBody, { once: true });
+    if (signal.aborted) cancelBody();
     let buffer = "", data: string[] = [], answer = "", bytes = 0, completed = false;
     let usage: unknown;
     const dispatch = () => {
@@ -66,6 +69,7 @@ export async function streamRagAnswer(config: ChatConfig, messages: RagPromptMes
         if (done) { if (buffer) line(buffer); dispatch(); break; }
       }
     } finally {
+      signal.removeEventListener("abort", cancelBody);
       await reader.cancel().catch(() => {}); reader.releaseLock();
       // Received usage is charge information, independent of answer completion.
       // Do not wait for a provider tail after a terminal error just to obtain it.

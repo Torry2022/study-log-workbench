@@ -172,6 +172,30 @@ test("model abort/deadline cancel network and provider bodies are not reflected"
   await assert.rejects(streamRagAnswer(chat(url), [], () => {}), error => error.code === "AI_PROVIDER_AUTH" && !error.message.includes("synthetic-key"));
 });
 
+for (const reason of ['cancel', 'deadline']) test(`model ${reason} closes an acquired body even when fetch no longer closes it`, async t => {
+  let bodyController, cancelled = 0, first;
+  const started = new Promise(resolve => first = resolve), usage = [];
+  const body = new ReadableStream({
+    start(controller) {
+      bodyController = controller;
+      controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 9, completion_tokens: 4 } })}\n\n${event('first')}`));
+    },
+    cancel() { cancelled++; }
+  });
+  // Once headers exist, the reader must also own cancellation. This transport
+  // deliberately leaves the returned body open when its request signal aborts.
+  t.mock.method(globalThis, 'fetch', async () => new Response(body, { headers: { 'content-type': 'text/event-stream' } }));
+  const controller = new AbortController();
+  const outcome = streamRagAnswer({ ...chat('http://synthetic.test/chat'), onUsage: value => usage.push(value) }, [], () => first(),
+    { signal: controller.signal, timeoutMs: reason === 'deadline' ? 40 : 1000 }).then(() => 'completed', error => error.code);
+  await started; if (reason === 'cancel') controller.abort();
+  const actual = await Promise.race([outcome, new Promise(resolve => setTimeout(() => resolve('still reading'), 150))]);
+  if (actual === 'still reading') { bodyController.close(); await outcome; }
+  assert.equal(actual, reason === 'cancel' ? 'AI_CANCELLED' : 'AI_TIMEOUT');
+  assert.equal(cancelled, 1);
+  assert.deepEqual(usage, [{ inputTokens: 9, outputTokens: 4 }]);
+});
+
 test("neither MCP nor chat transport follows redirects that could forward credentials", async t => {
   let visits = 0;
   const target = await server(t, (req, res) => { visits++; req.resume(); res.end(); });

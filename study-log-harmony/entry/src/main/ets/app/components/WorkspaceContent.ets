@@ -45,6 +45,7 @@ export struct WorkspaceContent {
     Stack() {
       Row() {
           QaPage({ workspaceActive: (this.selectedModule === 3), navigationSessionId: this.modules.qaSessionId,
+            deletedSessionId: this.modules.qaDeletedSessionId, deletedSessionRevision: this.modules.qaDeletedSessionRevision,
             onBeforeSessionChange: () => this.onBeforeQaSessionChange(),
             onSessionReady: () => this.onQaSessionReady(),
             onWorkspaceKey: (event: KeyEvent) => this.onWorkspaceKey(event),
@@ -53,6 +54,7 @@ export struct WorkspaceContent {
             questionFocusRevision: this.modules.qaQuestionFocusRevision, topRevision: this.modules.topRequests[3],
             configured: !!activeInstance.capabilities?.features.rag.configured,
             onSessionsChange: (sessions: RagSessionSummary[]) => this.qaNavigation.acceptQaNavigation(sessions),
+            onTaskSessionsChange: (sessions: RagSessionSummary[]) => this.qaNavigation.acceptQaTaskNavigation(sessions),
             onSessionsError: (message: string) => this.qaNavigation.qaNavigationError = message,
             onActiveSessionChange: (id: string) => this.modules.qaSessionId = id,
             onBusyChange: (busy: boolean) => this.modules.qaBusy = busy,

@@ -32,6 +32,11 @@ try {
     await startServer({ dir: location, isDev: false, config, hostname: "127.0.0.1", port: Number(process.env.PORT), allowRetry: false });
     if (!process.listenerCount("SIGTERM")) throw new Error("Next graceful shutdown handler is unavailable");
     close = async () => { process.emit("SIGTERM"); };
+    // Listening can precede a failed Next initialization. Only report readiness
+    // after the actual entry page is available, including instrumentation.
+    const response = await fetch(`http://127.0.0.1:${process.env.PORT}/study-log`, { redirect: "error", signal: AbortSignal.timeout(10000) });
+    await response.body?.cancel();
+    if (!response.ok) throw new Error("Workspace initialization failed");
   } else if (kind === "mcp") {
     const { startHttpServer } = await import(pathToFileURL(path.join(location, "src", "http-server.mjs")));
     const handle = await startHttpServer({ host: "127.0.0.1", port: Number(process.env.MCP_HTTP_PORT),

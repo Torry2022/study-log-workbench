@@ -4,6 +4,7 @@ import { ChatConfigurationError, getChatConfig, getLightChatConfig, configureRag
 import { getMcpConfig, McpConfigurationError } from "@/lib/mcp-config";
 import { parseRagHistory } from "@/lib/rag-answer";
 import { createRagQueryStream } from "@/lib/rag-query";
+import { currentRagTaskRuntime } from "@/lib/rag-task-runtime";
 
 export const runtime = "nodejs";
 const headers = { "Cache-Control": "no-store" };
@@ -32,7 +33,14 @@ export async function POST(request: NextRequest) {
     // An independently selected light model keeps its own provider defaults.
     if (lightChat.model === chat.model && chat.thinkingMode) lightChat.thinkingMode = chat.thinkingMode;
     const config = { chat, lightChat, mcp: getMcpConfig() };
-    const stream = createRagQueryStream({ question, history: parseRagHistory(body.history), mode: body.mode || "logs_only" }, config, request.signal);
+    const tasks = currentRagTaskRuntime();
+    const lease = tasks?.store.legacy(tasks.owner);
+    if (tasks && !lease) return fail("问答正在执行，请稍后重试", 429, "RAG_BUSY");
+    let stream;
+    try {
+      stream = createRagQueryStream({ question, history: parseRagHistory(body.history), mode: body.mode || "logs_only" }, config, request.signal,
+        lease ? () => tasks!.store.release(lease) : undefined);
+    } catch (error) { if (lease) tasks!.store.release(lease); throw error; }
     return new Response(stream, { headers: { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-store, no-transform", "X-Accel-Buffering": "no" } });
   } catch (error) {
     if (error instanceof ChatConfigurationError || error instanceof McpConfigurationError) return fail(error.message, 503, error.code);

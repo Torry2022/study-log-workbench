@@ -108,9 +108,12 @@ export struct QaNavigation {
               Row() {
                 Button({ type: ButtonType.Normal }) {
                   Row({ space: 8 }) {
-                    if (this.qaGeneratingSessionId === session.id) {
+                    if (this.qaGeneratingSessionId === session.id || session.taskState === 'running' || session.taskState === 'queued') {
                       LoadingProgress().width(14).height(14).color($r('app.color.primary'))
                         .accessibilityText('正在生成回答')
+                    } else if (session.taskState === 'unsaved') {
+                      SymbolGlyph($r('sys.symbol.exclamationmark_circle')).fontSize(14).fontColor([$r('app.color.muted')])
+                        .accessibilityText('有未保存回答')
                     }
                     Text(session.title).fontSize(13).fontWeight(FontWeight.Medium).fontColor($r('app.color.body'))
                       .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).layoutWeight(1)
@@ -129,7 +132,7 @@ export struct QaNavigation {
                 .width(26).height(26).margin({ right: 2 }).padding(0).backgroundColor(Color.Transparent).borderRadius(6).clip(true)
                 .accessibilityText(`管理会话：${session.title}`).bindTips(`管理会话：${session.title}`, WORKSPACE_TIPS)
                 .onClick(() => this.onMenu(this.qaMenuId === session.id ? '' : session.id))
-                .enabled(this.qaGeneratingSessionId !== session.id)
+                .enabled(this.qaGeneratingSessionId !== session.id && session.taskState !== 'running' && session.taskState !== 'queued')
                 .bindPopup(this.qaMenuId === session.id, {
                   builder: this.qaSessionMenu(session),
                   placement: Placement.BottomRight,
@@ -149,7 +152,7 @@ export struct QaNavigation {
             .borderRadius(8).clip(true)
           }
         }
-      }, (session: RagSessionSummary) => `${session.id}:${session.version}`)
+      }, (session: RagSessionSummary) => `${session.id}:${session.version}:${session.taskState || ''}`)
     }
   }
 

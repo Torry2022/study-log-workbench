@@ -22,6 +22,7 @@ test('actual query route shares explicit thinking with same-model RAG tasks only
   const exports={};let actual;
   runInNewContext(code,{exports,Buffer,TextDecoder,Response,require:name=>{
     if(name==='@/lib/auth')return {requireAuth:()=>null};
+    if(name==='@/lib/rag-task-runtime')return {currentRagTaskRuntime:()=>undefined};
     if(name==='@/lib/ai-config')return aiConfig;
     if(name==='@/lib/mcp-config')return {getMcpConfig:()=>({url:'http://synthetic.test/mcp',token:'synthetic'})};
     if(name==='@/lib/rag-answer')return {parseRagHistory:()=>[]};

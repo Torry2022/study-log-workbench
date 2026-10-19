@@ -163,7 +163,22 @@ test("backup or final rename failure preserves old snapshot and removes only the
   try { fs.rename = async () => { const error = new Error("synthetic rename failure"); error.code = "EIO"; throw error; };
     await failure(() => renameRagSession(first.id, { mutationId: uuid(), baseVersion: first.version, title: "仍不会写入" }), RagSessionStorageError);
   } finally { fs.rename = rename; }
-  assert.equal(await raw(), before); assert.deepEqual(await fs.readdir(path.join(process.env.LOG_ROOT, "state")), ["rag-sessions.json"]);
+  assert.equal(await raw(), before); assert.deepEqual((await fs.readdir(path.join(process.env.LOG_ROOT, "state"))).sort(), ["rag-sessions-lock.sqlite", "rag-sessions.json"]);
+});
+
+test("Windows sharing refusals retry atomic replacement without repeating backups; persistent errors preserve the old snapshot", async t => {
+  if (process.platform !== "win32") return t.skip("Windows sharing semantics");
+  const first = await create(), original = fs.rename; let attempts = 0;
+  try {
+    fs.rename = async (...args) => { attempts++; if (attempts <= 2) throw Object.assign(new Error("synthetic sharing refusal"), { code: "EPERM" }); return original(...args); };
+    const changed = await renameRagSession(first.id, { mutationId: uuid(), baseVersion: first.version, title: "共享冲突后成功" });
+    assert.equal(attempts, 3); assert.equal(changed.title, "共享冲突后成功"); assert.equal((await backupFiles()).length, 1);
+    const before = await raw(); attempts = 0;
+    fs.rename = async () => { attempts++; throw Object.assign(new Error("synthetic persistent refusal"), { code: "EACCES" }); };
+    await assert.rejects(renameRagSession(changed.id, { mutationId: uuid(), baseVersion: changed.version, title: "不得覆盖" }), RagSessionStorageError);
+    assert.equal(attempts, 4); assert.equal(await raw(), before);
+    assert.deepEqual((await fs.readdir(path.join(process.env.LOG_ROOT, "state"))).sort(), ["rag-sessions-lock.sqlite", "rag-sessions.json"]);
+  } finally { fs.rename = original; }
 });
 
 test("state/backup directory junctions cannot escape the instance boundary", async t => {

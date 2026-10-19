@@ -7,6 +7,8 @@ interface DeleteSessionRequest { baseVersion: string; mutationId: string; }
 interface DeleteResponse { ok: boolean; }
 export interface QaNavigationView {
   active: () => boolean;
+  connected?: () => boolean;
+  onDeletedSession?: (id: string) => void;
   busy: () => boolean;
   setBusy: (value: boolean) => void;
   activeSession: () => string;
@@ -27,6 +29,8 @@ export class QaNavigationController {
   private pendingRenameId: string = '';
   private pendingDelete?: DeleteSessionRequest;
   private pendingDeleteId: string = '';
+  private savedSessions: RagSessionSummary[] = [];
+  private taskSessions: RagSessionSummary[] = [];
   private transport: ApiClient;
   private view: QaNavigationView;
   constructor(transport: ApiClient, view: QaNavigationView) { this.transport = transport; this.view = view; }
@@ -39,7 +43,7 @@ export class QaNavigationController {
     try {
       const response = await this.transport.get<RagSessionsResponse>('/rag/sessions');
       if (revision !== this.qaNavigationRevision) return;
-      this.qaSessions = response.sessions;
+      this.savedSessions = response.sessions; this.mergeTaskNavigation();
     } catch (_) {
       if (revision !== this.qaNavigationRevision) return;
       this.qaNavigationError = '历史问答读取失败';
@@ -53,7 +57,24 @@ export class QaNavigationController {
     this.qaNavigationRevision++;
     this.qaNavigationLoading = false;
     this.qaNavigationError = '';
-    this.qaSessions = sessions;
+    this.savedSessions = sessions; this.mergeTaskNavigation();
+  }
+
+  acceptQaTaskNavigation(sessions: RagSessionSummary[]): void {
+    if (!(this.view.connected ? this.view.connected() : this.view.active())) return;
+    this.taskSessions = sessions; this.mergeTaskNavigation();
+  }
+
+  private mergeTaskNavigation(): void {
+    if (!this.taskSessions.length) { this.qaSessions = this.savedSessions; return; }
+    const sessions = new Map<string, RagSessionSummary>();
+    this.savedSessions.forEach((session: RagSessionSummary) => sessions.set(session.id, session));
+    this.taskSessions.forEach((task: RagSessionSummary) => {
+      const saved = sessions.get(task.id);
+      sessions.set(task.id, saved ? { id: saved.id, title: saved.title, createdAt: saved.createdAt, updatedAt: saved.updatedAt,
+        messageCount: saved.messageCount, lastQuestion: saved.lastQuestion, version: saved.version, taskState: task.taskState } : task);
+    });
+    this.qaSessions = Array.from(sessions.values());
   }
 
   async commitQaRename(): Promise<void> {
@@ -109,6 +130,8 @@ export class QaNavigationController {
       }
       await this.transport.delete<DeleteResponse>(`/rag/sessions/${encodeURIComponent(id)}`, this.pendingDelete);
       if (revision !== this.qaMutationRevision) return;
+      this.taskSessions = this.taskSessions.filter((session: RagSessionSummary) => session.id !== id);
+      this.view.onDeletedSession?.(id);
       this.acceptQaNavigation(this.qaSessions.filter((session: RagSessionSummary) => session.id !== id));
       this.pendingDelete = undefined;
       this.pendingDeleteId = '';

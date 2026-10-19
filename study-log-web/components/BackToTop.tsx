@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { ArrowUp } from "lucide-react";
 import type { WorkspaceView } from "@/hooks/use-log-workspace";
 import "@/app/back-to-top.css";
@@ -9,19 +9,22 @@ import { isEditingTarget, workspaceShortcutBlocked } from "@/lib/workspace-short
 export function BackToTop({ view, active }: { view: WorkspaceView; active: boolean }) {
   const control = useRef<HTMLDivElement>(null);
   const keepVisible = useRef(false);
-  const [state, setState] = useState({ visible: false, progress: 0, right: 24 });
+  const [state, setState] = useState({ visible: false, progress: 0, right: 24, clearance: 0 });
   useEffect(() => {
     if (!active) return;
     let timer: ReturnType<typeof setTimeout>, frame = 0;
     const reader = document.querySelector<HTMLElement>(`.view-${view} .reader`);
+    const composer = view === "qa" ? reader?.querySelector<HTMLElement>(".rag-composer") : null;
     const surfaces = () => [document.scrollingElement, ...Array.from(reader?.querySelectorAll<HTMLElement>(".reader-preview-pane, .cm-scroller, .stats-shell-embedded") ?? [])]
       .filter((element): element is HTMLElement => element instanceof HTMLElement && element.getClientRects().length > 0 && !element.closest('[hidden]'));
     const update = (show = false) => {
       const items = surfaces();
       const top = Math.max(0, ...items.map(element => element.scrollTop));
       const progress = Math.max(0, ...items.map(element => element.scrollHeight > element.clientHeight ? element.scrollTop / (element.scrollHeight - element.clientHeight) : 0));
+      const clearance = composer && !composer.classList.contains("is-hidden") ?
+        composer.offsetHeight + Math.max(0, parseFloat(getComputedStyle(composer).bottom) || 0) + 12 : 0;
       // Keep a focused control mounted through the last pixels of smooth scrolling.
-      setState(previous => ({ visible: top > 0 && ((show && top > 8) || previous.visible), progress: Math.min(1, progress), right: Math.max(24, innerWidth - (reader?.getBoundingClientRect().right ?? innerWidth) + 24) }));
+      setState(previous => ({ visible: top > 0 && ((show && top > 8) || previous.visible), progress: Math.min(1, progress), right: Math.max(24, innerWidth - (reader?.getBoundingClientRect().right ?? innerWidth) + 24), clearance }));
     };
     const scheduleHide = () => { clearTimeout(timer); timer = setTimeout(() => { if (!keepVisible.current) setState(previous => ({ ...previous, visible: false })); }, 2500); };
     const scroll = (event: Event) => {
@@ -29,6 +32,9 @@ export function BackToTop({ view, active }: { view: WorkspaceView; active: boole
       cancelAnimationFrame(frame); frame = requestAnimationFrame(() => update(true)); scheduleHide();
     };
     const resize = new ResizeObserver(() => update()); if (reader) resize.observe(reader);
+    if (composer) resize.observe(composer);
+    const changes = new MutationObserver(() => update());
+    if (composer) changes.observe(composer, { attributes: true, attributeFilter: ["class"] });
     document.addEventListener("scroll", scroll, true);
     const leave = () => { keepVisible.current = false; scheduleHide(); };
     const enter = () => { keepVisible.current = true; clearTimeout(timer); };
@@ -36,7 +42,7 @@ export function BackToTop({ view, active }: { view: WorkspaceView; active: boole
     node?.addEventListener("pointerenter", enter); node?.addEventListener("pointerleave", leave);
     node?.addEventListener("focusin", enter); node?.addEventListener("focusout", leave);
     setState(previous => ({ ...previous, visible: false })); update();
-    return () => { clearTimeout(timer); cancelAnimationFrame(frame); resize.disconnect(); document.removeEventListener("scroll", scroll, true); node?.removeEventListener("pointerenter", enter); node?.removeEventListener("pointerleave", leave); node?.removeEventListener("focusin", enter); node?.removeEventListener("focusout", leave); };
+    return () => { clearTimeout(timer); cancelAnimationFrame(frame); resize.disconnect(); changes.disconnect(); document.removeEventListener("scroll", scroll, true); node?.removeEventListener("pointerenter", enter); node?.removeEventListener("pointerleave", leave); node?.removeEventListener("focusin", enter); node?.removeEventListener("focusout", leave); };
   }, [view, active]);
   const top = () => {
     const behavior = matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth";
@@ -54,7 +60,7 @@ export function BackToTop({ view, active }: { view: WorkspaceView; active: boole
     window.addEventListener("keydown", keydown);
     return () => window.removeEventListener("keydown", keydown);
   }, [active, view]);
-  return <div ref={control} className={`back-to-top-control${active && state.visible ? " is-visible" : ""}`} style={{ right: state.right }} aria-hidden={!active || !state.visible}>
+  return <div ref={control} className={`back-to-top-control${active && state.visible ? " is-visible" : ""}`} style={{ right: state.right, "--back-to-top-clearance": `${state.clearance}px` } as CSSProperties} aria-hidden={!active || !state.visible}>
     <svg className="back-to-top-progress" viewBox="0 0 48 48" aria-hidden="true">
       <rect className="back-to-top-progress-track" x="1.5" y="1.5" width="45" height="45" rx="11" pathLength="100" />
       <rect className="back-to-top-progress-value" x="1.5" y="1.5" width="45" height="45" rx="11" pathLength="100" style={{ strokeDashoffset: 100 - state.progress * 100 }} />

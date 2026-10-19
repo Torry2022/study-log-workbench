@@ -19,6 +19,17 @@ async function loadEts(name, dependencies) {
 const firstId = '11111111-1111-1111-1111-111111111111';
 const secondId = '22222222-2222-2222-2222-222222222222';
 
+test('pending QA submissions stay in their captured namespace and require a confirmed preference flush', async () => {
+  const values = new Map(); let fails = false, flushes = 0;
+  const preferencesStore = { get: async (key, fallback) => values.get(key) ?? fallback,
+    put: async (key, value) => values.set(key, value), flush: async () => { flushes++; if (fails) throw Error('flush failed'); } };
+  const { InstanceStore } = await loadEts('InstanceStore', { '@kit.ArkData': { preferences: { getPreferences: async () => preferencesStore } },
+    '@kit.ArkTS': { util: {} }, '../network/InstanceConfig': { activeInstance, normalizeInstanceOrigin } });
+  const store = new InstanceStore(); await store.initialize({}); await store.writeQaPending(firstId, '["A"]'); await store.writeQaPending(secondId, '["B"]');
+  activeInstance.activate('https://another.example', secondId); assert.equal(await store.readQaPending(firstId), '["A"]'); assert.equal(await store.readQaPending(secondId), '["B"]');
+  fails = true; await assert.rejects(store.writeQaPending(firstId, '["unconfirmed"]'), /flush failed/); assert.equal(flushes, 3);
+});
+
 test('saved namespaces separate origin and server identity, and returning to A reuses its namespace', async () => {
   const values = new Map(); let serial = 0;
   const store = { get: async (key, fallback) => values.get(key) ?? fallback,

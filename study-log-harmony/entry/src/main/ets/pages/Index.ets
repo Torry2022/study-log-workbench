@@ -702,6 +702,8 @@ struct Index {
     const modules = this.modules;
     return new QaNavigationController(apiClient, {
       active: () => this.connected && this.selectedModule === 3 && this.modules === modules,
+      connected: () => this.connected && this.modules === modules,
+      onDeletedSession: (id: string) => { modules.qaDeletedSessionId = id; modules.qaDeletedSessionRevision++; },
       busy: () => modules.qaBusy,
       setBusy: (value: boolean) => modules.qaBusy = value,
       activeSession: () => modules.qaSessionId,

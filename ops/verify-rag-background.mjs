@@ -36,7 +36,8 @@ try {
   try{for(const theme of ['light','dark']){
    const page=await browser.newPage({viewport:{width:1440,height:900},colorScheme:theme});const errors=[];page.on('pageerror',e=>errors.push(e.message));
    const prefix=`合成后台-${engine}-${theme}-`,q=label=>prefix+label;
-   await page.route('**/api/capabilities',async route=>{const response=await route.fetch(),json=await response.json();if(response.ok())json.features.rag={supported:true,configured:true};await route.fulfill({response,json});});
+   // Keep coverage of the legacy stream against servers without persistent tasks.
+   await page.route('**/api/capabilities',async route=>{const response=await route.fetch(),json=await response.json();if(response.ok()){json.features.rag={supported:true,configured:true};delete json.features.ragTasks;}await route.fulfill({response,json});});
    await page.route('**/api/rag/query',route=>route.continue({url:`http://127.0.0.1:${mock.address().port}/sse`}));
    await page.route('**/api/rag/sessions/*/title',async route=>{const response=await page.request.get(route.request().url().replace(/\/title$/,''));await route.fulfill({response});});
    await page.goto(base);await page.getByLabel('访问密码').fill('synthetic-background-password');await page.getByRole('button',{name:'登录',exact:true}).click();await page.getByRole('button',{name:'问答',exact:true}).click();

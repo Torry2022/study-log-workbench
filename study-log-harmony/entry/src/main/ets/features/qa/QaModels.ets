@@ -6,6 +6,7 @@ export interface RagSessionSummary {
   messageCount: number;
   lastQuestion: string;
   version: string;
+  taskState?: string;
 }
 
 export interface RagHistoryMessage {

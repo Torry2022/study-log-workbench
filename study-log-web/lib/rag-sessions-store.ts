@@ -4,6 +4,8 @@ import path from "node:path";
 import { getBackupRoot, getLogRoot } from "./config.ts";
 import { isValidLogDate } from "./study-date.ts";
 import { RAG_MAX_SOURCES } from "./rag-types.ts";
+import { withRagSessionLock } from "./rag-session-lock.ts";
+import { scrubStoredRagTasks } from "./rag-task-store.ts";
 import type { RagAnswerMode, RagChatMessage, RagCitation, RagSession, RagSessionSummary } from "./rag-types.ts";
 
 export class RagSessionInputError extends Error {}
@@ -12,14 +14,15 @@ export class RagSessionConflictError extends Error {
   constructor() { super("问答会话已变化，未覆盖；请保留当前回答并重新读取后核对"); }
 }
 export class RagSessionNotFoundError extends Error { constructor() { super("问答会话不存在"); } }
-export class RagSessionStorageError extends Error { constructor() { super("问答历史存储异常，请保留当前回答并检查存储状态"); } }
+export class RagSessionStorageError extends Error { constructor(cause?: unknown) { super("问答历史存储异常，请保留当前回答并检查存储状态", { cause }); } }
 type TitleSource = "fallback" | "generated" | "manual";
 interface SessionRecord {
   id: string; title: string; titleSource: TitleSource; createdAt: string; updatedAt: string;
   answerMode: RagAnswerMode; messages: RagChatMessage[]; lastMutationId: string; fingerprint: string;
 }
 interface Tombstone { id: string; mutationId: string; fingerprint: string; baseVersion: string; deletedAt: string }
-interface SessionsFile { schemaVersion: 1; sessions: SessionRecord[]; tombstones: Tombstone[] }
+interface TaskReceipt { taskId: string; sessionId: string; fingerprint: string }
+interface SessionsFile { schemaVersion: 1; sessions: SessionRecord[]; tombstones: Tombstone[]; taskReceipts?: TaskReceipt[] }
 export interface SaveRagSessionInput { mutationId: string; baseVersion: string | null; answerMode: RagAnswerMode; messages: RagChatMessage[] }
 export interface CreateRagSessionInput extends SaveRagSessionInput { id: string; baseVersion: null }
 export interface RenameRagSessionInput { mutationId: string; baseVersion: string; title: string }
@@ -105,7 +108,7 @@ function timestamp(input: unknown): string {
 }
 function decode(raw: string): SessionsFile {
   try {
-    const data = object(JSON.parse(raw)); fields(data, ["schemaVersion", "sessions", "tombstones"]);
+    const data = object(JSON.parse(raw)); fields(data, ["schemaVersion", "sessions", "tombstones", "taskReceipts"]);
     if (data.schemaVersion !== 1 || !Array.isArray(data.sessions) || !Array.isArray(data.tombstones)) throw new Error();
     const seen = new Set<string>();
     const sessions = data.sessions.map(input => {
@@ -124,7 +127,12 @@ function decode(raw: string): SessionsFile {
       const id = uuid(item.id); if (seen.has(id) || id !== item.id) throw new Error(); seen.add(id);
       return { id, mutationId: uuid(item.mutationId), fingerprint: baseVersion(item.fingerprint), baseVersion: baseVersion(item.baseVersion), deletedAt: timestamp(item.deletedAt) };
     });
-    return { schemaVersion: 1, sessions, tombstones };
+    const taskReceipts = data.taskReceipts === undefined ? undefined : (data.taskReceipts as unknown[]).map(input => {
+      const item = object(input); fields(item, ["taskId", "sessionId", "fingerprint"]);
+      return { taskId: uuid(item.taskId), sessionId: uuid(item.sessionId), fingerprint: baseVersion(item.fingerprint) };
+    });
+    if (taskReceipts && (taskReceipts.length > 10000 || new Set(taskReceipts.map(item => item.taskId)).size !== taskReceipts.length)) throw new Error();
+    return { schemaVersion: 1, sessions, tombstones, ...(taskReceipts ? { taskReceipts } : {}) };
   } catch { throw new RagSessionStorageError(); }
 }
 
@@ -168,16 +176,27 @@ async function write(root: string, file: SessionsFile, previous: string | null) 
     const handle = await fs.open(temp, "wx", 0o600); created = true;
     try { await handle.writeFile(raw, "utf8"); await handle.sync(); } finally { await handle.close(); }
     if ((await read(root)).raw !== previous) throw new RagSessionConflictError();
-    await directory(state); await fileExists(target); await fileExists(temp); await fs.rename(temp, target);
+    await directory(state); await fileExists(target); await fileExists(temp);
+    for (let attempt = 0; ; attempt++) {
+      try { await fs.rename(temp, target); break; }
+      catch (error) {
+        if (process.platform !== "win32" || attempt >= 3 || !["EPERM", "EACCES", "EBUSY"].includes((error as NodeJS.ErrnoException).code || "")) throw error;
+        // Windows readers can briefly deny replacement. Keep the mutex and the one prepared backup.
+        await new Promise(resolve => setTimeout(resolve, 25 * 2 ** attempt));
+        await directory(state); await fileExists(target);
+        if (!await fileExists(temp)) throw new RagSessionStorageError();
+        if ((await read(root)).raw !== previous) throw new RagSessionConflictError();
+      }
+    }
   } finally {
     if (created) await directory(state).then(() => fileExists(temp)).then(exists => exists ? fs.unlink(temp) : undefined).catch(() => {});
   }
 }
-function queued<T>(task: (root: string) => Promise<T>): Promise<T> {
+function queued<T>(task: (root: string) => Promise<T>, readOnly = false): Promise<T> {
   const root = getLogRoot(), previous = queues.get(root) || Promise.resolve();
-  const next = previous.catch(() => {}).then(() => task(root)).catch(error => {
+  const next = previous.catch(() => {}).then(() => readOnly ? task(root) : withRagSessionLock(root, () => task(root))).catch(error => {
     if (error instanceof RagSessionInputError || error instanceof RagSessionConflictError || error instanceof RagSessionNotFoundError || error instanceof RagSessionStorageError) throw error;
-    throw new RagSessionStorageError();
+    throw new RagSessionStorageError(error);
   });
   queues.set(root, next); void next.finally(() => { if (queues.get(root) === next) queues.delete(root); }).catch(() => {}); return next;
 }
@@ -204,9 +223,68 @@ export function fallbackRagSessionTitle(question: string): string {
 export function listRagSessions(query = ""): Promise<RagSessionSummary[]> {
   const needle = text(query, "搜索词", 1000, true).trim().toLocaleLowerCase();
   return queued(async root => (await read(root)).file.sessions.filter(record => !needle || record.title.toLocaleLowerCase().includes(needle) || record.messages.some(message => message.role === "user" && message.content.toLocaleLowerCase().includes(needle)))
-    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id)).map(summary));
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt) || left.id.localeCompare(right.id)).map(summary), true);
 }
-export function getRagSession(id: string): Promise<RagSession> { const target = uuid(id); return queued(async root => session(find((await read(root)).file, target))); }
+export function getRagSession(id: string): Promise<RagSession> { const target = uuid(id); return queued(async root => session(find((await read(root)).file, target)), true); }
+
+export function deletedRagSessionIds(): Promise<string[]> {
+  return queued(async root => (await read(root)).file.tombstones.map(item => item.id), true);
+}
+
+function taskVersionMatches(record: SessionRecord, base: string | null): boolean {
+  return version(record) === base || base !== null && record.titleSource === "generated" &&
+    record.fingerprint === fingerprint("generated-title", { title: record.title, baseVersion: base });
+}
+/** Old writers reject the receipt field, including before the first result exists. */
+export function ensureRagTaskSessionFormat(): Promise<void> {
+  return queued(async root => {
+    const { file, raw } = await read(root);
+    if (file.taskReceipts !== undefined) return;
+    file.taskReceipts = [];
+    await write(root, file, raw);
+  });
+}
+export function inspectRagTaskSession(id: string, base?: string | null): Promise<{ session: RagSession | null; deleted: boolean; matchesBaseVersion: boolean }> {
+  const target = uuid(id);
+  return queued(async root => {
+    const file = (await read(root)).file;
+    const record = file.sessions.find(item => item.id === target);
+    return { session: record ? session(record) : null, deleted: file.tombstones.some(item => item.id === target),
+      matchesBaseVersion: base !== undefined && (record ? taskVersionMatches(record, base) : base === null) };
+  }, true);
+}
+
+/** Receipt and messages share one atomic JSON replacement. Reconciliation never appends twice. */
+export function applyRagTaskResult(input: { taskId: string; sessionId: string; baseVersion: string | null;
+  question: string; answerMode: RagAnswerMode; answer: string; citations: RagCitation[]; groundingWarning?: string; replaceLast?: boolean }): Promise<RagSession> {
+  const taskId = uuid(input.taskId), id = uuid(input.sessionId);
+  const digest = hash(JSON.stringify(input));
+  return queued(async root => {
+    const { file, raw } = await read(root);
+    if (file.tombstones.some(item => item.id === id)) throw new RagSessionNotFoundError();
+    const existing = file.sessions.find(item => item.id === id);
+    const receipt = file.taskReceipts?.find(item => item.taskId === taskId);
+    if (receipt) {
+      if (receipt.sessionId !== id || receipt.fingerprint !== digest || !existing) throw new RagSessionConflictError();
+      return session(existing);
+    }
+    if (existing ? !taskVersionMatches(existing, input.baseVersion) : input.baseVersion !== null) throw new RagSessionConflictError();
+    if ((file.taskReceipts?.length || 0) >= 10000) throw new RagSessionStorageError();
+    const previous = existing?.messages || [];
+    if (input.replaceLast && (previous.length < 2 || previous.at(-2)?.content !== input.question)) throw new RagSessionConflictError();
+    const content = messages([...(input.replaceLast ? previous.slice(0, -2) : previous),
+      { id: `${taskId}:user`, role: "user", content: input.question, status: "complete" },
+      { id: `${taskId}:assistant`, role: "assistant", content: input.answer, citations: input.citations, status: "complete",
+        ...(input.groundingWarning ? { groundingWarning: input.groundingWarning } : {}) }]);
+    const now = new Date().toISOString();
+    const record: SessionRecord = existing || { id, title: fallbackRagSessionTitle(input.question), titleSource: "fallback", createdAt: now,
+      updatedAt: now, answerMode: input.answerMode, messages: [], lastMutationId: taskId, fingerprint: digest };
+    Object.assign(record, { messages: content, answerMode: input.answerMode, updatedAt: now, lastMutationId: taskId, fingerprint: digest });
+    if (!existing) file.sessions.push(record);
+    (file.taskReceipts ||= []).push({ taskId, sessionId: id, fingerprint: digest });
+    await write(root, file, raw); return session(record);
+  });
+}
 export function createRagSession(input: CreateRagSessionInput): Promise<RagSession> {
   const value = object(input); fields(value, ["id", "mutationId", "baseVersion", "answerMode", "messages"]);
   const id = uuid(value.id), mutationId = uuid(value.mutationId), mode = answerMode(value.answerMode), content = messages(value.messages);
@@ -248,12 +326,17 @@ export function deleteRagSession(id: string, input: DeleteRagSessionInput): Prom
   const mutationId = uuid(value.mutationId), base = baseVersion(value.baseVersion), digest = fingerprint("delete", { baseVersion: base });
   return queued(async root => {
     const { file, raw } = await read(root), deleted = file.tombstones.find(item => item.id === target);
-    if (deleted) { if (deleted.mutationId === mutationId && deleted.fingerprint === digest && deleted.baseVersion === base) return; throw new RagSessionConflictError(); }
+    if (deleted) {
+      if (deleted.mutationId === mutationId && deleted.fingerprint === digest && deleted.baseVersion === base) { scrubStoredRagTasks(root, target); return; }
+      throw new RagSessionConflictError();
+    }
     const record = find(file, target);
     if (record.lastMutationId === mutationId || version(record) !== base) throw new RagSessionConflictError();
     file.sessions = file.sessions.filter(item => item.id !== target);
     file.tombstones.push({ id: target, mutationId, fingerprint: digest, baseVersion: base, deletedAt: new Date().toISOString() });
     await write(root, file, raw);
+    // The tombstone remains authoritative if cleanup fails. An identical delete retry reconciles it.
+    scrubStoredRagTasks(root, target);
   });
 }
 /** The route checks titleSource before spending a model request; check again after it finishes. */
@@ -263,7 +346,7 @@ export function applyGeneratedRagSessionTitle(id: string, expectedVersion: strin
     const { file, raw } = await read(root), record = find(file, target);
     if (record.titleSource !== "fallback") return session(record);
     if (version(record) !== base) throw new RagSessionConflictError();
-    Object.assign(record, { title: name, titleSource: "generated", updatedAt: new Date().toISOString(), lastMutationId: crypto.randomUUID(), fingerprint: fingerprint("generated-title", { title: name }) });
+    Object.assign(record, { title: name, titleSource: "generated", updatedAt: new Date().toISOString(), lastMutationId: crypto.randomUUID(), fingerprint: fingerprint("generated-title", { title: name, baseVersion: base }) });
     await write(root, file, raw); return session(record);
   });
 }

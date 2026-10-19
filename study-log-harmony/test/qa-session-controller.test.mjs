@@ -20,10 +20,12 @@ async function loadController() {
     return module.exports;
   };
   const { QaStreamParser } = await load('QaStreamParser.ets', {});
+  const taskModels = await load('QaTaskModels.ets', {});
   let sequence = 0;
   const { QaSessionController } = await load('QaSessionController.ets', {
     '../../common/network/ApiClient': { ApiError: class extends Error {}, ApiStreamCancelledError: class extends Error {} },
     './QaStreamParser': { QaStreamParser },
+    './QaTaskModels': taskModels,
     '@kit.ArkTS': { util: { generateRandomUUID: () => `00000000-0000-4000-8000-${String(++sequence).padStart(12, '0')}` } }
   });
   return QaSessionController;
@@ -328,4 +330,23 @@ test('final sources may arrive after deltas and an abstention clears candidate c
  const citation={sourceId:'S1',date:'2026-09-01',heading:'合成'};
  event('delta',{text:'新回答[S1]'});event('sources',{citations:[citation]});event('done',{answer:'新回答[S1]',citations:[citation]});
  assert.equal(controller.messages[0].content,'新回答[S1]');assert.equal(controller.messages[0].citations[0].date,'2026-09-01');
+});
+
+test('durable submission uses the task protocol instead of legacy generation and client session writes', async () => {
+  const Controller = await loadController(), submitted = [];
+  const tasks = { ready: true, tasks: [], pending: [], error: '', onChange() {},
+    submit: async input => { submitted.push(structuredClone(input)); }, refresh: async () => {}, start: async () => {}, stop() {} };
+  const controller = new Controller({ postStream: async () => assert.fail('must not generate through the legacy stream'),
+    post: async () => assert.fail('must not save a task result from the client'), get: async () => ({ sessions: [] }) }, view(), tasks);
+  controller.question = 'durable synthetic question'; await controller.send();
+  assert.equal(submitted.length, 1); assert.equal(submitted[0].question, 'durable synthetic question');
+  assert.match(submitted[0].sessionId, /^[a-f0-9-]{36}$/); assert.match(submitted[0].submissionId, /^[a-f0-9-]{36}$/);
+});
+
+test('disposing a durable view disconnects discovery without cancelling the server task or another stream', async () => {
+  const Controller = await loadController(); let streamCancels = 0, disconnects = 0;
+  const tasks = { ready: true, tasks: [], pending: [], error: '', onChange() {}, stop() { disconnects++; } };
+  const controller = new Controller({ cancelStream() { streamCancels++; } }, view(), tasks);
+  controller.sending = true; controller.dispose();
+  assert.equal(streamCancels, 0); assert.equal(disconnects, 1);
 });

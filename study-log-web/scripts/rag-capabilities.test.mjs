@@ -22,6 +22,7 @@ test('actual capabilities handler disables only RAG for invalid thinking and rep
   runInNewContext(code,{exports,require:name=>{
     if(name==='@/lib/ai-config')return config;
     if(name==='@/lib/auth')return {requireAuth:()=>null};
+    if(name==='@/lib/rag-task-runtime')return {currentRagTaskRuntime:()=>undefined};
     if(name==='@/lib/config')return {getLogRoot:()=>root};
     if(name==='@/lib/mcp-config')return {inspectMcpConfig:()=>({configured:true,issues:[]})};
     if(name==='@/lib/ai-prompts')return {inspectWritingPrompts:async()=>({generation:{configured:true},highlighting:{configured:true},extraction:{configured:true}})};

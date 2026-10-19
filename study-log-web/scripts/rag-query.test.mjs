@@ -409,10 +409,20 @@ async function loadRoute(auth) {
   const source = await fs.readFile(new URL("../app/api/rag/query/route.ts", import.meta.url), "utf8");
   const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   const exports = {};
-  const dependencies = { "@/lib/auth": { requireAuth: auth }, "@/lib/ai-config": chatConfig, "@/lib/mcp-config": mcpConfig, "@/lib/rag-answer": answer, "@/lib/rag-query": query };
+  const dependencies = { "@/lib/auth": { requireAuth: auth }, "@/lib/ai-config": chatConfig, "@/lib/mcp-config": mcpConfig, "@/lib/rag-answer": answer, "@/lib/rag-query": query,
+    "@/lib/rag-task-runtime": { currentRagTaskRuntime: () => undefined } };
   runInNewContext(compiled, { exports, require: name => { if (!(name in dependencies)) throw Error(`Unexpected import ${name}`); return dependencies[name]; }, Response, TextDecoder, Buffer });
   return exports;
 }
+
+test('a cancelled legacy stream releases its execution slot exactly once after upstream settles', async t => {
+  const { state, config } = await fixture(t); state.stall = true;
+  const started = new Promise(resolve => { state.started = resolve; }); let releases = 0;
+  const reader = query.createRagQueryStream(input, config, new AbortController().signal, () => releases++).getReader();
+  await started; await reader.cancel();
+  for (let i = 0; i < 100 && releases === 0; i++) await new Promise(resolve => setTimeout(resolve, 10));
+  assert.equal(releases, 1); await new Promise(resolve => setTimeout(resolve, 30)); assert.equal(releases, 1);
+});
 
 test("real route function authenticates before parsing and bounds JSON, mode and configuration", async t => {
   const anonymous = await loadRoute(() => Response.json({ error: "Unauthorized" }, { status: 401 }));

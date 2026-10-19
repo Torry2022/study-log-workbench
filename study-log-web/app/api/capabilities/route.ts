@@ -7,6 +7,7 @@ import { getLogRoot } from "@/lib/config";
 import { inspectChatConfig, inspectRagChatConfig } from "@/lib/ai-config";
 import { inspectWritingPrompts } from "@/lib/ai-prompts";
 import { inspectMcpConfig } from "@/lib/mcp-config";
+import { currentRagTaskRuntime } from "@/lib/rag-task-runtime";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,6 +27,7 @@ export async function GET(request: NextRequest) {
       serverVersion: packageInfo.version,
       aiConfiguration: { provider, templates },
       features: {
+        ragTasks: { supported: true, configured: Boolean(currentRagTaskRuntime()), protocolVersion: 1 },
         aiWriting: { supported: true, configured: provider.configured && templates.generation.configured },
         aiHighlighting: { supported: true, configured: provider.configured && templates.highlighting.configured },
         aiNoteExtraction: { supported: true, configured: provider.configured && templates.extraction.configured },

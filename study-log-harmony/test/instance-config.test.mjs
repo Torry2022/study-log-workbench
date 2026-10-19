@@ -52,3 +52,12 @@ test('provider configuration remains optional for older servers and validates wh
     assert.equal(validCapabilities({ ...capabilities, aiConfiguration }), false);
   }
 });
+
+test('task capability is optional, validates flags and preserves unknown positive protocol versions for safe blocking', () => {
+  assert.equal(validCapabilities(capabilities), true);
+  for (const protocolVersion of [1, 9]) assert.equal(validCapabilities({ ...capabilities,
+    features: { ...capabilities.features, ragTasks: { supported: true, configured: false, protocolVersion } } }), true);
+  for (const ragTasks of [null, {}, { supported: 'true', configured: true, protocolVersion: 1 }, { supported: true, configured: true, protocolVersion: 0 }]) {
+    assert.equal(validCapabilities({ ...capabilities, features: { ...capabilities.features, ragTasks } }), false);
+  }
+});

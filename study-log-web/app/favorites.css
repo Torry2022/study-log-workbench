@@ -186,6 +186,15 @@
   text-align: left;
   white-space: normal;
   overflow-wrap: anywhere;
+  font-size: var(--sidebar-item-size);
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.favorite-navigation-list .favorite-filter-chip span {
+  color: var(--muted-soft);
+  font-size: var(--sidebar-meta-size);
+  font-weight: 400;
 }
 
 .favorite-navigation-list .favorite-filter-chip.active {

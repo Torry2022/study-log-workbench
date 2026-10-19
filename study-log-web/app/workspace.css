@@ -379,10 +379,15 @@
   min-height: 36px;
   padding: 0 10px;
   border-radius: var(--radius-md);
+  font-size: var(--sidebar-item-size);
+  font-weight: 400;
+  line-height: 1.4;
 }
 
 .nav-item small {
   color: var(--muted-soft);
+  font-size: var(--sidebar-meta-size);
+  font-weight: 400;
 }
 
 .nav-item.active,
@@ -427,8 +432,8 @@
   background: rgba(204, 120, 92, 0.1);
   color: var(--body);
   font-family: inherit;
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--sidebar-detail-size);
+  font-weight: 400;
   line-height: 1.25;
   overflow-wrap: anywhere;
   text-align: left;

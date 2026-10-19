@@ -114,7 +114,8 @@
   border-radius: 999px;
   background: var(--surface-card);
   color: var(--body);
-  font-size: 12px;
+  font-size: var(--sidebar-detail-size);
+  font-weight: 400;
 }
 
 .notes-tag-filter-list button:hover,
@@ -125,8 +126,9 @@
 }
 
 .notes-tag-filter-list small {
-  color: var(--muted);
-  font-size: 11px;
+  color: var(--muted-soft);
+  font-size: var(--sidebar-meta-size);
+  font-weight: 400;
 }
 
 .notes-title-block {

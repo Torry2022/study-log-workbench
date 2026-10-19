@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { CalendarDays, Edit3, MoreHorizontal, Plus, Trash2 } from "lucide-react";
+import { CalendarDays, Edit3, Folders, MoreHorizontal, Plus, Trash2 } from "lucide-react";
 import type { FavoritesController } from "@/hooks/use-favorites";
 import "@/app/favorites.css";
 
@@ -31,7 +31,7 @@ export function FavoritesNavigation({ favorites, active = true }: { favorites: F
   const shownMonths = monthsExpanded ? months : months.filter((month, index) => index < 6 || month === favorites.filters.month);
   const managedGroup = favorites.groups.find(group => group.id === control?.id);
   return <div className="module-sidebar-content favorite-navigation" ref={navigation}>
-    <div className="favorite-navigation-groups" aria-label="收藏分组筛选"><div className="section-title">收藏分组</div>
+    <div className="favorite-navigation-groups" aria-label="收藏分组筛选"><div className="section-title inline"><Folders size={15} aria-hidden="true" />收藏分组</div>
       <div className="favorite-navigation-list" role="navigation" aria-label="收藏分组">
         <button className={`favorite-filter-chip${favorites.filters.group === "all" ? " active" : ""}`} type="button" onClick={() => favorites.filter({ group: "all" })}>全部收藏 <span>{favorites.favorites.length}</span></button>
         <button className={`favorite-filter-chip${favorites.filters.group === "ungrouped" ? " active" : ""}`} type="button" onClick={() => favorites.filter({ group: "ungrouped" })}>未分组 <span>{favorites.favorites.filter(item => !item.groupIds.length).length}</span></button>

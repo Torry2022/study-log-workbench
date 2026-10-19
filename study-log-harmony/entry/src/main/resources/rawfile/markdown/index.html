@@ -25,6 +25,14 @@
     let bearerToken = '';
     let instanceOrigin = '';
 
+    function setReaderBottomInset(inset, revision) {
+      document.documentElement.style.setProperty('--reader-bottom-inset', `${inset}px`);
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (window.readerFrames) window.readerFrames.bottomInsetReady(revision, window.scrollY);
+      }));
+    }
+    window.setReaderBottomInset = setReaderBottomInset;
+
     function escapeHtml(value) {
       return String(value).replace(/[&<>"']/g, (character) => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'

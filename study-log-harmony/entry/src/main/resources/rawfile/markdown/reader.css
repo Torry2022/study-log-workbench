@@ -294,7 +294,7 @@ body { color: var(--body); font-family: "HarmonyOS Sans SC", system-ui, sans-ser
   .wiki-contribution-summary { grid-column: 1 / -1; grid-row: 2; white-space: normal; }
 }
 
-.markdown-body.qa-conversation { padding: 0 var(--reader-inset) 56px; }
+.markdown-body.qa-conversation { padding: 0 var(--reader-inset) calc(24px + var(--reader-bottom-inset, 0px)); }
 .markdown-body.qa-conversation > :first-child { margin-top: 0; }
 .qa-message { min-width: 0; padding: 16px 0; border-bottom: 1px solid var(--hairline-soft); }
 .qa-message-label { margin-bottom: 8px; color: var(--muted); font-size: 12px; font-weight: 700; }

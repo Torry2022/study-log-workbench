@@ -209,9 +209,13 @@ export struct QaPage {
     this.composerHidden = hidden;
   }
 
-  private handleReaderScroll(yOffset: number): void {
+  private handleReaderScroll(yOffset: number, layoutChange: boolean = false): void {
     this.readerScrollOffset = Math.max(0, yOffset);
     this.onScrollStateChange(this.topDividerOffset > 0 && this.readerScrollOffset >= this.topDividerOffset - 0.5);
+    if (layoutChange) {
+      this.lastScrollY = yOffset;
+      return;
+    }
     if (this.readerScrollOffset <= 8) {
       this.lastScrollY = yOffset;
       this.scrollTravel = 0;
@@ -219,7 +223,7 @@ export struct QaPage {
       this.setComposerHidden(false);
       return;
     }
-    if (this.data.question.trim() || this.data.sending) {
+    if (this.questionFocused || this.data.question.trim() || this.data.sending) {
       this.setComposerHidden(false);
       this.lastScrollY = yOffset;
       this.scrollTravel = 0;
@@ -260,7 +264,7 @@ export struct QaPage {
     .height(48)
     .hitTestBehavior(HitTestMode.Transparent)
     .margin({ right: this.isLargeWorkspace() ? 24 : 14, bottom: this.isLargeWorkspace() ? 24 : 14 })
-    .translate({ y: this.isLargeWorkspace() || this.composerHidden ? 0 : -120 })
+    .translate({ y: this.isLargeWorkspace() || this.composerHidden ? 0 : -this.composerHeight })
     .animation({ duration: 140, curve: Curve.Ease })
     .zIndex(4)
   }
@@ -390,13 +394,14 @@ export struct QaPage {
                   this.onSessionReady();
                 },
                 contentMode: 'qa',
+                contentBottomInset: this.composerHidden ? 0 : this.composerHeight,
                 fillAvailableWidth: true,
                 followEnd: this.data.sending,
                 showBackToTop: false,
                 trackScrollProgress: true,
                 scrollToTopRequestRevision: this.scrollToTopRequestRevision,
                 themePreference: this.themePreference,
-                onScrollPosition: (yOffset: number) => this.handleReaderScroll(yOffset),
+                onScrollPosition: (yOffset: number, layoutChange: boolean) => this.handleReaderScroll(yOffset, layoutChange),
                 onScrollProgress: (progress: number) => this.readerScrollProgress = progress,
                 onTopDividerPosition: (yOffset: number) => {
                   this.topDividerOffset = yOffset;
@@ -407,7 +412,6 @@ export struct QaPage {
               })
                 .width('100%')
                 .height('100%')
-                .padding({ bottom: this.composerHeight })
             }
 
             Column({ space: 6 }) {
@@ -515,7 +519,7 @@ export struct QaPage {
             .padding({ left: this.composerHorizontalInset(), right: this.composerHorizontalInset(), bottom: 10 })
             .opacity(this.composerHidden ? 0 : 1)
             .onAreaChange((_old, area) => this.composerHeight = Number(area.height))
-            .translate({ y: this.composerHidden ? 150 : 0 })
+            .translate({ y: this.composerHidden ? this.composerHeight : 0 })
             .hitTestBehavior(this.composerHidden ? HitTestMode.None : HitTestMode.Default)
             .animation({ duration: 140, curve: Curve.Ease })
             if (!this.isLargeWorkspace()) this.qaBackToTopButton()

@@ -16,6 +16,9 @@ class ReaderFrameBridge {
   onViewportReady: (sequence: number) => void = () => {};
   onFailed: (sequence: number) => void = () => {};
   onActiveHeading: (headingId: string) => void = () => {};
+  onBottomInsetReady: (revision: number, offset: number) => void = () => {};
+
+  bottomInsetReady(revision: number, offset: number): void { this.onBottomInsetReady(revision, offset); }
 
   activeHeading(headingId: string): void {
     this.onActiveHeading(headingId);
@@ -47,6 +50,7 @@ export struct MarkdownReader {
   @State private surfaceWidth: number = 0;
   @State private surfaceInset: number = 0;
   @Prop @Watch('contentTopInsetChanged') contentTopInset: number = 0;
+  @Prop @Watch('contentBottomInsetChanged') contentBottomInset: number = 0;
   @Prop followEnd: boolean = false;
   @Prop resetScrollOnContentChange: boolean = false;
   @Prop @Watch('contentChanged') documentKey: string = '';
@@ -78,7 +82,7 @@ export struct MarkdownReader {
   onRenderFailed: (documentKey: string) => void = () => {};
   onViewportReady: () => void = () => {};
   onContentRendered: (content: string, documentKey: string) => void = () => {};
-  onScrollPosition: (yOffset: number) => void = () => {};
+  onScrollPosition: (yOffset: number, layoutChange: boolean) => void = () => {};
   onScrollProgress: (progress: number) => void = () => {};
   onTopDividerPosition: (yOffset: number) => void = () => {};
   onActiveHeading: (headingId: string) => void = () => {};
@@ -103,6 +107,15 @@ export struct MarkdownReader {
   private scrollRangeQueryPending: boolean = false;
   private activeHeadingQueryPending: boolean = false;
   private viewportWidthPx: number = 0;
+  private bottomInsetRevision: number = 0;
+  private bottomInsetChanging: boolean = false;
+
+  private contentBottomInsetChanged(): void {
+    if (!this.active || !this.ready) return;
+    this.bottomInsetChanging = true;
+    const revision = ++this.bottomInsetRevision;
+    this.controller.runJavaScript(`window.setReaderBottomInset(${Math.max(0, this.contentBottomInset)}, ${revision})`);
+  }
 
   private viewportRequested(): void {
     this.viewportSequence++;
@@ -118,6 +131,12 @@ export struct MarkdownReader {
 
   aboutToAppear(): void {
     this.active = true;
+    this.frameBridge.onBottomInsetReady = (revision: number, offset: number) => {
+      if (!this.active || !this.ready || revision !== this.bottomInsetRevision) return;
+      this.onScrollPosition(offset, true);
+      this.bottomInsetChanging = false;
+      this.measureScrollRange();
+    };
     this.frameBridge.onActiveHeading = (headingId: string) => {
       if (this.active && this.ready && this.trackActiveHeading) this.onActiveHeading(headingId);
     };
@@ -410,7 +429,7 @@ export struct MarkdownReader {
 
   private handleScroll(yOffset: number): void {
     this.scrollOffset = Math.max(0, yOffset);
-    this.onScrollPosition(yOffset);
+    this.onScrollPosition(yOffset, this.bottomInsetChanging);
     this.measureActiveHeading();
     if (!this.showBackToTop && !this.trackScrollProgress) return;
     this.updateScrollProgress();
@@ -475,7 +494,7 @@ export struct MarkdownReader {
         .backgroundColor($r('app.color.canvas'))
         .onDrop(this.onImageDrop)
         .javaScriptAccess(true)
-        .javaScriptProxy({ object: this.frameBridge, name: 'readerFrames', methodList: ['rendered', 'viewportReady', 'previewImage', 'failed', 'activeHeading'], controller: this.controller })
+        .javaScriptProxy({ object: this.frameBridge, name: 'readerFrames', methodList: ['rendered', 'viewportReady', 'previewImage', 'failed', 'activeHeading', 'bottomInsetReady'], controller: this.controller })
         .onAreaChange((_oldArea, area) => {
           if (this.stableViewport) return;
           this.viewportWidthPx = this.getUIContext().vp2px(Number(area.width));
@@ -498,6 +517,7 @@ export struct MarkdownReader {
         })
         .onPageEnd(() => {
           this.ready = true;
+          if (this.contentBottomInset > 0) this.contentBottomInsetChanged();
           this.checkViewport();
           this.webContentReady = false;
           this.lastRenderKey = '';

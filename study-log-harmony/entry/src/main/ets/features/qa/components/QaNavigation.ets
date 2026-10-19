@@ -115,7 +115,7 @@ export struct QaNavigation {
                       SymbolGlyph($r('sys.symbol.exclamationmark_circle')).fontSize(14).fontColor([$r('app.color.muted')])
                         .accessibilityText('有未保存回答')
                     }
-                    Text(session.title).fontSize(14).fontWeight(FontWeight.Regular).fontColor($r('app.color.body'))
+                    Text(session.title).fontSize(13).fontWeight(FontWeight.Regular).fontColor($r('app.color.body'))
                       .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).layoutWeight(1)
                     Text(this.qaUpdatedLabel(session)).fontSize(12).fontWeight(FontWeight.Regular).fontColor($r('app.color.muted_soft')).flexShrink(0)
                   }.width('100%')

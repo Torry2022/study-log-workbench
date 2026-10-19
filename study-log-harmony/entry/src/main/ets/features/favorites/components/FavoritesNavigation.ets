@@ -1,5 +1,5 @@
 import { FormKeyboardContext } from '../../../common/ui/FormKeyboardContext';
-import { NavigationLabelStyle, NavigationCountStyle } from '../../../common/ui/NavigationRowStyle';
+import { NavigationLabelStyle, NavigationCountStyle, NavigationSectionStyle } from '../../../common/ui/NavigationRowStyle';
 import { InteractiveSurface, animateHover } from '../../../common/ui/InteractiveSurface';
 import { appFeedback, FeedbackTone } from '../../../common/ui/AppFeedback';
 import { InlineStatus } from '../../../common/ui/FeedbackStates';
@@ -198,8 +198,7 @@ export struct FavoritesNavigation {
         Row() {
           SymbolGlyph($r('sys.symbol.folder')).fontSize(15).fontColor([$r('app.color.primary_active')])
             .margin({ right: 7 })
-          Text('收藏分组').layoutWeight(1).fontSize(12).fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.muted'))
+          Text('收藏分组').layoutWeight(1).attributeModifier(new NavigationSectionStyle())
           Button({ type: ButtonType.Normal }) {
             Image($r('app.media.rail_plus')).width(15).height(15).colorFilter(iconTint($r('app.color.muted')))
           }.id('favorite_group_new').width(30).height(30).padding(0).borderRadius(8)
@@ -261,7 +260,7 @@ export struct FavoritesNavigation {
           (group: FavoriteGroup) => `${group.id}:${group.name}`)
         Row({ space: 7 }) {
           SymbolGlyph($r('sys.symbol.calendar')).fontSize(15).fontColor([$r('app.color.primary_active')])
-          Text('日志月份').fontSize(12).fontWeight(FontWeight.Medium).fontColor($r('app.color.muted'))
+          Text('日志月份').attributeModifier(new NavigationSectionStyle())
         }.width('100%').height(30).padding({ left: 10 }).margin({ top: 16 })
         FavoriteFilterRow({
           wide: this.wide, rowId: 'favorite_month_all', label: '全部月份', count: this.groupFavorites().length,
@@ -303,11 +302,12 @@ struct FavoriteFilterRow {
     Row({ space: 8 }) {
       Text(this.label).layoutWeight(1).fontColor($r('app.color.body'))
         .attributeModifier(new NavigationLabelStyle(this.selected))
-        .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+        .lineHeight(20).maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
       Text(this.count.toString()).id(`${this.rowId}_count`).textAlign(TextAlign.End)
         .fontColor($r('app.color.muted_soft'))
         .attributeModifier(new NavigationCountStyle())
-    }.id(this.rowId).height(38).width('100%').padding({ left: 10, right: this.flat ? 10 : 40 })
+    }.id(this.rowId).constraintSize({ minHeight: this.wide ? 38 : 44 }).width('100%')
+      .padding({ left: 10, right: this.flat ? 10 : 40, top: 6, bottom: 6 })
       .backgroundColor(this.selected ? $r('app.color.surface_card') : Color.Transparent).borderRadius(8)
       .attributeModifier(new InteractiveSurface(!this.flat && this.selected ? $r('app.color.surface_card') : Color.Transparent, !this.flat && this.hovered, this.selected))
       .onHover((hover: boolean) => animateHover(this.getUIContext(), () => this.hovered = hover))

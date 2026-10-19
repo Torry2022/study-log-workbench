@@ -4,7 +4,7 @@ export class NavigationRowStyle implements AttributeModifier<CommonAttribute> {
   constructor(wide: boolean = true) { this.wide = wide; }
 
   applyNormalAttribute(instance: CommonAttribute): void {
-    if (this.wide) instance.height(38).padding({ left: 10, right: 10 }).borderRadius(8);
+    instance.height(this.wide ? 38 : 44).padding({ left: 10, right: 10 }).borderRadius(8);
   }
 }
 
@@ -15,8 +15,14 @@ export class NavigationLabelStyle implements AttributeModifier<TextAttribute> {
   }
 
   applyNormalAttribute(instance: TextAttribute): void {
-    instance.fontSize(16).fontWeight(FontWeight.Regular)
+    instance.fontSize(14).fontWeight(FontWeight.Regular)
       .fontColor(this.selected ? $r('app.color.ink') : $r('app.color.body'));
+  }
+}
+
+export class NavigationSectionStyle implements AttributeModifier<TextAttribute> {
+  applyNormalAttribute(instance: TextAttribute): void {
+    instance.fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.body_strong'));
   }
 }
 

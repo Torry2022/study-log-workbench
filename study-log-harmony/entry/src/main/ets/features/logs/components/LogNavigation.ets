@@ -2,7 +2,7 @@ import { LengthMetrics } from '@kit.ArkUI';
 import { DaySummary, MonthSummary } from '../LogModels';
 import { WorkspaceBreakpoint } from '../../../common/AppConfig';
 import { InteractiveSurface, animateHover } from '../../../common/ui/InteractiveSurface';
-import { NavigationRowStyle, NavigationLabelStyle, NavigationCountStyle } from '../../../common/ui/NavigationRowStyle';
+import { NavigationRowStyle, NavigationLabelStyle, NavigationCountStyle, NavigationSectionStyle } from '../../../common/ui/NavigationRowStyle';
 import { InlineStatus } from '../../../common/ui/FeedbackStates';
 import { SearchField } from '../../../common/ui/FormControls';
 
@@ -54,7 +54,7 @@ export struct LogNavigation {
       ListItem() {
         Row({ space: 7 }) {
           SymbolGlyph($r('sys.symbol.calendar')).fontSize(15).fontColor([$r('app.color.primary_active')])
-          Text('月份').fontSize(12).fontWeight(FontWeight.Medium).fontColor($r('app.color.muted'))
+          Text('月份').attributeModifier(new NavigationSectionStyle())
         }.width('100%')
       }
       ListItem() {
@@ -105,7 +105,7 @@ export struct LogNavigation {
       ListItem() {
         Row({ space: 7 }) {
           SymbolGlyph($r('sys.symbol.doc_text')).fontSize(15).fontColor([$r('app.color.primary_active')])
-          Text('日期').fontSize(12).fontWeight(FontWeight.Medium).fontColor($r('app.color.muted')).layoutWeight(1)
+          Text('日期').attributeModifier(new NavigationSectionStyle()).layoutWeight(1)
           this.jumpDatePicker()
         }.width('100%')
       }
@@ -154,7 +154,7 @@ export struct LogNavigation {
                       .backgroundColor($r('app.color.surface_card')).borderRadius(12)
                   } else {
                     ForEach(day.headings, (heading: string, headingIndex: number) => {
-                      Text(heading.replace(/^\d+\.\s*/, '')).fontSize(14).fontWeight(FontWeight.Regular).fontColor($r('app.color.body'))
+                      Text(heading.replace(/^\d+\.\s*/, '')).fontSize(13).fontWeight(FontWeight.Regular).fontColor($r('app.color.body'))
                         .padding({ left: 8, right: 8, top: 4, bottom: 4 })
                         .backgroundColor(this.requestedDate === day.date ?
                           $r('app.color.primary_tint_strong') : $r('app.color.primary_tint')).borderRadius(12)

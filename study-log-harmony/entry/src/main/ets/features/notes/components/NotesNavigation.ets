@@ -2,7 +2,7 @@ import { WorkspaceBreakpoint } from '../../../common/AppConfig';
 import { StudyNoteFacet } from '../NoteModels';
 import { WORKSPACE_TIPS } from '../../../common/ui/WorkspaceTips';
 import { InteractiveSurface, animateHover } from '../../../common/ui/InteractiveSurface';
-import { NavigationRowStyle, NavigationLabelStyle, NavigationCountStyle } from '../../../common/ui/NavigationRowStyle';
+import { NavigationRowStyle, NavigationLabelStyle, NavigationCountStyle, NavigationSectionStyle } from '../../../common/ui/NavigationRowStyle';
 
 @Component
 export struct NotesNavigation {
@@ -46,7 +46,7 @@ export struct NotesNavigation {
         Row() {
           Row({ space: 7 }) {
             SymbolGlyph($r('sys.symbol.calendar')).fontSize(15).fontColor([$r('app.color.primary_active')])
-            Text('年份').fontSize(12).fontWeight(FontWeight.Medium).fontColor($r('app.color.muted'))
+            Text('年份').attributeModifier(new NavigationSectionStyle())
           }.layoutWeight(1)
         }.width('100%').height(30).alignItems(VerticalAlign.Center)
       }
@@ -87,13 +87,13 @@ export struct NotesNavigation {
       ListItem() {
         Row({ space: 7 }) {
           Image($r('app.media.sidebar_tag')).width(15).height(15).objectFit(ImageFit.Contain)
-          Text('标签').fontSize(12).fontWeight(FontWeight.Medium).fontColor($r('app.color.muted'))
+          Text('标签').attributeModifier(new NavigationSectionStyle())
         }.width('100%')
       }
       ListItem() {
         Flex({ wrap: FlexWrap.Wrap }) {
           Button({ type: ButtonType.Normal }) {
-            Text('全部标签').fontSize(14).fontWeight(FontWeight.Regular).fontColor($r('app.color.body'))
+            Text('全部标签').fontSize(13).fontWeight(FontWeight.Regular).fontColor($r('app.color.body'))
           }
           .height(28).padding({ left: 9, right: 9 }).margin({ right: 7, bottom: 7 })
           .attributeModifier(new InteractiveSurface(this.noteTagFilter === 'all' ? $r('app.color.primary_tint') : $r('app.color.surface_card'), this.hoveredNavigation === 'note-tag-all', this.noteTagFilter === 'all'))
@@ -104,7 +104,7 @@ export struct NotesNavigation {
           ForEach(this.noteTags, (tag: StudyNoteFacet) => {
             Button({ type: ButtonType.Normal }) {
               Row({ space: 6 }) {
-                Text(tag.value).fontSize(14).fontWeight(FontWeight.Regular).fontColor($r('app.color.body'))
+                Text(tag.value).fontSize(13).fontWeight(FontWeight.Regular).fontColor($r('app.color.body'))
                 Text(tag.count.toString()).fontSize(12).fontWeight(FontWeight.Regular).fontColor($r('app.color.muted_soft'))
               }
             }

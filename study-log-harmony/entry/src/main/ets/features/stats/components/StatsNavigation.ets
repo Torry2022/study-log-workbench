@@ -2,7 +2,7 @@ import { WorkspaceBreakpoint } from '../../../common/AppConfig';
 import { MonthSummary } from '../../logs/LogModels';
 import { InlineStatus } from '../../../common/ui/FeedbackStates';
 import { InteractiveSurface, animateHover } from '../../../common/ui/InteractiveSurface';
-import { NavigationRowStyle, NavigationLabelStyle, NavigationCountStyle } from '../../../common/ui/NavigationRowStyle';
+import { NavigationRowStyle, NavigationLabelStyle, NavigationCountStyle, NavigationSectionStyle } from '../../../common/ui/NavigationRowStyle';
 
 @Component
 export struct StatsNavigation {
@@ -40,7 +40,7 @@ export struct StatsNavigation {
       ListItem() {
         Row({ space: 7 }) {
           SymbolGlyph($r('sys.symbol.calendar')).fontSize(15).fontColor([$r('app.color.primary_active')])
-          Text('统计月份').fontSize(12).fontWeight(FontWeight.Medium).fontColor($r('app.color.muted')).layoutWeight(1)
+          Text('统计月份').attributeModifier(new NavigationSectionStyle()).layoutWeight(1)
           Text(`${this.statsMonths.length} 个月`).fontSize(11).fontColor($r('app.color.muted_soft'))
         }.width('100%')
       }

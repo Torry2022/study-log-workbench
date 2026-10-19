@@ -41,7 +41,7 @@ export struct HelpPanel {
   @Builder
   private helpShortcut(keys: string, action: string, note: string = '') {
     Row({ space: 10 }) {
-      Text(keys).width(118).constraintSize({ minHeight: 24 }).padding({ left: 7, right: 7, top: 4, bottom: 4 })
+      Text(keys).width(150).constraintSize({ minHeight: 24 }).padding({ left: 7, right: 7, top: 4, bottom: 4 })
         .fontFamily(workspaceCodeFamily(this.workspaceBreakpoint)).fontSize(10).fontColor($r('app.color.body_strong'))
         .backgroundColor($r('app.color.surface_soft'))
         .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(4).maxLines(1)
@@ -79,15 +79,42 @@ export struct HelpPanel {
       this.helpShortcut('Alt + ← / →', '上一篇 / 下一篇日志', '浏览模式，输入框外')
       this.helpShortcut('Alt + ↑', '返回当前阅读区顶部', '输入框外')
       this.helpShortcut('Ctrl + S', '保存当前日志或随记')
+    }.width('100%').alignItems(HorizontalAlign.Start)
+  }
+
+  @Builder
+  private editorCommonHelpShortcuts() {
+    Column() {
+      Text('源码常用编辑').width('100%').fontSize(12).fontWeight(FontWeight.Bold).fontColor($r('app.color.muted'))
+        .margin({ bottom: 4 })
+      this.helpShortcut('Ctrl + Z', '撤销')
+      this.helpShortcut('Ctrl + Y / Ctrl + Shift + Z', '重做')
+      this.helpShortcut('Alt + ↑ / ↓', '上移或下移当前行、选中行')
+      this.helpShortcut('Alt + Shift + ↑ / ↓', '向上或向下复制当前行、选中行')
+      this.helpShortcut('Tab / Shift + Tab', '增加或减少行缩进')
+    }.width('100%').alignItems(HorizontalAlign.Start)
+  }
+
+  @Builder
+  private editorSearchHelpShortcuts() {
+    Column() {
+      Text('源码查找与选中').width('100%').fontSize(12).fontWeight(FontWeight.Bold).fontColor($r('app.color.muted'))
+        .margin({ bottom: 4 })
       this.helpShortcut('Ctrl + F', '打开查找与替换', '源码或分屏模式')
       this.helpShortcut('F3 / Shift + F3', '下一个 / 上一个匹配项')
       this.helpShortcut('Ctrl + G / Ctrl + Shift + G', '下一个 / 上一个匹配项', '编辑器或查找面板内')
-      this.helpShortcut('Ctrl + Z / Ctrl + Shift + Z', '撤销 / 重做', '编辑器内')
+      this.helpShortcut('Ctrl + Alt + G', '跳转行号')
+    }.width('100%').alignItems(HorizontalAlign.Start)
+  }
+
+  @Builder
+  private markdownHelpShortcuts() {
+    Column() {
+      Text('Markdown 排版').width('100%').fontSize(12).fontWeight(FontWeight.Bold).fontColor($r('app.color.muted'))
+        .margin({ bottom: 4 })
       this.helpShortcut('Ctrl + B / I / `', '加粗 / 斜体 / 行内代码', '日志编辑器内')
       this.helpShortcut('Ctrl + K / Ctrl + Shift + K', '插入链接 / 内部链接', '日志编辑器内')
       this.helpShortcut('Ctrl + Alt + 3 / 4 / 5 / 6', '切换三级至六级标题', '日志编辑器内')
-      this.helpShortcut('Tab / Shift + Tab', '缩进 / 取消缩进', '日志编辑器内')
-      this.helpShortcut('Ctrl + Alt + G', '跳转行号', '日志编辑器内')
     }.width('100%').alignItems(HorizontalAlign.Start)
   }
 
@@ -165,12 +192,29 @@ export struct HelpPanel {
           Column({ space: 9 }) {
             Text('快捷键').width('100%').fontSize(14).fontWeight(FontWeight.Medium)
               .fontColor($r('app.color.ink'))
+            Text('以下为 PC 与外接键盘的常用操作。源码快捷键仅在编辑器聚焦时生效；同一键位在搜索框、问答输入框等区域按当前控件处理。')
+              .width('100%').fontSize(11).lineHeight(18).fontColor($r('app.color.muted'))
             Row({ space: 18 }) {
               Column({ space: 16 }) {
                 this.globalHelpShortcuts()
               }.layoutWeight(1)
               Column({ space: 16 }) {
                 this.readingHelpShortcuts()
+              }.layoutWeight(1)
+            }.width('100%').alignItems(VerticalAlign.Top)
+            Row({ space: 18 }) {
+              Column({ space: 16 }) {
+                this.editorCommonHelpShortcuts()
+              }.layoutWeight(1)
+              Column({ space: 16 }) {
+                this.editorSearchHelpShortcuts()
+              }.layoutWeight(1)
+            }.width('100%').alignItems(VerticalAlign.Top)
+            Row({ space: 18 }) {
+              Column({ space: 16 }) {
+                this.markdownHelpShortcuts()
+              }.layoutWeight(1)
+              Column({ space: 16 }) {
                 this.qaHelpShortcuts()
               }.layoutWeight(1)
             }.width('100%').alignItems(VerticalAlign.Top)
@@ -186,7 +230,7 @@ export struct HelpPanel {
 
   @Builder
   private compactHelpDialog() {
-    Column({ space: 12 }) {
+    Column() {
       Row() {
         Text('使用帮助').fontFamily(workspaceSerifFamily(this.workspaceBreakpoint)).fontSize(24)
           .fontColor($r('app.color.ink')).layoutWeight(1)
@@ -195,13 +239,31 @@ export struct HelpPanel {
         }.width(36).height(36).padding(0).borderRadius(8).clip(true)
           .backgroundColor($r('app.color.surface_soft')).key('help_close_button')
           .accessibilityText('关闭帮助').bindTips('关闭帮助', WORKSPACE_TIPS).onClick(() => this.onClose())
-      }.width('100%')
-      Text('从屏幕左侧内缘向右滑，或点左上角按钮打开日期导航。日志或随记有未保存修改时，离开前会提示确认。可在随记页选择材料，提取候选后逐条审阅。')
-        .width('100%').fontSize(14).lineHeight(23).fontColor($r('app.color.body'))
+      }.width('100%').height(58).padding({ left: 18, right: 18 })
+        .border({ width: { bottom: 1 }, color: $r('app.color.hairline') })
+      Scroll() {
+        Column({ space: 16 }) {
+          Text('从屏幕左侧内缘向右滑，或点左上角按钮打开日期导航。日志或随记有未保存修改时，离开前会提示确认。可在随记页选择材料，提取候选后逐条审阅。')
+            .width('100%').fontSize(14).lineHeight(23).fontColor($r('app.color.body'))
+          Column({ space: 14 }) {
+            Text('外接键盘快捷键').width('100%').fontSize(14).fontWeight(FontWeight.Medium)
+              .fontColor($r('app.color.ink'))
+            Text('源码快捷键仅在编辑器聚焦时生效；同一键位在输入框等区域按当前控件处理。')
+              .width('100%').fontSize(11).lineHeight(18).fontColor($r('app.color.muted'))
+            this.globalHelpShortcuts()
+            this.readingHelpShortcuts()
+            this.editorCommonHelpShortcuts()
+            this.editorSearchHelpShortcuts()
+            this.markdownHelpShortcuts()
+            this.qaHelpShortcuts()
+          }.width('100%').alignItems(HorizontalAlign.Start)
+        }.width('100%').padding({ left: 18, right: 18, top: 16, bottom: 16 }).alignItems(HorizontalAlign.Start)
+      }.layoutWeight(1).width('100%').scrollBar(BarState.Auto)
       Button('知道了').width('100%').height(42).fontSize(14).fontWeight(FontWeight.Medium).borderRadius(8)
         .fontColor($r('app.color.on_primary')).backgroundColor($r('app.color.primary'))
+        .margin({ left: 18, right: 18, top: 12, bottom: 16 })
         .onClick(() => this.onClose())
-    }.width('88%').padding(18).backgroundColor($r('app.color.canvas'))
+    }.width('88%').height('84%').constraintSize({ maxHeight: 780 }).backgroundColor($r('app.color.canvas'))
       .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(10)
   }
 

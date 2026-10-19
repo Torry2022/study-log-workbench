@@ -16,6 +16,9 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [connectionError, setConnectionError] = useState("");
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
+    if (authenticated === false || connectionError) window.__studyLogReload?.finish();
+  }, [authenticated, connectionError]);
+  useEffect(() => {
     const controller = new AbortController();
     setConnectionError("");
     fetch(withBasePath("/api/auth/me"), { signal: controller.signal })

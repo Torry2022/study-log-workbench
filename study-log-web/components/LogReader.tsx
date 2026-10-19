@@ -1,13 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { BookOpen, ChevronLeft, ChevronRight, CornerUpLeft, DatabaseBackup, Edit3, Eye, FileText, LayoutList, Link2, Maximize2, Minimize2, MoreHorizontal, PanelRightOpen, RefreshCw, Save, Star, Trash2, Upload, X } from "lucide-react";
 import { MarkdownPreview, type InternalLinkTarget } from "./MarkdownPreview";
 import { buildMarkdownOutline } from "@/lib/markdown-outline";
 import { toEditableDayBody } from "@/lib/day-content";
 import { containModalFocus, lockBodyScroll } from "@/hooks/use-dialog-exit";
-import type { DayEntry } from "@/lib/types";
+import type { DayEntry, DaySummary, MonthSummary } from "@/lib/types";
+import { LOG_RELOAD_KEY, type LogReloadContext } from "@/lib/log-reload-restore";
 import { LogEditor } from "./LogEditor";
 import { MarkdownEditMenu } from "./MarkdownEditMenu";
 import { applyMarkdownEdit } from "@/lib/editor-commands";
@@ -43,6 +44,8 @@ interface Editing {
   onDelete: () => void; onBackups: () => void;
 }
 interface Props {
+  reloadContext: LogReloadContext | null;
+  reloadNavigation: { months: MonthSummary[]; days: DaySummary[] };
   hasLogs: boolean;
   onOpenAi?: () => void;
   onOpenFavorites?: () => void;
@@ -62,7 +65,7 @@ interface Props {
   onNavigate: (date: string, heading?: string) => Promise<boolean>;
 }
 
-export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, editing, search, favorites, exporting, active, navigationRevision, day, date, heading, scrollTarget, loading, error, theme, reading, onReading, onRetry, onNavigate }: Props) {
+export function LogReader({ reloadContext, reloadNavigation, hasLogs, onOpenAi, onOpenFavorites, navigation, editing, search, favorites, exporting, active, navigationRevision, day, date, heading, scrollTarget, loading, error, theme, reading, onReading, onRetry, onNavigate }: Props) {
   useEffect(() => {
     if (!active || editing.mode !== "preview" || editing.busy || loading) return;
     const keydown = (event: KeyboardEvent) => {
@@ -134,6 +137,54 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
   const exportScopes = [{ scope: "day" as const, label: "当前日志", disabled: !ready || loading || Boolean(error) }, { scope: "file" as const, label: "当前源文件", disabled: !ready || loading || Boolean(error) }, { scope: "all" as const, label: "全部日志", disabled: !hasLogs }];
   const editorReady = hasSettledDay;
   const mode = !date || reading ? "preview" : editing.mode;
+  const reloadRoute = useRef<number | null>(null);
+  // Same-tab reload uses the source implementation's prepaint snapshot and waits
+  // for fonts, images and editor layout before revealing the restored surface.
+  useLayoutEffect(() => {
+    const reload = window.__studyLogReload;
+    if (active && reload?.active) {
+      reloadRoute.current = navigationRevision;
+      window.scrollTo({ top: reload.snapshot.position.windowTop, behavior: "instant" });
+    }
+  }, [active, reloadContext, navigationRevision]);
+  useEffect(() => {
+    if (!active || !ready || loading) return;
+    const save = () => {
+      if (window.__studyLogReload?.active) return;
+      try {
+        sessionStorage.setItem(LOG_RELOAD_KEY, JSON.stringify({
+          url: location.href, date, mode, height: document.documentElement.scrollHeight,
+          position: { windowTop: window.scrollY, previewTop: previewPane.current?.scrollTop || 0, editorTop: editorView.current?.scrollDOM.scrollTop || 0 },
+          context: { ...reloadNavigation, days: reloadNavigation.days.map(item => ({ ...item, preview: "" })), fileName: day?.fileName || "", outline: headings, activeHeadingId: activeHeading }
+        }));
+      } catch { /* Reading remains available without session storage. */ }
+    };
+    window.addEventListener("pagehide", save);
+    return () => window.removeEventListener("pagehide", save);
+  }, [active, ready, loading, date, mode, reloadNavigation, day?.fileName, headings, activeHeading]);
+  useEffect(() => {
+    const reload = window.__studyLogReload;
+    if (!active || !hasSettledDay || loading || !reload?.active || reload.snapshot.date !== date) return;
+    if (!day?.exists) { reload.finish(); return; }
+    let frame = 0, stableFrames = 0, lastSize = "";
+    const started = performance.now();
+    const restoreWhenReady = () => {
+      if (!reload.active) return;
+      const editor = editorView.current?.scrollDOM;
+      const size = `${document.body.scrollHeight}:${previewPane.current?.scrollHeight}:${editor?.scrollHeight}`;
+      stableFrames = size === lastSize ? stableFrames + 1 : 0;
+      lastSize = size;
+      const assetsReady = document.fonts.status === "loaded" && Array.from(preview.current?.querySelectorAll("img") || []).every(image => image.complete);
+      if ((stableFrames >= 4 && assetsReady && (mode === "preview" || editor)) || performance.now() - started > 2500) {
+        reload.finish();
+        window.scrollTo({ top: reload.snapshot.position.windowTop, behavior: "instant" });
+        previewPane.current?.scrollTo({ top: reload.snapshot.position.previewTop, behavior: "instant" });
+        editor?.scrollTo({ top: reload.snapshot.position.editorTop, behavior: "instant" });
+      } else frame = requestAnimationFrame(restoreWhenReady);
+    };
+    frame = requestAnimationFrame(restoreWhenReady);
+    return () => cancelAnimationFrame(frame);
+  }, [active, hasSettledDay, day?.exists, loading, date, mode, content]);
   useEffect(() => {
     if (!active || mode !== "split" || !editorReady) return;
     const reader = previewPane.current, editor = editorView.current?.scrollDOM;
@@ -279,6 +330,7 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
   }, [active, reading]);
   useEffect(() => {
     if (!active || !ready || !editorReady) return;
+    if (reloadRoute.current === navigationRevision) return;
     const frame = requestAnimationFrame(() => {
       if (scrollTarget !== null) { window.scrollTo({ top: scrollTarget, behavior: "instant" }); return; }
       const target = findInternalLinkHeading(headings, heading);
@@ -343,11 +395,12 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
       </div>)}
     </div></div>
   </nav>;
+  const reloadLoading = <div id="log-reload-loading"><WorkspaceState kind="loading" title="正在加载日志" /></div>;
 
   return <>
     <div className={`reader-toolbar-container${loading && content.trim() ? " pending" : ""}`} ref={toolbar}><div className={`reader-toolbar reader-toolbar-log${reading ? " reading-active" : ""}`}>
       <div className="reading-mode-toolbar"><div className="reading-mode-identity"><BookOpen size={17} /><h2>{date}</h2></div><div className="reading-mode-actions">{dayNavigator()}{outlineButton}<button className="reading-mode-icon" type="button" aria-label="退出阅读" title="退出阅读模式" onClick={() => changeReading(false)}><Minimize2 size={17} /></button></div></div>
-      <div className="reader-log-identity"><span className="eyebrow">{day?.fileName || "学习日志"}</span><div className="reader-heading-row"><h2>{dateLabel}</h2><div className="reader-navigator-desktop">{dayNavigator()}</div></div></div>
+      <div className="reader-log-identity"><span className="eyebrow">{day?.fileName || reloadContext?.fileName || "学习日志"}</span><div className="reader-heading-row"><h2>{dateLabel}</h2><div className="reader-navigator-desktop">{dayNavigator()}</div></div></div>
       <div className="reader-controls reader-log-controls">
         <div className="reader-secondary-actions">
           {navigation?.onReturnNotes && <button className="button secondary" type="button" onClick={navigation.onReturnNotes}><CornerUpLeft size={15} />返回随记</button>}
@@ -388,6 +441,7 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
       <div className="mobile-log-toolbar"><div className="mobile-log-identity"><strong>{dateLabel}</strong></div><div className="mobile-log-actions">{modeButtons(true)}{saveButton(true)}<button className="mobile-toolbar-icon" type="button" aria-label="更多日志操作" onClick={() => setActionsOpen(true)}><MoreHorizontal size={19} /></button></div></div>
     </div></div>
     <div className={`reader-content editing-workspace mode-${mode}`} data-workspace-transition-surface>
+    {mode !== "preview" && reloadLoading}
     {linkError && <div className="editor-navigation-status" role="alert">{linkError}</div>}
     {favorites.error && <div className="editor-navigation-status" role="alert">{favorites.error}<button className="button secondary" type="button" onClick={() => void favorites.reload()}>重试收藏</button></div>}
     {missingHeading && <div className="editor-navigation-status" role="status">未找到目标小节，已打开该日日志。<button className="button secondary" type="button" onClick={() => setMissingHeading(false)}>关闭</button></div>}
@@ -397,10 +451,11 @@ export function LogReader({ hasLogs, onOpenAi, onOpenFavorites, navigation, edit
     <AppFeedback feedback={error && hasSettledDay && !loadErrorDismissed ? { message: error, tone: "error", action: { label: "重试", onClick: onRetry } } : null} onDismiss={() => setLoadErrorDismissed(true)} />
     <AppFeedback feedback={active && editing.saved && !editing.dirty && !editing.error ? { message: "已保存", tone: "success" } : null} onDismiss={() => {}} />
     <div className="reader-preview-pane" ref={previewPane} onClick={handlePreviewClick} style={{ display: mode === "source" ? "none" : undefined }}>
-    {showInitialLoading || blockingError || (!content.trim() && (!loading || hasSettledDay)) ? <div className={`preview-workspace${(showInitialLoading || blockingError) && mode === "preview" ? " has-outline" : ""}`}><div className="preview-pane">
+    {showInitialLoading || blockingError || reloadContext || (!content.trim() && (!loading || hasSettledDay)) ? <div className={`preview-workspace${(showInitialLoading || blockingError || reloadContext?.outline.length) && mode === "preview" ? " has-outline" : ""}`}><div className="preview-pane">
+      {mode === "preview" && reloadLoading}
       {showInitialLoading ? <WorkspaceState kind="loading" title={date ? `正在加载 ${date}` : "正在加载日志"} className="preview-loading" /> : blockingError ? <WorkspaceState kind="error" title="日志加载失败" description={blockingError} className="preview-empty" actions={<button className="button secondary" type="button" onClick={onRetry}><RefreshCw size={15} />重新加载</button>} /> : <WorkspaceState kind="empty" icon={FileText} title={date ? "暂无正文" : hasLogs ? "未选择日志" : "暂无学习日志"} description={date ? "切换到“源码”，写下这一天的学习内容。" : hasLogs ? "选择一个日期，查看当天的学习内容。" : "点击“今天”，记下今天学到的内容。"} layout="module" className="log-empty-state" />}
-    </div>{(showInitialLoading || blockingError) && mode === "preview" && <nav className="preview-outline" aria-label="当前日志大纲"><div className="preview-outline-inner"><div className="preview-outline-title">目录</div><WorkspaceState kind={blockingError ? "error" : "loading"} layout="compact" title={blockingError ? "等待日志重新加载" : "正在加载目录"} /></div></nav>}</div> : <div className={`preview-workspace${headings.length && mode === "preview" ? " has-outline" : ""}`}>
-      <div className="preview-pane"><MarkdownPreview active={active} containerRef={preview} content={content} headings={headings} themeMode={theme} textHighlight={search || undefined} onInternalLink={openInternalLink} />
+    </div>{(showInitialLoading || blockingError || reloadContext?.outline.length) && mode === "preview" && <nav className="preview-outline" aria-label="当前日志大纲" aria-busy="true"><div className="preview-outline-inner"><div className="preview-outline-title">目录</div>{reloadContext?.outline.length ? <div className="preview-outline-list">{reloadContext.outline.map(item => <div className={`outline-row${item.id === reloadContext.activeHeadingId ? " active" : ""}`} key={item.id}><button className="outline-item" type="button" disabled>{item.text}</button>{item.level === 3 && <button className="outline-favorite" type="button" disabled aria-label={`收藏 ${item.text}`}><Star size={14} /></button>}</div>)}</div> : <WorkspaceState kind={blockingError ? "error" : "loading"} layout="compact" title={blockingError ? "等待日志重新加载" : "正在加载目录"} />}</div></nav>}</div> : <div className={`preview-workspace${headings.length && mode === "preview" ? " has-outline" : ""}`}>
+      <div className="preview-pane">{mode === "preview" && reloadLoading}<MarkdownPreview active={active} containerRef={preview} content={content} headings={headings} themeMode={theme} textHighlight={search || undefined} onInternalLink={openInternalLink} />
         {!reading && <button className="reading-mode-entry preview-reading-mode-entry" type="button" aria-label="进入阅读模式" title="进入阅读模式" onClick={() => changeReading(true)}><Maximize2 size={18} /></button>}
       </div>{headings.length > 0 && mode === "preview" && renderOutline(false)}
     </div>}

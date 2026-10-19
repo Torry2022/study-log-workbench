@@ -1,8 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
+import { logReloadInitializer } from "@/lib/log-reload-restore";
 import "../public/ui/theme.css";
 import "../public/ui/controls.css";
 import "./globals.css";
+import "./log-reload.css";
 import "../public/scrollbars/overlay-scrollbars.css";
 import "./login.css";
 import "katex/dist/katex.min.css";
@@ -42,6 +44,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="zh-CN" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitializer }} />
+        <script dangerouslySetInnerHTML={{ __html: logReloadInitializer }} />
       </head>
       <body>{children}<Script src="/study-log/scrollbars/overlay-scrollbars.js" strategy="afterInteractive" /></body>
     </html>

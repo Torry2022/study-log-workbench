@@ -5,6 +5,7 @@ import { requestLogJson } from "@/lib/client-http";
 import { isValidLogDate } from "@/lib/study-date";
 import type { DayEntry, DaySummary, MonthSummary } from "@/lib/types";
 import type { WorkspaceTransitionKind } from "./use-workspace-transition";
+import { readLogReloadContext } from "@/lib/log-reload-restore";
 
 export type WorkspaceView = "log" | "favorites" | "notes" | "stats" | "qa";
 interface Selection { view: WorkspaceView; month: string; date: string; heading: string; noteId: string; statsMonth: string; sessionId: string }
@@ -56,7 +57,12 @@ const cancelled = (error: unknown, signal: AbortSignal) => signal.aborted || (er
 type TransitionRunner = (kind: WorkspaceTransitionKind, update: () => void, options?: { waitForReady?: boolean }) => Promise<boolean>;
 
 export function useLogWorkspace(active: boolean, beforeLeave?: RefObject<() => Promise<boolean>>, runTransition?: TransitionRunner) {
-  const [selection, setSelection] = useState<Selection>(empty);
+  const [selection, setSelection] = useState<Selection>(() => {
+    const reload = typeof window !== "undefined" ? window.__studyLogReload : null;
+    return reload?.active ? { ...readLocation(), month: reload.snapshot.date.slice(0, 7), date: reload.snapshot.date } : empty;
+  });
+  const [reloadContext, setReloadContext] = useState(() => typeof window !== "undefined" && window.__studyLogReload?.active
+    ? readLogReloadContext(window.__studyLogReload.snapshot.context) : null);
   const [months, setMonths] = useState<MonthSummary[]>([]);
   const monthsRef = useRef<MonthSummary[]>([]);
   const [days, setDays] = useState<DaySummary[]>([]);
@@ -81,6 +87,13 @@ export function useLogWorkspace(active: boolean, beforeLeave?: RefObject<() => P
   currentSelection.current = selection;
   const acceptedIndex = useRef(0);
   const navigationAttempt = useRef(0);
+  useEffect(() => {
+    if (!active || selection.view !== "log" || dayError ||
+        (selection.date && window.__studyLogReload?.snapshot.date !== selection.date)) {
+      window.__studyLogReload?.finish();
+      setReloadContext(null);
+    } else if (!dayLoading) setReloadContext(null);
+  }, [active, selection.view, selection.date, dayError, dayLoading]);
 
   useEffect(() => {
     const restore = async (initial = false) => {
@@ -106,7 +119,10 @@ export function useLogWorkspace(active: boolean, beforeLeave?: RefObject<() => P
       setScrollTarget(Number.isFinite(saved) ? saved : null);
     };
     void restore(true);
-    const previous = window.history.scrollRestoration;
+    const reload = window.__studyLogReload;
+    const previous = reload?.active ? reload.scrollRestoration : window.history.scrollRestoration;
+    // The prepaint guard yields to this hook's existing history ownership.
+    if (reload?.active) reload.scrollRestoration = "manual";
     window.history.scrollRestoration = "manual";
     const onPopState = () => { void restore(); };
     window.addEventListener("popstate", onPopState);
@@ -224,7 +240,10 @@ export function useLogWorkspace(active: boolean, beforeLeave?: RefObject<() => P
     setListRevision(value => value + 1);
   }, []);
   return {
-    months, days, day: day?.date === selection.date ? day : null, selection, selectMonth, selectDate, selectView, selectNote, selectStatsMonth, selectRagSession, replaceRagSession, scrollTarget, navigationRevision,
+    months: monthsLoading && !monthsError && reloadContext ? reloadContext.months : months,
+    days: daysLoading && !daysError && reloadContext ? reloadContext.days : days,
+    reloadContext,
+    day: day?.date === selection.date ? day : null, selection, selectMonth, selectDate, selectView, selectNote, selectStatsMonth, selectRagSession, replaceRagSession, scrollTarget, navigationRevision,
     monthsLoading, monthsError,
     navigationLoading: daysLoading,
     navigationError: daysError,

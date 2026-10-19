@@ -64,7 +64,8 @@ export function Workspace() {
   const draft = useLogDraft(logs.day, active, acceptSaved);
   const logView = logs.selection.view === "log";
   const exporting = useExport({ active: active && (logView || logs.selection.view === "notes"), contextKey: logs.selection.view, date: logs.selection.date, logDirty: draft.dirty, notesDirty: notes.dirty, onConfirm: confirm });
-  const [mode, setMode] = useState<WorkspaceMode>("preview");
+  const [mode, setMode] = useState<WorkspaceMode>(() => (typeof window !== "undefined" && window.__studyLogReload?.active
+    ? window.__studyLogReload.snapshot.mode : "preview") as WorkspaceMode);
   const changeMode = useCallback((next: WorkspaceMode) => {
     if (next === mode) return;
     runTransition("log-mode", () => setMode(next));
@@ -251,8 +252,8 @@ export function Workspace() {
     view={logs.selection.view} onView={async view => { const accepted = await logs.selectView(view); if (accepted) { clearSearch(); setReading(false); if (view === "favorites") void favorites.reload(); } return accepted; }}
     moduleNavigation={(onNavigate, filtersOnly) => logs.selection.view === "favorites" ? <FavoritesNavigation favorites={favorites} active={active} /> : logs.selection.view === "stats" ? <StatsNavigation stats={stats} filtersOnly={filtersOnly} onNavigate={onNavigate} /> : logs.selection.view === "notes" ? <NotesNavigation notes={notesWithExtraction} filtersOnly={filtersOnly} onNavigate={onNavigate} onExport={() => void exporting.run("notes")} exportBusy={exporting.busy} /> : null}
     selectedMonth={logs.selection.month} selectedDate={logs.selection.date} dayQuery={dayQuery} onDayQueryChange={setDayQuery}
-    loading={logs.navigationLoading} error={logs.navigationError || sessionError} readingMode={reading && logView}
-    monthsLoading={logs.monthsLoading} monthsError={logs.monthsError} creationBlocked={logs.loading || Boolean(logs.error)}
+    loading={logs.navigationLoading && !logs.reloadContext?.days.length} error={logs.navigationError || sessionError} readingMode={reading && logView}
+    monthsLoading={logs.monthsLoading && !logs.reloadContext?.months.length} monthsError={logs.monthsError} creationBlocked={logs.loading || Boolean(logs.error)}
     selectedLogLabel={logs.error ? "日志加载失败" : logs.loading ? "正在加载日志" : logs.selection.date ? logs.day?.headings.join(" / ") || "未命名日志" : "未选择日志"}
     theme={theme} themePreference={preference} onTheme={chooseTheme}
     onMonth={month => { clearSearch(); logs.selectMonth(month); }} onDate={selectSidebarDate} onRetry={logs.retry}
@@ -273,6 +274,7 @@ export function Workspace() {
         onQuestionChange={rag.setQuestion} onAnswerModeChange={rag.setAnswerMode} onSubmit={() => void rag.submit()} onStop={rag.stop} onRegenerate={() => void rag.regenerate()} onCitation={citation => void openRagCitation(citation)} />
     </div>
     <div className="workspace-view" hidden={!logView}><LogReader hasLogs={logs.months.length > 0} active={active && logView} favorites={favorites} exporting={exporting} day={logs.day} date={logs.selection.date} heading={logs.selection.heading}
+      reloadContext={logs.reloadContext} reloadNavigation={{ months: logs.months, days: logs.days }}
       onOpenAi={() => setOpenAiRequest(value => value + 1)}
       onOpenFavorites={() => { void logs.selectView("favorites").then(accepted => { if (accepted) { clearSearch(); setReading(false); void favorites.reload(); } }); }}
       navigation={{ previousDate: dayIndex > 0 ? visibleDays[dayIndex - 1].date : null, nextDate: dayIndex >= 0 ? visibleDays[dayIndex + 1]?.date || null : null, showAdjacent: true,

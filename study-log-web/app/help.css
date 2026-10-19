@@ -126,7 +126,8 @@
 .help-shortcut-grid dl > div { display: grid; grid-template-columns: minmax(112px, 0.68fr) minmax(0, 1fr); gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--hairline-soft); }
 .help-shortcut-grid dt,
 .help-shortcut-grid dd { min-width: 0; margin: 0; }
-.help-shortcut-grid kbd { display: inline-flex; align-items: center; min-height: 24px; padding: 0 7px; border: 1px solid var(--hairline); border-bottom-color: color-mix(in srgb, var(--hairline) 55%, var(--muted-soft)); border-radius: 4px; background: var(--surface-soft); color: var(--body-strong); font-family: "JetBrains Mono", Consolas, monospace; font-size: 11px; white-space: nowrap; }
+.help-shortcut-grid kbd { display: inline-flex; align-items: center; min-height: 24px; max-width: 100%; padding: 0 7px; border: 1px solid var(--hairline); border-bottom-color: color-mix(in srgb, var(--hairline) 55%, var(--muted-soft)); border-radius: 4px; background: var(--surface-soft); color: var(--body-strong); font-family: "JetBrains Mono", Consolas, monospace; font-size: 11px; white-space: normal; }
+.help-shortcuts > p { margin-top: 6px; }
 .help-shortcut-grid dd { display: grid; gap: 1px; color: var(--body); font-size: 12px; }
 
 

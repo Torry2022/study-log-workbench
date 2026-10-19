@@ -1,0 +1,30 @@
+/* Same-tab reload: source snapshot reserves layout until the reading surface is ready. */
+#log-reload-loading { display: none; }
+html[data-log-reload="pending"] {
+  min-height: var(--log-reload-height);
+  overflow-anchor: none;
+}
+html[data-log-reload="pending"] .view-log .reader-content {
+  min-height: var(--log-reload-height);
+}
+html[data-log-reload="pending"] .view-log .mode-preview .preview-workspace {
+  min-height: var(--log-reload-height);
+}
+html[data-log-reload="pending"] .view-log .reader-content > .source-workspace,
+html[data-log-reload="pending"] .view-log .mode-split > .reader-preview-pane,
+html[data-log-reload="pending"] .view-log .preview-pane > :not(#log-reload-loading) {
+  visibility: hidden;
+}
+html[data-log-reload="pending"] .view-log #log-reload-loading {
+  display: block;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: var(--canvas);
+}
+#log-reload-loading .workspace-state {
+  position: sticky;
+  top: var(--reader-toolbar-height);
+  height: calc(100dvh - var(--reader-toolbar-height));
+  min-height: 0;
+}

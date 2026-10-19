@@ -7,9 +7,11 @@ import { lockBodyScroll, useDialogExit } from "@/hooks/use-dialog-exit";
 import "@/app/help.css";
 
 const groups = [
-  { title: "工作区", items: [["Ctrl + Shift + F", "聚焦顶部搜索（常规工作区）"], ["Ctrl + G", "日志页按日期跳转（常规工作区）"], ["Ctrl + Alt + N", "切到日志并聚焦新建日期"], ["Ctrl + Alt + Q", "新建问答"], ["Alt + ↑", "返回阅读区顶部（未在输入时）"], ["Esc", "关闭当前浮层"]] },
-  { title: "阅读与搜索", items: [["← / ↑", "浏览模式打开上一篇（未在操作控件时）"], ["→ / ↓", "浏览模式打开下一篇（未在操作控件时）"], ["↑ / ↓", "在搜索框选择候选"], ["Enter", "执行搜索或打开选中候选"], ["Ctrl + S", "保存日志或正在编辑的随记"]] },
-  { title: "源码编辑", items: [["Ctrl + B / I", "加粗／斜体"], ["Ctrl + K", "插入链接"], ["Ctrl + Shift + K", "插入内部链接"], ["Ctrl + `", "行内代码"], ["Ctrl + Alt + 3", "三级标题"], ["Ctrl + Alt + 4", "四级标题"], ["Ctrl + Alt + 5", "五级标题"], ["Ctrl + Alt + 6", "六级标题"], ["Ctrl + F", "查找当前正文"], ["Tab / Shift + Tab", "增加／减少缩进"]] },
+  { title: "全局", items: [["Ctrl + Shift + F", "聚焦顶部搜索（常规工作区）"], ["Ctrl + G", "日志页按日期跳转（源码编辑时查找下一处匹配）"], ["Ctrl + Alt + N", "切到日志并聚焦新建日期"], ["Ctrl + Alt + Q", "新建问答"], ["Alt + ↑", "返回阅读区顶部（源码编辑器聚焦时上移行）"], ["Esc", "关闭当前浮层"]] },
+  { title: "搜索与阅读", items: [["Enter", "执行搜索或打开选中候选"], ["↑ / ↓", "在搜索框选择候选"], ["Ctrl + S", "保存日志或正在编辑的随记"], ["← / ↑", "浏览模式打开上一篇（未在操作控件时）"], ["→ / ↓", "浏览模式打开下一篇（未在操作控件时）"]] },
+  { title: "源码：常用编辑", items: [["Ctrl + Z", "撤销"], ["Ctrl + Y", "重做（macOS：Command + Shift + Z）"], ["Alt + ↑ / ↓", "上移或下移当前行、选中行"], ["Alt + Shift + ↑ / ↓", "向上或向下复制当前行、选中行"], ["Tab / Shift + Tab", "增加或减少行缩进"]] },
+  { title: "源码：查找与选中", items: [["Ctrl + F", "查找与替换当前日志源码"], ["F3 / Shift + F3", "查找下一处或上一处匹配"], ["Ctrl + D", "选中当前词，再按追加下一处相同文本"]] },
+  { title: "源码：Markdown 排版", items: [["Ctrl + B", "加粗或取消加粗"], ["Ctrl + I", "斜体或取消斜体"], ["Ctrl + K", "插入链接"], ["Ctrl + Shift + K", "插入内部链接"], ["Ctrl + `", "行内代码"], ["Ctrl + Alt + 3–6", "设为三级至六级标题"]] },
   { title: "知识问答", items: [["Enter", "发送问题"], ["Shift + Enter", "输入换行"]] }
 ];
 
@@ -28,7 +30,7 @@ export function HelpDialog({ onClose }: { onClose: () => void }) {
           <article><strong>历史与备份</strong><p>“日志历史版本”找回某一天之前保存的内容。完整备份另行保存全部学习记录、附件和配置，两者不能互相替代。本地与服务器上的记录不会自动同步。</p></article>
         </div></section>
         <section><h3>内部链接</h3><p>在源码区选中文字，使用“编辑 → 内部链接”或 Ctrl + Shift + K，选择目标日志或小节。打开链接后，可用“返回”回到原位置。</p></section>
-        <section><h3>快捷键</h3><div className="help-shortcut-grid">{groups.map(group => <section key={group.title}><h4>{group.title}</h4><dl>{group.items.map(([keys, action]) => <div key={keys}><dt><kbd>{keys}</kbd></dt><dd>{action}</dd></div>)}</dl></section>)}</div></section>
+        <section className="help-shortcuts"><h3>快捷键</h3><p>macOS 使用 Command 代替 Ctrl、Option 代替 Alt，另有标注的除外。源码快捷键仅在编辑器聚焦时生效，包含常用的 CodeMirror 原生操作；同一键位在搜索框、问答输入框等区域按当前控件处理。</p><div className="help-shortcut-grid">{groups.map(group => <section key={group.title}><h4>{group.title}</h4><dl>{group.items.map(([keys, action]) => <div key={keys}><dt><kbd>{keys}</kbd></dt><dd>{action}</dd></div>)}</dl></section>)}</div></section>
       </div>
     </section>
   </div>, document.body);

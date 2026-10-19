@@ -1,5 +1,5 @@
 import { FormKeyboardContext } from '../../../common/ui/FormKeyboardContext';
-import { NavigationRowStyle, NavigationLabelStyle, NavigationCountStyle } from '../../../common/ui/NavigationRowStyle';
+import { NavigationLabelStyle, NavigationCountStyle } from '../../../common/ui/NavigationRowStyle';
 import { InteractiveSurface, animateHover } from '../../../common/ui/InteractiveSurface';
 import { appFeedback, FeedbackTone } from '../../../common/ui/AppFeedback';
 import { InlineStatus } from '../../../common/ui/FeedbackStates';
@@ -196,6 +196,8 @@ export struct FavoritesNavigation {
     Scroll(this.formScroller) {
       Column({ space: 4 }) {
         Row() {
+          SymbolGlyph($r('sys.symbol.folder')).fontSize(15).fontColor([$r('app.color.primary_active')])
+            .margin({ right: 7 })
           Text('收藏分组').layoutWeight(1).fontSize(12).fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.muted'))
           Button({ type: ButtonType.Normal }) {
@@ -204,7 +206,7 @@ export struct FavoritesNavigation {
             .backgroundColor(Color.Transparent).accessibilityText('新建收藏分组')
             .bindTips('新建收藏分组', WORKSPACE_TIPS).enabled(!this.data.loading && !this.data.loadFailed)
             .onClick(() => this.creatingGroup = !this.creatingGroup)
-        }.width('100%').padding({ left: this.wide ? 0 : 10 })
+        }.width('100%').height(30).padding({ left: 10 })
         if (this.data.loading && this.data.favorites.length === 0) {
           LoadingProgress().width(24).height(24).color($r('app.color.primary')).margin(8)
         } else if (this.data.loadFailed) {
@@ -257,14 +259,10 @@ export struct FavoritesNavigation {
           .onClick(() => this.selectGroup('ungrouped'))
         ForEach(this.data.groups, (group: FavoriteGroup) => { this.customGroupRow(group) },
           (group: FavoriteGroup) => `${group.id}:${group.name}`)
-        if (this.wide) {
-          Row() {
-            Text('日志月份').fontSize(12).fontWeight(FontWeight.Medium).fontColor($r('app.color.muted'))
-          }.width('100%').height(30).margin({ top: 16 })
-        } else {
-          Text('日志月份').width('100%').fontSize(12).fontWeight(FontWeight.Medium)
-            .fontColor($r('app.color.muted')).padding({ left: 10, top: 20, bottom: 8 })
-        }
+        Row({ space: 7 }) {
+          SymbolGlyph($r('sys.symbol.calendar')).fontSize(15).fontColor([$r('app.color.primary_active')])
+          Text('日志月份').fontSize(12).fontWeight(FontWeight.Medium).fontColor($r('app.color.muted'))
+        }.width('100%').height(30).padding({ left: 10 }).margin({ top: 16 })
         FavoriteFilterRow({
           wide: this.wide, rowId: 'favorite_month_all', label: '全部月份', count: this.groupFavorites().length,
           selected: this.data.selectedMonth === 'all', onAction: () => this.data.selectMonth('all')
@@ -303,18 +301,16 @@ struct FavoriteFilterRow {
 
   build() {
     Row({ space: 8 }) {
-      Text(this.label).layoutWeight(1).fontSize(14).fontColor($r('app.color.ink'))
-        .fontWeight(this.selected ? FontWeight.Medium : FontWeight.Regular)
-        .attributeModifier(new NavigationLabelStyle(this.selected, this.wide))
+      Text(this.label).layoutWeight(1).fontColor($r('app.color.body'))
+        .attributeModifier(new NavigationLabelStyle(this.selected))
         .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
-      Text(this.count.toString()).id(`${this.rowId}_count`).width(32).textAlign(TextAlign.End).fontSize(11)
+      Text(this.count.toString()).id(`${this.rowId}_count`).textAlign(TextAlign.End)
         .fontColor($r('app.color.muted_soft'))
-        .attributeModifier(new NavigationCountStyle(this.wide))
-    }.id(this.rowId).height(38).width('100%').padding({ left: 10, right: 10 })
+        .attributeModifier(new NavigationCountStyle())
+    }.id(this.rowId).height(38).width('100%').padding({ left: 10, right: this.flat ? 10 : 40 })
       .backgroundColor(this.selected ? $r('app.color.surface_card') : Color.Transparent).borderRadius(8)
       .attributeModifier(new InteractiveSurface(!this.flat && this.selected ? $r('app.color.surface_card') : Color.Transparent, !this.flat && this.hovered, this.selected))
       .onHover((hover: boolean) => animateHover(this.getUIContext(), () => this.hovered = hover))
-      .attributeModifier(new NavigationRowStyle(this.wide))
       .accessibilityText(this.label).accessibilitySelected(this.selected).onClick(() => this.onAction())
   }
 }

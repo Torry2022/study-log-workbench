@@ -1,4 +1,4 @@
-// Shared geometry and typography for wide single-line navigation filters.
+// Main filters use regular labels; selection is expressed by the row surface.
 export class NavigationRowStyle implements AttributeModifier<CommonAttribute> {
   private wide: boolean;
   constructor(wide: boolean = true) { this.wide = wide; }
@@ -10,24 +10,19 @@ export class NavigationRowStyle implements AttributeModifier<CommonAttribute> {
 
 export class NavigationLabelStyle implements AttributeModifier<TextAttribute> {
   private selected: boolean;
-  private wide: boolean;
-  constructor(selected: boolean, wide: boolean = true) {
+  constructor(selected: boolean) {
     this.selected = selected;
-    this.wide = wide;
   }
 
   applyNormalAttribute(instance: TextAttribute): void {
-    if (this.wide) instance.fontSize(14).fontWeight(this.selected ? 600 : FontWeight.Regular)
+    instance.fontSize(16).fontWeight(FontWeight.Regular)
       .fontColor(this.selected ? $r('app.color.ink') : $r('app.color.body'));
   }
 }
 
 export class NavigationCountStyle implements AttributeModifier<TextAttribute> {
-  private wide: boolean;
-  constructor(wide: boolean = true) { this.wide = wide; }
-
   applyNormalAttribute(instance: TextAttribute): void {
-    if (this.wide) instance.fontSize(12).width(32).textAlign(TextAlign.End)
+    instance.fontSize(12).fontWeight(FontWeight.Regular).constraintSize({ minWidth: 32 }).textAlign(TextAlign.End).flexShrink(0)
       .fontColor($r('app.color.muted_soft'));
   }
 }

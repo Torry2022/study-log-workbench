@@ -68,11 +68,11 @@ export struct StatsNavigation {
               Button({ type: ButtonType.Normal }) {
                 Row() {
                   Text(month.label).fontSize(this.isLargeWorkspace() ? 14 : 12).fontWeight(FontWeight.Medium)
-                    .attributeModifier(new NavigationLabelStyle(this.statsMonth === month.id, this.isLargeWorkspace()))
+                    .attributeModifier(new NavigationLabelStyle(this.statsMonth === month.id))
                     .fontColor(this.statsMonth === month.id ? $r('app.color.ink') : $r('app.color.body'))
                     .layoutWeight(1)
                   Text(month.dayCount.toString()).fontSize(this.isLargeWorkspace() ? 12 : 11).fontColor($r('app.color.muted_soft'))
-                    .attributeModifier(new NavigationCountStyle(this.isLargeWorkspace()))
+                    .attributeModifier(new NavigationCountStyle())
                 }.width('100%')
               }
               .width(this.isLargeWorkspace() ? '100%' : '48.5%').height(44)

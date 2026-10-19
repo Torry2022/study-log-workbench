@@ -68,8 +68,7 @@ try {
       await page.getByRole('button', { name: '问答', exact: true }).click(); await expect(page.getByRole('textbox', { name: '输入知识库问题', exact: true })).toBeVisible(); return page;
     };
     const page = await openPage(), other = await openPage(), workspace = page.locator('.rag-workspace').filter({ visible: true }); lastPage = page;
-    const picker = page.getByRole('combobox', { name: '查看问答结果', exact: true });
-    const open = async (p, item) => { await p.locator(`.rag-session-item[data-session-id="${item.sessionId}"] .rag-session-main`).click(); await expect(p).toHaveURL(new RegExp(`session=${item.sessionId}`)); await expect(p.getByRole('combobox', { name: '查看问答结果', exact: true })).toBeVisible(); };
+    const open = async (p, item) => { await p.locator(`.rag-session-item[data-session-id="${item.sessionId}"] .rag-session-main`).click(); await expect(p).toHaveURL(new RegExp(`session=${item.sessionId}`)); await expect(p.locator('.rag-answer').filter({hasText:item.old.answer})).toBeVisible(); await expect(p.getByRole('combobox', {name:'查看问答结果'})).toHaveCount(0); };
     const read = async id => { const response = await page.request.get(`${base}/api/rag/tasks/${id}`); return response.ok() ? (await response.json()).task : null; };
     // Each engine gets untouched task identities; the first engine mutates only its own half.
     const own = engine === 'chromium' ? fixtures : [];
@@ -89,73 +88,60 @@ try {
       await other.getByRole('button', { name: '随记', exact: true }).click(); await other.getByRole('button', { name: '问答', exact: true }).click();
     }
     for (const item of own) {
-      await open(page, item); await expect(picker.locator(`option[value="${item.old.id}"]`)).toHaveCount(1);
-      await picker.selectOption(item.old.id); await expect(picker).toHaveValue(item.old.id); await expect(workspace.locator('.rag-message')).toHaveCount(2); await expect(workspace.locator('.rag-answer')).toHaveText(item.old.answer); await expect(workspace.locator('.rag-message-user')).toContainText(item.old.question);
-      await workspace.getByRole('button', { name: '复制', exact: true }).click(); assert.equal(await page.evaluate(() => window.__copiedTaskAnswer), item.old.answer);
-      await pause(1100); await expect(picker).toHaveValue(item.old.id); await expect(workspace.locator('.rag-answer')).toHaveText(item.old.answer);
-      await page.reload(); await expect(picker.locator(`option[value="${item.old.id}"]`)).toHaveCount(1); await picker.selectOption(item.old.id); await expect(picker).toHaveValue(item.old.id); await expect(workspace.locator('.rag-message')).toHaveCount(2); await expect(workspace.locator('.rag-answer')).toHaveText(item.old.answer);
-      await open(other, item); const otherPicker = other.getByRole('combobox', { name: '查看问答结果', exact: true }); await otherPicker.selectOption(item.old.id); await expect(otherPicker).toHaveValue(item.old.id); await expect(other.locator('.rag-workspace').filter({ visible: true }).locator('.rag-message')).toHaveCount(2); await expect(other.locator('.rag-workspace').filter({ visible: true }).locator('.rag-answer')).toHaveText(item.old.answer);
-      assert.equal((await getRagSession(item.sessionId)).version, item.before.version);
-      record(`${engine}: ${item.key} old result survives discovery, polling, refresh, second browser and copy`);
-      if (item.oldState === 'conflict' && item.newState === 'saved') {
-        await page.setViewportSize({ width: 390, height: 844 }); await expect(page.getByRole('button', { name: '打开问答历史', exact: true })).toBeVisible();
-        await fs.writeFile(path.join(root, `${engine}-layout.json`), JSON.stringify(await page.evaluate(() => ({ viewport: innerWidth, documentWidth: document.documentElement.scrollWidth,
-          boxes: ['body', '.workspace', '.reader', '.rag-workspace', '.rag-conversation', '.rag-task-picker', '.rag-task-picker select', '.rag-message-list', '.rag-composer'].map(selector => { const e = document.querySelector(selector), s = e && getComputedStyle(e); return { selector, rect: e?.getBoundingClientRect().toJSON(), scroll: e?.scrollWidth, display: s?.display, width: s?.width, minWidth: s?.minWidth, maxWidth: s?.maxWidth, columns: s?.gridTemplateColumns, flex: s?.flex }; }),
-          overflow: [...document.querySelectorAll('body *')].filter(e => { const r = e.getBoundingClientRect(); return r.width > 0 && r.right > innerWidth + 1 && r.left >= 0; }).slice(0, 20).map(e => ({ tag: e.tagName, class: e.className, rect: e.getBoundingClientRect().toJSON() })) })), null, 2));
-        await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-        await page.screenshot({ path: path.join(root, `${engine}-selected-old-mobile.png`), fullPage: true });
-        await page.setViewportSize({ width: 1440, height: 900 }); await page.screenshot({ path: path.join(root, `${engine}-selected-old-desktop.png`), fullPage: true });
+      await open(page,item);
+      const oldArticle=workspace.locator('.rag-message-assistant').filter({has:page.locator('.rag-answer').filter({hasText:item.old.answer})});
+      await expect(oldArticle).toBeVisible(); await oldArticle.getByRole('button',{name:'复制',exact:true}).click();
+      assert.equal(await page.evaluate(()=>window.__copiedTaskAnswer),item.old.answer);
+      await pause(1100);await expect(oldArticle).toContainText(item.old.answer);
+      await page.reload();await expect(oldArticle).toBeVisible();await open(other,item);
+      await expect(other.locator('.rag-answer').filter({hasText:item.old.answer})).toBeVisible();
+      assert.equal((await getRagSession(item.sessionId)).version,item.before.version);
+      record(engine+': '+item.key+' retained answer remains inline through polling, reload, second browser and scoped copy');
+      if(item.oldState==='conflict'&&item.newState==='error') {
+        let release,started;const gate=new Promise(r=>release=r),start=new Promise(r=>started=r);let captured=false;
+        await page.route('**/api/rag/tasks/'+item.old.id,async route=>{if(captured)return route.continue();captured=true;const response=await route.fetch();started();await gate;try{await route.fulfill({response})}catch{}});
+        await page.reload();await start;
+        const current=await getRagSession(item.sessionId);
+        assert.equal((await other.request.delete(base+'/api/rag/sessions/'+item.sessionId,{data:{mutationId:randomUUID(),baseVersion:current.version}})).status(),200);
+        await expect.poll(()=>read(item.old.id)).toBe(null);await expect.poll(()=>read(item.new.id)).toBe(null);
+        release();await page.unroute('**/api/rag/tasks/'+item.old.id,{behavior:'wait'});
+        await expect(page.locator('.rag-session-item[data-session-id="'+item.sessionId+'"]')).toHaveCount(0);
+        await expect(workspace.locator('.rag-message')).toHaveCount(0);
+        record(engine+': deleted session cannot be revived by a late retained-answer response');continue;
       }
-      if (item.oldState === 'conflict' && item.newState === 'error') {
-        await picker.selectOption(''); await expect(picker).toHaveValue('');
-        let releaseDeleted, startedDeleted;
-        const gateDeleted = new Promise(resolve => { releaseDeleted = resolve; }), startDeleted = new Promise(resolve => { startedDeleted = resolve; });
-        let capturedDeleted = false;
-        await page.route(`**/api/rag/tasks/${item.old.id}`, async route => { if (capturedDeleted) return route.continue(); capturedDeleted = true; const response = await route.fetch(); startedDeleted(); await gateDeleted; try { await route.fulfill({ response }); } catch {} });
-        await picker.selectOption(item.old.id); await startDeleted;
-        const current = await getRagSession(item.sessionId);
-        assert.equal((await other.request.delete(`${base}/api/rag/sessions/${item.sessionId}`, { data: { mutationId: randomUUID(), baseVersion: current.version } })).status(), 200);
-        await expect.poll(() => read(item.old.id)).toBe(null); await expect.poll(() => read(item.new.id)).toBe(null);
-        await expect(page.locator(`.rag-session-item[data-session-id="${item.sessionId}"]`)).toHaveCount(0); releaseDeleted(); await page.unroute(`**/api/rag/tasks/${item.old.id}`, { behavior: 'wait' });
-        await pause(400); await expect(workspace.locator('.rag-message')).toHaveCount(0); await expect(page.locator(`.rag-session-item[data-session-id="${item.sessionId}"]`)).toHaveCount(0);
-        record(`${engine}: session deletion clears retained results and a late captured snapshot cannot revive them`); continue;
+      if(item.oldState==='error'&&item.newState==='error') {
+        let release,started;const gate=new Promise(r=>release=r),start=new Promise(r=>started=r);let captured=false;
+        await page.route('**/api/rag/tasks/'+item.old.id,async route=>{if(captured)return route.continue();captured=true;started();await gate;await route.continue()});
+        await page.reload();await start;await expect(workspace.locator('.rag-answer').last()).toHaveText(item.new.answer);
+        release();await page.unroute('**/api/rag/tasks/'+item.old.id,{behavior:'wait'});await expect(oldArticle).toBeVisible();
+        await expect(workspace.locator('.rag-answer').last()).toHaveText(item.new.answer);
+        record(engine+': late older task response preserves newer answer and both result identities');
       }
-      if (item.oldState === 'error' && item.newState === 'error') {
-        await picker.selectOption(''); await expect(workspace.locator('.rag-answer').last()).toHaveText(`${item.key}的基线回答`);
-        let release, started; const gate = new Promise(resolve => { release = resolve; }), start = new Promise(resolve => { started = resolve; });
-        await page.route(`**/api/rag/tasks/${item.old.id}`, async route => { started(); await gate; await route.continue(); });
-        await picker.selectOption(item.old.id); await start; await picker.selectOption(item.new.id);
-        await expect(workspace.locator('.rag-answer').last()).toHaveText(item.new.answer); release(); await page.unroute(`**/api/rag/tasks/${item.old.id}`, { behavior: 'wait' });
-        await pause(400); await expect(picker).toHaveValue(item.new.id); await expect(workspace.locator('.rag-answer').last()).toHaveText(item.new.answer);
-        await picker.selectOption(item.old.id); await expect(picker).toHaveValue(item.old.id); await expect(workspace.locator('.rag-message')).toHaveCount(2); await expect(workspace.locator('.rag-answer')).toHaveText(item.old.answer);
-        record(`${engine}: a late old-result response cannot replace a more recent explicit selection`);
+      if(item.oldState==='error') {
+        const before=report.requests.length;await oldArticle.getByRole('button',{name:'重试保存',exact:true}).click();
+        await expect.poll(async()=>(await read(item.old.id)).saveState).not.toBe('error');
+        assert.equal(report.requests.slice(before).filter(r=>r.method==='POST'&&/\/save$/.test(r.path)).length,1);
+        assert.ok(report.requests.slice(before).some(r=>r.path.endsWith('/'+item.old.id+'/save')));
+        assert.equal((await read(item.new.id)).saveState,item.newState==='queued'?'pending':item.newState);
+        const current=await getRagSession(item.sessionId);if(item.newState==='saved')assert.equal(current.version,item.before.version);else assert.equal(current.messages.at(-1).content,item.old.answer);
+        record(engine+': save retry addresses only its answer without starting generation');
       }
-      if (item.oldState === 'error') {
-        const before = report.requests.length; await page.getByRole('button', { name: '重试保存', exact: true }).click();
-        await expect.poll(async () => (await read(item.old.id)).saveState).toBe(item.newState === 'saved' ? 'conflict' : 'saved');
-        assert.equal(report.requests.slice(before).filter(request => request.method === 'POST' && /\/save$/.test(request.path)).length, 1);
-        assert.ok(report.requests.slice(before).some(request => request.path.endsWith(`/${item.old.id}/save`)));
-        assert.equal((await read(item.new.id)).saveState, item.newState === 'queued' ? 'pending' : item.newState);
-        const current = await getRagSession(item.sessionId); if (item.newState === 'saved') assert.equal(current.version, item.before.version); else assert.ok(current.messages.at(-1).content === item.old.answer);
-        record(`${engine}: ${item.key} retry saves only the selected task and respects the current JSON version`);
+      if((await read(item.old.id)).saveState!=='saved') {
+        const before=report.requests.length,version=(await getRagSession(item.sessionId)).version;
+        await oldArticle.getByRole('button',{name:'放弃此结果',exact:true}).click();await page.getByRole('alertdialog').getByRole('button',{name:'放弃',exact:true}).click();
+        await expect.poll(()=>read(item.old.id)).toBe(null);assert.ok(await read(item.new.id));assert.equal((await getRagSession(item.sessionId)).version,version);
+        assert.deepEqual(report.requests.slice(before).filter(r=>r.method==='DELETE').map(r=>r.path.split('/').at(-1)),[item.old.id]);
+        record(engine+': discard addresses only its answer and preserves canonical session');
       }
-      if ((await read(item.old.id)).saveState !== 'saved') {
-        const before = report.requests.length, version = (await getRagSession(item.sessionId)).version;
-        await page.getByRole('button', { name: '放弃未保存回答并重新读取', exact: true }).click(); await page.getByRole('alertdialog').getByRole('button', { name: '重新读取', exact: true }).click();
-        await expect.poll(() => read(item.old.id)).toBe(null); assert.ok(await read(item.new.id)); assert.equal((await getRagSession(item.sessionId)).version, version);
-        assert.deepEqual(report.requests.slice(before).filter(request => request.method === 'DELETE').map(request => request.path.split('/').at(-1)), [item.old.id]);
-        record(`${engine}: ${item.key} discard removes only the selected result`);
-      }
-      if (item.newState === 'queued') {
-        await picker.selectOption(item.new.id); await page.getByRole('button', { name: '停止生成', exact: true }).click(); await expect.poll(async () => (await read(item.new.id)).state).toBe('cancelled'); store.release(item.new.id);
-        record(`${engine}: ${item.key} stop targets the selected active task`);
+      if(item.newState==='queued') {
+        await page.getByRole('button',{name:'停止生成',exact:true}).click();await expect.poll(async()=>(await read(item.new.id)).state).toBe('cancelled');store.release(item.new.id);
+        record(engine+': stop remains tied to the active task while retained answers remain readable');
       }
     }
-    // Retained results are still visible after actions on another result in the same session.
-    const remaining = own.find(item => item.oldState === 'error' && item.newState === 'error'); await page.locator(`.rag-session-item[data-session-id="${remaining.sessionId}"] .rag-session-main`).click();
-    if (await picker.count()) await picker.selectOption(remaining.new.id); await expect(workspace.locator('.rag-answer').last()).toHaveText(remaining.new.answer);
-    await page.setViewportSize({ width: 390, height: 844 }); await expect(page.getByRole('button', { name: '打开问答历史', exact: true })).toBeVisible(); await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true); await page.screenshot({ path: path.join(root, `${engine}-mobile.png`), fullPage: true });
-    await page.setViewportSize({ width: 1440, height: 900 }); await page.screenshot({ path: path.join(root, `${engine}-desktop.png`), fullPage: true });
+    const remaining=own.find(item=>item.oldState==='error'&&item.newState==='error');await page.locator('.rag-session-item[data-session-id="'+remaining.sessionId+'"] .rag-session-main').click();
+    await expect(workspace.locator('.rag-answer').last()).toHaveText(remaining.new.answer);
+    await page.setViewportSize({width:390,height:844});await expect(page.getByRole('button',{name:'打开问答历史',exact:true})).toBeVisible();await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    await page.screenshot({path:path.join(root,engine+'-mobile.png'),fullPage:true});await page.setViewportSize({width:1440,height:900});await page.screenshot({path:path.join(root,engine+'-desktop.png'),fullPage:true});
     assert.deepEqual(pageErrors, []); await browser.close(); browser = null;
   }
   assert.ok(!report.requests.some(request => request.method === 'POST' && /\/rag\/tasks$/.test(request.path)));

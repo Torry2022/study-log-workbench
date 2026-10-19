@@ -84,6 +84,9 @@ try {
     }
     const page = await pageFor(), input = page.getByRole('textbox', { name: '输入知识库问题', exact: true });
     const workspace = page.locator('.rag-workspace').filter({ visible: true });
+    const beforeInvalidRetry = streams;
+    const invalidRetry = await page.request.post(`${base}/api/rag/tasks`, { data: { submissionId: randomUUID(), sessionId: randomUUID(), baseVersion: null, question: '合成重试校验', retryTaskId: 'invalid-task-id' } });
+    assert.equal(invalidRetry.status(), 400); assert.equal(streams, beforeInvalidRetry);
     const rows = (p, id) => p.locator(`.rag-session-item[data-session-id="${id}"]`);
     const task = async id => { const r = await page.request.get(`${base}/api/rag/tasks/${id}`); return r.ok() ? (await r.json()).task : null; };
     const tasks = async () => (await (await page.request.get(`${base}/api/rag/tasks`)).json()).tasks;
@@ -101,7 +104,7 @@ try {
     await fresh();
     const first = await send(); await expect(workspace).toContainText(`第${first.n}次合成回答`); await expect(rows(page, first.sessionId).getByRole('status', { name: '正在生成', exact: true })).toBeVisible();
     await page.getByRole('button', { name: '随记', exact: true }).click(); assert.ok(pending.has(first.n));
-    const other = await pageFor(); await expect(rows(other, first.sessionId)).toBeVisible(); await rows(other, first.sessionId).locator('.rag-session-main').click(); await expect(other.locator('.rag-workspace').filter({ visible: true })).toContainText(`第${first.n}次合成回答`);
+    const other = await pageFor(); currentPage = page; await expect(rows(other, first.sessionId)).toBeVisible(); await rows(other, first.sessionId).locator('.rag-session-main').click(); await expect(other.locator('.rag-workspace').filter({ visible: true })).toContainText(`第${first.n}次合成回答`);
     await navigate(page, `${base}?view=qa&session=${first.sessionId}`); await expect(workspace).toContainText(`第${first.n}次合成回答`); await navigate(page); await expect(workspace).toContainText(`第${first.n}次合成回答`);
     finish(first.n); await saved(first); await expect(other.locator('.rag-workspace').filter({ visible: true })).toContainText(answer(first.n)); assert.equal((await getSession(first.sessionId)).messages.length, 2);
     await until(() => getSession(first.sessionId), value => value?.titleSource === 'generated'); await navigate(page); await expect(workspace.locator('.rag-message')).toHaveCount(2); await expect(workspace).toContainText(answer(first.n));
@@ -149,6 +152,11 @@ try {
 
     await fresh(); const cancelled = await send(); await page.getByRole('button', { name: '停止生成', exact: true }).click(); await expect(workspace).toContainText('生成已停止'); await until(() => pending.has(cancelled.n), value => !value); assert.equal((await task(cancelled.taskId)).state, 'cancelled');
     const retryCalls = streams; await workspace.getByRole('button', { name: '重新生成', exact: true }).first().click(); await until(() => streams, n => n === retryCalls + 1); finish(streams); await expect(workspace).toContainText(answer(streams)); await expect(workspace.locator('.rag-message')).toHaveCount(2);
+    await expect(workspace.locator('.rag-answer-versions')).toHaveText('2 / 2'); await workspace.getByRole('button',{name:'上一个回答版本'}).click();
+    const stoppedSnapshot = await task(cancelled.taskId); await expect(workspace.locator('.rag-message-assistant')).toContainText('生成已停止');
+    if (stoppedSnapshot.partial) await expect(workspace.locator('.rag-message-assistant')).toContainText(stoppedSnapshot.partial);
+    else await expect(workspace.locator('.rag-message-assistant').locator('.rag-answer')).toHaveCount(0);
+    await workspace.getByRole('button',{name:'下一个回答版本'}).click();await expect(workspace.locator('.rag-answer')).toContainText(answer(streams)); assert.equal((await getSession(cancelled.sessionId)).messages.length, 2);
     record(`${engine}: explicit cancel aborts generation; explicit retry creates one new task`);
 
     await fresh(); const blocked = path.join(instance, 'backups', 'rag-sessions'), held = path.join(instance, 'backups', `rag-sessions-held-${engine}`);
@@ -163,7 +171,7 @@ try {
     const renamed = await page.request.patch(`${base}/api/rag/sessions/${failedSave.sessionId}`, { data: { mutationId: randomUUID(), baseVersion: version, title: '另一端保留的合成标题' } }); assert.equal(renamed.status(), 200);
     const changed = (await renamed.json()).session; finish(conflict.n); await until(() => task(conflict.taskId), value => value?.saveState === 'conflict'); await expect(workspace).toContainText('会话已被另一端修改'); await expect(page.getByRole('button', { name: '重试保存', exact: true })).toHaveCount(0);
     await navigate(page); await expect(workspace).toContainText('会话已被另一端修改'); assert.equal((await getSession(changed.id)).version, changed.version);
-    await page.getByRole('button', { name: '放弃未保存回答并重新读取', exact: true }).click(); await page.getByRole('alertdialog').getByRole('button', { name: '重新读取', exact: true }).click(); await expect(workspace.locator('.rag-message')).toHaveCount(2); assert.equal((await getSession(changed.id)).version, changed.version);
+    await page.getByRole('button', { name: '放弃此结果', exact: true }).click(); await page.getByRole('alertdialog').getByRole('button', { name: '放弃', exact: true }).click(); await expect(workspace.locator('.rag-message')).toHaveCount(2); assert.equal((await getSession(changed.id)).version, changed.version);
     record(`${engine}: save conflict retains result, offers no overwrite and respects another client's version`);
 
     const deleted = await send(), deleteVersion = (await getSession(deleted.sessionId)).version;
@@ -174,6 +182,10 @@ try {
     await fresh(); const failed = await send(); finish(failed.n, true); await expect(workspace.getByRole('button', { name: '重试', exact: true })).toBeVisible();
     await navigate(page); await expect(workspace.getByRole('button', { name: '重试', exact: true })).toBeVisible(); const beforeRetry = streams;
     await workspace.getByRole('button', { name: '重试', exact: true }).click(); await until(() => streams, n => n === beforeRetry + 1); finish(streams); await expect(workspace).toContainText(answer(streams)); await expect(workspace.locator('.rag-message')).toHaveCount(2);
+    await expect(workspace.locator('.rag-answer-versions')).toHaveText('2 / 2');await workspace.getByRole('button',{name:'上一个回答版本'}).click();
+    const failedSnapshot = await task(failed.taskId); await expect(workspace.locator('.rag-message-assistant')).toContainText(failedSnapshot.error || '回答生成失败');
+    if (failedSnapshot.partial) await expect(workspace.locator('.rag-message-assistant')).toContainText(failedSnapshot.partial);
+    await workspace.getByRole('button',{name:'下一个回答版本'}).click();await expect(workspace.locator('.rag-answer')).toContainText(answer(streams)); assert.equal((await getSession(failed.sessionId)).messages.length, 2);
     record(`${engine}: failed generation and partial remain discoverable; explicit retry succeeds once`);
 
     await page.setViewportSize({ width: 390, height: 844 }); await expect(input).toBeVisible(); assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));

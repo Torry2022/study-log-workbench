@@ -53,6 +53,7 @@ export class QaTaskClient {
       if (!Array.isArray(values) || values.some((item: QaTaskSubmission) => !item || !uuid.test(item.submissionId) || !uuid.test(item.sessionId) ||
         item.baseVersion !== null && !/^[a-f0-9]{64}$/.test(item.baseVersion) || typeof item.question !== 'string' || !item.question.trim() || item.question.length > 2000 ||
         !['logs_only', 'logs_and_general'].includes(item.mode) || item.replaceLast !== undefined && typeof item.replaceLast !== 'boolean' ||
+        item.retryTaskId !== undefined && !uuid.test(item.retryTaskId) ||
         item.cancelRequested !== undefined && typeof item.cancelRequested !== 'boolean')) throw new Error('待确认问答记录无法读取，请保留本地数据后重试');
       const capability = await this.transport.getForInstance<InstanceCapabilities>('/capabilities', this.instanceId);
       if (this.stopped || revision !== this.revision) return;
@@ -164,6 +165,7 @@ export class QaTaskClient {
         this.checkConnection();
         const body: QaTaskSubmission = { submissionId: input.submissionId, sessionId: input.sessionId, baseVersion: input.baseVersion,
           question: input.question, mode: input.mode, replaceLast: input.replaceLast };
+        if (input.retryTaskId) body.retryTaskId = input.retryTaskId;
         const response = await this.transport.postForInstance<QaTaskResponse>('/rag/tasks', body, this.instanceId);
         if (this.stopped) return;
         if (response.task.submissionId !== input.submissionId || response.task.sessionId !== input.sessionId) throw new Error('提交任务身份不匹配');
@@ -190,6 +192,7 @@ export class QaTaskClient {
     for (const input of this.pending.filter((item: QaTaskSubmission) => item.sessionId === sessionId)) {
       const cancelled: QaTaskSubmission = { submissionId: input.submissionId, sessionId: input.sessionId, baseVersion: input.baseVersion,
         question: input.question, mode: input.mode, replaceLast: input.replaceLast, cancelRequested: true };
+      if (input.retryTaskId) cancelled.retryTaskId = input.retryTaskId;
       await this.updatePending(cancelled);
     }
     for (const task of this.tasks.filter((item: QaTask) => item.sessionId === sessionId && taskActive(item))) await this.cancel(task.id);

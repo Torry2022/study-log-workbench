@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { RagTaskClient, ragTaskMessages } from '../lib/rag-task-client.ts';
+import { RagTaskClient, ragTaskMessages, validRagTask } from '../lib/rag-task-client.ts';
 import { ApiRequestError } from '../lib/client-http.ts';
 
 const instance = randomUUID();
@@ -139,4 +139,20 @@ test('a captured old snapshot cannot revive a task after discovery confirms dele
   await client.refresh(); const count = f.snapshots.length; hold = true; const selecting = client.select(old.id); await start;
   f.tasks.delete(old.id); await client.refresh(); assert.equal(f.missing.length, 1); release(); await selecting;
   assert.equal(f.snapshots.length, count); await client.refresh(); assert.equal(f.snapshots.length, count); client.stop();
+});
+
+test('scoped history loads saved versions outside discovery window and ignores unchanged revisions', async () => {
+  const f=fixture(), value=input(), task=taskFor(value); Object.assign(task,{state:'succeeded',saveState:'saved',result:{answer:'saved',citations:[]},questionMessageId:'stable-question',previousAnswer:{id:'old-answer',role:'assistant',content:'previous'}}); f.tasks.set(task.id,task);
+  const paths=[];const client=f.client(instance,storage(),async(url,init)=>{paths.push(url);if(url.startsWith('/api/rag/tasks?sessionId='))return {tasks:[{...task}]};return f.request(url,init)});
+  await client.refresh();assert.equal(f.snapshots.length,0);await client.readSession(value.sessionId);assert.equal(f.snapshots.length,1);assert.equal(f.snapshots[0].previousAnswer.content,'previous');
+  const reads=paths.filter(p=>p.endsWith(task.id)).length;await client.readSession(value.sessionId);assert.equal(paths.filter(p=>p.endsWith(task.id)).length,reads);client.stop();
+  assert.equal(validRagTask({...task,questionMessageId:42}),false);assert.equal(validRagTask({...task,previousAnswer:{role:'user',id:'bad',content:'bad'}}),false);
+});
+
+test('retry causal identity survives acknowledgement loss, pending cancellation and reconnect', async () => {
+  const f=fixture(), value={...input(),retryTaskId:randomUUID()}, first=f.client();f.lose();
+  await first.submit(value);assert.equal(JSON.parse([...f.local.values.values()][0])[0].retryTaskId,value.retryTaskId);
+  first.stop();const second=f.client();await second.stopSession(value.sessionId);await second.refresh();
+  assert.equal(f.calls(),1);assert.equal(f.writes[0].retryTaskId,value.retryTaskId);assert.equal(f.local.values.size,0);
+  assert.equal([...f.tasks.values()][0].state,'cancelled');second.stop();
 });

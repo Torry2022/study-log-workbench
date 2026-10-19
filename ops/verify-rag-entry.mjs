@@ -192,6 +192,13 @@ try {
     try { for (const theme of ['light','dark']) for (const width of [1440,390]) {
       const suffix = width === 1440 ? '' : '-mobile';
       const page = await browser.newPage({ viewport: { width,height:width === 1440 ? 900 : 844 },colorScheme:theme });
+      // This block verifies legacy query/client-save feedback. Durable tasks have
+      // their own actual-entry lifecycle suite in verify-rag-task-browser.mjs.
+      await page.route('**/api/capabilities', async route => {
+        const response = await route.fetch(), json = await response.json();
+        delete json.features.ragTasks;
+        await route.fulfill({ response, json });
+      });
       await page.goto(base); await page.getByLabel('访问密码').fill('synthetic-entry-password'); await page.getByRole('button',{name:'登录',exact:true}).click();
       await page.getByRole('button',{name:'问答',exact:true}).click();
       const toolbar = page.locator(width === 1440 ? '.reader-toolbar-qa' : '.mobile-topbar');

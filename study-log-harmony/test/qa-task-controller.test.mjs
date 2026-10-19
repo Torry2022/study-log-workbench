@@ -93,6 +93,7 @@ for (const state of ['failed', 'interrupted', 'cancelled']) for (const replaceLa
     assert.equal(f.controller.taskCanRetry, true); await f.controller.retryTask();
     const request = f.requests.find(value => value.method === 'POST' && value.path === '/rag/tasks'); assert.ok(request);
     assert.equal(request.body.replaceLast === true, replaceLast); assert.equal(request.body.question, original.question); assert.equal(request.body.mode, original.mode);
+    assert.equal(request.body.retryTaskId, original.id);
     assert.equal(request.body.sessionId, saved.id); assert.equal(request.body.baseVersion, saved.version); assert.notEqual(request.body.submissionId, original.submissionId);
     assert.equal(f.tasks.get(original.id).state, state); assert.equal(f.requests.filter(value => value.method === 'POST').length, 1);
   });
@@ -103,6 +104,7 @@ for (const replaceLast of [true, false]) test(`uncertain retry retains ${replace
   f.sessions.set(saved.id, saved); f.tasks.set(original.id, original); await f.client.refresh(); await f.controller.openSession(saved.id);
   const post = f.transport.postForInstance; f.transport.postForInstance = async (...args) => { await post(...args); throw Error('lost acknowledgement'); };
   await f.controller.retryTask(); assert.equal(f.client.pending[0].replaceLast, replaceLast);
+  assert.equal(f.client.pending[0].retryTaskId, original.id);
   assert.equal(f.controller.messages.length, saved.messages.length + (replaceLast ? 0 : 2));
   const submissionId = f.client.pending[0].submissionId; f.transport.postForInstance = post; await f.client.refresh();
   const recovered = [...f.tasks.values()].find(value => value.submissionId === submissionId); assert.ok(recovered); assert.equal(recovered.replaceLast, replaceLast);

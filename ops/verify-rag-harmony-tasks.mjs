@@ -144,20 +144,22 @@ try {
   const oldError = await createTask(taskInput(sid, baseline.version)); await until(() => waiting.size, Boolean); finish(streams); assert.equal((await complete(oldError.id)).saveState, 'error');
   const newError = await createTask(taskInput(sid, baseline.version)); await until(() => waiting.size, Boolean); finish(streams); assert.equal((await complete(newError.id)).saveState, 'error');
   await fs.unlink(backup); await fs.rename(kept, backup);
-  await current.client.refresh(); await current.controller.openSession(sid); await current.controller.selectTask(oldError.id);
-  assert.equal(current.controller.messages.length, 2); assert.equal(current.controller.selectedTaskId, oldError.id);
-  const beforeSave = streams, requestsBefore = report.requests.length; await current.controller.retryTaskSave(); assert.equal((await readTask(oldError.id)).saveState, 'saved');
+  await current.client.refresh(); await current.controller.openSession(sid);
+  assert.equal(current.controller.answerMessages().find(message => message.taskId === oldError.id)?.content, (await readTask(oldError.id)).result.answer);
+  assert.equal(current.controller.answerMessages().find(message => message.taskId === oldError.id)?.canSave, true);
+  const beforeSave = streams, requestsBefore = report.requests.length; await current.controller.saveAnswer(oldError.id); assert.equal((await readTask(oldError.id)).saveState, 'saved');
   assert.equal((await readTask(newError.id)).saveState, 'error'); assert.equal(streams, beforeSave); assert.ok(report.requests.slice(requestsBefore).some(value => value.path.endsWith(`/${oldError.id}/save`)));
-  await current.controller.selectTask(newError.id); const versionBeforeDiscard = (await call(`/rag/sessions/${sid}`)).session.version; await current.controller.discardTask(newError.id);
+  const versionBeforeDiscard = (await call(`/rag/sessions/${sid}`)).session.version; await current.controller.discardTask(newError.id);
   assert.equal((await call(`/rag/sessions/${sid}`)).session.version, versionBeforeDiscard); await call(`/rag/tasks/${newError.id}`, 'GET', undefined, 404);
-  record('two actual save failures remain selectable; native retries or discards only the selected task without generation');
+  record('two actual save failures remain inline; native retries or discards only the addressed answer without generation');
 
   const version = (await call(`/rag/sessions/${sid}`)).session.version, conflict = await createTask(taskInput(sid, version)); await until(() => waiting.size, Boolean);
   const renamed = (await call(`/rag/sessions/${sid}`, 'PATCH', { mutationId: randomUUID(), baseVersion: version, title: '另一端修改的合成标题' })).session;
   finish(streams); assert.equal((await complete(conflict.id)).saveState, 'conflict');
   const newer = await createTask(taskInput(sid, renamed.version)); await until(() => waiting.size, Boolean); finish(streams); assert.equal((await complete(newer.id)).saveState, 'saved');
-  current.controller.dispose(); current = await native(); await current.controller.openSession(sid); await current.controller.selectTask(conflict.id);
-  assert.equal(current.controller.messages.length, 2); assert.equal(current.controller.taskCanSave, false); assert.equal(current.controller.taskSaveError.length > 0, true);
+  current.controller.dispose(); current = await native(); await current.controller.openSession(sid);
+  const conflictAnswer = current.controller.answerMessages().find(message => message.taskId === conflict.id);
+  assert.ok(conflictAnswer); assert.equal(conflictAnswer.canSave, false); assert.equal(conflictAnswer.saveError.length > 0, true);
   record('native reopening discovers a historical conflict beside a later saved answer and exposes no overwrite action');
 
   await current.controller.newSession(); current.controller.question = '合成保存停止与失败'; const cancel = streams + 1; await current.controller.send(); const cancelSid = current.controller.sessionId;
@@ -186,22 +188,23 @@ try {
     else { await stopWeb(); await until(() => active, value => value === 0); await startWeb(); }
     assert.equal((await complete(original.id)).state, state);
     assert.deepEqual((await call(`/rag/sessions/${sid}`)).session.messages, before.messages);
-    // A fresh native viewer must select the new failed web task, rather than the
-    // older conflict explicitly pinned by the preceding scenario.
+    // A fresh native viewer retries the latest failed web task, while older
+    // retained results remain readable beside their own question.
     current.controller.dispose(); current = await native(); await current.controller.openSession(sid); assert.equal(current.controller.taskCanRetry, true);
-    const retryStream = streams + 1; await current.controller.retryTask();
-    const retriedId = current.controller.selectedTaskId; assert.ok(retriedId); assert.notEqual(retriedId, original.id);
+    const retryStream = streams + 1, priorIds = new Set(current.client.tasks.map(task => task.id)); await current.controller.retryTask();
+    const retriedId = current.client.tasks.find(task => task.sessionId === sid && !priorIds.has(task.id))?.id; assert.ok(retriedId); assert.notEqual(retriedId, original.id);
     const retried = await readTask(retriedId); assert.equal(retried.replaceLast, replaceLast); assert.equal(retried.question, originalInput.question);
     await until(() => streams, value => value >= retryStream); finish(retryStream); assert.equal((await complete(retriedId)).saveState, 'saved');
     const after = (await call(`/rag/sessions/${sid}`)).session, prefix = replaceLast ? before.messages.slice(0, -2) : before.messages;
     assert.equal(after.messages.length, before.messages.length + (replaceLast ? 0 : 2));
     assert.deepEqual(after.messages.slice(0, prefix.length), prefix); assert.equal(after.messages.at(-2).content, originalInput.question);
+    assert.equal(after.messages.at(-2).id, retried.questionMessageId);
     assert.equal(after.messages.at(-1).content, (await readTask(retriedId)).result.answer); assert.equal((await readTask(original.id)).state, state);
     report.retrySemantics.push({ state, replaceLast, beforeMessages: before.messages.length, afterMessages: after.messages.length, prefixUnchanged: true });
     record(`web ${replaceLast ? 'regeneration' : 'append'} task ${state}: native retry preserves intent and saved JSON prefix`);
   }
 
-  await current.client.refresh(); await current.controller.openSession(sid); await current.controller.selectTask(conflict.id);
+  await current.client.refresh(); await current.controller.openSession(sid);
   let release, started; const gate = new Promise(resolve => release = resolve), start = new Promise(resolve => started = resolve);
   heldRead = { path: `/study-log/api/rag/tasks/${conflict.id}`, gate, started };
   const reading = current.client.read(conflict.id); await start; const deleting = (await call(`/rag/sessions/${sid}`)).session;

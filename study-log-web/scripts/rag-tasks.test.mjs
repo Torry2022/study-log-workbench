@@ -352,3 +352,30 @@ test('regeneration keeps question identity and the previous answer across runtim
   assert.equal((await other.get(created.id)).previousAnswer.id, original.messages[1].id);
   assert.ok((await other.list(original.id)).some(task => task.id === created.id));
 });
+
+// Adapted from personal 8f89245: retries carry causal identity, never a text heuristic.
+for (const state of ['failed', 'interrupted', 'cancelled']) for (const replaceLast of [false, true]) {
+  test(`explicit ${state} retry preserves ${replaceLast ? 'replacement' : 'append'} question identity`, async () => {
+    const originalSession = replaceLast ? await createRagSession({ id: uuid(), mutationId: uuid(), baseVersion: null, answerMode: 'logs_only', messages: pair('重复问题') }) : null;
+    const input = submission({ ...(originalSession ? { sessionId: originalSession.id, baseVersion: originalSession.version, question: '重复问题', replaceLast } : {}) });
+    const s = new RagTaskStore(process.env.LOG_ROOT); stores.push(s); s.leader('synthetic-retry-seed');
+    const original = s.create(input), claimed = s.claim('synthetic-retry-seed');
+    if (state === 'cancelled') { s.cancel(original.id); s.release(original.id); }
+    else s.finish(claimed, state, null, 'synthetic failure');
+    s.shutdown('synthetic-retry-seed');
+    let calls = 0; const r = runtime(executor({ onCall: () => calls++ })); r.start();
+    for (const patch of [{ sessionId: uuid(), baseVersion: null }, { question: '另一问题' }, { replaceLast: !replaceLast }]) {
+      await assert.rejects(r.create({ ...input, ...patch, submissionId: uuid(), retryTaskId: original.id }));
+    }
+    const retryInput = { ...input, submissionId: uuid(), retryTaskId: original.id };
+    const retry = await r.create(retryInput); await done(r, retry.id);
+    const expectedId = originalSession?.messages[0].id || `${original.id}:user`;
+    assert.equal((await r.get(retry.id)).questionMessageId, expectedId);
+    const saved = await getRagSession(input.sessionId); assert.equal(saved.messages[0].id, expectedId); assert.equal(saved.messages.length, 2);
+    assert.equal((await r.create(retryInput)).id, retry.id); assert.equal(calls, 1);
+    await assert.rejects(r.create({ ...input, baseVersion: saved.version, submissionId: uuid(), retryTaskId: original.id }), /不匹配/);
+    await assert.rejects(r.create({ ...input, baseVersion: saved.version, submissionId: uuid(), retryTaskId: retry.id }), /不匹配/);
+    const independent = await r.create(submission({ sessionId: saved.id, baseVersion: saved.version, question: input.question })); await done(r, independent.id);
+    assert.equal((await getRagSession(saved.id)).messages[2].id, `${independent.id}:user`);
+  });
+}

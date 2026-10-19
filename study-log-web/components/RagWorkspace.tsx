@@ -2,12 +2,13 @@
 
 import "@/app/rag-workspace.css";
 
-import { BookOpen, Check, ChevronDown, CircleAlert, Copy, FileText, LoaderCircle, MessageSquareText, RotateCcw, Send, Square } from "lucide-react";
+import { BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, Copy, FileText, LoaderCircle, MessageSquareText, RotateCcw, Send, Square } from "lucide-react";
 import { type FormEvent, type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { MarkdownPreview } from "@/components/MarkdownPreview";
 import { WorkspaceState } from "@/components/WorkspaceState";
 import type { RagAnswerMode, RagChatMessage, RagCitation } from "@/lib/rag-types";
 import { stripRagCitationLabels } from "@/lib/rag-answer";
+import type { RagAnswerMessage } from "@/lib/rag-answer-versions";
 
 interface RagWorkspaceProps {
   availability?: ReactNode;
@@ -17,7 +18,12 @@ interface RagWorkspaceProps {
   active: boolean;
   visible: boolean;
   disabled?: boolean;
-  messages: RagChatMessage[];
+  messages: RagAnswerMessage[];
+  viewingPreviousAnswer?: boolean;
+  answerActionBusy?: boolean;
+  onAnswerVersion: (questionId: string, answerId: string) => void;
+  onSaveAnswer: (taskId: string) => void;
+  onDiscardAnswer: (taskId: string) => void;
   initializing: boolean;
   question: string;
   stage: string;
@@ -30,7 +36,7 @@ interface RagWorkspaceProps {
   onAnswerModeChange: (mode: RagAnswerMode) => void;
   onSubmit: () => void;
   onStop: () => void;
-  onRegenerate: () => void;
+  onRegenerate: (answerId: string) => void;
   onCitation: (citation: RagCitation) => void;
 }
 
@@ -43,6 +49,11 @@ export function RagWorkspace({
   visible,
   disabled = false,
   messages,
+  viewingPreviousAnswer = false,
+  answerActionBusy = false,
+  onAnswerVersion,
+  onSaveAnswer,
+  onDiscardAnswer,
   initializing,
   question,
   stage,
@@ -267,8 +278,8 @@ export function RagWorkspace({
                       <div className="rag-message-state error" role="alert">
                         <CircleAlert size={15} aria-hidden="true" />
                         <span>{message.error || "回答生成失败"}</span>
-                        {index === messages.length - 1 && (
-                          <button type="button" onClick={onRegenerate} disabled={generating || disabled}>
+                        {(message.canRetry ?? index === messages.length - 1) && (
+                          <button type="button" onClick={() => onRegenerate(message.id)} disabled={generating || disabled || !!question.trim() || message.canRetry === false}>
                             <RotateCcw size={13} />
                             重试
                           </button>
@@ -278,8 +289,8 @@ export function RagWorkspace({
                     {message.status === "stopped" && (
                       <div className="rag-message-state note" role="status">
                         <span>生成已停止</span>
-                        {index === messages.length - 1 && (
-                          <button type="button" onClick={onRegenerate} disabled={generating || disabled}>
+                        {(message.canRetry ?? index === messages.length - 1) && (
+                          <button type="button" onClick={() => onRegenerate(message.id)} disabled={generating || disabled || !!question.trim() || message.canRetry === false}>
                             <RotateCcw size={13} />
                             重新生成
                           </button>
@@ -325,18 +336,29 @@ export function RagWorkspace({
                         </div>
                       </div>
                     )}
-                    {message.content && message.status !== "streaming" && (
+                    {message.saveError && <div className="rag-message-state error" role="alert">{message.saveError}</div>}
+                    {message.saving && <div className="rag-message-state note" role="status">正在保存问答历史…</div>}
+                    {(message.content && message.status !== "streaming" || (message.versions?.length || 0) > 1) && (
                       <div className="rag-answer-actions">
+                        {(message.versions?.length || 0) > 1 && <div className="rag-answer-versions" aria-label="回答版本">
+                          <button type="button" aria-label="上一个回答版本" disabled={!message.versionIndex} onClick={() => { followOutputRef.current = false; onAnswerVersion(message.questionId!, message.versions![message.versionIndex! - 1]); }}><ChevronLeft size={14} /></button>
+                          <span>{message.versionIndex! + 1} / {message.versions!.length}</span>
+                          <button type="button" aria-label="下一个回答版本" disabled={message.versionIndex === message.versions!.length - 1} onClick={() => { followOutputRef.current = false; onAnswerVersion(message.questionId!, message.versions![message.versionIndex! + 1]); }}><ChevronRight size={14} /></button>
+                        </div>}
+                        {message.content && <>
                         <button type="button" onClick={() => void copyAnswer(message)}>
                           {copiedMessageId === message.id ? <Check size={14} /> : <Copy size={14} />}
                           {copiedMessageId === message.id ? "已复制" : "复制"}
                         </button>
-                        {index === messages.length - 1 && (
-                          <button type="button" onClick={onRegenerate} disabled={generating || disabled}>
+                        {(message.canRegenerate ?? index === messages.length - 1) && (
+                          <button type="button" onClick={() => onRegenerate(message.id)} disabled={generating || disabled || !!question.trim()}>
                             <RotateCcw size={14} />
                             重新生成
                           </button>
                         )}
+                        </>}
+                        {message.canSave && <button type="button" disabled={answerActionBusy} onClick={() => onSaveAnswer(message.taskId!)}>重试保存</button>}
+                        {message.canDiscard && <button type="button" disabled={answerActionBusy} onClick={() => onDiscardAnswer(message.taskId!)}>放弃此结果</button>}
                       </div>
                     )}
                   </>
@@ -357,7 +379,7 @@ export function RagWorkspace({
           value={question}
           onChange={(event) => onQuestionChange(event.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="询问学习日志中的内容"
+          placeholder={viewingPreviousAnswer ? "切回当前回答后可继续提问" : "询问学习日志中的内容"}
           aria-label="输入知识库问题"
           rows={1}
           disabled={generating}

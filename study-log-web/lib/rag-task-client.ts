@@ -15,6 +15,9 @@ export function validRagTask(value: unknown): value is RagTask {
     typeof task.createdAt === "string" && typeof task.updatedAt === "string" && typeof task.question === "string" &&
     typeof task.partial === "string" && typeof task.stage === "string" && typeof task.error === "string" && typeof task.saveError === "string" &&
     typeof task.replaceLast === "boolean" && ["logs_only", "logs_and_general"].includes(task.mode) &&
+    (task.questionMessageId === undefined || typeof task.questionMessageId === "string" && !!task.questionMessageId) &&
+    (task.previousAnswer === undefined || task.previousAnswer?.role === "assistant" && typeof task.previousAnswer.id === "string" && typeof task.previousAnswer.content === "string" &&
+      (task.previousAnswer.citations === undefined || Array.isArray(task.previousAnswer.citations))) &&
     (task.result === null || typeof task.result?.answer === "string" && Array.isArray(task.result.citations)) &&
     (task.state !== "succeeded" || task.result?.answer.trim()));
 }
@@ -30,7 +33,7 @@ export function ragTaskMessages(task: RagTask, session: RagSession | null, histo
   if (task.saveState === "saved" && session) return session.messages;
   const previous = session?.messages || [];
   const prefix = task.replaceLast ? previous.slice(0, -2) : previous;
-  return [...prefix, { id: `${task.id}:user`, role: "user", content: task.question, status: "complete" },
+  return [...prefix, { id: task.questionMessageId || `${task.id}:user`, role: "user", content: task.question, status: "complete" },
     { id: `${task.id}:assistant`, role: "assistant", content: task.state === "succeeded" ? task.result!.answer : task.partial,
       status: ragTaskActive(task) ? "streaming" : task.state === "succeeded" ? "complete" : task.state === "cancelled" ? "stopped" : "error",
       ...(task.state === "succeeded" ? { citations: task.result!.citations, groundingWarning: task.result!.groundingWarning } : {}),
@@ -74,6 +77,7 @@ export class RagTaskClient {
       typeof value.question !== "string" || !value.question.trim() || value.question.length > 2000 ||
       !["logs_only", "logs_and_general"].includes(value.mode) || typeof value.createdAt !== "string" ||
       value.replaceLast !== undefined && typeof value.replaceLast !== "boolean" ||
+      value.retryTaskId !== undefined && !uuid(value.retryTaskId) ||
       value.cancelRequested !== undefined && typeof value.cancelRequested !== "boolean")) throw new Error("待确认问答记录无法读取，请保留浏览器数据后重试");
     return values;
   }
@@ -197,6 +201,17 @@ export class RagTaskClient {
     const old = this.tasks.get(id);
     if (!old || old.revision < result.task.revision) this.tasks.set(id, result.task);
     await this.callbacks.task(this.tasks.get(id)!);
+  }
+  async readSession(sessionId: string) {
+    if (!uuid(sessionId)) throw new Error("会话标识无效");
+    const result = await this.request<{ tasks: RagTaskSummary[] }>(`/api/rag/tasks?sessionId=${encodeURIComponent(sessionId)}`);
+    if (!Array.isArray(result.tasks) || result.tasks.some(task => !uuid(task.id) || task.sessionId !== sessionId || !uuid(task.submissionId) || !Number.isSafeInteger(task.revision))) throw new Error("回答版本列表响应不完整");
+    for (const task of result.tasks) {
+      if (this.tasks.has(task.id) && this.tasks.get(task.id)!.revision >= task.revision) continue;
+      const value = (await this.request<{ task: RagTask }>(`/api/rag/tasks/${task.id}`)).task;
+      if (value?.id !== task.id) throw new Error("回答版本身份不匹配");
+      await this.accept(value, task);
+    }
   }
   async remove(id: string) { const result = await this.request<{ removed: boolean }>(`/api/rag/tasks/${id}`, { method: "DELETE" }); if (result.removed !== true) throw new Error("放弃结果尚未确认，请保留回答并重试"); this.removed.add(id); this.tasks.delete(id); }
   stop() { this.stopped = true; clearTimeout(this.timer); this.controller.abort(); }

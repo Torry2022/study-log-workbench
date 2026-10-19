@@ -7,6 +7,7 @@ export interface QaTaskSubmission {
   question: string;
   mode: string;
   replaceLast?: boolean;
+  retryTaskId?: string;
   cancelRequested?: boolean;
 }
 export interface QaTaskSummary {
@@ -81,7 +82,7 @@ export function taskMessages(task: QaTask, session?: RagSession, historical: boo
   if (task.saveState === 'saved' && session) return session.messages;
   const previous = session?.messages || [];
   return [...(task.replaceLast ? previous.slice(0, -2) : previous),
-    { id: `${task.id}:user`, role: 'user', content: task.question },
+    { id: task.questionMessageId || `${task.id}:user`, role: 'user', content: task.question },
     { id: `${task.id}:assistant`, role: 'assistant', content: task.result?.answer || task.partial,
       status: taskActive(task) ? 'streaming' : task.state === 'succeeded' ? 'complete' : task.state === 'cancelled' ? 'stopped' : 'error',
       citations: task.result?.citations || [], groundingWarning: task.result?.groundingWarning,

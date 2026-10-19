@@ -256,7 +256,7 @@ export function inspectRagTaskSession(id: string, base?: string | null): Promise
 
 /** Receipt and messages share one atomic JSON replacement. Reconciliation never appends twice. */
 export function applyRagTaskResult(input: { taskId: string; sessionId: string; baseVersion: string | null;
-  question: string; answerMode: RagAnswerMode; answer: string; citations: RagCitation[]; groundingWarning?: string; replaceLast?: boolean }): Promise<RagSession> {
+  question: string; answerMode: RagAnswerMode; answer: string; citations: RagCitation[]; groundingWarning?: string; replaceLast?: boolean; questionMessageId?: string }): Promise<RagSession> {
   const taskId = uuid(input.taskId), id = uuid(input.sessionId);
   const digest = hash(JSON.stringify(input));
   return queued(async root => {
@@ -273,7 +273,7 @@ export function applyRagTaskResult(input: { taskId: string; sessionId: string; b
     const previous = existing?.messages || [];
     if (input.replaceLast && (previous.length < 2 || previous.at(-2)?.content !== input.question)) throw new RagSessionConflictError();
     const content = messages([...(input.replaceLast ? previous.slice(0, -2) : previous),
-      { id: input.replaceLast ? previous.at(-2)!.id : `${taskId}:user`, role: "user", content: input.question, status: "complete" },
+      { id: input.replaceLast ? previous.at(-2)!.id : input.questionMessageId || `${taskId}:user`, role: "user", content: input.question, status: "complete" },
       { id: `${taskId}:assistant`, role: "assistant", content: input.answer, citations: input.citations, status: "complete",
         ...(input.groundingWarning ? { groundingWarning: input.groundingWarning } : {}) }]);
     const now = new Date().toISOString();

@@ -3,7 +3,7 @@ import type { RagAnswerMode, RagCitation, RagDiagnostics, RagHistoryMessage } fr
 export type RagTaskState = "queued" | "running" | "succeeded" | "failed" | "cancelled" | "interrupted";
 export interface RagTaskSubmission {
   submissionId: string; sessionId: string; baseVersion: string | null; question: string; mode: RagAnswerMode;
-  history: RagHistoryMessage[]; replaceLast?: boolean;
+  history: RagHistoryMessage[]; replaceLast?: boolean; retryTaskId?: string;
 }
 export interface RagTaskResult { answer: string; citations: RagCitation[]; groundingWarning?: string; diagnostics?: RagDiagnostics }
 export interface RagTask {

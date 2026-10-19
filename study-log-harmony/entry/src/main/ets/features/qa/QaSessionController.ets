@@ -600,13 +600,14 @@ export class QaSessionController {
     }
   }
 
-  private async sendTask(replaceLast: boolean = false): Promise<void> {
+  private async sendTask(replaceLast: boolean = false, retryTaskId: string = ''): Promise<void> {
     const client = this.taskClient, question = this.question.trim();
     if (!client || !question || question.length > 2000 || this.sending || this.sessionLoading || this.taskSaving || this.taskBlocked || this.taskSaveError) return;
     if (!client.ready) { this.errorMessage = '任务协议尚未就绪，请重试检查'; return; }
     if (!this.sessionId) { this.sessionId = util.generateRandomUUID(); this.view.onActiveSessionChange(this.sessionId); }
     const sessionId = this.sessionId;
     const input: QaTaskSubmission = { submissionId: util.generateRandomUUID(), sessionId, baseVersion: this.canonical.get(sessionId)?.version || this.sessionVersion || null, question, mode: this.answerMode, replaceLast };
+    if (retryTaskId) input.retryTaskId = retryTaskId;
     this.question = ''; this.errorMessage = ''; this.sending = true; this.view.beforeSend(); this.view.showComposer();
     this.view.onBusyChange(false); this.view.onPendingChange(false);
     try { await client.submit(input); }
@@ -620,7 +621,7 @@ export class QaSessionController {
   async retryTask(): Promise<void> {
     if (!this.selectedTask || !this.taskCanRetry || this.taskBlocked) return;
     const original = this.selectedTask;
-    this.question = original.question; await this.sendTask(original.replaceLast);
+    this.question = original.question; await this.sendTask(original.replaceLast, original.id);
   }
   async discardTask(id: string): Promise<void> {
     const client = this.taskClient;

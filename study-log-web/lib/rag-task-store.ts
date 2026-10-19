@@ -119,7 +119,7 @@ export class RagTaskStore {
   create(input: RagTaskSubmission, history: RagHistoryMessage[] = input.history, association: Pick<TaskRecord["input"], "questionMessageId" | "previousAnswer"> = {}): TaskRecord {
     if (!uuid(input.submissionId) || !uuid(input.sessionId) || (input.baseVersion !== null && (typeof input.baseVersion !== "string" || !/^[a-f0-9]{64}$/.test(input.baseVersion))) ||
       typeof input.question !== "string" || !input.question.trim() || input.question.length > 2000 || !["logs_only", "logs_and_general"].includes(input.mode) ||
-      !Array.isArray(input.history) || Buffer.byteLength(JSON.stringify(input)) > 128 * 1024) fail("RAG_INVALID_INPUT", "任务请求无效", 400);
+      input.retryTaskId !== undefined && !uuid(input.retryTaskId) || !Array.isArray(input.history) || Buffer.byteLength(JSON.stringify(input)) > 128 * 1024) fail("RAG_INVALID_INPUT", "任务请求无效", 400);
     const fingerprint = createHash("sha256").update(JSON.stringify(input)).digest("hex");
     return this.transaction(() => {
       const existing = this.db.prepare("SELECT * FROM tasks WHERE submission_id=?").get(input.submissionId);

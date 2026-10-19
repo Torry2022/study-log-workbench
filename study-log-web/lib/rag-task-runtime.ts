@@ -51,6 +51,14 @@ export class RagTaskRuntime {
       const messages = current.session?.messages || [];
       if (input.replaceLast && (messages.length < 2 || messages.at(-2)?.content !== input.question)) throw new RagTaskError("RAG_SESSION_CONFLICT", "要重新生成的问题已变化，请重新读取", 409);
       if (input.replaceLast) association = { questionMessageId: messages.at(-2)!.id, previousAnswer: messages.at(-1)! };
+      if (input.retryTaskId) {
+        const previous = this.store.get(input.retryTaskId);
+        const latest = this.store.list(input.sessionId).sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)).at(-1);
+        if (previous.sessionId !== input.sessionId || previous.question !== input.question ||
+          latest?.id !== previous.id || Boolean(previous.input.replaceLast) !== Boolean(input.replaceLast) || !["failed", "cancelled", "interrupted"].includes(previous.state))
+          throw new RagTaskError("RAG_INVALID_INPUT", "要重试的问答任务不匹配", 400);
+        association.questionMessageId = previous.input.questionMessageId || association.questionMessageId || `${previous.id}:user`;
+      }
       if (!current.session && input.history.length) throw new RagTaskError("RAG_INVALID_INPUT", "请先保存原会话，再继续后台问答", 400);
       history = parseRagHistory((input.replaceLast ? messages.slice(0, -2) : messages).map(({ role, content, citations }) => ({ role, content,
         ...(citations?.length ? { sourceRefs: citations.map(({ date, fileName, heading, contentHash }) => ({ date, fileName, heading, contentHash })) } : {}) })));
@@ -87,6 +95,7 @@ export class RagTaskRuntime {
     try {
       await applyRagTaskResult({ taskId: task.id, sessionId: task.sessionId, baseVersion: task.input.baseVersion,
         question: task.input.question, answerMode: task.input.mode, answer: task.result.answer,
+        questionMessageId: task.input.questionMessageId,
         citations: task.result.citations, ...(task.result.groundingWarning ? { groundingWarning: task.result.groundingWarning } : {}),
         ...(task.input.replaceLast ? { replaceLast: true } : {}) });
       this.store.saved(id, "saved");

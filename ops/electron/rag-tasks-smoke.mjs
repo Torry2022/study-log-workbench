@@ -71,9 +71,28 @@ async function launch(profile) {
 }
 async function closeApp() {
   if (!app) return;
-  const closing = app.waitForEvent('close', { timeout: 60000 });
-  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().forEach(window => window.close()));
-  await closing; app = undefined;
+  const stderr = app.process().stderr;
+  let resolveWaiting;
+  const waiting = new Promise(resolve => { resolveWaiting = resolve; });
+  const listener = bytes => {
+    if (String(bytes).includes('Waiting for the debugger to disconnect')) resolveWaiting('inspector');
+  };
+  stderr.on('data', listener);
+  try {
+    const closing = app.waitForEvent('close', { timeout: 60000 });
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().forEach(window => window.close()));
+    const outcome = await Promise.race([closing.then(() => 'closed'), waiting]);
+    if (outcome === 'inspector') {
+      const openPages = app.context().pages().filter(page => !page.isClosed()).length;
+      assert.equal(openPages, 0, 'normal window close must finish before detaching the test inspector');
+      (report.inspectorWaits ||= []).push({ at: new Date().toISOString(), openPages });
+      // Detach Playwright's own Node inspector after the application has closed its windows.
+      await app.close();
+    }
+    await closing; app = undefined;
+  } finally {
+    stderr.removeListener('data', listener);
+  }
 }
 async function workspace() {
   await expect.poll(() => app.context().pages().some(p => !p.isClosed() && /^http:/.test(p.url())), { timeout: 60000 }).toBe(true);

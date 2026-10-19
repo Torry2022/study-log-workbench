@@ -1,5 +1,7 @@
 # 服务器镜像构建与发布准备
 
+0.1.3 的 Web、MCP、tools 已以固定版本成组发布，Linux amd64／非 root，并用空凭据 Docker 配置匿名拉取核对。当前产物、digest 与验证范围见[发布记录](release-0.1.3-2026-10-19.md)，下方早期候选记录按原时间保留。
+
 使用者入口是 `deploy/`，不含构建步骤或个人云资源。镜像命名统一为 `<IMAGE_PREFIX>/web:<RELEASE_VERSION>`、`mcp`、`tools`，同一版本必须来自同一份已验证源码。不要覆写已发布版本标签。Compose 不绑定 ACR，阿里云内网拉取地址只在使用者自己的 `.env` 中配置。
 
 ## 本地构建

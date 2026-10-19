@@ -1,7 +1,8 @@
 import { DayEntry } from './LogModels';
 
 export function editableDayBodyFromContent(content: string): string {
-  return content.trimEnd().replace(/(?:\r?\n)+[ \t]*---[ \t]*$/, '')
+  // CodeMirror snapshots use LF; compare the editable body in that same representation.
+  return content.replace(/\r\n?/g, '\n').trimEnd().replace(/(?:\r?\n)+[ \t]*---[ \t]*$/, '')
     .replace(/^##\s+\d{4}-\d{2}-\d{2}\s*\n?/, '').replace(/^\r?\n+/, '').trimEnd();
 }
 

@@ -47,3 +47,14 @@ test('a restored backup is confirmed only for the selected day and historical bo
   assert.equal(matchesRestoredContent({ ...day, content: day.content.replace('原有资料。', '  原有资料。') },
     '2026-02-05', historical), false);
 });
+
+test('CRLF source body has the same baseline as the editor snapshot without hiding real edits', async () => {
+  const { editableDayBody, matchesSubmittedDay } = await loadBody();
+  const body = '### 合成标题\n\n第一段。\n\n```text\n---\n第二行\n```';
+  const day = { date: '2026-02-05', exists: true, version: 'v1', content: (`## 2026-02-05\n\n${body}\n\n---\n`).replaceAll('\n', '\r\n') };
+  const original = day.content;
+  assert.equal(editableDayBody(day), body);
+  assert.equal(matchesSubmittedDay(day, body), true);
+  assert.equal(matchesSubmittedDay(day, body.replace('第一段', '已修改')), false);
+  assert.equal(day.content, original, 'reading for the editor must not rewrite the source document');
+});

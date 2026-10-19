@@ -13,9 +13,21 @@ import { FrameAction } from '../../common/ui/FrameAction';
 import { RagChatMessage, RagCitation, RagSessionSummary } from './QaModels';
 import { QaSessionController } from './QaSessionController';
 import { createQaTaskConnection } from './QaTaskConnection';
-import { QaTaskChoice } from './QaTaskModels';
+import { QaAnswerMessage } from './QaTaskModels';
+import { pasteboard } from '@kit.BasicServicesKit';
+import { appFeedback } from '../../common/ui/AppFeedback';
 
 interface QaRenderMessage {
+  id: string;
+  copied?: boolean;
+  citations?: RagCitation[];
+  versions?: string[];
+  versionIndex?: number;
+  canRegenerate?: boolean;
+  saveError?: string;
+  canSave?: boolean;
+  canRetry?: boolean;
+  canDiscard?: boolean;
   role: string;
   content: string;
   failure?: string;
@@ -86,6 +98,7 @@ export struct QaPage {
   @State private readerScrollOffset: number = 0;
   @State private readerScrollProgress: number = 0;
   @State private scrollToTopRequestRevision: number = 0;
+  @State private copiedAnswerId: string = '';
   @State private questionFocused: boolean = false;
   private composingQuestion: boolean = false;
   private questionController: TextAreaController = new TextAreaController();
@@ -99,19 +112,6 @@ export struct QaPage {
   private isLargeWorkspace(): boolean {
     return this.workspaceBreakpoint === WorkspaceBreakpoint.LARGE ||
       this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE;
-  }
-
-  private taskSelectOptions(): SelectOption[] {
-    const options: SelectOption[] = [{ value: '已保存会话' }];
-    this.data.taskChoices.forEach((choice: QaTaskChoice) => options.push({ value: choice.label }));
-    return options;
-  }
-
-  private taskSelection(choices: QaTaskChoice[]): (index: number, value: string) => void {
-    const ids = ['', ...choices.map((choice: QaTaskChoice) => choice.id)];
-    return (index: number, _value: string): void => {
-      if (index >= 0 && index < ids.length) this.data.selectTask(ids[index]);
-    };
   }
 
   aboutToAppear(): void { this.data.activate(); }
@@ -266,7 +266,9 @@ export struct QaPage {
   }
 
   private conversationPayload(): string {
-    const messages: QaRenderMessage[] = this.data.messages.map((message: RagChatMessage): QaRenderMessage => ({
+    const messages: QaRenderMessage[] = this.data.answerMessages().map((message: QaAnswerMessage): QaRenderMessage => ({
+      id: message.id, copied: this.copiedAnswerId === message.id, citations: message.citations, versions: message.versions, versionIndex: message.versionIndex,
+      canRegenerate: message.canRegenerate, saveError: message.saveError, canSave: message.canSave, canRetry: message.canRetry, canDiscard: message.canDiscard,
       role: message.role,
       content: message.role === 'user' ? message.content : this.answerMarkdown(message) || this.data.statusText,
       failure: this.data.failedAttempt?.answerId === message.id ? this.data.errorMessage : '',
@@ -285,6 +287,27 @@ export struct QaPage {
       content = content.split(`[${citation.sourceId}]`).join(token);
     });
     return content;
+  }
+
+  private async answerAction(id: string, action: string, target: string): Promise<void> {
+    const message = this.data.answerMessages().find((item: QaAnswerMessage) => item.role === 'assistant' && item.id === id);
+    if (!message) return;
+    if (action === 'copy') {
+      try {
+        await pasteboard.getSystemPasteboard().setData(pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, message.content));
+        this.copiedAnswerId = message.id;
+        setTimeout(() => { if (this.copiedAnswerId === message.id) this.copiedAnswerId = ''; }, 2000);
+      } catch (_) { appFeedback.show('复制失败，请重试', 'error'); }
+    } else if (action === 'version' && message.questionId) await this.data.selectAnswerVersion(message.questionId, target);
+    else if (action === 'regenerate') await this.data.regenerateAnswer(id);
+    else if (action === 'save' && message.taskId) await this.data.saveAnswer(message.taskId);
+    else if (action === 'retry' && message.taskId) await this.data.retryAnswer(message.taskId);
+    else if (action === 'discard' && message.taskId && message.canDiscard) {
+      const taskId = message.taskId;
+      AlertDialog.show({ message: '放弃这条未保存的回答？其他回答与已保存会话不受影响。',
+        primaryButton: { value: '保留', action: () => {} },
+        secondaryButton: { value: '放弃', action: () => this.data.discardTask(taskId) } });
+    }
   }
 
   private composerHorizontalInset(): number {
@@ -338,6 +361,7 @@ export struct QaPage {
                 onViewportReady: this.onWorkspaceLayoutReady,
                 onRenderReady: this.onWorkspaceLayoutReady,
                 content: this.conversationPayload(),
+                onQaAnswerAction: (id: string, action: string, target: string) => this.answerAction(id, action, target),
                 onQaAttemptAction: (id: string, action: string) => {
                   const attempt = this.data.failedAttempt;
                   if (!attempt || attempt.answerId !== id || this.data.sending) return;
@@ -379,54 +403,17 @@ export struct QaPage {
             }
 
             Column({ space: 6 }) {
-              if (this.data.taskChoices.length > 0) {
-                Row({ space: 8 }) {
-                  Text('查看回答').fontSize(12).fontColor($r('app.color.muted'))
-                  Select(this.taskSelectOptions())
-                    .selected(Math.max(0, this.data.taskChoices.findIndex((choice) => choice.id === this.data.selectedTaskId) + 1))
-                    .value(this.data.taskChoices.find((choice) => choice.id === this.data.selectedTaskId)?.label || '已保存会话')
-                    .layoutWeight(1).height(36).font({ size: 12 }).fontColor($r('app.color.body'))
-                    .backgroundColor($r('app.color.surface_soft')).borderRadius(8)
-                    .enabled(!this.data.taskSaving)
-                    .accessibilityText('查看问答结果').id('qa_task_view')
-                    .onSelect(this.taskSelection(this.data.taskChoices))
-                }.width('100%')
-              }
               if (this.data.taskMode) {
                 InlineStatus({ text: this.data.taskError, error: true, retry: !!this.data.taskError,
                   onRetry: () => this.data.refreshTasks() })
-                InlineStatus({ text: this.data.taskSaveError, error: true })
-                if (this.data.taskCanSave || this.data.taskSaveError || this.data.taskCanRetry) {
-                  Row({ space: 8 }) {
-                    if (this.data.taskCanSave) {
-                      Button('重试保存', { type: ButtonType.Normal }).fontSize(12).height(34)
-                        .fontColor($r('app.color.body')).backgroundColor($r('app.color.surface_soft')).borderRadius(8)
-                        .enabled(!this.data.taskSaving).onClick(() => this.data.retryTaskSave())
-                    }
-                    if (this.data.taskSaveError) {
-                      Button('放弃此结果', { type: ButtonType.Normal }).fontSize(12).height(34)
-                        .fontColor($r('app.color.body')).backgroundColor($r('app.color.surface_soft')).borderRadius(8)
-                        .enabled(!this.data.taskSaving).onClick(() => {
-                          const id = this.data.selectedTaskId;
-                          AlertDialog.show({ message: '放弃当前选中的未保存回答？其他结果与已保存会话不受影响。',
-                            primaryButton: { value: '保留', action: () => {} },
-                            secondaryButton: { value: '放弃', action: () => this.data.discardTask(id) } });
-                        })
-                    }
-                    if (this.data.taskCanRetry) {
-                      Button('重试生成', { type: ButtonType.Normal }).fontSize(12).height(34)
-                        .fontColor($r('app.color.body')).backgroundColor($r('app.color.surface_soft')).borderRadius(8)
-                        .enabled(!this.data.taskSaving && !this.data.taskBlocked).onClick(() => this.data.retryTask())
-                    }
-                  }.width('100%')
-                }
               }
               InlineStatus({ text: this.data.noticeMessage, error: false })
               InlineStatus({ text: this.data.failedAttempt || (this.data.failedSessionId && this.data.messages.length === 0) ? '' : this.data.errorMessage,
                 error: true, retry: this.data.failedSessionId.length > 0 && !this.data.sending,
                 onRetry: () => this.data.openSession(this.data.failedSessionId) })
               Column({ space: 8 }) {
-                TextArea({ text: this.data.question, controller: this.questionController, placeholder: '询问学习日志中的内容' })
+                TextArea({ text: this.data.question, controller: this.questionController,
+                  placeholder: this.data.viewingPreviousAnswer() ? '切回当前回答后可继续提问' : '询问学习日志中的内容' })
                   .width('100%').constraintSize({ minHeight: 42, maxHeight: 126 }).fontSize(14)
                   .padding({ left: 2, right: 2, top: 10, bottom: 10 })
                   .enterKeyType(EnterKeyType.NEW_LINE)

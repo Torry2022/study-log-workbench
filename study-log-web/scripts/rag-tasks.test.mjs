@@ -334,3 +334,21 @@ test('a killed task executor is interrupted on restart, preserves fragments, and
   assert.equal(interrupted.partial, '重启前片段'); assert.equal(calls, 0); assert.deepEqual(await listRagSessions(), []);
   const next = await r.create(submission()); assert.equal((await done(r, next.id)).state, 'succeeded'); assert.equal(calls, 1);
 });
+
+test('regeneration keeps question identity and the previous answer across runtime restart', async () => {
+  const r = runtime(executor()); r.start();
+  const original = await createRagSession({ id: uuid(), mutationId: uuid(), baseVersion: null, answerMode: 'logs_only', messages: pair('重复问题') });
+  const questionId = original.messages[0].id;
+  const input = submission({ sessionId: original.id, baseVersion: original.version, question: '重复问题', replaceLast: true });
+  const created = await r.create(input), final = await done(r, created.id);
+  assert.equal(final.questionMessageId, questionId);
+  assert.equal(final.previousAnswer.id, original.messages[1].id);
+  assert.equal(final.previousAnswer.content, '旧回答');
+  const saved = await getRagSession(original.id);
+  assert.equal(saved.messages[0].id, questionId);
+  r.stop();
+  const other = runtime(executor());
+  assert.equal((await other.get(created.id)).questionMessageId, questionId);
+  assert.equal((await other.get(created.id)).previousAnswer.id, original.messages[1].id);
+  assert.ok((await other.list(original.id)).some(task => task.id === created.id));
+});

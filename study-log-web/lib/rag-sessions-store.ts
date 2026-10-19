@@ -273,7 +273,7 @@ export function applyRagTaskResult(input: { taskId: string; sessionId: string; b
     const previous = existing?.messages || [];
     if (input.replaceLast && (previous.length < 2 || previous.at(-2)?.content !== input.question)) throw new RagSessionConflictError();
     const content = messages([...(input.replaceLast ? previous.slice(0, -2) : previous),
-      { id: `${taskId}:user`, role: "user", content: input.question, status: "complete" },
+      { id: input.replaceLast ? previous.at(-2)!.id : `${taskId}:user`, role: "user", content: input.question, status: "complete" },
       { id: `${taskId}:assistant`, role: "assistant", content: input.answer, citations: input.citations, status: "complete",
         ...(input.groundingWarning ? { groundingWarning: input.groundingWarning } : {}) }]);
     const now = new Date().toISOString();

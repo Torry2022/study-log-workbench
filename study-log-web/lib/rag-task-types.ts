@@ -7,6 +7,8 @@ export interface RagTaskSubmission {
 }
 export interface RagTaskResult { answer: string; citations: RagCitation[]; groundingWarning?: string; diagnostics?: RagDiagnostics }
 export interface RagTask {
+  questionMessageId?: string;
+  previousAnswer?: import("./rag-types").RagChatMessage;
   id: string; sessionId: string; submissionId: string; state: RagTaskState; revision: number;
   createdAt: string; updatedAt: string; question: string; mode: RagAnswerMode; partial: string; stage: string;
   result: RagTaskResult | null; error: string; errorCode: string; replaceLast?: boolean; saveState: "pending" | "saved" | "conflict" | "error" | "deleted";

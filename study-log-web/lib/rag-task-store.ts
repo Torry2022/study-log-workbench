@@ -16,7 +16,7 @@ export class RagTaskError extends Error {
 export function isRagTaskError(error: unknown): error is RagTaskError {
   return error instanceof Error && (error as RagTaskError)[taskErrorIdentity] === true;
 }
-export interface TaskRecord extends RagTask { input: RagTaskSubmission; generation: number; fingerprint: string; owner: string | null }
+export interface TaskRecord extends RagTask { input: RagTaskSubmission & { questionMessageId?: string; previousAnswer?: import("./rag-types").RagChatMessage }; generation: number; fingerprint: string; owner: string | null }
 const now = () => new Date().toISOString();
 const uuid = (value: unknown) => typeof value === "string" && /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(value);
 const fail = (code: string, message: string, status = 409): never => { throw new RagTaskError(code, message, status); };
@@ -73,7 +73,7 @@ export class RagTaskStore {
     catch (error) { this.db.exec("ROLLBACK"); throw error; }
   }
   private decode(row: Record<string, unknown>): TaskRecord {
-    const input = JSON.parse(row.input as string) as RagTaskSubmission;
+    const input = JSON.parse(row.input as string) as TaskRecord["input"];
     return { id: row.id as string, sessionId: row.session_id as string, submissionId: row.submission_id as string,
       state: row.state as RagTaskState, revision: row.revision as number, createdAt: row.created_at as string,
       updatedAt: row.updated_at as string, question: input.question || "", mode: input.mode || "logs_only", input,
@@ -86,14 +86,15 @@ export class RagTaskStore {
     if (!row) return fail("RAG_TASK_NOT_FOUND", "任务不存在或已删除", 404);
     return this.decode(row as Record<string, unknown>);
   }
-  list(): RagTaskSummary[] {
+  list(sessionId?: string): RagTaskSummary[] {
+    if (sessionId !== undefined && !uuid(sessionId)) fail("RAG_INVALID_INPUT", "会话标识无效", 400);
     const attention = "(state IN ('queued','running') OR state='succeeded' AND save_state IN ('pending','error','conflict'))";
     const rows = this.db.prepare(`WITH history AS (
       SELECT id FROM tasks WHERE removed=0 AND NOT ${attention} ORDER BY created_at DESC,id DESC LIMIT 100
     ) SELECT id,session_id,submission_id,state,revision,created_at,updated_at,stage,error_code,save_state,
       substr(json_extract(input,'$.question'),1,160) AS question_preview,json_extract(input,'$.mode') AS mode
-      FROM tasks WHERE removed=0 AND (${attention} OR id IN (SELECT id FROM history))
-      ORDER BY CASE WHEN ${attention} THEN 0 ELSE 1 END,created_at DESC,id DESC`).all();
+      FROM tasks WHERE removed=0 AND (${sessionId ? "session_id=?" : `${attention} OR id IN (SELECT id FROM history)`})
+      ORDER BY CASE WHEN ${attention} THEN 0 ELSE 1 END,created_at DESC,id DESC`).all(...(sessionId ? [sessionId] : []));
     return rows.map(row => ({ id: row.id as string, sessionId: row.session_id as string, submissionId: row.submission_id as string,
       state: row.state as RagTaskState, revision: row.revision as number, createdAt: row.created_at as string, updatedAt: row.updated_at as string,
       stage: row.stage as string, errorCode: row.error_code as string, saveState: row.save_state as RagTask["saveState"],
@@ -115,7 +116,7 @@ export class RagTaskStore {
     const row = this.db.prepare("SELECT * FROM tasks WHERE submission_id=?").get(id);
     return row ? this.decode(row as Record<string, unknown>) : null;
   }
-  create(input: RagTaskSubmission, history: RagHistoryMessage[] = input.history): TaskRecord {
+  create(input: RagTaskSubmission, history: RagHistoryMessage[] = input.history, association: Pick<TaskRecord["input"], "questionMessageId" | "previousAnswer"> = {}): TaskRecord {
     if (!uuid(input.submissionId) || !uuid(input.sessionId) || (input.baseVersion !== null && (typeof input.baseVersion !== "string" || !/^[a-f0-9]{64}$/.test(input.baseVersion))) ||
       typeof input.question !== "string" || !input.question.trim() || input.question.length > 2000 || !["logs_only", "logs_and_general"].includes(input.mode) ||
       !Array.isArray(input.history) || Buffer.byteLength(JSON.stringify(input)) > 128 * 1024) fail("RAG_INVALID_INPUT", "任务请求无效", 400);
@@ -132,7 +133,7 @@ export class RagTaskStore {
       if ((this.db.prepare("SELECT count(*) AS n FROM tasks").get() as { n: number }).n >= 10000) fail("RAG_TASK_CAPACITY", "任务身份记录已达容量，请先备份并联系维护者", 507);
       const id = randomUUID(), time = now();
       this.db.prepare("INSERT INTO tasks(id,submission_id,session_id,fingerprint,state,created_at,updated_at,input) VALUES(?,?,?,?,'queued',?,?,?)")
-        .run(id, input.submissionId, input.sessionId, fingerprint, time, time, JSON.stringify({ ...input, history }));
+        .run(id, input.submissionId, input.sessionId, fingerprint, time, time, JSON.stringify({ ...input, history, ...association }));
       return this.get(id);
     });
   }

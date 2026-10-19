@@ -251,7 +251,23 @@
       }
     }, true);
 
+    // Same Lucide geometry as RagWorkspace; license: markdown/licenses/lucide.txt.
+    function qaIcon(name) {
+      const paths = {
+        copy: ['M9 8h11a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2', 'M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2'],
+        regenerate: ['M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8', 'M3 3v5h5'],
+        sources: ['M12 7v14', 'M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z'],
+        file: ['M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z', 'M14 2v4a2 2 0 0 0 2 2h4', 'M10 9H8', 'M16 13H8', 'M16 17H8'],
+        down: ['m6 9 6 6 6-6'], previous: ['m15 18-6-6 6-6'], next: ['m9 18 6-6-6-6'], check: ['m9 12 2 2 4-4']
+      };
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      Object.entries({ viewBox: '0 0 24 24', width: '14', height: '14', fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' }).forEach(([key, value]) => svg.setAttribute(key, value));
+      (paths[name] || []).forEach(d => { const element = document.createElementNS(svg.namespaceURI, 'path'); element.setAttribute('d', d); svg.appendChild(element); });
+      return svg;
+    }
+
     function renderQaConversation(payload) {
+      const expandedSources = new Set(Array.from(reader.querySelectorAll('.qa-sources details[open]')).map(item => item.dataset.sourceKey));
       let messages = [];
       try {
         const parsed = JSON.parse(String(payload || '[]'));
@@ -286,6 +302,58 @@
             warning.setAttribute('role', 'status');
             warning.textContent = String(message.groundingWarning);
             article.appendChild(warning);
+          }
+          if (Array.isArray(message.citations) && message.citations.length) {
+            const sources = document.createElement('div');
+            sources.className = 'qa-sources';
+            const title = document.createElement('div');
+            title.className = 'qa-sources-title'; title.appendChild(qaIcon('sources')); title.append('来源'); sources.appendChild(title);
+            message.citations.forEach(source => {
+              if (!/^\d{4}-\d{2}-\d{2}$/.test(source.date || '')) return;
+              const detail = document.createElement('details');
+              detail.dataset.sourceKey = `${message.id}:${source.sourceId}`;
+              detail.open = expandedSources.has(detail.dataset.sourceKey);
+              const summary = document.createElement('summary');
+              [['span', source.sourceId], ['strong', source.date], ['em', source.heading || '日志原文']].forEach(([tag, text]) => { const field = document.createElement(tag); field.textContent = text; summary.appendChild(field); });
+              summary.appendChild(qaIcon('down'));
+              detail.appendChild(summary);
+              const body = document.createElement('div'); body.className = 'qa-source-detail';
+              const excerpt = document.createElement('p'); excerpt.textContent = source.excerpt || '该历史会话未保存来源片段，可前往来源页面查看。'; body.appendChild(excerpt);
+              const link = document.createElement('a'); link.appendChild(qaIcon('file')); link.append('查看原日志');
+              link.href = `study-log://citation?date=${encodeURIComponent(source.date)}&heading=${encodeURIComponent(source.heading || '')}&headingIndex=${Number.isInteger(source.headingIndex) ? source.headingIndex : -1}`;
+              body.appendChild(link); detail.appendChild(body); sources.appendChild(detail);
+            });
+            article.appendChild(sources);
+          }
+          if (message.id) {
+            const actions = document.createElement('div'); actions.className = 'qa-answer-actions';
+            const action = (kind, title, target = '') => {
+              const link = document.createElement('a');
+              const icon = kind === 'version' ? title === '‹' ? 'previous' : 'next' : kind === 'copy' ? message.copied ? 'check' : 'copy' : kind === 'regenerate' || kind === 'retry' ? 'regenerate' : '';
+              if (icon) link.appendChild(qaIcon(icon));
+              if (kind !== 'version') link.append(title);
+              link.setAttribute('aria-label', kind === 'version' ? title === '‹' ? '上一个回答版本' : '下一个回答版本' : title);
+              link.href = `study-log://qa-answer?id=${encodeURIComponent(message.id)}&action=${kind}&target=${encodeURIComponent(target)}`;
+              actions.appendChild(link);
+            };
+            if (Array.isArray(message.versions) && message.versions.length > 1) {
+              const index = Number(message.versionIndex);
+              if (index > 0) action('version', '‹', message.versions[index - 1]);
+              else { const disabled = document.createElement('span'); disabled.appendChild(qaIcon('previous')); disabled.setAttribute('aria-disabled', 'true'); actions.appendChild(disabled); }
+              const counter = document.createElement('span'); counter.className = 'qa-version-count'; counter.textContent = `${index + 1} / ${message.versions.length}`; actions.appendChild(counter);
+              if (index < message.versions.length - 1) action('version', '›', message.versions[index + 1]);
+              else { const disabled = document.createElement('span'); disabled.appendChild(qaIcon('next')); disabled.setAttribute('aria-disabled', 'true'); actions.appendChild(disabled); }
+            }
+            if (message.content) action('copy', message.copied ? '已复制' : '复制');
+            if (message.canRegenerate) action('regenerate', '重新生成');
+            if (message.canSave) action('save', '重试保存');
+            if (message.canRetry) action('retry', '重试生成');
+            if (message.canDiscard) action('discard', '放弃此结果');
+            article.appendChild(actions);
+            if (message.saveError) {
+              const error = document.createElement('div'); error.className = 'qa-failure'; error.setAttribute('role', 'status');
+              error.textContent = message.saveError; article.appendChild(error);
+            }
           }
           if (message.failure && message.attemptId) {
             const failure = document.createElement('div');

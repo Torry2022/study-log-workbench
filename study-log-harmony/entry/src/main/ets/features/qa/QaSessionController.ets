@@ -2,7 +2,7 @@ import { ApiClient, ApiError, ApiStreamCancelledError } from '../../common/netwo
 import { RagChatMessage, RagCitation, RagDeltaEvent, RagDoneEvent, RagErrorEvent, RagHistoryMessage, RagQueryRequest, RagSession, RagSessionResponse, RagSessionsResponse, RagSessionSummary, RagSessionWriteRequest, RagSourceRef, RagSourcesEvent, RagStatusEvent } from './QaModels';
 import { QaStreamParser } from './QaStreamParser';
 import { QaTaskClient } from './QaTaskClient';
-import { QaTask, QaTaskChoice, QaTaskSubmission, latestTask, taskActive, taskRetained, taskMessages } from './QaTaskModels';
+import { QaTask, QaTaskSubmission, QaAnswerMessage, latestTask, taskActive, taskRetained, taskMessages } from './QaTaskModels';
 import { util } from '@kit.ArkTS';
 
 export interface QaAttempt {
@@ -59,14 +59,12 @@ export class QaSessionController {
   taskSaving: boolean = false;
   taskError: string = '';
   taskSaveError: string = '';
-  taskChoices: QaTaskChoice[] = [];
-  selectedTaskId: string = '';
-  taskCanSave: boolean = false;
   taskCanRetry: boolean = false;
   taskBlocked: boolean = false;
   private taskClient?: QaTaskClient;
   private selectedTask?: QaTask;
-  private taskViews: Map<string, string> = new Map<string, string>();
+  private answerViews: Map<string, string> = new Map<string, string>();
+
   private canonical: Map<string, RagSession> = new Map<string, RagSession>();
   private remoteSessions: RagSessionSummary[] = [];
   private deletedSessions: Set<string> = new Set<string>();
@@ -80,6 +78,99 @@ export class QaSessionController {
   constructor(transport: ApiClient, view: QaSessionView, tasks?: QaTaskClient) {
     this.transport = transport; this.view = view; this.taskClient = tasks; this.taskMode = !!tasks;
     this.taskBlocked = !!tasks && !tasks.ready;
+  }
+
+  answerMessages(): QaAnswerMessage[] {
+    if (!this.taskMode) return this.messages;
+    const saved = this.canonical.get(this.sessionId)?.messages || [];
+    const tasks = (this.taskClient?.tasks || []).filter((task: QaTask) => task.sessionId === this.sessionId)
+      .sort((a: QaTask, b: QaTask) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+    const pairs: RagChatMessage[] = [...saved];
+    tasks.forEach((task: QaTask) => {
+      const questionId = task.questionMessageId || `${task.id}:user`;
+      if (!pairs.some((message: RagChatMessage) => message.id === questionId)) {
+        // Unassociated legacy results remain separate; matching question text proves nothing.
+        if (task.saveState === 'saved') return;
+        pairs.push({ id: questionId, role: 'user', content: task.question },
+          { id: `${task.id}:assistant`, role: 'assistant', content: task.result?.answer || task.partial });
+      }
+    });
+    if (!pairs.length) return this.messages;
+    const result: QaAnswerMessage[] = [];
+    for (let index = 0; index < pairs.length; index += 2) {
+      const question = pairs[index], answer = pairs[index + 1];
+      if (!answer) continue;
+      const related = tasks.filter((task: QaTask) => (task.questionMessageId || `${task.id}:user`) === question.id);
+      const variants: RagChatMessage[] = [];
+      related.forEach((task: QaTask) => {
+        if (task.previousAnswer && !variants.some((item: RagChatMessage) => item.id === task.previousAnswer?.id)) variants.push(task.previousAnswer);
+        const item = taskMessages(task).slice(-1)[0];
+        if (!variants.some((existing: RagChatMessage) => existing.id === item.id)) variants.push(item);
+      });
+      if (!variants.some((item: RagChatMessage) => item.id === answer.id)) variants.unshift(answer);
+      const newest = related[related.length - 1];
+      const fallback = newest && newest.saveState !== 'saved' ? `${newest.id}:assistant` : answer.id;
+      const selectedId = this.answerViews.get(`${this.sessionId}:${question.id}`) || fallback;
+      const selected = variants.find((item: RagChatMessage) => item.id === selectedId) || variants.find((item: RagChatMessage) => item.id === fallback) || answer;
+      const task = related.find((item: QaTask) => `${item.id}:assistant` === selected.id);
+      const rendered: QaAnswerMessage = { id: selected.id, role: selected.role, content: selected.content,
+        citations: selected.citations, status: selected.status, error: selected.error, groundingWarning: selected.groundingWarning,
+        questionId: question.id, versions: variants.map((item: RagChatMessage) => item.id),
+        versionIndex: variants.findIndex((item: RagChatMessage) => item.id === selected.id), taskId: task?.id,
+        saveError: task?.state === 'succeeded' && ['error', 'conflict'].includes(task.saveState) ? task.saveError || '回答已保留，尚未写入会话' : '',
+        canSave: task?.state === 'succeeded' && task.saveState === 'error',
+        canDiscard: task?.state === 'succeeded' && ['error', 'conflict'].includes(task.saveState),
+        canRetry: !!task && task.id === latestTask(tasks, this.sessionId)?.id && ['failed', 'cancelled', 'interrupted'].includes(task.state) && !this.taskBlocked,
+        canRegenerate: index === saved.length - 2 && answer.id === selected.id && !this.question.trim() && !this.sending && !this.taskSaving && !this.taskBlocked && !this.taskSaveError };
+      const renderedQuestion: QaAnswerMessage = { id: question.id, role: question.role, content: question.content };
+      result.push(renderedQuestion, rendered);
+    }
+    return result;
+  }
+
+  async selectAnswerVersion(questionId: string, answerId: string): Promise<void> {
+    const message = this.answerMessages().find((item: QaAnswerMessage) => item.questionId === questionId);
+    if (!message?.versions?.includes(answerId)) return;
+    this.answerViews.set(`${this.sessionId}:${questionId}`, answerId);
+    this.taskBlocked = this.blockTaskSubmission();
+    // Notify the observed UI without changing the canonical conversation or its reader position.
+    this.messages = [...this.messages];
+  }
+
+  viewingPreviousAnswer(): boolean {
+    const saved = this.canonical.get(this.sessionId)?.messages || [], rendered = this.answerMessages();
+    for (let index = 0; index < saved.length; index += 2) {
+      if (!this.answerViews.has(`${this.sessionId}:${saved[index].id}`)) continue;
+      const answer = rendered.find((item: QaAnswerMessage) => item.questionId === saved[index].id);
+      if (answer && answer.id !== saved[index + 1]?.id) return true;
+    }
+    return false;
+  }
+
+  async regenerateAnswer(answerId: string): Promise<void> {
+    const saved = this.canonical.get(this.sessionId)?.messages || [];
+    const answer = this.answerMessages().find((item: QaAnswerMessage) => item.id === answerId);
+    if (!answer?.canRegenerate || saved[saved.length - 1]?.id !== answerId) return;
+    this.answerViews.delete(`${this.sessionId}:${saved[saved.length - 2].id}`);
+    this.question = saved[saved.length - 2].content;
+    await this.sendTask(true);
+  }
+
+  async saveAnswer(taskId: string): Promise<void> {
+    if (!this.answerMessages().some((item: QaAnswerMessage) => item.taskId === taskId && item.canSave) || this.taskSaving) return;
+    const sessionId = this.sessionId, revision = this.sessionRequestRevision;
+    this.taskSaving = true;
+    try {
+      await this.taskClient?.save(taskId);
+      if (!this.pageDisposed && revision === this.sessionRequestRevision && sessionId === this.sessionId) await this.readTaskSession(sessionId, revision);
+    }
+    catch (error) { if (!this.pageDisposed && revision === this.sessionRequestRevision) this.errorMessage = error instanceof Error ? error.message : '保存重试失败'; }
+    finally { this.taskSaving = false; this.taskFingerprint = ''; this.applyTasks(); }
+  }
+
+  async retryAnswer(taskId: string): Promise<void> {
+    if (!this.answerMessages().some((item: QaAnswerMessage) => item.taskId === taskId && item.canRetry)) return;
+    await this.retryTask();
   }
 
   private reportPending(): void {
@@ -153,8 +244,8 @@ export class QaSessionController {
     this.errorMessage = '';
     this.sourceCitations = [];
     if (this.taskClient) {
-      this.selectedTask = undefined; this.selectedTaskId = ''; this.taskChoices = []; this.taskSaveError = '';
-      this.taskCanSave = false; this.taskCanRetry = false; this.sending = false; this.taskFingerprint = ''; this.taskBlocked = !this.taskClient.ready;
+      this.selectedTask = undefined; this.taskSaveError = '';
+      this.taskCanRetry = false; this.sending = false; this.taskFingerprint = ''; this.taskBlocked = !this.taskClient.ready;
       this.canonicalReadFailed = false;
       this.view.onBusyChange(false);
     }
@@ -429,20 +520,16 @@ export class QaSessionController {
     const navigation = JSON.stringify([client.tasks.map((task: QaTask) => [task.id, task.state, task.saveState]), client.pending]);
     if (navigation !== this.navigationFingerprint) { this.navigationFingerprint = navigation; this.publishTaskSessions(); this.loadSessions(); }
     const latest = latestTask(client.tasks, this.sessionId);
-    const choice = this.taskViews.has(this.sessionId) ? this.taskViews.get(this.sessionId) || '' : latest?.id || '';
-    this.taskChoices = client.tasks.filter((task: QaTask) => task.sessionId === this.sessionId && (taskRetained(task) || task.id === choice))
-      .sort((a: QaTask, b: QaTask) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))
-      .map((task: QaTask): QaTaskChoice => ({ id: task.id, label: `${this.taskTime(task.createdAt)} · ${task.state === 'queued' ? '等待中' : taskActive(task) ? '生成中' : task.state === 'failed' ? '生成失败' : task.state === 'interrupted' ? '已中断' : task.state === 'cancelled' ? '已停止' : task.saveState === 'conflict' ? '保存冲突' : task.saveState === 'error' ? '保存失败' : task.saveState === 'saved' ? '已保存' : '待保存'} · ${task.question.slice(0, 45)}` }));
+    const choice = latest?.id || '';
     if (this.taskSaving) return;
     const task = client.tasks.find((item: QaTask) => item.id === choice);
     const pending = client.pending.find((input: QaTaskSubmission) => input.sessionId === this.sessionId && !client.tasks.some((item: QaTask) => item.submissionId === input.submissionId));
-    const fingerprint = JSON.stringify([this.sessionId, choice, task?.revision, latest?.id, latest?.saveState, pending, client.ready]);
+    const fingerprint = JSON.stringify([this.sessionId, choice, task?.revision, latest?.id, latest?.saveState, pending, client.ready, client.tasks.filter((item: QaTask) => item.sessionId === this.sessionId).map((item: QaTask) => [item.id, item.revision])]);
     if (fingerprint === this.taskFingerprint) return;
     this.taskFingerprint = fingerprint;
-    this.taskCanSave = !pending && !!task && task.state === 'succeeded' && task.saveState === 'error';
     this.taskCanRetry = !pending && !!task && task.id === latest?.id && ['failed', 'cancelled', 'interrupted'].includes(task.state);
     this.taskSaveError = !pending && task?.state === 'succeeded' && ['error', 'conflict'].includes(task.saveState) ? task.saveError || '回答已保留，尚未写入会话' : '';
-    this.selectedTaskId = pending ? '' : task?.id || ''; this.selectedTask = pending ? undefined : task;
+    this.selectedTask = pending ? undefined : task;
     this.taskBlocked = this.blockTaskSubmission();
     this.sending = !!pending || !!task && taskActive(task);
     this.receivedDone = !pending && task?.state === 'succeeded'; this.pendingWrite = undefined; this.failedAttempt = undefined;
@@ -465,16 +552,10 @@ export class QaSessionController {
 
   private blockTaskSubmission(): boolean {
     const client = this.taskClient, task = this.selectedTask;
-    return !client?.ready || this.canonicalReadFailed || !!task && task.id !== latestTask(client.tasks, this.sessionId)?.id ||
+    return !client?.ready || this.canonicalReadFailed || this.viewingPreviousAnswer() ||
       !!task && task.state === 'succeeded' && task.saveState === 'pending' ||
       !!client?.pending.some((input: QaTaskSubmission) => input.sessionId === this.sessionId) ||
       !!client?.tasks.some((item: QaTask) => item.sessionId === this.sessionId && taskActive(item) && item.id !== task?.id);
-  }
-
-  private taskTime(createdAt: string): string {
-    const value = new Date(new Date(createdAt).getTime() + 8 * 60 * 60 * 1000);
-    const pad = (part: number): string => part.toString().padStart(2, '0');
-    return `${pad(value.getUTCMonth() + 1)}-${pad(value.getUTCDate())} ${pad(value.getUTCHours())}:${pad(value.getUTCMinutes())}:${pad(value.getUTCSeconds())}`;
   }
 
   private async readTaskSession(id: string, revision: number): Promise<void> {
@@ -484,8 +565,8 @@ export class QaSessionController {
       if (this.pageDisposed || revision !== this.sessionRequestRevision || this.sessionId !== id || this.deletedSessions.has(id)) return;
       if (response.session.id !== id || !Array.isArray(response.session.messages) || !/^[a-f0-9]{64}$/.test(response.session.version)) throw new Error('会话响应不完整，请重试');
       this.canonical.set(id, response.session); this.sessionVersion = response.session.version; this.canonicalReadFailed = false; this.failedSessionId = '';
-      const latest = latestTask(this.taskClient?.tasks || [], id), choice = this.taskViews.get(id);
-      if (choice === '' || this.selectedTask?.saveState === 'saved' && this.selectedTask.id === latest?.id || !this.selectedTask) {
+      const latest = latestTask(this.taskClient?.tasks || [], id);
+      if (this.selectedTask?.saveState === 'saved' && this.selectedTask.id === latest?.id || !this.selectedTask) {
         this.messages = response.session.messages; this.answerMode = response.session.answerMode; this.errorMessage = '';
       }
     } catch (error) {
@@ -494,8 +575,8 @@ export class QaSessionController {
         const remaining = this.taskClient?.tasks.some((task: QaTask) => task.sessionId === id) || this.taskClient?.pending.some((input: QaTaskSubmission) => input.sessionId === id);
         if (this.canonical.has(id) || this.remoteSessions.some((session: RagSessionSummary) => session.id === id)) {
           this.deletedSessions.add(id); this.remoteSessions = this.remoteSessions.filter((session: RagSessionSummary) => session.id !== id);
-          this.taskViews.delete(id); this.canonical.delete(id); await this.newSession(); this.noticeMessage = '该会话已被删除，已停止恢复'; this.publishTaskSessions();
-        } else { this.canonicalReadFailed = false; if (!remaining && !this.sending) this.errorMessage = '该会话尚无已保存回答，可选择上方保留的结果'; }
+          this.canonical.delete(id); await this.newSession(); this.noticeMessage = '该会话已被删除，已停止恢复'; this.publishTaskSessions();
+        } else { this.canonicalReadFailed = false; if (!remaining && !this.sending) this.errorMessage = '该会话尚无已保存回答，可查看对应问题下保留的回答'; }
       } else { this.canonicalReadFailed = true; this.failedSessionId = id; this.pendingSessionKey = ''; this.errorMessage = error instanceof Error ? error.message : '会话读取失败，请重试'; this.view.onSessionReady(); }
     } finally {
       if (!this.pageDisposed && revision === this.sessionRequestRevision) {
@@ -513,17 +594,10 @@ export class QaSessionController {
     this.errorMessage = ''; this.failedSessionId = ''; this.taskFingerprint = ''; this.sessionDocumentKey = `task-session:${id}:${revision}`; this.pendingSessionKey = this.sessionDocumentKey;
     this.view.onActiveSessionChange(id); this.view.resetComposerScroll(); this.applyTasks();
     await this.readTaskSession(id, revision);
-  }
-
-  async selectTask(id: string): Promise<void> {
-    if (!this.taskClient || this.taskSaving || this.pageDisposed) return;
-    const sessionId = this.sessionId, revision = ++this.sessionRequestRevision;
-    this.sessionDocumentKey = `task-session:${sessionId}:${revision}`; this.pendingSessionKey = this.sessionDocumentKey;
-    this.taskViews.set(sessionId, id); this.taskFingerprint = ''; this.errorMessage = ''; this.sessionLoading = true;
-    this.applyTasks();
-    try { if (id) await this.taskClient.read(id); else await this.readTaskSession(sessionId, revision); }
-    catch (error) { if (revision === this.sessionRequestRevision) this.errorMessage = error instanceof Error ? error.message : '结果读取失败，请重试'; }
-    finally { if (revision === this.sessionRequestRevision && !this.pageDisposed) { this.sessionLoading = false; if (id) { this.taskFingerprint = ''; this.applyTasks(); } if (!this.messages.length) { this.pendingSessionKey = ''; this.view.onSessionReady(); } } }
+    if (!this.pageDisposed && revision === this.sessionRequestRevision) {
+      try { await this.taskClient?.readSessionTasks(id); }
+      catch (error) { if (revision === this.sessionRequestRevision) this.taskError = error instanceof Error ? error.message : '回答版本读取失败'; }
+    }
   }
 
   private async sendTask(replaceLast: boolean = false): Promise<void> {
@@ -533,7 +607,7 @@ export class QaSessionController {
     if (!this.sessionId) { this.sessionId = util.generateRandomUUID(); this.view.onActiveSessionChange(this.sessionId); }
     const sessionId = this.sessionId;
     const input: QaTaskSubmission = { submissionId: util.generateRandomUUID(), sessionId, baseVersion: this.canonical.get(sessionId)?.version || this.sessionVersion || null, question, mode: this.answerMode, replaceLast };
-    this.taskViews.delete(sessionId); this.question = ''; this.errorMessage = ''; this.sending = true; this.view.beforeSend(); this.view.showComposer();
+    this.question = ''; this.errorMessage = ''; this.sending = true; this.view.beforeSend(); this.view.showComposer();
     this.view.onBusyChange(false); this.view.onPendingChange(false);
     try { await client.submit(input); }
     catch (error) {
@@ -548,28 +622,21 @@ export class QaSessionController {
     const original = this.selectedTask;
     this.question = original.question; await this.sendTask(original.replaceLast);
   }
-  async retryTaskSave(): Promise<void> {
-    const client = this.taskClient, id = this.selectedTask?.id;
-    if (!client || !id || !this.taskCanSave || this.taskSaving) return;
-    const revision = this.sessionRequestRevision; this.taskSaving = true;
-    try { await client.save(id); }
-    catch (error) { if (revision === this.sessionRequestRevision) this.errorMessage = error instanceof Error ? error.message : '保存重试失败'; }
-    finally { this.taskSaving = false; this.taskFingerprint = ''; this.applyTasks(); }
-  }
   async discardTask(id: string): Promise<void> {
     const client = this.taskClient;
-    if (!client || this.selectedTask?.id !== id || this.selectedTask.state !== 'succeeded' || this.selectedTask.saveState === 'saved' || this.taskSaving) return;
+    const task = client?.tasks.find((item: QaTask) => item.id === id && item.sessionId === this.sessionId);
+    if (!client || !task || task.state !== 'succeeded' || !['error', 'conflict'].includes(task.saveState) || this.taskSaving) return;
     const sessionId = this.sessionId, revision = this.sessionRequestRevision; this.taskSaving = true;
     try {
       await client.remove(id);
-      if (revision === this.sessionRequestRevision && this.sessionId === sessionId) { this.taskViews.set(sessionId, ''); this.selectedTask = undefined; await this.readTaskSession(sessionId, revision); }
+      if (revision === this.sessionRequestRevision && this.sessionId === sessionId) { this.selectedTask = undefined; await this.readTaskSession(sessionId, revision); }
     } catch (error) { if (revision === this.sessionRequestRevision) this.errorMessage = error instanceof Error ? error.message : '放弃结果未完成'; }
     finally { this.taskSaving = false; this.taskFingerprint = ''; this.applyTasks(); }
   }
   async refreshTasks(): Promise<void> { await this.taskClient?.connect(); this.taskFingerprint = ''; this.applyTasks(); }
 
   forgetTaskSession(id: string): void {
-    this.deletedSessions.add(id); this.taskViews.delete(id); this.canonical.delete(id);
+    this.deletedSessions.add(id); this.canonical.delete(id);
     this.remoteSessions = this.remoteSessions.filter((session: RagSessionSummary) => session.id !== id);
     this.taskClient?.forgetSession(id).catch((error: Error) => { if (!this.pageDisposed) this.taskError = error.message; });
     if (this.sessionId === id) this.newSession();

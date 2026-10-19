@@ -21,6 +21,8 @@ export interface QaTaskSummary {
 }
 export interface QaTaskResult { answer: string; citations: RagCitation[]; groundingWarning?: string; }
 export interface QaTask extends QaTaskSummary {
+  questionMessageId?: string;
+  previousAnswer?: RagChatMessage;
   question: string;
   mode: string;
   replaceLast: boolean;
@@ -32,7 +34,17 @@ export interface QaTask extends QaTaskSummary {
 }
 export interface QaTaskResponse { task: QaTask; }
 export interface QaTaskListResponse { tasks: QaTaskSummary[]; }
-export interface QaTaskChoice { id: string; label: string; }
+export interface QaAnswerMessage extends RagChatMessage {
+  questionId?: string;
+  versions?: string[];
+  versionIndex?: number;
+  taskId?: string;
+  saveError?: string;
+  canSave?: boolean;
+  canRegenerate?: boolean;
+  canRetry?: boolean;
+  canDiscard?: boolean;
+}
 export interface QaTaskStorage { read: () => Promise<string>; write: (raw: string) => Promise<void>; }
 
 export function taskActive(task: QaTaskSummary): boolean { return task.state === 'queued' || task.state === 'running'; }
@@ -55,6 +67,10 @@ export function validTaskSummary(task: QaTaskSummary): boolean {
 }
 export function validTask(task: QaTask): boolean {
   return validTaskSummary(task) && typeof task.question === 'string' && typeof task.partial === 'string' &&
+    (task.questionMessageId === undefined || typeof task.questionMessageId === 'string' && task.questionMessageId.length > 0 && task.questionMessageId.length <= 120) &&
+    (task.previousAnswer === undefined || !!task.previousAnswer && task.previousAnswer.role === 'assistant' &&
+      typeof task.previousAnswer.id === 'string' && task.previousAnswer.id.length > 0 && typeof task.previousAnswer.content === 'string' &&
+      (task.previousAnswer.citations === undefined || Array.isArray(task.previousAnswer.citations))) &&
     typeof task.stage === 'string' && typeof task.error === 'string' && typeof task.saveError === 'string' &&
     typeof task.replaceLast === 'boolean' && ['logs_only', 'logs_and_general'].includes(task.mode) &&
     (task.result === null || !!task.result && typeof task.result.answer === 'string' && Array.isArray(task.result.citations)) &&

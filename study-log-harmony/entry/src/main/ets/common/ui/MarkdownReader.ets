@@ -70,6 +70,7 @@ export struct MarkdownReader {
   onCitationLink: (date: string, heading: string, headingIndex: number) => void = () => {};
   onWikiCitationLink: (pageId: string, title: string) => void = () => {};
   onWikiReviewLink: (reviewId: string) => void = () => {};
+  onQaAnswerAction: (id: string, action: string, target: string) => void = () => {};
   onQaAttemptAction: (id: string, action: string) => void = () => {};
   onWikiSourceLink: (kind: string, date: string, heading: string, noteId: string) => void = () => {};
   onTargetResult: (kind: string, found: boolean) => void = () => {};
@@ -380,6 +381,13 @@ export struct MarkdownReader {
 
   private handleNavigation(url: string): boolean {
     if (this.handleTargetResult(url)) return true;
+    if (url.startsWith('study-log://qa-answer?')) {
+      const values = this.queryValues(url);
+      if (this.contentMode === 'qa' && values['id'] && ['copy', 'version', 'regenerate', 'save', 'retry', 'discard'].includes(values['action'])) {
+        this.onQaAnswerAction(values['id'], values['action'], values['target'] || '');
+      }
+      return true;
+    }
     if (url.startsWith('study-log://qa-attempt?')) {
       const values = this.queryValues(url);
       if (this.contentMode === 'qa' && values['id'] && (values['action'] === 'retry' || values['action'] === 'edit')) {

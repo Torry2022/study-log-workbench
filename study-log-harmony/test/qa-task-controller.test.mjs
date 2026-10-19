@@ -14,22 +14,31 @@ test('background discovery writes through the activated observed controller', as
   Object.assign(active, { revision: 2, state: 'cancelled' }); await f.client.refresh();
   assert.equal(observed.sending, false);
   assert.ok(writes.has('messages'), 'background messages must notify the UI owner');
-  assert.ok(writes.has('taskChoices'), 'background state choices must notify the UI owner');
+  assert.ok(observed.answerMessages().some(value => value.taskId === active.id), 'background answer actions must use the updated task');
 });
 async function controller(t, values = {}) {
   const f = await fixture(); Object.assign(f, values); await f.client.connect();
   f.controller = new f.QaSessionController(f.transport, qaView(), f.client); f.controller.activate();
   t.after(() => f.controller.dispose()); await settle(); return f;
 }
+for (const [state, saveState] of [['running', 'pending'], ['succeeded', 'saved']]) test(`native single latest ${state} result does not add a redundant picker`, async t => {
+  const f = await controller(t), saved = session(), current = task(saved.id, { state, saveState });
+  f.sessions.set(saved.id, saved); f.tasks.set(current.id, current);
+  await f.client.refresh(); await f.controller.openSession(saved.id);
+  assert.equal(f.controller.answerMessages().filter(value => value.versions?.length > 1).length, 0);
+  assert.equal(f.controller.sending, state === 'running');
+  if (state === 'succeeded') assert.equal(f.controller.messages[1].content, '已保存答案');
+});
+
 for (const saveState of ['conflict', 'error']) test(`native old ${saveState} stays selectable beside a newer saved task and refresh`, async t => {
   const f = await controller(t), saved = session(), old = task(saved.id, { state: 'succeeded', saveState, result: { answer: '旧结果', citations: [] } }),
     newer = task(saved.id, { createdAt: '2026-10-18T02:00:00Z', state: 'succeeded', saveState: 'saved', result: { answer: '后来的结果', citations: [] } });
   f.sessions.set(saved.id, saved); f.tasks.set(old.id, old); f.tasks.set(newer.id, newer); await f.client.refresh(); await f.controller.openSession(saved.id);
-  await f.controller.selectTask(old.id); assert.equal(f.controller.messages.length, 2); assert.equal(f.controller.messages[1].content, '旧结果');
-  assert.ok(f.controller.taskChoices.some(value => value.id === old.id)); assert.equal(f.controller.taskBlocked, true);
-  newer.revision++; await f.client.refresh(); assert.equal(f.controller.selectedTaskId, old.id); assert.equal(f.controller.messages[1].content, '旧结果');
+  assert.equal(f.controller.answerMessages().find(value => value.taskId === old.id).content, '旧结果');
+  assert.equal(f.controller.answerMessages().find(value => value.taskId === old.id).canDiscard, true);
+  newer.revision++; await f.client.refresh(); assert.equal(f.controller.answerMessages().find(value => value.taskId === old.id).content, '旧结果');
   const second = new f.QaTaskClient(f.transport, f.local, f.instanceId), other = new f.QaSessionController(f.transport, qaView(), second); t.after(() => other.dispose());
-  other.activate(); await second.connect(); await other.openSession(saved.id); await other.selectTask(old.id); assert.equal(other.messages[1].content, '旧结果');
+  other.activate(); await second.connect(); await other.openSession(saved.id); assert.equal(other.answerMessages().find(value => value.taskId === old.id).content, '旧结果');
 });
 
 test('native active task does not block opening another saved session or sending a second task', async t => {
@@ -41,26 +50,30 @@ test('native active task does not block opening another saved session or sending
 
 test('canonical view updates when a background task is saved without switching away from that choice', async t => {
   const f = await controller(t), saved = session(), active = task(saved.id); f.sessions.set(saved.id, saved); f.tasks.set(active.id, active);
-  await f.client.refresh(); await f.controller.openSession(saved.id); await f.controller.selectTask('');
+  await f.client.refresh(); await f.controller.openSession(saved.id);
   saved.messages = [...saved.messages, { id: randomUUID(), role: 'user', content: active.question }, { id: randomUUID(), role: 'assistant', content: '后台完成的答案' }];
   saved.version = 'b'.repeat(64); Object.assign(active, { state: 'succeeded', saveState: 'saved', revision: 2, result: { answer: '后台完成的答案', citations: [] } });
-  await f.client.refresh(); await settle(); assert.equal(f.controller.selectedTaskId, ''); assert.equal(f.controller.messages.at(-1).content, '后台完成的答案');
+  await f.client.refresh(); await settle(); assert.equal(f.controller.answerMessages().at(-1).content, '后台完成的答案');
 });
 
-test('late canonical response cannot replace a newer explicit old-result selection', async t => {
-  const f = await controller(t), saved = session(), old = task(saved.id, { state: 'succeeded', saveState: 'conflict', result: { answer: '保留的旧答案', citations: [] } });
+test('late canonical response cannot replace an explicit answer version', async t => {
+  const f = await controller(t), saved = session(), old = task(saved.id, { questionMessageId: '', state: 'succeeded', saveState: 'conflict', result: { answer: '保留的旧答案', citations: [] } });
+  old.questionMessageId = saved.messages[0].id;
   f.sessions.set(saved.id, saved); f.tasks.set(old.id, old); await f.client.refresh(); await f.controller.openSession(saved.id);
   let release, started; const gate = new Promise(resolve => release = resolve), start = new Promise(resolve => started = resolve), get = f.transport.get;
-  let hold = true; f.transport.get = async path => { const value = await get(path); if (path.endsWith(saved.id) && hold) { hold = false; started(); await gate; } return value; };
-  const canonical = f.controller.selectTask(''); await start; await f.controller.selectTask(old.id); release(); await canonical; await settle();
-  assert.equal(f.controller.selectedTaskId, old.id); assert.equal(f.controller.messages.at(-1).content, '保留的旧答案');
+  f.transport.get = async path => { const result = await get(path); if (path.endsWith(saved.id)) { started(); await gate; } return result; };
+  const loading = f.controller.openSession(saved.id); await start;
+  await f.controller.selectAnswerVersion(saved.messages[0].id, saved.messages[1].id);
+  release(); await loading; await settle();
+  assert.equal(f.controller.answerMessages()[1].id, saved.messages[1].id);
+  assert.equal(f.controller.answerMessages()[1].content, '已保存答案');
 });
 
 test('retry save and discard act on the selected old task while newer answers remain intact', async t => {
   const f = await controller(t), saved = session(), old = task(saved.id, { state: 'succeeded', saveState: 'error', result: { answer: '旧答案', citations: [] } }),
     newer = task(saved.id, { createdAt: '2026-10-18T02:00:00Z', state: 'succeeded', saveState: 'error', result: { answer: '新答案', citations: [] } });
-  f.sessions.set(saved.id, saved); f.tasks.set(old.id, old); f.tasks.set(newer.id, newer); await f.client.refresh(); await f.controller.openSession(saved.id); await f.controller.selectTask(old.id);
-  await f.controller.retryTaskSave(); assert.equal(f.tasks.get(old.id).saveState, 'saved'); assert.equal(f.tasks.get(newer.id).saveState, 'error');
+  f.sessions.set(saved.id, saved); f.tasks.set(old.id, old); f.tasks.set(newer.id, newer); await f.client.refresh(); await f.controller.openSession(saved.id);
+  await f.controller.saveAnswer(old.id); assert.equal(f.tasks.get(old.id).saveState, 'saved'); assert.equal(f.tasks.get(newer.id).saveState, 'error');
   Object.assign(old, { saveState: 'conflict', revision: 3 }); await f.client.refresh(); await f.controller.discardTask(old.id);
   assert.equal(f.tasks.has(old.id), false); assert.equal(f.tasks.has(newer.id), true); assert.equal(f.sessions.get(saved.id).version, 'a'.repeat(64));
   assert.deepEqual(f.requests.filter(value => value.method !== 'GET').map(value => value.path), [`/rag/tasks/${old.id}/save`, `/rag/tasks/${old.id}`]);
@@ -109,7 +122,7 @@ test('stop during an uncertain follow-up targets pending submission instead of t
 test('cross-client deletion clears the view before a captured successful old snapshot is released', async t => {
   const f = await controller(t), saved = session(), old = task(saved.id, { state: 'succeeded', saveState: 'conflict', result: { answer: '旧答案', citations: [] } });
   const newer = task(saved.id, { createdAt: '2026-10-18T02:00:00Z', state: 'succeeded', saveState: 'saved', result: { answer: '较新的已保存答案', citations: [] } });
-  f.sessions.set(saved.id, saved); f.tasks.set(old.id, old); f.tasks.set(newer.id, newer); await f.controller.loadSessions(); await f.client.refresh(); await f.controller.openSession(saved.id); await f.controller.selectTask(old.id);
+  f.sessions.set(saved.id, saved); f.tasks.set(old.id, old); f.tasks.set(newer.id, newer); await f.controller.loadSessions(); await f.client.refresh(); await f.controller.openSession(saved.id);
   let release, started; const gate = new Promise(resolve => release = resolve), start = new Promise(resolve => started = resolve), get = f.transport.getForInstance;
   let hold = true; f.transport.getForInstance = async (...args) => { const result = await get(...args); if (args[0].endsWith(old.id) && hold) { hold = false; started(); await gate; } return result; };
   const read = f.client.read(old.id); await start; f.tasks.clear(); f.sessions.delete(saved.id); await f.client.refresh(); await settle(); release(); await read; await settle();
@@ -126,7 +139,7 @@ test('pending saves and failed authoritative reads cannot submit a follow-up usi
   saved.version = 'b'.repeat(64); Object.assign(active, { saveState: 'saved', revision: 3 }); await f.client.refresh(); await start;
   assert.equal(f.controller.sessionLoading, true); await f.controller.send(); assert.equal(f.tasks.size, 1); release(); await settle();
   assert.equal(f.controller.taskBlocked, true); await f.controller.send(); assert.equal(f.tasks.size, 1);
-  f.transport.get = get; await f.controller.selectTask(''); assert.equal(f.controller.sessionVersion, saved.version); await f.controller.send();
+  f.transport.get = get; await f.controller.openSession(saved.id); assert.equal(f.controller.sessionVersion, saved.version); await f.controller.send();
   assert.equal(f.requests.filter(value => value.method === 'POST' && value.path === '/rag/tasks').at(-1).body.baseVersion, saved.version);
 });
 
@@ -157,4 +170,58 @@ test('restoring a question after storage failure also restores the workspace dra
   const view = qaView(); view.onQuestionChange = question => draft = question;
   const current = new f.QaSessionController(f.transport, view, f.client); f.local.fail = true; current.question = '保留的草稿'; await current.send();
   assert.equal(draft, '保留的草稿'); assert.equal(current.question, draft); assert.equal(f.tasks.size, 0);
+});
+
+test('answer versions use question identity, never repeated question text or whole-session selection', async t => {
+  const f = await controller(t), saved = session(); f.sessions.set(saved.id, saved);
+  const firstQuestion = saved.messages[0].id, secondQuestion = randomUUID();
+  saved.messages.push({ id: secondQuestion, role: 'user', content: saved.messages[0].content }, { id: randomUUID(), role: 'assistant', content: '第二次同名提问' });
+  const version = task(saved.id, { questionMessageId: firstQuestion, replaceLast: true, state: 'succeeded', saveState: 'error', question: saved.messages[0].content, result: { answer: '第一题新版本', citations: [] }, previousAnswer: saved.messages[1] });
+  f.tasks.set(version.id, version); await f.client.refresh(); await f.controller.openSession(saved.id);
+  const views = f.controller.answerMessages();
+  assert.equal(views[1].content, '第一题新版本');
+  assert.equal(views[3].content, '第二次同名提问');
+  await f.controller.selectAnswerVersion(firstQuestion, saved.messages[1].id);
+  assert.equal(f.controller.answerMessages()[1].content, '已保存答案');
+  assert.equal(f.controller.answerMessages()[3].content, '第二次同名提问');
+  await f.controller.selectAnswerVersion(firstQuestion, 'not-in-this-question');
+  assert.equal(f.controller.answerMessages()[1].content, '已保存答案');
+  assert.equal(f.requests.filter(r => r.method === 'POST').length, 0);
+});
+
+test('answer regeneration sends replaceLast for the canonical last answer and preserves a typed draft', async t => {
+  const f = await controller(t), saved = session(); f.sessions.set(saved.id, saved); await f.controller.openSession(saved.id);
+  const answerId = saved.messages[1].id;
+  f.controller.question = '未发送的草稿'; await f.controller.regenerateAnswer(answerId);
+  assert.equal(f.controller.question, '未发送的草稿'); assert.equal(f.requests.some(r => r.method === 'POST'), false);
+  f.controller.question = ''; await f.controller.regenerateAnswer(answerId);
+  const request = f.requests.find(r => r.method === 'POST' && r.path === '/rag/tasks');
+  assert.equal(request.body.replaceLast, true); assert.equal(request.body.question, saved.messages[0].content);
+  assert.equal(request.body.baseVersion, saved.version);
+});
+
+test('reopening loads saved answer versions for only the chosen session', async t => {
+  const f = await controller(t), saved = session(), other = session();
+  const previous = { ...saved.messages[1] };
+  const old = task(saved.id, { questionMessageId: saved.messages[0].id, state: 'succeeded', saveState: 'saved', previousAnswer: previous, result: { answer: '新回答', citations: [] } });
+  saved.messages[1] = { id: old.id + ':assistant', role: 'assistant', content: '新回答' };
+  f.sessions.set(saved.id, saved); f.tasks.set(old.id, old); f.tasks.set('unrelated', task(other.id));
+  await f.controller.openSession(saved.id);
+  assert.deepEqual(Array.from(f.controller.answerMessages()[1].versions), [previous.id, old.id + ':assistant']);
+  assert.ok(f.requests.some(r => r.path === '/rag/tasks?sessionId=' + saved.id));
+  await f.controller.selectAnswerVersion(saved.messages[0].id, previous.id);
+  assert.equal(f.controller.answerMessages()[1].content, '已保存答案');
+});
+
+test('viewing an earlier answer cannot silently send against a different canonical answer', async t => {
+  const f = await controller(t), saved = session(), oldAnswer = { ...saved.messages[1] };
+  const regenerated = task(saved.id, { questionMessageId: saved.messages[0].id, previousAnswer: oldAnswer, state: 'succeeded', saveState: 'saved', result: { answer: '当前回答', citations: [] } });
+  saved.messages[1] = { id: regenerated.id + ':assistant', role: 'assistant', content: '当前回答' };
+  f.sessions.set(saved.id, saved); f.tasks.set(regenerated.id, regenerated); await f.controller.openSession(saved.id);
+  await f.controller.selectAnswerVersion(saved.messages[0].id, oldAnswer.id);
+  assert.equal(f.controller.viewingPreviousAnswer(), true);
+  f.controller.question = '追问'; await f.controller.send(); assert.equal(f.requests.some(r => r.method === 'POST'), false);
+  await f.controller.selectAnswerVersion(saved.messages[0].id, saved.messages[1].id);
+  assert.equal(f.controller.viewingPreviousAnswer(), false); await f.controller.send();
+  assert.equal(f.requests.filter(r => r.method === 'POST' && r.path === '/rag/tasks').length, 1);
 });

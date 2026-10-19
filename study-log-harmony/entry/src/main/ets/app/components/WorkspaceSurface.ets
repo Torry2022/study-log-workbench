@@ -8,7 +8,7 @@ import { WorkspaceBreakpoint, WORKSPACE_TABS } from '../../common/AppConfig';
 import { workspaceSansFamily } from '../../common/ui/Typography';
 import { WORKSPACE_TIPS } from '../../common/ui/WorkspaceTips';
 import { NavigationRefresh } from '../../common/ui/NavigationRefresh';
-import { AppModalScrim } from '../../common/ui/AppModalScrim';
+import { WorkspaceDrawerFrame } from './WorkspaceDrawerFrame';
 import { DesktopWorkspaceNavigation } from './DesktopWorkspaceNavigation';
 import { WorkspaceModuleNavigation } from './WorkspaceModuleNavigation';
 import { RagSessionSummary } from '../../features/qa/QaModels';
@@ -246,29 +246,15 @@ export struct WorkspaceSurface {
       Text((this.selectedModule === 1) ? '按年份和标签筛选' : (this.selectedModule === 2) ? '按分组和日志月份筛选' :
         (this.selectedModule === 3) ? '历史会话' : (this.selectedModule === 4) ? '切换月份与管理分类' : '按月份和日期浏览')
         .fontSize(11).fontColor($r('app.color.muted')).maxLines(1).margin({ left: 30 })
-    }.width('100%').height(64).padding({ left: 18, right: 12 }).alignItems(HorizontalAlign.Start)
-      .border({ width: { bottom: 1 }, color: $r('app.color.hairline_soft') })
+    }.width('100%').height('100%').padding({ left: 18, right: 12 }).alignItems(HorizontalAlign.Start)
   }
 
   @Builder
   private navigationOverlay() {
       if (!this.wide && this.sidebar.navigationOpen) {
-        Stack({ alignContent: Alignment.Start }) {
-          AppModalScrim({ onDismiss: () => this.closeNavigation() })
-            .opacity(this.sidebar.navigationScrimOpacity)
-          Row().width('82%').height('100%').backgroundColor($r('app.color.surface_soft'))
-            .border({ width: { right: 1 }, color: $r('app.color.hairline') })
-            .shadow({ radius: 18, color: '#24141413', offsetX: 4 })
-            .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
-            .translate({ x: this.sidebar.navigationOffset })
-          Column() {
-            this.compactNavigationHeader()
-            this.refreshableCompactNavigationContent()
-          }.width('82%').height('100%')
-            .backgroundColor($r('app.color.surface_soft'))
-            .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
-            .translate({ x: this.sidebar.navigationOffset })
-        }.width('100%').height('100%')
+        WorkspaceDrawerFrame({ horizontalOffset: this.sidebar.navigationOffset, scrimOpacity: this.sidebar.navigationScrimOpacity,
+          onDismiss: () => this.closeNavigation(), header: (): void => this.compactNavigationHeader(),
+          content: (): void => this.refreshableCompactNavigationContent() })
       }
   }
 

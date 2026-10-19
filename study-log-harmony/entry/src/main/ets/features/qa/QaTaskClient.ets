@@ -143,6 +143,15 @@ export class QaTaskClient {
     this.refreshing = work().finally(() => { this.refreshing = undefined; });
     return this.refreshing;
   }
+  async readSessionTasks(sessionId: string): Promise<void> {
+    this.checkConnection();
+    const response = await this.transport.getForInstance<QaTaskListResponse>(`/rag/tasks?sessionId=${encodeURIComponent(sessionId)}`, this.instanceId);
+    if (!Array.isArray(response.tasks) || response.tasks.some((task: QaTaskSummary) => !validTaskSummary(task))) throw new Error('回答版本列表响应不完整');
+    // Fetch only this conversation, not the result bodies of every conversation in discovery.
+    for (const task of response.tasks.filter((item: QaTaskSummary) => item.sessionId === sessionId)) {
+      if (!this.tasks.some((old: QaTask) => old.id === task.id && old.revision >= task.revision)) await this.read(task.id);
+    }
+  }
   async submit(input: QaTaskSubmission): Promise<void> {
     this.checkConnection();
     if (!this.ready || this.stopped) throw new Error('任务协议尚未就绪，请重试检查');

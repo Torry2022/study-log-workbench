@@ -296,13 +296,40 @@ body { color: var(--body); font-family: "HarmonyOS Sans SC", system-ui, sans-ser
 
 .markdown-body.qa-conversation { padding: 0 var(--reader-inset) 56px; }
 .markdown-body.qa-conversation > :first-child { margin-top: 0; }
-.qa-message { min-width: 0; padding: 20px 0; border-bottom: 1px solid var(--hairline-soft); }
-.qa-message-label { margin-bottom: 10px; color: var(--muted); font-size: 12px; font-weight: 700; }
+.qa-message { min-width: 0; padding: 16px 0; border-bottom: 1px solid var(--hairline-soft); }
+.qa-message-label { margin-bottom: 8px; color: var(--muted); font-size: 12px; font-weight: 700; }
 .qa-message-user .qa-message-label { text-align: right; }
 .markdown-body .qa-message-user > p { width: fit-content; max-width: 92%; margin: 0 0 0 auto; padding: 11px 14px; border-radius: 8px; background: var(--soft); color: var(--ink); line-height: 1.6; white-space: pre-wrap; }
 .qa-answer-body { color: var(--body); line-height: 1.7; }
 .qa-answer-body > :first-child { margin-top: 0; }
 .qa-answer-body > :last-child { margin-bottom: 0; }
+/* Adapted from rag-workspace.css: keep answer controls consistent with the web client. */
+.qa-sources { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--hairline-soft); font-size: 12px; }
+.qa-sources-title { display: flex; align-items: center; gap: 7px; margin-bottom: 6px; color: var(--muted); font-size: 12px; font-weight: 700; }
+.qa-sources details { margin: 4px 0; border: 1px solid var(--hairline); border-radius: 6px; background: var(--canvas); overflow: hidden; }
+.qa-sources details[open] { border-color: color-mix(in srgb, var(--primary) 44%, var(--hairline)); }
+.qa-sources summary { display: grid; grid-template-columns: 26px 88px minmax(0, 1fr) 14px; align-items: center; gap: 8px; min-height: 38px; padding: 7px 10px; box-sizing: border-box; cursor: pointer; list-style: none; }
+.qa-sources summary::-webkit-details-marker { display: none; }
+.qa-sources summary > span { color: var(--primary); font-family: "JetBrains Mono", Consolas, monospace; font-size: 12px; font-weight: 700; }
+.qa-sources summary > strong { color: var(--ink); font-size: 13px; }
+.qa-sources summary > em { min-width: 0; overflow: hidden; color: var(--body); font-size: 13px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+.qa-sources details[open] summary > svg { transform: rotate(180deg); }
+.qa-source-detail { padding: 8px 10px 10px; border-top: 1px solid var(--hairline-soft); background: var(--soft); }
+.markdown-body .qa-source-detail p { margin: 0; color: var(--body); font-size: 13px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+.markdown-body .qa-source-detail a { margin-top: 9px; min-height: 32px; padding: 0 8px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--hairline); border-radius: 6px; background: var(--canvas); color: var(--ink); font-size: 12px; text-decoration: none; }
+.qa-answer-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 8px; color: var(--muted); }
+.markdown-body .qa-answer-actions a, .qa-answer-actions > span { min-width: 32px; min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 9px; box-sizing: border-box; border: 1px solid var(--hairline); border-radius: 6px; background: transparent; color: var(--muted); font-size: 12px; text-decoration: none; }
+.qa-answer-actions > .qa-version-count { padding: 0 2px; border: 0; font-variant-numeric: tabular-nums; }
+.qa-answer-actions a, .qa-source-detail a, .qa-sources summary { -webkit-tap-highlight-color: transparent; }
+.markdown-body .qa-answer-actions a:active, .markdown-body .qa-source-detail a:active, .qa-sources summary:active { background: var(--interaction-hover); color: var(--ink); }
+.markdown-body .qa-answer-actions a:focus-visible, .markdown-body .qa-source-detail a:focus-visible, .qa-sources summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.qa-answer-actions [aria-disabled="true"] { opacity: .35; }
+.qa-answer-actions svg, .qa-sources svg { flex-shrink: 0; }
+@media (max-width: 360px) {
+  .qa-sources summary { grid-template-columns: 24px minmax(0, 1fr) 14px; gap: 6px; }
+  .qa-sources summary > em { grid-column: 2; grid-row: 2; }
+  .qa-sources summary > svg { grid-column: 3; grid-row: 1 / span 2; }
+}
 .qa-grounding-warning { margin-top: 12px; padding: 9px 11px; border-left: 2px solid var(--warning); background: color-mix(in srgb, var(--warning) 8%, transparent); color: var(--body); font-size: 12px; }
 .qa-failure { margin-top: 12px; color: var(--error); font-size: 13px; }
 .qa-failure-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }

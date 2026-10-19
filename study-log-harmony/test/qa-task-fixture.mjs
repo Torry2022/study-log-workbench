@@ -53,7 +53,7 @@ export async function fixture() {
     getForInstance: async (path, instance) => {
       requests.push({ method: 'GET', path, instance });
       if (path === '/capabilities') return { instanceId, features: { ragTasks: { supported: true, configured: true, protocolVersion: 1 } } };
-      if (path === '/rag/tasks') return { tasks: [...tasks.values()].map(plain) };
+      if (path === '/rag/tasks' || path.startsWith('/rag/tasks?sessionId=')) return { tasks: [...tasks.values()].filter(item => !path.includes('?') || item.sessionId === decodeURIComponent(path.split('sessionId=')[1])).map(plain) };
       const value = tasks.get(path.split('/').at(-1)); if (!value) throw new runtime.ApiError('deleted task', 404);
       return { task: plain(value) };
     },

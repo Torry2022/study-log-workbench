@@ -16,7 +16,9 @@ export function ragExecutionConfig(): RagQueryConfig {
 type Execute = (input: RagQueryInput, signal: AbortSignal) => ReadableStream<Uint8Array>;
 const publicValue = (task: TaskRecord): RagTask => {
   const { input: _input, generation: _generation, fingerprint: _fingerprint, owner: _owner, ...value } = task;
-  return { ...value, replaceLast: task.input.replaceLast === true };
+  return { ...value, replaceLast: task.input.replaceLast === true,
+    questionMessageId: task.input.questionMessageId || (!task.input.replaceLast ? `${task.id}:user` : undefined),
+    ...(task.input.previousAnswer ? { previousAnswer: task.input.previousAnswer } : {}) };
 };
 export class RagTaskRuntime {
   readonly owner = `${process.pid}:${randomUUID()}`;
@@ -39,6 +41,7 @@ export class RagTaskRuntime {
   async create(input: RagTaskSubmission): Promise<RagTask> {
     const existing = this.store.submitted(input.submissionId);
     let history = input.history;
+    let association: Pick<TaskRecord["input"], "questionMessageId" | "previousAnswer"> = {};
     if (!existing) {
       let current;
       try { current = await inspectRagTaskSession(input.sessionId, input.baseVersion); }
@@ -47,12 +50,13 @@ export class RagTaskRuntime {
       if (!current.matchesBaseVersion) throw new RagTaskError("RAG_SESSION_CONFLICT", "会话已变化，请重新读取", 409);
       const messages = current.session?.messages || [];
       if (input.replaceLast && (messages.length < 2 || messages.at(-2)?.content !== input.question)) throw new RagTaskError("RAG_SESSION_CONFLICT", "要重新生成的问题已变化，请重新读取", 409);
+      if (input.replaceLast) association = { questionMessageId: messages.at(-2)!.id, previousAnswer: messages.at(-1)! };
       if (!current.session && input.history.length) throw new RagTaskError("RAG_INVALID_INPUT", "请先保存原会话，再继续后台问答", 400);
       history = parseRagHistory((input.replaceLast ? messages.slice(0, -2) : messages).map(({ role, content, citations }) => ({ role, content,
         ...(citations?.length ? { sourceRefs: citations.map(({ date, fileName, heading, contentHash }) => ({ date, fileName, heading, contentHash })) } : {}) })));
     }
     await ensureRagTaskSessionFormat();
-    const task = this.store.create(input, history);
+    const task = this.store.create(input, history, association);
     void this.tick(); return this.get(task.id);
   }
   async get(id: string): Promise<RagTask> {
@@ -62,9 +66,9 @@ export class RagTaskRuntime {
     }
     return publicValue(task);
   }
-  async list(): Promise<RagTaskSummary[]> {
+  async list(sessionId?: string): Promise<RagTaskSummary[]> {
     for (const id of await deletedRagSessionIds()) this.store.scrubSession(id);
-    return this.store.list();
+    return this.store.list(sessionId);
   }
   async cancel(id: string) {
     await this.get(id);

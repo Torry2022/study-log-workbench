@@ -44,7 +44,7 @@ export struct HelpPanel {
       Text(keys).width(150).constraintSize({ minHeight: 24 }).padding({ left: 7, right: 7, top: 4, bottom: 4 })
         .fontFamily(workspaceCodeFamily(this.workspaceBreakpoint)).fontSize(10).fontColor($r('app.color.body_strong'))
         .backgroundColor($r('app.color.surface_soft'))
-        .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(4).maxLines(1)
+        .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(4)
       Column({ space: 1 }) {
         Text(action).width('100%').fontSize(11).fontColor($r('app.color.body'))
         if (note) Text(note).width('100%').fontSize(10).fontColor($r('app.color.muted_soft'))
@@ -259,10 +259,6 @@ export struct HelpPanel {
           }.width('100%').alignItems(HorizontalAlign.Start)
         }.width('100%').padding({ left: 18, right: 18, top: 16, bottom: 16 }).alignItems(HorizontalAlign.Start)
       }.layoutWeight(1).width('100%').scrollBar(BarState.Auto)
-      Button('知道了').width('100%').height(42).fontSize(14).fontWeight(FontWeight.Medium).borderRadius(8)
-        .fontColor($r('app.color.on_primary')).backgroundColor($r('app.color.primary'))
-        .margin({ left: 18, right: 18, top: 12, bottom: 16 })
-        .onClick(() => this.onClose())
     }.width('88%').height('84%').constraintSize({ maxHeight: 780 }).backgroundColor($r('app.color.canvas'))
       .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(10)
   }

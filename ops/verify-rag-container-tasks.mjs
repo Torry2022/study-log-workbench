@@ -55,6 +55,7 @@ const inspectCode = name => `
   import fs from 'node:fs/promises'; import {createHash} from 'node:crypto'; import {DatabaseSync} from 'node:sqlite';
   const data='/instances/${name}/data', json=await fs.readFile(data+'/state/rag-sessions.json'), bytes=await fs.readFile(data+'/state/rag-tasks.sqlite');
   const hash=b=>createHash('sha256').update(b).digest('hex'), db=new DatabaseSync(data+'/state/rag-tasks.sqlite',{readOnly:true});
+  db.exec('PRAGMA busy_timeout=5000');
   const tasks=db.prepare('SELECT id,state,partial,result,save_state,fingerprint,session_id FROM tasks ORDER BY created_at,id').all();
   const worker=db.prepare('SELECT count(*) n FROM worker').get().n, leases=db.prepare('SELECT count(*) n FROM leases').get().n; db.close();
   console.log(JSON.stringify({jsonHash:hash(json),dbHash:hash(bytes),file:JSON.parse(json),tasks,worker,leases}));`;

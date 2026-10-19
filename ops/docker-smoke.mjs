@@ -106,14 +106,25 @@ try {
   await compose(["run", "--rm", "--no-deps", "tools", "ops/archive-cli.mjs", "backup", "/instances/instance", "/instances/synthetic.slarchive"]);
   await compose(["run", "--rm", "--no-deps", "tools", "ops/archive-cli.mjs", "verify", "/instances/synthetic.slarchive"]);
   await compose(["run", "--rm", "--no-deps", "tools", "ops/archive-cli.mjs", "restore", "/instances/synthetic.slarchive", "/instances/restored"]);
-  const restored = path.join(root, "restored"); assert.deepEqual(await snapshot(restored), beforeArchive);
+  const restored = path.join(root, "restored"), restoredSnapshot = await snapshot(restored);
+  const taskDatabase = "data/state/rag-tasks.sqlite";
+  assert.ok(beforeArchive[taskDatabase] && restoredSnapshot[taskDatabase]);
+  assert.deepEqual(Object.fromEntries(Object.entries(restoredSnapshot).filter(([name]) => name !== taskDatabase)),
+    Object.fromEntries(Object.entries(beforeArchive).filter(([name]) => name !== taskDatabase)));
+  const inspectTasks = async directory => JSON.parse(await compose(["run", "--rm", "--no-deps", "tools", "--input-type=module", "-e",
+    `const {DatabaseSync}=await import('node:sqlite');const db=new DatabaseSync('/instances/${directory}/data/state/rag-tasks.sqlite',{readOnly:true});console.log(JSON.stringify({schema:db.prepare('PRAGMA user_version').get().user_version,check:db.prepare('PRAGMA quick_check').get().quick_check,tasks:db.prepare('SELECT * FROM tasks ORDER BY id').all(),leases:db.prepare('SELECT * FROM leases').all(),worker:db.prepare('SELECT * FROM worker').all()}));db.close();`]));
+  const sourceTasks = await inspectTasks("instance"), restoredTasks = await inspectTasks("restored");
+  assert.equal(sourceTasks.check, "ok"); assert.equal(restoredTasks.check, "ok");
+  assert.equal(restoredTasks.schema, sourceTasks.schema); assert.deepEqual(sourceTasks.tasks, []);
+  assert.deepEqual(restoredTasks.tasks, sourceTasks.tasks); assert.deepEqual(restoredTasks.leases, []); assert.deepEqual(restoredTasks.worker, []);
+  assert.deepEqual(await snapshot(instance), beforeArchive, "restoring must not change the archived source instance");
   await assert.rejects(compose(["run", "--rm", "--no-deps", "tools", "ops/archive-cli.mjs", "restore", "/instances/synthetic.slarchive", "/instances/restored"]));
   environment.INSTANCE_ROOT = restored;
   await compose(["--profile", "retrieval", "up", "-d", "--no-build"]); await waitWeb(); await login();
   assert.equal((await (await request("/api/capabilities")).json()).instanceId, identity);
   assert.equal((await (await request("/api/logs/day?date=2026-01-01")).json()).day.content, saved.content);
   assert.equal((await (await request("/api/notes")).json()).notes.length, 1);
-  mark("same-version archive/restore byte equality, no overwrite, identity/auth/data usable after restore");
+  mark("same-version user-file byte equality, task database integrity/ownership reset, no overwrite, identity/auth/data usable after restore");
   await fs.writeFile(path.join(root, "report.json"), JSON.stringify({ composeFile: process.env.TEST_COMPOSE_FILE || "compose.yaml", imageIds: JSON.parse(await docker(["image", "inspect", environment.WEB_IMAGE, environment.MCP_IMAGE, environment.TOOLS_IMAGE, "--format", "{{json .Id}}"] ).then(value => "[" + value.split(/\r?\n/).join(",") + "]")), project, root, passed, testedAt: new Date().toISOString(), limitation: "Synthetic maintainer-run acceptance; independent installation, real models and cross-version upgrade remain unverified." }, null, 2));
   console.log(JSON.stringify({ passed, report: path.join(root, "report.json") }));
 } finally {

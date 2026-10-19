@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from "react";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import { BookOpen, ChevronLeft, ChevronRight, CornerUpLeft, DatabaseBackup, Edit3, Eye, FileText, LayoutList, Link2, Maximize2, Minimize2, MoreHorizontal, PanelRightOpen, RefreshCw, Save, Star, Trash2, Upload, X } from "lucide-react";
 import { MarkdownPreview, type InternalLinkTarget } from "./MarkdownPreview";
 import { buildMarkdownOutline } from "@/lib/markdown-outline";
@@ -33,6 +33,10 @@ import type { ExportScope } from "@/hooks/use-export";
 import "@/app/reader.css";
 import { isEditingTarget, workspaceShortcutBlocked } from "@/lib/workspace-shortcuts";
 import { useDelayedBusy } from "@/hooks/use-delayed-busy";
+import { supportsStableViewTransitions } from "@/hooks/use-workspace-transition";
+
+type ReadingTransition = { finished: Promise<void>; ready?: Promise<void>; skipTransition?: () => void };
+type ReadingDocument = Document & { startViewTransition?: (update: () => void) => ReadingTransition };
 
 export type WorkspaceMode = "preview" | "source" | "split";
 interface Editing {
@@ -44,6 +48,8 @@ interface Editing {
   onDelete: () => void; onBackups: () => void;
 }
 interface Props {
+  onPositionReady: () => void;
+  onCancelTransition: () => void;
   reloadContext: LogReloadContext | null;
   reloadNavigation: { months: MonthSummary[]; days: DaySummary[] };
   hasLogs: boolean;
@@ -65,7 +71,7 @@ interface Props {
   onNavigate: (date: string, heading?: string) => Promise<boolean>;
 }
 
-export function LogReader({ reloadContext, reloadNavigation, hasLogs, onOpenAi, onOpenFavorites, navigation, editing, search, favorites, exporting, active, navigationRevision, day, date, heading, scrollTarget, loading, error, theme, reading, onReading, onRetry, onNavigate }: Props) {
+export function LogReader({ onPositionReady, onCancelTransition, reloadContext, reloadNavigation, hasLogs, onOpenAi, onOpenFavorites, navigation, editing, search, favorites, exporting, active, navigationRevision, day, date, heading, scrollTarget, loading, error, theme, reading, onReading, onRetry, onNavigate }: Props) {
   useEffect(() => {
     if (!active || editing.mode !== "preview" || editing.busy || loading) return;
     const keydown = (event: KeyboardEvent) => {
@@ -121,6 +127,17 @@ export function LogReader({ reloadContext, reloadNavigation, hasLogs, onOpenAi, 
   const preview = useRef<HTMLElement>(null);
   const previewPane = useRef<HTMLDivElement>(null);
   const restorePending = useRef(false);
+  const readingTransitionToken = useRef(0);
+  const readingTransition = useRef<ReadingTransition | null>(null);
+  const readingFallback = useRef<Animation | null>(null);
+  useEffect(() => () => {
+    readingTransitionToken.current++;
+    readingTransition.current?.skipTransition?.();
+    readingTransition.current = null;
+    readingFallback.current?.cancel();
+    restorePending.current = false;
+    document.documentElement.classList.remove("reading-mode-transition");
+  }, [active, date]);
   const [linkError, setLinkError] = useState("");
   const [missingHeading, setMissingHeading] = useState(false);
   const [returnPoint, setReturnPoint] = useState<{ date: string; heading: string; mode: WorkspaceMode } | null>(null);
@@ -128,8 +145,16 @@ export function LogReader({ reloadContext, reloadNavigation, hasLogs, onOpenAi, 
   const linkRequest = useRef(0);
   const currentNavigation = useRef(navigationRevision);
   currentNavigation.current = navigationRevision;
+  function headingLandingLine() {
+    const element = toolbar.current;
+    const rect = element?.getBoundingClientRect();
+    // At the destination the window-scrolling toolbar is pinned to its CSS top.
+    return rect?.height ? rect.height + (parseFloat(getComputedStyle(element!).top) || 0) : Math.max(
+      element?.querySelector<HTMLElement>(".reader-toolbar")?.getBoundingClientRect().bottom || 0,
+      element?.querySelector<HTMLElement>(".mobile-log-toolbar")?.getBoundingClientRect().bottom || 0);
+  }
   const position = useReadingPosition({ editor: () => editorView.current, preview: () => preview.current,
-    toolbarBottom: () => toolbar.current?.getBoundingClientRect().bottom || 0 });
+    toolbarBottom: headingLandingLine });
   const linkPosition = useReadingPosition({ editor: () => editorView.current, preview: () => preview.current,
     toolbarBottom: () => toolbar.current?.getBoundingClientRect().bottom || 0 });
   const ready = Boolean(day?.exists && hasSettledDay);
@@ -271,30 +296,91 @@ export function LogReader({ reloadContext, reloadNavigation, hasLogs, onOpenAi, 
     changeMode("source");
     if (reading) onReading(false);
   }
-  function changeReading(value: boolean) { position.capture(mode); restorePending.current = true; onReading(value); }
+  function changeReading(value: boolean) {
+    position.capture(mode);
+    onCancelTransition();
+    const token = ++readingTransitionToken.current;
+    readingTransition.current?.skipTransition?.();
+    readingTransition.current = null;
+    readingFallback.current?.cancel();
+    document.documentElement.classList.remove("reading-mode-transition");
+    const apply = () => {
+      if (readingTransitionToken.current !== token) return;
+      restorePending.current = true;
+      flushSync(() => onReading(value));
+      position.restore(value ? "preview" : editing.mode);
+      restorePending.current = false;
+    };
+    const transitionDocument = document as ReadingDocument;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    document.documentElement.classList.add("reading-mode-transition");
+    if (!supportsStableViewTransitions(transitionDocument) || reduced) {
+      apply();
+      if (!reduced) {
+        readingFallback.current = document.querySelector(".app-shell")?.animate(
+          [{ opacity: 0.78 }, { opacity: 1 }], { duration: 240, easing: "ease-out" }) || null;
+        void readingFallback.current?.finished.finally(() => {
+          if (readingTransitionToken.current === token) document.documentElement.classList.remove("reading-mode-transition");
+        }).catch(() => {});
+      } else document.documentElement.classList.remove("reading-mode-transition");
+      return;
+    }
+    try {
+      const transition = transitionDocument.startViewTransition!(apply);
+      readingTransition.current = transition;
+      void transition.ready?.catch(() => {});
+      void transition.finished.finally(() => {
+        if (readingTransitionToken.current === token) {
+          document.documentElement.classList.remove("reading-mode-transition");
+          readingTransition.current = null;
+        }
+      }).catch(() => {});
+    } catch { document.documentElement.classList.remove("reading-mode-transition"); apply(); }
+  }
   function jumpToOutline(item: MarkdownHeading) {
     setOutlineOpen(false);
     const element = preview.current?.querySelector<HTMLElement>(`#${CSS.escape(item.id)}`);
     if (!element) return;
     setMissingHeading(false);
-    const toolbarBottom = Math.max(toolbar.current?.getBoundingClientRect().bottom || 0,
-      toolbar.current?.querySelector<HTMLElement>(".mobile-log-toolbar")?.getBoundingClientRect().bottom || 0);
+    const toolbarBottom = headingLandingLine();
     window.scrollTo({ top: Math.max(0, window.scrollY + element.getBoundingClientRect().top - toolbarBottom - 12), behavior: "instant" });
     setActiveHeading(item.id);
   }
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!active || !restorePending.current) return;
     let frame = 0, attempts = 0;
+    const cancelRestore = () => {
+      if (!restorePending.current) return;
+      restorePending.current = false;
+      cancelAnimationFrame(frame);
+      onPositionReady();
+    };
+    const cancelOnScrollKey = (event: KeyboardEvent) => {
+      if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)) cancelRestore();
+    };
     const restore = () => {
       editorView.current?.requestMeasure();
       frame = requestAnimationFrame(() => {
-        if (position.restore(mode) || ++attempts >= 6) restorePending.current = false;
-        else restore();
+        if (!restorePending.current) return;
+        const restored = position.restore(mode);
+        if (++attempts >= 2 && restored || attempts >= 6) {
+          restorePending.current = false;
+          onPositionReady();
+        } else restore();
       });
     };
+    position.restore(mode);
     restore();
-    return () => cancelAnimationFrame(frame);
-  }, [active, mode, reading, editorReady, position.restore]);
+    window.addEventListener("wheel", cancelRestore, { passive: true });
+    window.addEventListener("touchstart", cancelRestore, { passive: true });
+    window.addEventListener("keydown", cancelOnScrollKey);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("wheel", cancelRestore);
+      window.removeEventListener("touchstart", cancelRestore);
+      window.removeEventListener("keydown", cancelOnScrollKey);
+    };
+  }, [active, mode, reading, editorReady, position.restore, onPositionReady]);
 
   useEffect(() => { setOutlineOpen(false); setActionsOpen(false); }, [date, reading, mode]);
   useEffect(() => { setToolbarMenuOpen(false); }, [active, date, reading, mode]);
@@ -335,7 +421,7 @@ export function LogReader({ reloadContext, reloadNavigation, hasLogs, onOpenAi, 
       if (scrollTarget !== null) { window.scrollTo({ top: scrollTarget, behavior: "instant" }); return; }
       const target = findInternalLinkHeading(headings, heading);
       const element = target ? document.getElementById(target.id) : null;
-      if (element) window.scrollTo({ top: Math.max(0, window.scrollY + element.getBoundingClientRect().top - (toolbar.current?.getBoundingClientRect().bottom || 0) - 12), behavior: "instant" });
+      if (element) window.scrollTo({ top: Math.max(0, window.scrollY + element.getBoundingClientRect().top - headingLandingLine() - 12), behavior: "instant" });
       else window.scrollTo({ top: 0, behavior: "instant" });
     });
     return () => cancelAnimationFrame(frame);

@@ -51,7 +51,7 @@ import { useWorkspaceTransition } from "@/hooks/use-workspace-transition";
 export function Workspace() {
   const { active, logout } = useSession();
   const beforeLeave = useRef<() => Promise<boolean>>(async () => true);
-  const { runTransition, completeTransition } = useWorkspaceTransition();
+  const { runTransition, completeTransition, cancelTransition } = useWorkspaceTransition();
   const logs = useLogWorkspace(active, beforeLeave, runTransition);
   const { confirmation, confirm, resolveConfirmation } = useConfirmation();
   const rag = useRag({ active, visible: logs.selection.view === "qa", routeSessionId: logs.selection.sessionId, routeToken: logs.navigationRevision, onConfirm: confirm, onRoute: logs.replaceRagSession });
@@ -68,7 +68,7 @@ export function Workspace() {
     ? window.__studyLogReload.snapshot.mode : "preview") as WorkspaceMode);
   const changeMode = useCallback((next: WorkspaceMode) => {
     if (next === mode) return;
-    runTransition("log-mode", () => setMode(next));
+    runTransition("log-mode", () => setMode(next), { waitForReady: true });
   }, [mode, runTransition]);
   const [dayQuery, setDayQuery] = useState("");
   const [openAiRequest, setOpenAiRequest] = useState(0);
@@ -272,7 +272,7 @@ export function Workspace() {
         question={rag.question} stage={rag.stage} generating={rag.generating} themeMode={theme} answerMode={rag.answerMode} focusRequestToken={rag.focusToken} sessionNavigationToken={rag.navigationToken}
         onQuestionChange={rag.setQuestion} onAnswerModeChange={rag.setAnswerMode} onSubmit={() => void rag.submit()} onStop={rag.stop} viewingPreviousAnswer={rag.viewingPreviousAnswer} onAnswerVersion={rag.selectAnswerVersion} onSaveAnswer={id => void rag.saveAnswer(id)} onDiscardAnswer={id => void rag.discardAnswer(id)} onRegenerate={id => void rag.regenerate(id)} onCitation={citation => void openRagCitation(citation)} />
     </div>
-    <div className="workspace-view" hidden={!logView}><LogReader hasLogs={logs.months.length > 0} active={active && logView} favorites={favorites} exporting={exporting} day={logs.day} date={logs.selection.date} heading={logs.selection.heading}
+    <div className="workspace-view" hidden={!logView}><LogReader onPositionReady={completeTransition} onCancelTransition={cancelTransition} hasLogs={logs.months.length > 0} active={active && logView} favorites={favorites} exporting={exporting} day={logs.day} date={logs.selection.date} heading={logs.selection.heading}
       reloadContext={logs.reloadContext} reloadNavigation={{ months: logs.months, days: logs.days }}
       onOpenAi={() => setOpenAiRequest(value => value + 1)}
       onOpenFavorites={() => { void logs.selectView("favorites").then(accepted => { if (accepted) { clearSearch(); setReading(false); void favorites.reload(); } }); }}

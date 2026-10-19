@@ -38,37 +38,27 @@ html.theme-transitioning .theme-logo img {
   transition-property: opacity;
 }
 
-@keyframes reading-mode-view-out {
-  from {
-    opacity: 1;
-    transform: translateY(0);
-  }
-
-  to {
-    opacity: 0;
-    transform: translateY(-2px);
-  }
-}
-
 @keyframes reading-mode-view-in {
   from {
-    opacity: 0;
-    transform: translateY(2px);
+    opacity: 0.78;
   }
 
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 
 html.reading-mode-transition::view-transition-old(root) {
-  animation: reading-mode-view-out 180ms ease-out both;
+  display: none;
 }
 
 html.reading-mode-transition::view-transition-new(root) {
-  animation: reading-mode-view-in 180ms ease-out both;
+  animation: reading-mode-view-in 240ms ease-out both;
 }
+
+html.reading-mode-transition::view-transition-group(root) { animation-duration: 240ms; }
+html.reading-mode-transition .reader-content { view-transition-name: none; animation: none; }
+html.reading-mode-transition .workspace { transition: none; }
 
 .sr-only {
   position: absolute;
@@ -354,6 +344,7 @@ html.reading-mode-transition::view-transition-new(root) {
   to { opacity: 1; transform: translateX(0); }
 }
 .workspace-content-revealing { animation: workspace-content-reveal 160ms ease-out both; }
+.workspace-position-revealing { animation: result-surface-enter 160ms ease-out both; }
 .workspace-content-waiting { opacity: 0; }
 .workspace-transition-snapshot {
   position: fixed;
@@ -442,6 +433,7 @@ html[data-workspace-transition]::view-transition-new(root) { animation: none; }
   .motion-segmented::before { transition: none; }
   .dialog-exiting,
   .workspace-content-revealing,
+  .workspace-position-revealing,
   .workspace-transition-snapshot-exiting,
   .result-surface-reveal,
   .secondary-page-reveal,

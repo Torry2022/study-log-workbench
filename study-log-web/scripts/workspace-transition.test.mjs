@@ -7,7 +7,7 @@ import ts from 'typescript';
 const source=await fs.readFile(new URL('../hooks/use-workspace-transition.ts',import.meta.url),'utf8');
 function setup(reduced=false, overrides={}){
   const callbacks=[], transitions=[], frames=[], cleanups=[];
-  const document={documentElement:{dataset:{},style:{setProperty(){}}},querySelector:()=>null,
+  const document={documentElement:{dataset:{},style:{setProperty(){}}},querySelector:()=>null,querySelectorAll:()=>[],
     startViewTransition(callback){
       callbacks.push(callback);let finish;const transition={finished:new Promise(resolve=>finish=resolve),skipTransition:()=>finish()};
       transitions.push(transition);return transition;
@@ -47,7 +47,7 @@ test('retained CSS snapshot updates its clipping boundary when sticky toolbar mo
   let toolbarBottom=80;
   const classList={add(){},remove(){}};
   const snapshot={style:{},classList,isConnected:false,removeAttribute(){},querySelectorAll:()=>[],setAttribute(){},remove(){this.isConnected=false;}};
-  const surface={classList,cloneNode:()=>snapshot,getBoundingClientRect:()=>({top:-400,left:260,right:1440,bottom:2400,width:1180,height:2800})};
+  const surface={classList,querySelectorAll:()=>[],cloneNode:()=>snapshot,getBoundingClientRect:()=>({top:-400,left:260,right:1440,bottom:2400,width:1180,height:2800})};
   const shell={getBoundingClientRect:()=>({top:-480,left:260,right:1440}),querySelector:()=>({getBoundingClientRect:()=>({bottom:toolbarBottom})})};
   const {hook,frames}=setup(false,{startViewTransition:undefined,body:{append(element){element.isConnected=true;}},
     querySelector:selector=>selector==='[data-workspace-transition-shell]'?shell:surface});
@@ -71,4 +71,29 @@ test('reduced motion clears pending transition presentation while committing nav
   const {hook,document}=setup(true);document.documentElement.dataset.workspaceTransition='workspace';let applied=false;
   assert.equal(await hook.runTransition('log-document',()=>applied=true,{waitForReady:true}),true);
   assert.equal(applied,true);assert.equal(document.documentElement.dataset.workspaceTransition,undefined);
+});
+
+test('reading mode can cancel retained content presentation before applying its own transition',async()=>{
+  const removed=[];
+  const surface={classList:{remove:(...names)=>removed.push(...names)}};
+  const {hook,document}=setup(false,{querySelectorAll:()=>[surface]});
+  document.documentElement.dataset.workspaceTransition='log-mode';
+  hook.cancelTransition();
+  assert.equal(document.documentElement.dataset.workspaceTransition,undefined);
+  assert.deepEqual(removed,['workspace-content-waiting','workspace-content-revealing','workspace-position-revealing']);
+});
+
+test('position restoration keeps nested editor scrolling in its retained snapshot',async()=>{
+  const classList={add(){},remove(){}};
+  const child={scrollTop:360,scrollLeft:12},copy={scrollTop:0,scrollLeft:0};
+  const snapshot={style:{},classList,isConnected:false,removeAttribute(){},setAttribute(){},
+    querySelectorAll:selector=>selector==='*'?[copy]:[],remove(){this.isConnected=false;}};
+  const surface={classList,scrollTop:20,scrollLeft:2,querySelectorAll:()=>[child],cloneNode:()=>snapshot,
+    getBoundingClientRect:()=>({top:80,left:260,right:1440,bottom:900,width:1180,height:820})};
+  const {hook}=setup(false,{startViewTransition:undefined,body:{append(element){element.isConnected=true;}},
+    querySelector:selector=>selector==='[data-workspace-transition-shell]'?null:surface});
+  assert.equal(await hook.runTransition('log-mode',()=>{}, {waitForReady:true}),true);
+  assert.equal(snapshot.scrollTop,20);assert.equal(snapshot.scrollLeft,2);
+  assert.equal(copy.scrollTop,360);assert.equal(copy.scrollLeft,12);
+  hook.cancelTransition();assert.equal(snapshot.isConnected,false);
 });

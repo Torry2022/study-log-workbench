@@ -22,7 +22,7 @@ type TransitionDocument = Document & {
 
 const READY_DEADLINE_MS = 200;
 
-function supportsStableViewTransitions(transitionDocument: TransitionDocument): boolean {
+export function supportsStableViewTransitions(transitionDocument: TransitionDocument): boolean {
   if (!transitionDocument.startViewTransition) return false;
   const userAgent = navigator.userAgent;
   return !/AppleWebKit/i.test(userAgent) || /(Chrome|Chromium|Edg)/i.test(userAgent);
@@ -44,6 +44,20 @@ export function useWorkspaceTransition() {
 
   const completeTransition = useCallback(() => finishWaiting(), [finishWaiting]);
 
+  const cancelTransition = useCallback(() => {
+    tokenRef.current++;
+    finishWaiting();
+    nativeTransitionRef.current?.transition.skipTransition?.();
+    nativeTransitionRef.current?.restoreNames();
+    nativeTransitionRef.current = null;
+    snapshotRef.current?.remove();
+    snapshotRef.current = null;
+    document.querySelectorAll<HTMLElement>("[data-workspace-transition-surface]").forEach(surface => {
+      surface.classList.remove("workspace-content-waiting", "workspace-content-revealing", "workspace-position-revealing");
+    });
+    delete document.documentElement.dataset.workspaceTransition;
+  }, [finishWaiting]);
+
   const runTransition = useCallback((
     kind: WorkspaceTransitionKind,
     update: () => void,
@@ -51,15 +65,8 @@ export function useWorkspaceTransition() {
   ) => {
     const transitionDocument = document as TransitionDocument;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const token = tokenRef.current + 1;
-    tokenRef.current = token;
-    finishWaiting();
-    const previousNativeTransition = nativeTransitionRef.current;
-    if (previousNativeTransition) {
-      nativeTransitionRef.current = null;
-      previousNativeTransition.transition.skipTransition?.();
-      previousNativeTransition.restoreNames();
-    }
+    cancelTransition();
+    const token = tokenRef.current;
 
     let resolveApplied!: (applied: boolean) => void;
     const applied = new Promise<boolean>((resolve) => { resolveApplied = resolve; });
@@ -171,7 +178,7 @@ export function useWorkspaceTransition() {
       snapshot.querySelectorAll("[id]").forEach((element) => element.removeAttribute("id"));
       snapshot.setAttribute("aria-hidden", "true");
       snapshot.setAttribute("inert", "");
-      snapshot.classList.remove("workspace-content-revealing", "workspace-content-waiting");
+      snapshot.classList.remove("workspace-content-revealing", "workspace-content-waiting", "workspace-position-revealing");
       snapshot.classList.add("workspace-transition-snapshot");
       Object.assign(snapshot.style, {
         top: `${rect.top}px`,
@@ -182,6 +189,12 @@ export function useWorkspaceTransition() {
         background: getComputedStyle(currentSurface).backgroundColor
       });
       document.body.append(snapshot);
+      const originals = [currentSurface, ...currentSurface.querySelectorAll<HTMLElement>("*")];
+      const copies = [snapshot, ...snapshot.querySelectorAll<HTMLElement>("*")];
+      originals.forEach((element, index) => {
+        copies[index].scrollTop = element.scrollTop;
+        copies[index].scrollLeft = element.scrollLeft;
+      });
       snapshotRef.current?.remove();
       snapshotRef.current = snapshot;
       const retainedSnapshot = snapshot;
@@ -211,12 +224,14 @@ export function useWorkspaceTransition() {
           snapshot.remove();
           return;
         }
-        surface.classList.add("workspace-content-revealing");
-        snapshot.classList.add("workspace-transition-snapshot-exiting");
+        const revealClass = kind === "log-mode" ? "workspace-position-revealing" : "workspace-content-revealing";
+        surface.classList.add(revealClass);
+        if (kind === "log-mode") snapshot.remove();
+        else snapshot.classList.add("workspace-transition-snapshot-exiting");
         window.setTimeout(() => {
           snapshot.remove();
           if (snapshotRef.current === snapshot) snapshotRef.current = null;
-          surface.classList.remove("workspace-content-revealing");
+          if (tokenRef.current === token) surface.classList.remove(revealClass);
           clearTransitionState();
         }, 160);
       };
@@ -238,16 +253,9 @@ export function useWorkspaceTransition() {
       }, { once: true });
     });
     return applied;
-  }, [finishWaiting]);
+  }, [cancelTransition]);
 
-  useEffect(() => () => {
-    finishWaiting();
-    nativeTransitionRef.current?.transition.skipTransition?.();
-    nativeTransitionRef.current?.restoreNames();
-    nativeTransitionRef.current = null;
-    snapshotRef.current?.remove();
-    snapshotRef.current = null;
-  }, [finishWaiting]);
+  useEffect(() => cancelTransition, [cancelTransition]);
 
-  return { runTransition, completeTransition };
+  return { runTransition, completeTransition, cancelTransition };
 }

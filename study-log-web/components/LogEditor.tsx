@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
-import CodeMirror from "@uiw/react-codemirror";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
+import CodeMirror, { ExternalChange } from "@uiw/react-codemirror";
 import { indentLess, indentMore } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { HighlightStyle, indentUnit, syntaxHighlighting } from "@codemirror/language";
@@ -91,6 +91,16 @@ export function LogEditor({ date, value, active, onChange, onSave, onInternalLin
   const editorView = useRef<EditorView | null>(null);
   const callbacks = useRef({ active, onChange, onSave, onInternalLink, onView });
   callbacks.current = { active, onChange, onSave, onInternalLink, onView };
+
+  useLayoutEffect(() => {
+    const view = editorView.current;
+    const current = view?.state.doc.toString();
+    if (!view || current === undefined || current === value || current.trim() !== value) return;
+    // Save normalization trims boundaries; keep the unchanged body and selection.
+    const from = current.indexOf(value);
+    view.dispatch({ changes: [{ from: 0, to: from }, { from: from + value.length, to: current.length }],
+      annotations: ExternalChange.of(true) });
+  }, [value]);
 
   const editorExtensions = useMemo<Extension[]>(() => {
     const shortcutKeymap: KeyBinding[] = [

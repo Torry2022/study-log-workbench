@@ -9,10 +9,9 @@ import path from "node:path";
 import { getLogRoot } from "./config";
 
 export const taskHeaders = { "Cache-Control": "no-store" };
-export async function taskAction(request: NextRequest, action: () => Promise<unknown>): Promise<Response> {
+export async function taskAction(request: NextRequest, action: () => Promise<unknown>, expected = request.headers.get("x-study-log-instance")): Promise<Response> {
   const unauthorized = requireAuth(request); if (unauthorized) return unauthorized;
   try {
-    const expected = request.headers.get("x-study-log-instance");
     if (expected) {
       const identity = JSON.parse(await fs.readFile(path.join(getLogRoot(), ".instance.json"), "utf8"));
       if (identity.id !== expected) throw new RagTaskError("RAG_INSTANCE_CHANGED", "服务器实例已变化，请重新连接工作台；原实例的待确认问答已保留", 409);

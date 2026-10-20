@@ -64,6 +64,18 @@ try {
     browser = await launcher.launch();
     const context = await browser.newContext({ viewport: { width: mobile ? 390 : 1440, height: mobile ? 844 : 900 }, isMobile: mobile, hasTouch: mobile });
     await context.addInitScript(() => {
+      window.eventFrames = [];
+      const NativeEventSource = window.EventSource;
+      window.EventSource = class extends NativeEventSource {
+        constructor(...args) {
+          super(...args);
+          this.addEventListener('snapshot', event => {
+            const { task } = JSON.parse(event.data);
+            window.eventFrames.push({ revision: task.revision, bytes: new TextEncoder().encode(event.data).length,
+              partial: task.partial.length, previous: task.previousAnswer?.content.length || 0 });
+          });
+        }
+      };
       window.followCalls = 0;
       window.followTrace = [];
       addEventListener('scroll', () => { window.followTrace.push({ y: scrollY, height: document.documentElement.scrollHeight, viewport: innerHeight, calls: window.followCalls }); window.followTrace = window.followTrace.slice(-30); }, { passive: true });
@@ -217,6 +229,9 @@ try {
       await workspace.getByRole('button', { name: '重新生成', exact: true }).last().click();
       await until(() => streams, count => count === n + 1);
       await expect(workspace.locator('.rag-answer')).toContainText(`第${n + 1}次合成回答`, { timeout: 700 });
+      const frames = await page.evaluate(() => window.eventFrames);
+      assert.ok(frames.some(frame => frame.bytes >= 16384 && frame.partial > 0 && frame.previous > 0), 'regeneration receives a complete large snapshot including its previous answer');
+      (report.regenerationFrames ||= []).push({ label, frames });
       const id = new URL(page.url()).searchParams.get('session');
       await fresh();
       await expect(workspace.locator('.rag-message')).toHaveCount(0);

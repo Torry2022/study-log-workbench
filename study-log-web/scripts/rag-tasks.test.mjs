@@ -166,6 +166,29 @@ test('a short delta after status is checkpointed even if the provider then stall
   await r.cancel(task.id);
 });
 
+test('the first answer fragment is durable before waiting for more provider data; later fragments remain batched', async () => {
+  let observe;
+  const observed = new Promise(resolve => { observe = resolve; }), writes = [];
+  let step = 0, first;
+  const r = runtime((_input, signal) => new ReadableStream({
+    pull(controller) {
+      const send = (event, data) => controller.enqueue(new TextEncoder().encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+      if (step++ === 0) send('status', { message: '正在生成回答' });
+      else if (step === 2) send('delta', { text: '第一个正文片段' });
+      else if (step === 3) { first = writes.at(-1); send('delta', { text: '后续片段' }); }
+      else {
+        observe({ first, next: writes.at(-1) });
+        return new Promise(resolve => signal.addEventListener('abort', () => { controller.error(signal.reason); resolve(); }, { once: true }));
+      }
+    }
+  }, { highWaterMark: 0 }));
+  const progress = r.store.progress.bind(r.store);
+  r.store.progress = (...args) => { writes.push(args[1]); return progress(...args); };
+  r.start(); const task = await r.create(submission());
+  try { assert.deepEqual(await observed, { first: '第一个正文片段', next: '第一个正文片段' }); }
+  finally { await r.cancel(task.id); }
+});
+
 test('follow-up history is captured from the versioned server session; regeneration excludes its last pair', async () => {
   const first = await createRagSession({ id: uuid(), mutationId: uuid(), baseVersion: null, answerMode: 'logs_only', messages: pair('真正的历史问题') });
   let captured; const r = runtime((input, signal) => { captured = input.history; return executor()(input, signal); }); r.start();

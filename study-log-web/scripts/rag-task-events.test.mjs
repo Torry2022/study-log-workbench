@@ -33,23 +33,59 @@ test('visible running task consumes real snapshots before polling; leaving abort
   assert.equal(connections[1].init.signal.aborted, true); client.stop();
 });
 
-test('task event reader handles split UTF-8 frames without inventing or appending answer text', async () => {
-  const original = globalThis.fetch, encoder = new TextEncoder(), seen = [], controller = new AbortController();
+test('native task events carry the instance identity and replace complete Unicode snapshots without replay', async () => {
+  const original = globalThis.EventSource, originalFetch = globalThis.fetch, seen = [], controller = new AbortController();
   let connection;
-  const body = new ReadableStream({ start(value) { connection = value; } });
-  globalThis.fetch = async (url, init) => {
-    assert.equal(url, '/study-log/api/rag/tasks/synthetic/events?after=1');
-    assert.equal(init.signal, controller.signal);
-    return new Response(body, { headers: { 'content-type': 'text/event-stream' } });
+  globalThis.EventSource = class {
+    listeners = new Map(); closed = false;
+    constructor(url) { this.url = url; connection = this; }
+    addEventListener(name, callback) { this.listeners.set(name, callback); }
+    close() { this.closed = true; }
   };
+  globalThis.fetch = async () => { throw new Error('Task viewing must use native event framing'); };
+  let failure;
   try {
-    const work = requestRagTaskEvents('/api/rag/tasks/synthetic/events?after=1', { signal: controller.signal }, async task => seen.push(task));
-    const bytes = encoder.encode('id: 2\r\nevent: snapshot\r\ndata: {"task":{"revision":2,"partial":"中文第一片"}}\r\n\r\n');
-    for (const byte of bytes) connection.enqueue(Uint8Array.of(byte));
-    await new Promise(resolve => setTimeout(resolve, 0)); assert.deepEqual(seen, [{ revision: 2, partial: '中文第一片' }]);
-    connection.enqueue(encoder.encode('event: snapshot\ndata: {"task":{"revision":3,"partial":"完整第二片"}}\n\n')); connection.close();
-    await work; assert.deepEqual(seen.map(item => item.partial), ['中文第一片', '完整第二片']);
-  } finally { globalThis.fetch = original; controller.abort(); }
+    const work = requestRagTaskEvents('/api/rag/tasks/synthetic/events?after=1', { signal: controller.signal, headers: { 'X-Study-Log-Instance': instance } }, async task => seen.push(task)).catch(error => { failure = error; });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.ok(connection, failure?.message);
+    assert.equal(connection.url, '/study-log/api/rag/tasks/synthetic/events?after=1&instance=' + instance);
+    const previousAnswer = '中文👩🏽‍💻完整旧回答'.repeat(2000);
+    connection.listeners.get('snapshot')({ data: JSON.stringify({ task: { revision: 2, partial: '第一片', previousAnswer } }) });
+    connection.listeners.get('snapshot')({ data: JSON.stringify({ task: { revision: 3, partial: '完整第二片', previousAnswer } }) });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.deepEqual(seen.map(task => task.partial), ['第一片', '完整第二片']);
+    assert.ok(seen.every(task => task.previousAnswer === previousAnswer));
+    controller.abort(); await work; assert.equal(connection.closed, true);
+  } finally { globalThis.EventSource = original; globalThis.fetch = originalFetch; controller.abort(); }
+});
+
+test('native event errors close once and abort drops queued snapshots without reconnecting itself', async () => {
+  const original = globalThis.EventSource, connections = [], seen = [];
+  globalThis.EventSource = class {
+    listeners = new Map(); closes = 0;
+    constructor() { connections.push(this); }
+    addEventListener(name, callback) { this.listeners.set(name, callback); }
+    close() { this.closes++; }
+  };
+  const options = controller => ({ signal: controller.signal, headers: { 'X-Study-Log-Instance': instance } });
+  try {
+    for (const event of ['error', 'invalid']) {
+      const controller = new AbortController();
+      const work = requestRagTaskEvents('/api/rag/tasks/synthetic/events?after=4', options(controller), async task => seen.push(task));
+      const rejected = assert.rejects(work, /任务事件连接中断/), source = connections.at(-1);
+      if (event === 'error') source.listeners.get('error')({});
+      else source.listeners.get('snapshot')({ data: 'invalid JSON' });
+      await rejected; assert.equal(source.closes, 1); controller.abort(); assert.equal(source.closes, 1);
+    }
+    const controller = new AbortController();
+    const work = requestRagTaskEvents('/api/rag/tasks/synthetic/events?after=4', options(controller), async task => seen.push(task));
+    const source = connections.at(-1);
+    source.listeners.get('snapshot')({ data: JSON.stringify({ task: { partial: '迟到正文' } }) });
+    controller.abort(); await work; await new Promise(resolve => setTimeout(resolve, 0));
+    assert.deepEqual(seen, []); assert.equal(source.closes, 1); assert.equal(connections.length, 3);
+    await assert.rejects(requestRagTaskEvents('/api/rag/tasks/synthetic/events', options(controller), async () => {}), { name: 'AbortError' });
+    assert.equal(connections.length, 3);
+  } finally { globalThis.EventSource = original; }
 });
 
 test('event disconnect reconnects from the reconciled revision without another submission', async () => {

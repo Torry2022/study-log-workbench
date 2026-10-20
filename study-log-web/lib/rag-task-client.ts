@@ -8,28 +8,25 @@ type Storage = Pick<globalThis.Storage, "getItem" | "setItem" | "removeItem">;
 type Request = <T>(url: string, init?: RequestInit) => Promise<T>;
 type TaskEvents = (url: string, init: RequestInit & { signal: AbortSignal }, emit: (task: unknown) => Promise<void>) => Promise<void>;
 export const requestRagTaskEvents: TaskEvents = async (url, init, emit) => {
-  const response = await fetch(withBasePath(url), init);
-  if (!response.ok || !response.body || !response.headers.get("content-type")?.includes("text/event-stream")) throw new Error("任务事件连接不可用");
-  const reader = response.body.getReader(), decoder = new TextDecoder("utf-8", { fatal: true });
-  let buffer = "";
-  const abort = () => { void reader.cancel().catch(() => {}); };
-  init.signal.addEventListener("abort", abort, { once: true });
-  try {
-    while (!init.signal.aborted) {
-      const part = await reader.read(); init.signal.throwIfAborted();
-      if (part.done) break;
-      buffer += decoder.decode(part.value, { stream: true });
-      let boundary: RegExpExecArray | null;
-      while ((boundary = /\r?\n\r?\n/.exec(buffer))) {
-        const lines = buffer.slice(0, boundary.index).split(/\r?\n/); buffer = buffer.slice(boundary.index + boundary[0].length);
-        const event = lines.find(line => line.startsWith("event:"))?.slice(6).trim();
-        const data = lines.filter(line => line.startsWith("data:")).map(line => line.slice(5).trimStart()).join("\n");
-        if (event === "error") throw new Error("任务事件连接中断");
-        if (event === "snapshot" && data) await emit(JSON.parse(data).task);
-      }
-      if (buffer.length > 1024 * 1024) throw new Error("任务事件超过大小限制");
-    }
-  } finally { init.signal.removeEventListener("abort", abort); await reader.cancel().catch(() => {}); reader.releaseLock(); }
+  init.signal.throwIfAborted();
+  const instance = new Headers(init.headers).get("X-Study-Log-Instance");
+  if (!instance) throw new Error("任务事件缺少实例身份");
+  // Native SSE consumes complete frames even when WebKit fetch stalls mid-frame.
+  return new Promise<void>((resolve, reject) => {
+    const source = new EventSource(`${withBasePath(url)}${url.includes("?") ? "&" : "?"}instance=${encodeURIComponent(instance)}`);
+    let stopped = false, pending = Promise.resolve();
+    const close = () => { stopped = true; source.close(); init.signal.removeEventListener("abort", abort); };
+    const abort = () => { if (!stopped) { close(); resolve(); } };
+    const fail = () => { if (!stopped) { close(); reject(new Error("任务事件连接中断")); } };
+    init.signal.addEventListener("abort", abort, { once: true });
+    source.addEventListener("snapshot", event => {
+      pending = pending.then(async () => {
+        if (!stopped) await emit(JSON.parse((event as MessageEvent<string>).data).task);
+      }).catch(fail);
+    });
+    // Reconciliation owns reconnection; do not let EventSource start a second loop.
+    source.addEventListener("error", fail);
+  });
 };
 const uuid = (value: unknown) => typeof value === "string" && /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(value);
 const states = ["queued", "running", "succeeded", "failed", "cancelled", "interrupted"];

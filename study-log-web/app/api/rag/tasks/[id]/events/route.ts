@@ -1,12 +1,18 @@
 import { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { taskAction, taskRuntime } from "@/lib/rag-task-api";
+import { RagTaskError } from "@/lib/rag-task-store";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   const unauthorized = requireAuth(request); if (unauthorized) return unauthorized;
   const id = (await context.params).id;
-  const initial = await taskAction(request, async () => ({ task: await taskRuntime().get(id) }));
+  const headerInstance = request.headers.get("x-study-log-instance"), queryInstance = request.nextUrl.searchParams.get("instance");
+  const initial = await taskAction(request, async () => {
+    if (queryInstance !== null && !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(queryInstance)) throw new RagTaskError("RAG_INSTANCE_CHANGED", "任务事件的实例身份无效，请重新连接工作台", 409);
+    if (headerInstance && queryInstance && headerInstance !== queryInstance) throw new RagTaskError("RAG_INSTANCE_CHANGED", "任务事件的实例身份不一致，请重新连接工作台", 409);
+    return { task: await taskRuntime().get(id) };
+  }, headerInstance || queryInstance);
   if (!initial.ok) return initial;
   const encoder = new TextEncoder(); let stopped = false;
   let after = Number(request.nextUrl.searchParams.get("after") || request.headers.get("last-event-id") || "0");

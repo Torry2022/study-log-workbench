@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { parseEnv } from 'node:util';
 import { createRequire } from 'node:module';
+import { randomUUID } from 'node:crypto';
 import { initialize } from './instance.mjs';
 import { startHttpServer } from '../study-log-mcp/src/http-server.mjs';
 
@@ -70,8 +71,26 @@ for (const [engine, launcher] of [['chromium', chromium], ['webkit', webkit]]) {
       }
       await expect(page.locator('.rag-workspace .rag-answer')).toContainText(`实例${service.name}已接收`);
       await until(() => watches.size, n => n === 1);
+      if (index === 0) {
+        const eventUrl = report.requests.filter(req => req.engine === engine && new URL(req.url).pathname.endsWith('/events')).at(-1).url;
+        const cookie = (await context.cookies()).map(item => `${item.name}=${item.value}`).join('; '), before = { ...counts };
+        const checkEvent = async (identity, headers = {}) => {
+          const url = new URL(eventUrl); url.searchParams.delete('instance');
+          if (identity !== null) url.searchParams.set('instance', identity);
+          const response = await fetch(url, { headers });
+          const status = response.status; await response.body?.cancel(); return status;
+        };
+        assert.equal(await checkEvent(service.instanceId), 401);
+        assert.equal(await checkEvent(randomUUID(), { Cookie: cookie }), 409);
+        assert.equal(await checkEvent('', { Cookie: cookie }), 409);
+        assert.equal(await checkEvent('invalid-instance', { Cookie: cookie }), 409);
+        assert.equal(await checkEvent(randomUUID(), { Cookie: cookie, 'X-Study-Log-Instance': service.instanceId }), 409);
+        assert.equal(await checkEvent(null, { Cookie: cookie, 'X-Study-Log-Instance': service.instanceId }), 200);
+        assert.deepEqual(counts, before);
+        mark(`${engine}: event cookie auth, query instance mismatch, conflicting identities and legacy header binding`);
+      }
       assert.ok(report.requests.filter(req => req.engine === engine && req.url.startsWith(service.base) && new URL(req.url).pathname.endsWith('/events'))
-        .every(req => req.instance === service.instanceId));
+        .every(req => new URL(req.url).searchParams.get('instance') === service.instanceId));
       if (index > 0) assert.notEqual(services[0].instanceId, services[1].instanceId);
       assert.equal((await page.locator('.rag-answer').textContent()).includes(`实例${service.name === 'A' ? 'B' : 'A'}已接收`), false);
       if (index === 2) {

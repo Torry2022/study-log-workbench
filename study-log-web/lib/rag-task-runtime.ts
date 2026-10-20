@@ -156,7 +156,12 @@ export class RagTaskRuntime {
           if (!json) continue;
           const data = JSON.parse(json);
           if (event === "status") { stage = data.message; flush(); }
-          if (event === "delta") { partial += data.text; dirty = true; if (Date.now() - lastWrite >= 250) flush(); }
+          if (event === "delta") {
+            const firstFragment = !partial && Boolean(data.text);
+            partial += data.text; dirty = true;
+            // A status checkpoint must not defer the first durable answer fragment.
+            if (firstFragment || Date.now() - lastWrite >= 250) flush();
+          }
           if (partial.length > 120000) throw new Error("问答输出超过限制");
           if (event === "error") {
             result = { answer: partial, citations: [], ...(data.diagnostics ? { diagnostics: data.diagnostics } : {}) };

@@ -33,6 +33,7 @@ function configureMermaid(themeMode: "light" | "dark") {
 
   mermaid.initialize({
     startOnLoad: false,
+    suppressErrorRendering: true,
     theme: "base",
     themeVariables: {
       darkMode: isDark,

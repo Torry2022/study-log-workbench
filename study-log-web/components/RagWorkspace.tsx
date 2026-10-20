@@ -87,7 +87,6 @@ export function RagWorkspace({
 }: RagWorkspaceProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const composerRef = useRef<HTMLFormElement | null>(null);
-  const endRef = useRef<HTMLDivElement | null>(null);
   const followOutputRef = useRef(false);
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const readingAnchorRef = useRef<RagReadingAnchor | null>(null);
@@ -147,11 +146,8 @@ export function RagWorkspace({
   useLayoutEffect(() => { readingAnchorRef.current = null; }, [enabled, sessionNavigationToken, answerStartToken, output?.id]);
 
   const followLatest = useCallback(() => {
-    if (!enabled || !endRef.current) return;
-    const composer = composerRef.current;
-    const bottom = composer ? Math.max(0, parseFloat(getComputedStyle(composer.parentElement!).bottom) || 0) : 0;
-    endRef.current.style.scrollMarginBottom = `${(composer?.offsetHeight || 0) + bottom}px`;
-    endRef.current.scrollIntoView({ block: "end", behavior: "instant" });
+    if (!enabled || !workspaceRef.current?.getClientRects().length) return;
+    window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "instant" });
     scrollYRef.current = window.scrollY;
   }, [enabled]);
 
@@ -167,11 +163,11 @@ export function RagWorkspace({
     wasAnswerStartTokenRef.current = answerStartToken;
     wasPresentingRef.current = presenting;
     if (startedHere) followOutputRef.current = true;
-    // Only live presentation owns following; metadata cannot reclaim the reader.
-    if ((presenting || wasPresenting) && followOutputRef.current && endRef.current) {
+    // Render new output and its completion at the bottom while this answer owns it.
+    // Saved-session/title snapshots and ordinary parent renders never reclaim ownership.
+    if ((presenting || wasPresenting) && followOutputRef.current) {
       followLatest();
     }
-    if (!presenting) followOutputRef.current = false;
   }, [enabled, output?.id, presented.content, output?.status, generating, presenting, answerStartToken, followLatest]);
 
   const restoreReading = useCallback(() => {
@@ -187,7 +183,8 @@ export function RagWorkspace({
     const root = workspaceRef.current;
     if (!enabled || !root) return;
     const observer = new ResizeObserver(() => {
-      if (followOutputRef.current && wasPresentingRef.current) followLatest();
+      if (!root.getClientRects().length) { followOutputRef.current = false; readingAnchorRef.current = null; return; }
+      if (followOutputRef.current) followLatest();
       else restoreReading();
     });
     observer.observe(root);
@@ -204,8 +201,8 @@ export function RagWorkspace({
     let touchY = 0;
     const startManualScroll = (target: EventTarget | null, delta: number) => {
       if (!ragDocumentWillScroll(target, delta)) return;
-      readingAnchorRef.current = null;
-      if (delta < 0) followOutputRef.current = false;
+      // Keep the current anchor until an actual scroll replaces it.
+      if (delta < 0 || !presenting) followOutputRef.current = false;
     };
     const handleWheel = (event: WheelEvent) => { startManualScroll(event.target, event.deltaY); };
     const handleTouchStart = (event: TouchEvent) => { touchY = event.touches[0]?.clientY || 0; };
@@ -226,11 +223,14 @@ export function RagWorkspace({
 
       const currentScrollY = window.scrollY;
       const delta = currentScrollY - scrollYRef.current;
+      const maximum = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+      const clamped = scrollYRef.current > maximum + 1 && Math.abs(currentScrollY - maximum) <= 1;
       scrollYRef.current = currentScrollY;
-      if (delta < -1) followOutputRef.current = false;
+      // A shorter document can clamp the viewport upward without user input.
+      if (delta < -1 && !clamped) followOutputRef.current = false;
       else if (presenting && delta > 0 && remaining <= 2) followOutputRef.current = true;
       if (followOutputRef.current) readingAnchorRef.current = null;
-      else if (Math.abs(delta) >= 1 && (presenting || readingAnchorRef.current) && workspaceRef.current) {
+      else if (Math.abs(delta) >= 1 && workspaceRef.current) {
         readingAnchorRef.current = captureRagReadingAnchor(workspaceRef.current);
       }
 
@@ -312,12 +312,15 @@ export function RagWorkspace({
     }
   }, []);
 
+  // Bottom ownership survives completion until the reader acts on the conversation.
+  const releaseFollowing = () => { followOutputRef.current = false; };
+
   return (<>
     {enabled && <div className="reader-toolbar-container"><div className="reader-toolbar reader-toolbar-qa">
       <div className="module-title-block"><div className="reader-heading-row"><h2>知识问答</h2></div></div>
       <div className="reader-controls">{onOpenLog && <button className="button secondary" type="button" onClick={onOpenLog}><FileText size={15} />日志</button>}</div>
     </div></div>}
-    <div ref={workspaceRef} className={`rag-workspace${messages.length > 0 ? " has-messages" : ""}`} hidden={!enabled}>
+    <div onPointerDownCapture={releaseFollowing} onKeyDownCapture={releaseFollowing} ref={workspaceRef} className={`rag-workspace${messages.length > 0 ? " has-messages" : ""}`} hidden={!enabled}>
       <div className="rag-conversation" aria-live="polite">
         {feedback}
         {initializing && messages.length === 0 ? (
@@ -451,7 +454,6 @@ export function RagWorkspace({
             ))}
           </div>
         )}
-        <div className="rag-scroll-anchor" ref={endRef} />
       </div>
 
       <div className={`rag-composer-slot${composerHidden ? " is-hidden" : ""}`}>

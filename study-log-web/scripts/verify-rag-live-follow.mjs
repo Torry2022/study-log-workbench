@@ -79,8 +79,8 @@ try {
       window.followCalls = 0;
       window.followTrace = [];
       addEventListener('scroll', () => { window.followTrace.push({ y: scrollY, height: document.documentElement.scrollHeight, viewport: innerHeight, calls: window.followCalls }); window.followTrace = window.followTrace.slice(-30); }, { passive: true });
-      const original = Element.prototype.scrollIntoView;
-      Element.prototype.scrollIntoView = function(...args) { if (this.classList.contains('rag-scroll-anchor')) window.followCalls++; window.followTrace.push({ type: 'scrollIntoView', className: this.className, stack: new Error().stack }); return original.apply(this, args); };
+      const original = window.scrollTo;
+      window.scrollTo = function(...args) { if (args[0]?.behavior === 'instant') window.followCalls++; window.followTrace.push({ type: 'scrollTo', options: args[0], stack: new Error().stack }); return original.apply(this, args); };
     });
     const page = await context.newPage(); currentPage = page;
     const navigations = [], unhandled = [];
@@ -146,7 +146,7 @@ try {
     await expect(workspace.locator('.rag-answer')).toContainText('第45段');
     await pause(300);
     await run('first submission follows long real output without a manual scroll', async () => {
-      const geometry = await page.evaluate(() => ({ remaining: document.documentElement.scrollHeight - innerHeight - scrollY, composerTop: document.querySelector('.rag-composer').getBoundingClientRect().top, anchorBottom: document.querySelector('.rag-scroll-anchor').getBoundingClientRect().bottom }));
+      const geometry = await page.evaluate(() => ({ remaining: document.documentElement.scrollHeight - innerHeight - scrollY, composerTop: document.querySelector('.rag-composer').getBoundingClientRect().top, answerBottom: document.querySelector('.rag-message-list').getBoundingClientRect().bottom }));
       (report.followGeometry ||= []).push({ label, ...geometry }); assert.ok(geometry.remaining < 40, JSON.stringify(geometry));
     });
     await page.screenshot({ path: path.join(root, `${label}-streaming.png`) });

@@ -93,9 +93,15 @@ function MermaidBlockComponent({
     const renderId = `${id}-${themeMode}`;
     setSvg("");
     configureMermaid(themeMode);
+    // Mermaid measures temporary SVG nodes; keep that work out of document flow.
+    const renderHost = document.createElement("div");
+    renderHost.dataset.mermaidRenderHost = "true";
+    renderHost.setAttribute("aria-hidden", "true");
+    Object.assign(renderHost.style, { position: "fixed", inset: "0", overflow: "hidden", visibility: "hidden", pointerEvents: "none" });
+    document.body.append(renderHost);
 
     mermaid
-      .render(renderId, chart)
+      .render(renderId, chart, renderHost)
       .then((result) => {
         if (!cancelled) {
           const normalizedSvg = normalizeMermaidSvg(result.svg);
@@ -109,10 +115,12 @@ function MermaidBlockComponent({
           setError(renderError.message);
           setSvg("");
         }
-      });
+      })
+      .finally(() => renderHost.remove());
 
     return () => {
       cancelled = true;
+      renderHost.remove();
     };
   }, [cacheKey, chart, id, themeMode]);
 

@@ -91,8 +91,8 @@ try {
       window.followCalls = 0;
       window.followTrace = [];
       addEventListener('scroll', () => { window.followTrace.push({ y: scrollY, height: document.documentElement.scrollHeight, viewport: innerHeight, calls: window.followCalls }); window.followTrace = window.followTrace.slice(-30); }, { passive: true });
-      const original = Element.prototype.scrollIntoView;
-      Element.prototype.scrollIntoView = function(...args) { if (this.classList.contains('rag-scroll-anchor')) window.followCalls++; window.followTrace.push({ type: 'scrollIntoView', className: this.className, stack: new Error().stack }); return original.apply(this, args); };
+      const original = window.scrollTo;
+      window.scrollTo = function(...args) { if (args[0]?.behavior === 'instant') window.followCalls++; window.followTrace.push({ type: 'scrollTo', options: args[0], stack: new Error().stack }); return original.apply(this, args); };
     });
     const page = await context.newPage(); currentPage = page;
     const navigations = [], unhandled = [];
@@ -148,7 +148,7 @@ try {
     await expect(workspace.locator('.rag-message')).toHaveCount(0);
     const run = async (name, work) => {
       try { await work(); record(`${label}: ${name}`); }
-      catch (error) { report.errors.push({ engine: label, name, error: error.stack, scrollTrace: await page.evaluate(() => window.followTrace) }); console.error(`FAIL ${label}: ${name}: ${error.message}`); }
+      catch (error) { report.errors.push({ engine: label, name, error: error.stack, scrollTrace: await page.evaluate(() => window.followTrace), rendering: await page.evaluate(()=>({codes:[...document.querySelectorAll('.rag-answer pre')].map(el=>el.textContent),diagrams:[...document.querySelectorAll('.mermaid-block')].map(el=>({html:el.innerHTML.slice(0,300),height:el.getBoundingClientRect().height})),temporary:[...document.querySelectorAll('body > div[id^=dmermaid]')].map(el=>el.textContent),resources:performance.getEntriesByType('resource').filter(e=>e.name.includes('/chunks/')).map(e=>({name:e.name.split('/').at(-1),duration:e.duration}))})) }); await page.screenshot({path:path.join(root,label+'-failure.png')}); console.error(`FAIL ${label}: ${name}: ${error.message}`); }
     };
     await input.fill('合成保存时如何确认内容？');
     await page.getByRole('button', { name: '发送问题', exact: true }).click();
@@ -161,7 +161,7 @@ try {
 
     // Independent visual oracle: choose a character in the first fully visible
     // text line, then resolve its row/paragraph plus text offset after DOM rebuilds.
-    await page.evaluate(()=>{
+    const installReading=()=>page.evaluate(()=>{
       window.readingHeader=()=>Math.max(0,...[...document.querySelectorAll('.reader-toolbar,.mobile-topbar')].map(el=>{const r=el.getBoundingClientRect();return r.top<=1&&r.height?r.bottom:0;}));
       window.readingRange=(element,offset)=>{const walk=document.createTreeWalker(element,NodeFilter.SHOW_TEXT);let node;while(node=walk.nextNode()){if(offset<node.length){const range=document.createRange();range.setStart(node,offset);range.setEnd(node,offset+1);return range;}offset-=node.length;}throw Error('Reading character disappeared');};
       window.readingElement=target=>target.kind==='table'?document.querySelectorAll('.rag-answer tbody tr')[target.row]?.cells[target.col]:[...document.querySelectorAll('.rag-answer p')].find(p=>p.textContent.startsWith(target.prefix));
@@ -172,6 +172,7 @@ try {
         for(const {element,target}of candidates){const box=element.getBoundingClientRect();if(box.bottom<=top||box.top>=innerHeight)continue;const walk=document.createTreeWalker(element,NodeFilter.SHOW_TEXT);let node,offset=0;while(node=walk.nextNode()){const whole=document.createRange();whole.selectNodeContents(node);const line=[...whole.getClientRects()].find(r=>r.top>=top+1&&r.bottom<innerHeight-180);if(line){const caret=document.caretRangeFromPoint(line.left+2,line.top+line.height/2);if(caret?.startContainer===node){window.readingTarget={...target,offset:offset+Math.min(caret.startOffset,node.length-1)};return window.readingMeasure();}}offset+=node.length;}}throw Error('No visible reading character');
       };
     });
+    await installReading();
     const measure=()=>page.evaluate(()=>window.readingMeasure());
     const recordAnchor=(name,before,after)=>{(report.readingAnchors ||= []).push({label,name,before,after});assert.equal(after.text,before.text,'same logical character after Markdown DOM rebuild');assert.equal(after.calls,before.calls,'paused reading cannot invoke bottom following');};
     await run('paused table reading keeps a visible character across column reflow',async()=>{
@@ -189,9 +190,10 @@ try {
       const after=await measure();recordAnchor('table contraction',before,after);assert.ok(after.width>before.width+10,'opposite column reflow occurred');assert.ok(after.top>=after.header-30&&after.bottom<after.viewport-160,'within-cell reading character stays visible after contraction');
       finish(n);await expect(page.getByRole('button',{name:'停止生成',exact:true})).toHaveCount(0);await pause(350);const completed=await measure();recordAnchor('completion/status',after,completed);assert.ok(Math.abs(completed.top-after.top)<3,'completion metadata preserves reading line');
     });
-    await run('an asynchronous Mermaid render above paused reading preserves its character',async()=>{
+    for(const completed of [false,true]) await run(completed?'a Mermaid render after completion keeps the actual bottom':'an asynchronous Mermaid render above paused reading preserves its character',async()=>{
       let released=false;const gates=[];const pattern='**/_next/static/chunks/*.js';
       const hold=async route=>{if(!released)await new Promise(resolve=>gates.push(resolve));await route.continue();};
+      if(completed){await navigate(base+'?view=qa');await installReading();}
       await page.route(pattern,hold);
       let diagramTask;
       try{
@@ -200,12 +202,18 @@ try {
         const body='\n\n```mermaid\n'+chart+'\n```\n\n'+Array.from({length:28},(_,i)=>'阅读段'+i+'：'+ '这是异步图表下方的真实合成段落。'.repeat(8)+'\n\n').join('');
         pending.get(diagramTask).write(`data: ${JSON.stringify({choices:[{delta:{content:body},finish_reason:null}]})}\n\n`);
         await expect(workspace.locator('.rag-answer')).toContainText('阅读段27');await until(()=>gates.length,value=>value>0);await pause(350);
-        await page.evaluate(()=>{const p=[...document.querySelectorAll('.rag-answer p')].find(p=>p.textContent.startsWith('阅读段8：'));scrollTo(0,scrollY+p.getBoundingClientRect().top-170);});await gesture(-20);await pause(180);
-        const before=await page.evaluate(()=>window.pickReading('paragraph')),height=await workspace.locator('.mermaid-block').evaluate(el=>el.getBoundingClientRect().height);
+        let before;
+        const height=await workspace.locator('.mermaid-block').evaluate(el=>el.getBoundingClientRect().height);
+        if(completed){finish(diagramTask);diagramTask=null;await expect(page.getByRole('button',{name:'停止生成',exact:true})).toHaveCount(0);await pause(400);}
+        else{
+          await page.evaluate(()=>{const p=[...document.querySelectorAll('.rag-answer p')].find(p=>p.textContent.startsWith('阅读段8：'));scrollTo(0,scrollY+p.getBoundingClientRect().top-170);});await gesture(-20);await pause(180);
+          before=await page.evaluate(()=>window.pickReading('paragraph'));
+        }
         released=true;for(const release of gates)release();
         await expect(workspace.locator('svg[data-mermaid-rendered]')).toBeVisible();await pause(350);
-        const after=await measure();recordAnchor('delayed Mermaid layout',before,after);assert.ok((await workspace.locator('.mermaid-block').evaluate(el=>el.getBoundingClientRect().height))>height+200,'real asynchronous graph obtains its intrinsic height');assert.ok(Math.abs(after.top-before.top)<3,'asynchronous SVG layout keeps the same reading line in place');
-        finish(diagramTask);diagramTask=null;await expect(page.getByRole('button',{name:'停止生成',exact:true})).toHaveCount(0);
+        assert.ok((await workspace.locator('.mermaid-block').evaluate(el=>el.getBoundingClientRect().height))>height+200,'real asynchronous graph obtains its intrinsic height');
+        if(completed){const geometry=await page.evaluate(()=>({remaining:document.documentElement.scrollHeight-innerHeight-scrollY,y:scrollY,height:document.documentElement.scrollHeight,calls:window.followCalls,trace:window.followTrace,resize:window.readingDiagnostics.filter(e=>e.kind==='resize')}));(report.completedMermaid ||= []).push({label,...geometry});assert.ok(geometry.remaining<=2,'late completed diagram stays at the actual bottom: '+JSON.stringify(geometry));}
+        else{const after=await measure();recordAnchor('delayed Mermaid layout',before,after);assert.ok(Math.abs(after.top-before.top)<3,'asynchronous SVG layout keeps the same reading line in place');finish(diagramTask);diagramTask=null;await expect(page.getByRole('button',{name:'停止生成',exact:true})).toHaveCount(0);}
       }finally{released=true;for(const release of gates)release();await page.unroute(pattern,hold);if(diagramTask&&pending.has(diagramTask))finish(diagramTask);}
     });
     const imageCase=async follow=>{
@@ -233,6 +241,37 @@ try {
     };
     await run('a real delayed image above paused reading preserves its character',()=>imageCase(false));
     await run('a real delayed image above live following keeps the latest answer visible without a text delta',()=>imageCase(true));
+
+    await run('completion stays at the actual bottom through late resources; manual reading takes ownership',async()=>{
+      await expect(input).toBeEnabled();await fresh();await input.fill('合成完成后的延迟图片');await page.getByRole('button',{name:'发送问题',exact:true}).click();
+      await until(()=>streams,value=>pending.has(value));const task=streams,first=randomUUID(),second=randomUUID();
+      const images='\n\n![完成图片一](http://127.0.0.1:'+model.address().port+'/reading-image/'+first+')\n\n![完成图片二](http://127.0.0.1:'+model.address().port+'/reading-image/'+second+')\n\n';
+      const emit=text=>pending.get(task).write('data: '+JSON.stringify({choices:[{delta:{content:text},finish_reason:null}]})+'\n\n');
+      // Let native lazy loading request visible images before long output scrolls them away.
+      emit(images);await until(()=>[first,second].every(key=>imageWaiters.get(key)?.some(res=>!res.destroyed)),Boolean);
+      emit(Array.from({length:28},(_,i)=>'阅读段'+i+'：'+'完成后仍需保持阅读位置。'.repeat(12)).join('\n\n'));
+      await expect(workspace.locator('.rag-answer')).toContainText('阅读段27');await pause(350);
+      const geometry=()=>page.evaluate(()=>({remaining:document.documentElement.scrollHeight-innerHeight-scrollY,y:scrollY,height:document.documentElement.scrollHeight,calls:window.followCalls}));
+      const phases=[];const bottom=async phase=>{const value=await geometry();phases.push({phase,...value});assert.ok(value.remaining<=2,JSON.stringify({phase,...value}));};
+      await bottom('streaming');finish(task);
+      await expect(page.getByRole('button',{name:'停止生成',exact:true})).toHaveCount(0);await pause(400);await bottom('completed and saved');
+      const before=await geometry();releaseImage(first);await expect(workspace.getByAltText('完成图片一')).toHaveJSProperty('naturalHeight',600);await pause(300);await bottom('late first image');
+      assert.ok((await geometry()).height>before.height+500,'resource really changed completed answer height');
+      await page.mouse.move(mobile?200:900,450);await gesture(-80);await pause(200);
+      const reading=await page.evaluate(()=>window.pickReading('paragraph'));
+      // A trailing input notification need not cause another viewport movement.
+      await page.evaluate(()=>dispatchEvent(new WheelEvent('wheel',{deltaY:-1})));
+      releaseImage(second);await expect(workspace.getByAltText('完成图片二')).toHaveJSProperty('naturalHeight',600);await pause(300);
+      const after=await measure();recordAnchor('completed answer late second image',reading,after);assert.ok(Math.abs(after.top-reading.top)<3,'user reading wins after completion');
+      (report.completionFollowing ||= []).push({label,phases,reading,after});
+      await page.getByRole('button',{name:'日志',exact:true}).filter({visible:true}).first().click();
+      // Public module transitions finish their own scroll restoration asynchronously.
+      // Start the hidden-QA assertion after the log, rather than its old snapshot, owns the viewport.
+      await expect(workspace).toBeHidden();
+      await expect(page.locator('.workspace-view:not([hidden]) .reader-content')).toContainText('欢迎使用学习日志工作台');
+      await expect.poll(()=>page.evaluate(()=>document.documentElement.dataset.workspaceTransition||null)).toBe(null);
+      const y=await page.evaluate(()=>scrollY);await pause(250);assert.equal(await page.evaluate(()=>scrollY),y,'hidden completed QA cannot scroll the log page');
+    });
     await page.screenshot({path:path.join(root,label+'-settled.png')});
     (report.readingDiagnostics ||= []).push({label,entries:await page.evaluate(()=>window.readingDiagnostics)});
     // Same narrow diagnostic as verify-rag-task-browser: WebKit emits caught

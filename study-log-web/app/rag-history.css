@@ -274,8 +274,8 @@
   position: sticky;
   top: 0;
   z-index: 25;
-  height: calc(100svh - 64px);
-  max-height: calc(100svh - 64px);
+  height: 100svh;
+  max-height: 100svh;
   align-self: start;
   overflow: hidden;
 }

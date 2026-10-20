@@ -3,12 +3,25 @@
 import "@/app/rag-workspace.css";
 
 import { BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, Copy, FileText, LoaderCircle, MessageSquareText, RotateCcw, Send, Square } from "lucide-react";
-import { type FormEvent, type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
+import { type FormEvent, type KeyboardEvent, type ReactNode, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { MarkdownPreview } from "@/components/MarkdownPreview";
 import { WorkspaceState } from "@/components/WorkspaceState";
 import type { RagAnswerMode, RagChatMessage, RagCitation } from "@/lib/rag-types";
 import { stripRagCitationLabels } from "@/lib/rag-answer";
 import type { RagAnswerMessage } from "@/lib/rag-answer-versions";
+import { useSmoothRagAnswer } from "@/hooks/use-smooth-rag-answer";
+
+const RagAnswerBody = memo(function RagAnswerBody({ message, content, enabled, themeMode, onCitation }: {
+  message: RagAnswerMessage; content: string; enabled: boolean; themeMode: "light" | "dark";
+  onCitation: (messageId: string, citation: RagCitation, open?: boolean) => void;
+}) {
+  const sourceIds = useMemo(() => (message.citations || []).map(citation => citation.sourceId), [message.citations]);
+  const openSource = useCallback((sourceId: string) => {
+    const citation = message.citations?.find(item => item.sourceId === sourceId);
+    if (citation) onCitation(message.id, citation, true);
+  }, [message.id, message.citations, onCitation]);
+  return <MarkdownPreview content={content} active={enabled} themeMode={themeMode} citationSourceIds={sourceIds} onCitationLink={openSource} />;
+});
 
 interface RagWorkspaceProps {
   availability?: ReactNode;
@@ -32,6 +45,7 @@ interface RagWorkspaceProps {
   answerMode: RagAnswerMode;
   focusRequestToken: number;
   sessionNavigationToken: number;
+  answerStartToken: number;
   onQuestionChange: (value: string) => void;
   onAnswerModeChange: (mode: RagAnswerMode) => void;
   onSubmit: () => void;
@@ -62,6 +76,7 @@ export function RagWorkspace({
   answerMode,
   focusRequestToken,
   sessionNavigationToken,
+  answerStartToken,
   onQuestionChange,
   onAnswerModeChange,
   onSubmit,
@@ -72,9 +87,9 @@ export function RagWorkspace({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const composerRef = useRef<HTMLFormElement | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
-  const followOutputRef = useRef(true);
-  const mountedRef = useRef(false);
-  const previousMessageCountRef = useRef(messages.length);
+  const followOutputRef = useRef(false);
+  const wasAnswerStartTokenRef = useRef(answerStartToken);
+  const wasPresentingRef = useRef(generating);
   const lastNavigationToken = useRef<number | null>(null);
   const lastFocusToken = useRef(0);
   const copyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -82,6 +97,9 @@ export function RagWorkspace({
   const [composerHidden, setComposerHidden] = useState(false);
   const [expandedCitationKey, setExpandedCitationKey] = useState<string | null>(null);
   const enabled = active && visible;
+  const output = messages.at(-1);
+  const presented = useSmoothRagAnswer(output, generating, sessionNavigationToken, answerStartToken, enabled);
+  const presenting = generating || presented.pending;
 
   useEffect(() => {
     return () => {
@@ -108,9 +126,10 @@ export function RagWorkspace({
     if (question.trim() || generating) setComposerHidden(false);
   }, [generating, question]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (enabled && lastNavigationToken.current === sessionNavigationToken) return;
-    previousMessageCountRef.current = messages.length;
+    wasPresentingRef.current = presenting;
+    wasAnswerStartTokenRef.current = answerStartToken;
     followOutputRef.current = false;
     if (!enabled) return;
     lastNavigationToken.current = sessionNavigationToken;
@@ -119,38 +138,54 @@ export function RagWorkspace({
     window.scrollTo({ top: 0, behavior: "auto" });
   }, [enabled, sessionNavigationToken]);
 
-  useEffect(() => {
-    if (!enabled) return;
-    if (!mountedRef.current) {
-      mountedRef.current = true;
-      previousMessageCountRef.current = messages.length;
+  useLayoutEffect(() => {
+    if (!enabled) {
+      wasAnswerStartTokenRef.current = answerStartToken;
+      wasPresentingRef.current = presenting;
+      followOutputRef.current = false;
       return;
     }
-
-    const hasNewMessage = messages.length > previousMessageCountRef.current;
-    previousMessageCountRef.current = messages.length;
-    if (hasNewMessage) followOutputRef.current = true;
-    if (!followOutputRef.current) return;
-
-    const anchor = endRef.current;
-    if (!anchor) return;
-    anchor.style.scrollMarginBottom = `${(composerRef.current?.offsetHeight || 0) + 16}px`;
-    anchor.scrollIntoView({ block: "end" });
-  }, [enabled, messages, stage]);
+    const startedHere = wasAnswerStartTokenRef.current !== answerStartToken;
+    const wasPresenting = wasPresentingRef.current;
+    wasAnswerStartTokenRef.current = answerStartToken;
+    wasPresentingRef.current = presenting;
+    if (startedHere) followOutputRef.current = true;
+    // Only live presentation owns following; metadata cannot reclaim the reader.
+    if ((presenting || wasPresenting) && followOutputRef.current && endRef.current) {
+      const composer = composerRef.current;
+      const bottom = composer ? Math.max(0, parseFloat(getComputedStyle(composer.parentElement!).bottom) || 0) : 0;
+      endRef.current.style.scrollMarginBottom = `${(composer?.offsetHeight || 0) + bottom}px`;
+      endRef.current.scrollIntoView({ block: "end", behavior: "instant" });
+    }
+    if (!presenting) followOutputRef.current = false;
+  }, [enabled, output?.id, presented.content, output?.status, generating, presenting, answerStartToken]);
 
   useEffect(() => {
     if (!enabled) return;
     let lastScrollY = window.scrollY;
     let travel = 0;
     let direction = 0;
+    let touchY = 0;
+    const handleWheel = (event: WheelEvent) => { if (event.deltaY < 0) followOutputRef.current = false; };
+    const handleTouchStart = (event: TouchEvent) => { touchY = event.touches[0]?.clientY || 0; };
+    const handleTouchMove = (event: TouchEvent) => {
+      const next = event.touches[0]?.clientY || touchY;
+      if (next > touchY) followOutputRef.current = false;
+      touchY = next;
+    };
+    const handleKey = (event: globalThis.KeyboardEvent) => {
+      if (event.target instanceof HTMLElement && (event.target.isContentEditable || event.target.closest("input,textarea,select"))) return;
+      if (["ArrowUp", "PageUp", "Home"].includes(event.key) || event.key === " " && event.shiftKey) followOutputRef.current = false;
+    };
 
     function handleScroll() {
       const remaining = document.documentElement.scrollHeight - window.scrollY - window.innerHeight;
-      followOutputRef.current = remaining < 220;
 
       const currentScrollY = window.scrollY;
       const delta = currentScrollY - lastScrollY;
       lastScrollY = currentScrollY;
+      if (delta < -1) followOutputRef.current = false;
+      else if (presenting && delta > 0 && remaining <= 2) followOutputRef.current = true;
 
       // Focusing a sticky composer can itself scroll the page in WebKit. Do not
       // hide and blur the field while the user is trying to enter a follow-up.
@@ -174,8 +209,16 @@ export function RagWorkspace({
       travel = 0;
     }
     window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, [enabled, generating, question]);
+    window.addEventListener("wheel", handleWheel, { passive: true });
+    window.addEventListener("touchstart", handleTouchStart, { passive: true });
+    window.addEventListener("touchmove", handleTouchMove, { passive: true });
+    window.addEventListener("keydown", handleKey);
+    return () => {
+      window.removeEventListener("scroll", handleScroll); window.removeEventListener("wheel", handleWheel);
+      window.removeEventListener("touchstart", handleTouchStart); window.removeEventListener("touchmove", handleTouchMove);
+      window.removeEventListener("keydown", handleKey);
+    };
+  }, [enabled, generating, presenting, question]);
 
   function submit(event?: FormEvent) {
     event?.preventDefault();
@@ -212,7 +255,7 @@ export function RagWorkspace({
     copyResetTimerRef.current = setTimeout(() => setCopiedMessageId(null), 1600);
   }
 
-  function toggleCitation(messageId: string, citation: RagCitation, open = false) {
+  const toggleCitation = useCallback((messageId: string, citation: RagCitation, open = false) => {
     const key = `${messageId}:${citation.sourceId}`;
     setExpandedCitationKey((current) => (current === key && !open ? null : key));
     if (open) {
@@ -220,7 +263,7 @@ export function RagWorkspace({
         document.getElementById(`rag-source-${key}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
       });
     }
-  }
+  }, []);
 
   return (<>
     {enabled && <div className="reader-toolbar-container"><div className="reader-toolbar reader-toolbar-qa">
@@ -257,16 +300,8 @@ export function RagWorkspace({
                   <>
                     {message.content ? (
                       <div className="rag-answer">
-                        <MarkdownPreview
-                          content={message.content}
-                          active={enabled}
-                          themeMode={themeMode}
-                          citationSourceIds={(message.citations || []).map((citation) => citation.sourceId)}
-                          onCitationLink={(sourceId) => {
-                            const citation = message.citations?.find((item) => item.sourceId === sourceId);
-                            if (citation) toggleCitation(message.id, citation, true);
-                          }}
-                        />
+                        <RagAnswerBody message={message} content={index === messages.length - 1 ? presented.content : message.content}
+                          enabled={enabled} themeMode={themeMode} onCitation={toggleCitation} />
                       </div>
                     ) : message.status === "streaming" ? (
                       <div className="rag-answer-pending" role="status">
@@ -372,6 +407,7 @@ export function RagWorkspace({
         <div className="rag-scroll-anchor" ref={endRef} />
       </div>
 
+      <div className={`rag-composer-slot${composerHidden ? " is-hidden" : ""}`}>
       <form className={`rag-composer${composerHidden ? " is-hidden" : ""}`} onSubmit={submit} ref={composerRef}>
         {availability}
         <textarea
@@ -413,6 +449,7 @@ export function RagWorkspace({
           </button>
         )}
       </form>
+      </div>
     </div>
   </>);
 }

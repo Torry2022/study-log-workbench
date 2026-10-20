@@ -1,10 +1,36 @@
 import { ApiRequestError, requestJson } from "./client-http.ts";
 import { ragTaskActive, type RagTask, type RagTaskSubmission, type RagTaskSummary } from "./rag-task-types.ts";
 import type { RagChatMessage, RagSession } from "./rag-types.ts";
+import { withBasePath } from "./base-path.ts";
 
 export type PendingRagTask = Omit<RagTaskSubmission, "history"> & { createdAt: string; cancelRequested?: boolean };
 type Storage = Pick<globalThis.Storage, "getItem" | "setItem" | "removeItem">;
 type Request = <T>(url: string, init?: RequestInit) => Promise<T>;
+type TaskEvents = (url: string, init: RequestInit & { signal: AbortSignal }, emit: (task: unknown) => Promise<void>) => Promise<void>;
+export const requestRagTaskEvents: TaskEvents = async (url, init, emit) => {
+  const response = await fetch(withBasePath(url), init);
+  if (!response.ok || !response.body || !response.headers.get("content-type")?.includes("text/event-stream")) throw new Error("任务事件连接不可用");
+  const reader = response.body.getReader(), decoder = new TextDecoder("utf-8", { fatal: true });
+  let buffer = "";
+  const abort = () => { void reader.cancel().catch(() => {}); };
+  init.signal.addEventListener("abort", abort, { once: true });
+  try {
+    while (!init.signal.aborted) {
+      const part = await reader.read(); init.signal.throwIfAborted();
+      if (part.done) break;
+      buffer += decoder.decode(part.value, { stream: true });
+      let boundary: RegExpExecArray | null;
+      while ((boundary = /\r?\n\r?\n/.exec(buffer))) {
+        const lines = buffer.slice(0, boundary.index).split(/\r?\n/); buffer = buffer.slice(boundary.index + boundary[0].length);
+        const event = lines.find(line => line.startsWith("event:"))?.slice(6).trim();
+        const data = lines.filter(line => line.startsWith("data:")).map(line => line.slice(5).trimStart()).join("\n");
+        if (event === "error") throw new Error("任务事件连接中断");
+        if (event === "snapshot" && data) await emit(JSON.parse(data).task);
+      }
+      if (buffer.length > 1024 * 1024) throw new Error("任务事件超过大小限制");
+    }
+  } finally { init.signal.removeEventListener("abort", abort); await reader.cancel().catch(() => {}); reader.releaseLock(); }
+};
 const uuid = (value: unknown) => typeof value === "string" && /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(value);
 const states = ["queued", "running", "succeeded", "failed", "cancelled", "interrupted"];
 const saves = ["pending", "saved", "conflict", "error", "deleted"];
@@ -61,12 +87,30 @@ export class RagTaskClient {
   readonly instanceId: string;
   private storage: Storage;
   private callbacks: Callbacks;
-  constructor(instanceId: string, storage: Storage, callbacks: Callbacks, request: Request = requestJson) {
+  private viewedSession = "";
+  private stream: { id: string; controller: AbortController } | null = null;
+  private readonly events: TaskEvents;
+  constructor(instanceId: string, storage: Storage, callbacks: Callbacks, request: Request = requestJson, events: TaskEvents = requestRagTaskEvents) {
     if (!uuid(instanceId)) throw new Error("服务器实例身份无效");
     this.instanceId = instanceId; this.storage = storage; this.callbacks = callbacks;
     this.key = `study-log:rag-pending:v1:${instanceId}`;
+    this.events = events;
     this.request = (url, init) => request(url, { ...init, signal: this.controller.signal,
       headers: { ...init?.headers, "X-Study-Log-Instance": instanceId } });
+  }
+  viewSession(id: string) { this.viewedSession = id; this.syncStream(); }
+  private syncStream() {
+    const latest = newestRagTask(this.tasks.values(), this.viewedSession);
+    const task = latest && (ragTaskActive(latest) || latest.state === "succeeded" && latest.saveState === "pending") ? latest : undefined;
+    if (this.stream?.id === task?.id) return;
+    this.stream?.controller.abort(); this.stream = null;
+    if (!task || this.stopped) return;
+    const connection = { id: task.id, controller: new AbortController() }; this.stream = connection;
+    void this.events(`/api/rag/tasks/${task.id}/events?after=${task.revision}`, {
+      signal: connection.controller.signal, headers: { "X-Study-Log-Instance": this.instanceId }
+    }, async value => { if (this.stream === connection && !connection.controller.signal.aborted) await this.accept(value, task); })
+      .catch(() => { /* Polling reconciles and reconnects the same task; never resubmit a generation. */ })
+      .finally(() => { if (this.stream === connection) this.stream = null; });
   }
   private pending(): PendingRagTask[] {
     const raw = this.storage.getItem(this.key);
@@ -95,6 +139,7 @@ export class RagTaskClient {
     const old = this.tasks.get(value.id);
     if (old && old.revision >= value.revision) return;
     this.tasks.set(value.id, value);
+    this.syncStream();
     await this.callbacks.task(value);
   }
   private send(input: PendingRagTask): Promise<void> {
@@ -124,7 +169,7 @@ export class RagTaskClient {
   track(task: RagTask) {
     // A new viewing connection must still reconcile tasks known by the retained workspace,
     // even when the server has since moved them into saved history.
-    if (validRagTask(task)) this.tasks.set(task.id, task);
+    if (validRagTask(task)) { this.tasks.set(task.id, task); this.syncStream(); }
   }
   async refresh() {
     if (this.stopped) return;
@@ -173,7 +218,7 @@ export class RagTaskClient {
         }
         if (!this.stopped && !this.pending().length) this.callbacks.error("");
       } catch (error) { if (!this.stopped) this.callbacks.error(error instanceof Error ? error.message : "任务状态读取失败，请重试"); }
-    })().finally(() => { this.refreshing = null; });
+    })().finally(() => { this.refreshing = null; this.syncStream(); });
     return this.refreshing;
   }
   start() {
@@ -200,6 +245,7 @@ export class RagTaskClient {
     if (this.stopped || this.removed.has(id)) return;
     const old = this.tasks.get(id);
     if (!old || old.revision < result.task.revision) this.tasks.set(id, result.task);
+    this.syncStream();
     await this.callbacks.task(this.tasks.get(id)!);
   }
   async readSession(sessionId: string) {
@@ -214,5 +260,5 @@ export class RagTaskClient {
     }
   }
   async remove(id: string) { const result = await this.request<{ removed: boolean }>(`/api/rag/tasks/${id}`, { method: "DELETE" }); if (result.removed !== true) throw new Error("放弃结果尚未确认，请保留回答并重试"); this.removed.add(id); this.tasks.delete(id); }
-  stop() { this.stopped = true; clearTimeout(this.timer); this.controller.abort(); }
+  stop() { this.stopped = true; clearTimeout(this.timer); this.controller.abort(); this.stream?.controller.abort(); this.stream = null; }
 }

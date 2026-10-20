@@ -67,6 +67,7 @@ export function useRag(options: Options) {
   const [taskConnectionError, setTaskConnectionError] = useState("");
   const [focusToken, setFocusToken] = useState(0);
   const [navigationToken, setNavigationToken] = useState(0);
+  const [answerStartToken, setAnswerStartToken] = useState(0);
   const pendingMutations = useRef(new Map<string, { method: string; body: { mutationId: string; baseVersion: string; title?: string } }>());
   const loadRequest = useRef<AbortController | null>(null);
   const titleJobs = useRef(new Map<string, Promise<{ before: string; after: RagSession } | null>>());
@@ -112,7 +113,7 @@ export function useRag(options: Options) {
     if (taskScope.current && taskScope.current !== taskCapability.instanceId) {
       for (const item of states.current.values()) item.request?.abort();
       states.current = new Map([["", sessionState("")]]); selectedId.current = ""; loadedRoute.current = null;
-      titleJobs.current.clear(); submittedTasks.current.clear(); taskSnapshots.current.clear(); answerViews.current.clear(); deletedSessions.current.clear(); setSessions([]); live.current.onRoute(""); notify();
+      titleJobs.current.clear(); submittedTasks.current.clear(); taskSnapshots.current.clear(); answerViews.current.clear(); deletedSessions.current.clear(); setSessions([]); setNavigationToken(token => token + 1); live.current.onRoute(""); notify();
     }
     taskScope.current = taskCapability.instanceId;
     if (!taskCapability.supported) { setTaskConnectionError(""); return; }
@@ -202,10 +203,12 @@ export function useRag(options: Options) {
       });
       for (const task of taskSnapshots.current.values()) client.track(task);
       taskClient.current = client; client.start();
+      client.viewSession(live.current.visible ? selectedId.current : "");
       if (selectedId.current) void client.readSession(selectedId.current).catch(failure => { if (current()) setTaskConnectionError(failure.message); });
     } catch (failure) { setTaskConnectionError(failure instanceof Error ? failure.message : "任务恢复不可用"); }
     return () => { client?.stop(); if (taskClient.current === client) taskClient.current = null; };
   }, [options.active, taskCapability?.instanceId, taskCapability?.supported, taskCapability?.ready, install, notify, refreshList]);
+  useEffect(() => { taskClient.current?.viewSession(options.active && options.visible ? state.id : ""); }, [options.active, options.visible, state.id]);
   useEffect(() => {
     if (!options.active || !options.visible) return;
     setNavigationError("");
@@ -385,11 +388,12 @@ export function useRag(options: Options) {
         ...(retryingTask ? { retryTaskId: state.task!.id } : {}),
         ...(regenerate && (!retryingTask || state.task?.replaceLast) ? { replaceLast: true } : {}) };
       state.question = ""; state.error = "";
-      try { await taskClient.current.submit(input); }
+      try { setAnswerStartToken(value => value + 1); await taskClient.current.submit(input); }
       catch (failure) { if (owned(state)) { state.question = text; state.error = failure instanceof Error ? failure.message : "无法保存提交身份，尚未发起问答"; notify(); } }
       return;
     }
     const controller = new AbortController();
+    setAnswerStartToken(value => value + 1);
     state.request = controller; state.generating = true; state.error = ""; state.stage = "正在准备问答…"; state.question = ""; state.unsaved = true;
     let next: RagChatMessage[] = [...history, { id: clientUuid(), role: "user", content: text, status: "complete" }, { id: clientUuid(), role: "assistant", content: "", status: "streaming", citations: [] }];
     state.messages = next; notify();
@@ -493,7 +497,7 @@ export function useRag(options: Options) {
   const otherActive = [...taskSnapshots.current.values()].some(task => task.sessionId === state.id && ragTaskActive(task) && task.id !== state.task?.id);
   const historicalTask = Boolean(state.task && state.task.id !== latestTask?.id);
   return { sessions: displayedSessions, activeSessionId: selectedId.current, sessionActivity, session, messages: displayMessages, question, setQuestion,
-    answerMode, setAnswerMode, query, setQuery, loading, historyError: historyError || taskConnectionError, retryHistory: () => { setHistoryRevision(value => value + 1); void taskClient.current?.refresh(); }, initializing, generating, saving, stage, error: navigationError || error, saveError, serverTask: Boolean(state.task), submissionBlocked: state.awaitingSession || historicalTask || otherActive || projection.historical, canRetrySave: state.task?.saveState !== "conflict", configured, configurationError, focusToken, navigationToken, dirty,
+    answerMode, setAnswerMode, query, setQuery, loading, historyError: historyError || taskConnectionError, retryHistory: () => { setHistoryRevision(value => value + 1); void taskClient.current?.refresh(); }, initializing, generating, saving, stage, error: navigationError || error, saveError, serverTask: Boolean(state.task), submissionBlocked: state.awaitingSession || historicalTask || otherActive || projection.historical, canRetrySave: state.task?.saveState !== "conflict", configured, configurationError, focusToken, navigationToken, answerStartToken, dirty,
     viewingPreviousAnswer: projection.historical, selectAnswerVersion, saveAnswer, discardAnswer,
     beforeLeave, confirmExit, refreshConfiguration, refreshList, reloadSession, submit: () => submit(), regenerate: (answerId?: string) => { if (answerId) { const answer = answerProjection(states.current.get(selectedId.current)!).messages.find(message => message.id === answerId); if (!answer?.canRegenerate && !answer?.canRetry) return; } return submit(true); }, stop: () => {
       const owner = states.current.get(selectedId.current)!;

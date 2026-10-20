@@ -24,7 +24,7 @@ Web测试631项通过、3项既有跳过；MCP60/1；运维51/1；desktop及Elec
 
 | 文件 | SHA-256 |
 | --- | --- |
-| study-log-desktop-0.1.4-x64-setup.exe | `930091fe219136a9f37d6dbbd2d3b5ce740e318f7107813aabee261b6456f22a` |
+| study-log-desktop-0.1.4-x64-setup.exe | `2e7d0537bcb9883524ad14566e0b42b3ad09ba86eb6def5cd8904f0466a281fa` |
 | study-log-server-0.1.4.zip | `2fa9f774cdba4c8f5c6be43cc6bf256a6dff8fe04e037f473bd4a819a978e7a4` |
 | study-log-harmony-0.1.4-unsigned.hap | `f9d6e47f1da6edca1d2933e34ecaa3488e7e15ebedd33dd2036438ed9bcd5fc2` |
 
@@ -32,12 +32,12 @@ Windows安装包尚未签名；鸿蒙附件需要使用者自行签名。服务�
 
 ## 同版本更新附件
 
-本次保持0.1.4版本号，Web与Windows产物源码为830c4b4。加入生成期阅读字符锚点，并使用Mermaid已有配置清理错误图表的外部临时节点；日志与问答仍在组件内回退为源码。原滚动归属、700ms首段与400ms展示尾段门槛未改。
+本次保持0.1.4版本号，Web与Windows产物源码为b58ca7c，版本标签另含发布记录更新。回答结束后仍能跟随迟到的图片和图表布局；用户上翻阅读后保留阅读位置。Mermaid在固定、不可见的容器中测量，完成、失败和卸载均清理临时节点，避免测量影响页面高度；错误图表仍在组件内回退为源码。原700ms首段、400ms展示尾段及阅读位置门槛未改。
 
-Windows构建ID为8e_Ssl6afbF0xurTWIC_v；Web镜像构建ID为togUQ8nSrUBm7_pVlI3FF，digest为sha256:6c552da412ec91b3ca2ed1bba5a9e672e1db18f3ae66f7393a268697024af251。MCP、tools、服务器ZIP和未签名HAP没有源码变化，复用首次发布的已验产物。
+Windows构建ID为UhUSAhrE9Gc1Np9BU3y_h；Web镜像构建ID为2LwLz2IgekPZlvG6SUbxJ，digest为sha256:c4990cbe02445ebdd132eabab775824db7934b663f69d1ea9d89751aab511d4c。MCP、tools、服务器ZIP和未签名HAP没有源码变化，复用首次发布的已验产物。
 
-统筹分别在精确Windows包内构建与精确Web容器运行12项非法图表／同一任务续写合法图表／日志预览检查和原28项阅读检查，共80项通过；安装器5259个文件流式哈希全部匹配。开发方另通过真实EXE基础6项、Web631项／3项既有跳过、图表隔离16组及阅读28／跟底44／缓冲30项。桌面启动器、随包Node及运维文件逐字节不变，继承上轮任务9项与侧栏4组／48样本。本次未重新安装日常Windows程序或操作设备，不能把包内验证记为新增安装验收。
+统筹在精确Windows包内构建运行阅读36项与图表40项，在精确Web容器运行阅读36项和独立完成／API21项，共133项通过；1115份源码、2758份包内Web文件、5259份Windows文件及440份镜像投影文件的身份均已独立核对。安装器5259个文件流式哈希全部匹配。开发方另通过真实EXE基础6项、Web631项／3项既有跳过、类型检查、生产构建、阅读36／图表40／图表隔离16／跟随44／平滑输出30项。桌面启动器、随包Node及全部打包运维文件十项逐字节不变，Web以外仅包清单中的构建标识变化。本次未重新安装日常Windows程序或操作设备，不能把包内验证记为新增安装验收。
 
-校验文件SHA-256为1826ed216ef7026f7d9874919e862ead645d93557f22f2412263cad615dfeff5。旧下载需重新获取；服务器重新拉取同名Web镜像并重建容器。
+校验文件SHA-256为73a2f72ee15c06334da5a3a43e6f1787b75c8ea9f787ef5f29a6485f4e1383e6。旧下载需重新获取；服务器重新拉取同名Web镜像并重建容器。
 
 通用版验证使用合成资料，未写真实日志、未调用付费模型。构建、文件及镜像身份与完整验收证据保存在本机发布交接目录，公开发布入口为[v0.1.4](https://github.com/Torry2022/study-log-workbench-public/releases/tag/v0.1.4)。

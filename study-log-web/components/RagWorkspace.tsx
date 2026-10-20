@@ -10,6 +10,7 @@ import type { RagAnswerMode, RagChatMessage, RagCitation } from "@/lib/rag-types
 import { stripRagCitationLabels } from "@/lib/rag-answer";
 import type { RagAnswerMessage } from "@/lib/rag-answer-versions";
 import { useSmoothRagAnswer } from "@/hooks/use-smooth-rag-answer";
+import { captureRagReadingAnchor, ragDocumentWillScroll, restoreRagReadingAnchor, type RagReadingAnchor } from "@/lib/rag-reading-anchor";
 
 const RagAnswerBody = memo(function RagAnswerBody({ message, content, enabled, themeMode, onCitation }: {
   message: RagAnswerMessage; content: string; enabled: boolean; themeMode: "light" | "dark";
@@ -88,6 +89,9 @@ export function RagWorkspace({
   const composerRef = useRef<HTMLFormElement | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
   const followOutputRef = useRef(false);
+  const workspaceRef = useRef<HTMLDivElement | null>(null);
+  const readingAnchorRef = useRef<RagReadingAnchor | null>(null);
+  const scrollYRef = useRef(0);
   const wasAnswerStartTokenRef = useRef(answerStartToken);
   const wasPresentingRef = useRef(generating);
   const lastNavigationToken = useRef<number | null>(null);
@@ -100,6 +104,7 @@ export function RagWorkspace({
   const output = messages.at(-1);
   const presented = useSmoothRagAnswer(output, generating, sessionNavigationToken, answerStartToken, enabled);
   const presenting = generating || presented.pending;
+  const hasMessages = messages.length > 0;
 
   useEffect(() => {
     return () => {
@@ -136,7 +141,19 @@ export function RagWorkspace({
     setComposerHidden(false);
     setExpandedCitationKey(null);
     window.scrollTo({ top: 0, behavior: "auto" });
+    scrollYRef.current = window.scrollY;
   }, [enabled, sessionNavigationToken]);
+
+  useLayoutEffect(() => { readingAnchorRef.current = null; }, [enabled, sessionNavigationToken, answerStartToken, output?.id]);
+
+  const followLatest = useCallback(() => {
+    if (!enabled || !endRef.current) return;
+    const composer = composerRef.current;
+    const bottom = composer ? Math.max(0, parseFloat(getComputedStyle(composer.parentElement!).bottom) || 0) : 0;
+    endRef.current.style.scrollMarginBottom = `${(composer?.offsetHeight || 0) + bottom}px`;
+    endRef.current.scrollIntoView({ block: "end", behavior: "instant" });
+    scrollYRef.current = window.scrollY;
+  }, [enabled]);
 
   useLayoutEffect(() => {
     if (!enabled) {
@@ -152,40 +169,70 @@ export function RagWorkspace({
     if (startedHere) followOutputRef.current = true;
     // Only live presentation owns following; metadata cannot reclaim the reader.
     if ((presenting || wasPresenting) && followOutputRef.current && endRef.current) {
-      const composer = composerRef.current;
-      const bottom = composer ? Math.max(0, parseFloat(getComputedStyle(composer.parentElement!).bottom) || 0) : 0;
-      endRef.current.style.scrollMarginBottom = `${(composer?.offsetHeight || 0) + bottom}px`;
-      endRef.current.scrollIntoView({ block: "end", behavior: "instant" });
+      followLatest();
     }
     if (!presenting) followOutputRef.current = false;
-  }, [enabled, output?.id, presented.content, output?.status, generating, presenting, answerStartToken]);
+  }, [enabled, output?.id, presented.content, output?.status, generating, presenting, answerStartToken, followLatest]);
+
+  const restoreReading = useCallback(() => {
+    const root = workspaceRef.current, anchor = readingAnchorRef.current;
+    if (!enabled || !root || !anchor || followOutputRef.current) return;
+    const before = window.scrollY, anchoredY = anchor.y;
+    if (!restoreRagReadingAnchor(root, anchor)) readingAnchorRef.current = null;
+    // Layout corrections are not user input and cannot resume following or hide the composer.
+    else if (before !== window.scrollY || anchoredY !== before) scrollYRef.current = window.scrollY;
+  }, [enabled]);
+  useLayoutEffect(() => { restoreReading(); });
+  useEffect(() => {
+    const root = workspaceRef.current;
+    if (!enabled || !root) return;
+    const observer = new ResizeObserver(() => {
+      if (followOutputRef.current && wasPresentingRef.current) followLatest();
+      else restoreReading();
+    });
+    observer.observe(root);
+    const content = root.querySelector(".rag-message-list");
+    if (content) observer.observe(content);
+    return () => observer.disconnect();
+  }, [enabled, sessionNavigationToken, hasMessages, restoreReading, followLatest]);
 
   useEffect(() => {
     if (!enabled) return;
-    let lastScrollY = window.scrollY;
+    scrollYRef.current = window.scrollY;
     let travel = 0;
     let direction = 0;
     let touchY = 0;
-    const handleWheel = (event: WheelEvent) => { if (event.deltaY < 0) followOutputRef.current = false; };
+    const startManualScroll = (target: EventTarget | null, delta: number) => {
+      if (!ragDocumentWillScroll(target, delta)) return;
+      readingAnchorRef.current = null;
+      if (delta < 0) followOutputRef.current = false;
+    };
+    const handleWheel = (event: WheelEvent) => { startManualScroll(event.target, event.deltaY); };
     const handleTouchStart = (event: TouchEvent) => { touchY = event.touches[0]?.clientY || 0; };
     const handleTouchMove = (event: TouchEvent) => {
       const next = event.touches[0]?.clientY || touchY;
-      if (next > touchY) followOutputRef.current = false;
+      startManualScroll(event.target, touchY - next);
       touchY = next;
     };
     const handleKey = (event: globalThis.KeyboardEvent) => {
-      if (event.target instanceof HTMLElement && (event.target.isContentEditable || event.target.closest("input,textarea,select"))) return;
-      if (["ArrowUp", "PageUp", "Home"].includes(event.key) || event.key === " " && event.shiftKey) followOutputRef.current = false;
+      if (event.defaultPrevented || event.target instanceof HTMLElement && (event.target.isContentEditable || event.target.closest("input,textarea,select"))) return;
+      if (event.key === " " && event.target instanceof Element && event.target.closest("button,a")) return;
+      if (["ArrowUp", "PageUp", "Home"].includes(event.key) || event.key === " " && event.shiftKey) startManualScroll(event.target, -1);
+      else if (["ArrowDown", "PageDown", "End", " "].includes(event.key)) startManualScroll(event.target, 1);
     };
 
     function handleScroll() {
       const remaining = document.documentElement.scrollHeight - window.scrollY - window.innerHeight;
 
       const currentScrollY = window.scrollY;
-      const delta = currentScrollY - lastScrollY;
-      lastScrollY = currentScrollY;
+      const delta = currentScrollY - scrollYRef.current;
+      scrollYRef.current = currentScrollY;
       if (delta < -1) followOutputRef.current = false;
       else if (presenting && delta > 0 && remaining <= 2) followOutputRef.current = true;
+      if (followOutputRef.current) readingAnchorRef.current = null;
+      else if (Math.abs(delta) >= 1 && (presenting || readingAnchorRef.current) && workspaceRef.current) {
+        readingAnchorRef.current = captureRagReadingAnchor(workspaceRef.current);
+      }
 
       // Focusing a sticky composer can itself scroll the page in WebKit. Do not
       // hide and blur the field while the user is trying to enter a follow-up.
@@ -270,7 +317,7 @@ export function RagWorkspace({
       <div className="module-title-block"><div className="reader-heading-row"><h2>知识问答</h2></div></div>
       <div className="reader-controls">{onOpenLog && <button className="button secondary" type="button" onClick={onOpenLog}><FileText size={15} />日志</button>}</div>
     </div></div>}
-    <div className={`rag-workspace${messages.length > 0 ? " has-messages" : ""}`} hidden={!enabled}>
+    <div ref={workspaceRef} className={`rag-workspace${messages.length > 0 ? " has-messages" : ""}`} hidden={!enabled}>
       <div className="rag-conversation" aria-live="polite">
         {feedback}
         {initializing && messages.length === 0 ? (

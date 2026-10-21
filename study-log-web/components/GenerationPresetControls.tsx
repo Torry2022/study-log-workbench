@@ -104,7 +104,10 @@ function GenerationPresetManager({ presets, onClose }: { presets: GenerationPres
   return createPortal(<>
     <div ref={backdropRef} className="generation-presets-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) close(); }}>
       <section className="generation-presets-dialog" role="dialog" aria-modal="true" aria-labelledby="generation-presets-title">
-        <header><h2 id="generation-presets-title">生成方案</h2><button type="button" className="mini-button" aria-label="关闭生成方案" disabled={busy} onClick={close}><X size={18} /></button></header>
+        <header className="generation-presets-header">
+          <div><span className="generation-presets-icon" aria-hidden="true"><Settings2 size={20} /></span><div><h2 id="generation-presets-title">生成方案</h2><p>管理写作提示词与默认方案</p></div></div>
+          <button type="button" aria-label="关闭生成方案" disabled={busy} onClick={close}><X size={18} /></button>
+        </header>
         <div className="generation-presets-body">
           <aside aria-label="生成方案列表">
             <button type="button" className="button secondary" disabled={busy} onClick={() => create()}><Plus size={15} />新增方案</button>

@@ -2,16 +2,21 @@
 .generation-preset-picker-row { display: flex; gap: 8px; min-width: 0; }
 .generation-preset-picker-row select { flex: 1; min-width: 0; height: 36px; padding: 0 8px; border-radius: var(--radius-md); border: 1px solid var(--hairline); color: var(--body); background: var(--surface-soft); font: inherit; }
 .generation-preset-error { margin: 0; color: var(--error); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
-.generation-presets-backdrop { position: fixed; inset: 0; z-index: 110; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(17, 16, 15, .42); animation: generation-presets-in 160ms ease; }
+.generation-presets-backdrop { position: fixed; inset: 0; z-index: 110; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(17, 16, 15, .46); animation: generation-presets-in 160ms ease; }
 .generation-presets-dialog { width: min(900px, 100%); max-height: calc(100dvh - 48px); display: flex; flex-direction: column; overflow: hidden; color: var(--body); background: var(--canvas); border: 1px solid var(--hairline); border-radius: var(--radius-lg); box-shadow: var(--popover-shadow); }
-.generation-presets-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 24px; border-bottom: 1px solid var(--hairline); }
-.generation-presets-dialog h2 { margin: 0; color: var(--ink); font-family: Cormorant Garamond, Georgia, "Times New Roman", serif; font-size: 28px; font-weight: 500; line-height: 1.15; }
+.generation-presets-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 20px; border-bottom: 1px solid var(--hairline); }
+.generation-presets-header > div { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.generation-presets-icon { width: 38px; height: 38px; display: grid; place-items: center; flex: 0 0 auto; border: 1px solid var(--hairline); border-radius: var(--radius-sm); background: var(--surface-soft); color: var(--primary); }
+.generation-presets-header h2 { margin: 0; color: var(--ink); font-family: Cormorant Garamond, Georgia, "Times New Roman", serif; font-size: 30px; font-weight: 500; line-height: 1; }
+.generation-presets-header p { margin: 3px 0 0; color: var(--muted); font-size: 12px; }
+.generation-presets-header > button { width: 36px; height: 36px; display: inline-grid; place-items: center; flex: 0 0 auto; padding: 0; border: 1px solid var(--hairline); border-radius: var(--radius-sm); background: var(--surface-soft); color: var(--muted); }
+.generation-presets-header > button:hover { color: var(--ink); }
 .generation-presets-body { display: grid; grid-template-columns: 208px minmax(0, 1fr); min-height: 0; overflow: auto; scrollbar-gutter: stable; }
 .generation-presets-body aside { display: flex; flex-direction: column; gap: 8px; padding: 16px; background: var(--surface-soft); border-right: 1px solid var(--hairline); }
 .generation-preset-item { display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 12px; border: 1px solid transparent; border-radius: var(--radius-md); background: transparent; color: var(--body); overflow-wrap: anywhere; }
 .generation-preset-item.active { background: var(--surface-card); border-color: var(--hairline); }
 .generation-preset-item small, .generation-presets-hint { color: var(--muted); font-size: 13px; line-height: 1.5; }
-.generation-presets-editor { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 24px; }
+.generation-presets-editor { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 20px; }
 .generation-presets-editor label { font-size: 14px; }
 .generation-presets-editor input, .generation-presets-editor textarea { width: 100%; border: 1px solid var(--hairline); border-radius: var(--radius-md); padding: 10px 12px; color: var(--body); background: var(--canvas); font: inherit; }
 .generation-presets-editor textarea { min-height: 240px; resize: vertical; font-family: "JetBrains Mono", Consolas, monospace; font-size: 13px; line-height: 1.65; }
@@ -27,7 +32,7 @@
 @media (max-width: 640px) {
   .generation-presets-backdrop { top: var(--mobile-viewport-top, 0px); bottom: var(--mobile-viewport-bottom, 0px); padding: max(12px, var(--safe-area-top)) max(12px, var(--safe-area-right)) max(12px, var(--safe-area-bottom)) max(12px, var(--safe-area-left)); }
   .generation-presets-dialog { max-height: calc(var(--mobile-viewport-height, 100dvh) - max(12px, var(--safe-area-top)) - max(12px, var(--safe-area-bottom))); }
-  .generation-presets-dialog header { padding: 16px; }
+  .generation-presets-header { padding: 16px; }
   .generation-presets-body { grid-template-columns: minmax(0, 1fr); }
   .generation-presets-body aside { max-height: 180px; overflow: auto; scrollbar-gutter: stable; border-right: 0; border-bottom: 1px solid var(--hairline); }
   .generation-presets-editor { padding: 16px; }

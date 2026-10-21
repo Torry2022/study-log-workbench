@@ -603,7 +603,7 @@ test('removed finish cannot authorize an answer or another model step alongside 
     assert.equal(run.contexts.length,run.calls);
     assert.ok([...run.requests].every(request => {
       const [name, args] = JSON.parse(request);
-      return name === 'retrieve_contexts' && args.input === 'Alpha';
+      return name === 'retrieve_contexts' && Array.isArray(args) && args[0] === 'Alpha';
     }));
   }
 });

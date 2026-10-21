@@ -492,6 +492,8 @@ export struct MarkdownReader {
         .offset({ x: this.stableViewport ? this.surfaceInset : 0 })
         .opacity(this.webContentReady ? 1 : 0)
         .backgroundColor($r('app.color.canvas'))
+        .darkMode((this.themePreference === 'dark' ||
+          (this.themePreference === 'system' && this.systemTheme === 'dark')) ? WebDarkMode.On : WebDarkMode.Off)
         .nestedScroll({ scrollForward: NestedScrollMode.SELF_FIRST, scrollBackward: NestedScrollMode.SELF_FIRST })
         .onDrop(this.onImageDrop)
         .javaScriptAccess(true)

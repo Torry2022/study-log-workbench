@@ -1,10 +1,11 @@
+import { AppModalFrame } from '../../common/ui/AppModalFrame';
 import { ContentRefresh } from '../../common/ui/ContentRefresh';
 import { appFeedback, FeedbackTone } from '../../common/ui/AppFeedback';
 import { MODULE_HEADER_LEFT_INSET } from '../../common/ui/WorkspaceChrome';
 import { iconTint } from '../../common/ui/IconTint';
 import { BackToTopControl } from '../../common/ui/BackToTopControl';
 import { EmptyState, InlineStatus, LoadFailure } from '../../common/ui/FeedbackStates';
-import { ModulePageTitle, ModuleLogButton } from '../../common/ui/WorkspaceChrome';
+import { ModulePageTitle, ModuleLogButton, SearchPageHeader } from '../../common/ui/WorkspaceChrome';
 import { SearchField } from '../../common/ui/FormControls';
 import { common } from '@kit.AbilityKit';
 import { saveExport } from '../../common/files/DocumentExport';
@@ -16,7 +17,7 @@ import { NoteRecordedAt } from './components/NoteRecordedAt';
 import { NoteMarkdownText } from './components/NoteMarkdownText';
 import { ToolbarAction } from '../../common/ui/ToolbarAction';
 import { toolbarActionsWidth } from '../../common/ui/ToolbarLayout';
-import { secondaryPageTransition, ResultChangeGate } from '../../common/ui/WorkspaceMotion';
+import { floatingSurfaceTransition, ResultChangeGate } from '../../common/ui/WorkspaceMotion';
 import { ResultSurfaceController, ResultSurfaceCover } from '../../common/ui/ResultSurface';
 import { ContentLoadingState } from '../../common/ui/ContentLoadingState';
 import { LoadingHintAnchor, LoadingHintPlacement } from '../../common/ui/LoadingHintAnchor';
@@ -52,6 +53,7 @@ export struct NotesPage {
   onScrollStateChange: (scrolled: boolean) => void = () => {};
   onOpenLog: () => void = () => {};
   onEditorBusyChange: (busy: boolean) => void = () => {};
+  private extractorBack: () => void = () => {};
   onDirtyChange: (dirty: boolean) => void = () => {};
   onInternalLink: (date: string, heading: string) => void = () => {};
   @State private visibleNotes: StudyNote[] = [];
@@ -232,8 +234,14 @@ export struct NotesPage {
 
   private editorValue(): string { return this.noteEditor.value(); }
 
+  private requestSecondaryBack(): void {
+    if (this.noteEditor.editing) this.closeEditor();
+    else if (this.extracting) this.extractorBack();
+  }
+
   private closeEditor(): void {
-    if (this.data.saving) return;
+    if (this.data.saving || this.imageUploading) return;
+    this.getUIContext().getFocusController().clearFocus();
     if (this.editorValue() === this.noteEditor.baseline) {
       this.noteEditor.editing = false;
       this.reportDirty();
@@ -275,7 +283,13 @@ export struct NotesPage {
   @Builder
   private editor() {
     Column() {
+      if (this.workspaceBreakpoint === WorkspaceBreakpoint.COMPACT) {
+        SearchPageHeader({ title: this.noteEditor.editingId ? '编辑随记' : '新建随记',
+          backLabel: '返回随记', backId: 'note_editor_back',
+          backAvailable: !this.data.saving && !this.imageUploading, onBack: () => this.closeEditor() })
+      }
       Column({ space: 8 }) {
+      if (this.workspaceBreakpoint !== WorkspaceBreakpoint.COMPACT) {
       Row({ space: 12 }) {
         ToolbarAction({ label: '返回随记', useSymbol: true, symbol: $r('sys.symbol.chevron_backward'),
           showLabel: false, available: !this.data.saving && !this.imageUploading, onAction: () => this.closeEditor() }).id('note_editor_back')
@@ -283,12 +297,11 @@ export struct NotesPage {
           Text(this.noteEditor.editingId ? '编辑随记' : '新建随记')
             .fontSize(16).fontWeight(FontWeight.Medium).fontColor($r('app.color.ink'))
         }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-        if (this.workspaceBreakpoint !== WorkspaceBreakpoint.COMPACT) {
-          NoteRecordedAt({ value: this.noteEditor.recordedAt, editable: !this.data.saving && !this.imageUploading,
-            onChange: (value: string) => { this.noteEditor.recordedAt = value; this.reportDirty(); } })
-        }
+        NoteRecordedAt({ value: this.noteEditor.recordedAt, editable: !this.data.saving && !this.imageUploading,
+          onChange: (value: string) => { this.noteEditor.recordedAt = value; this.reportDirty(); } })
       }
       .width('100%').height(40)
+      }
       if (this.workspaceBreakpoint === WorkspaceBreakpoint.COMPACT) {
         NoteRecordedAt({ value: this.noteEditor.recordedAt, editable: !this.data.saving && !this.imageUploading,
           onChange: (value: string) => { this.noteEditor.recordedAt = value; this.reportDirty(); } })
@@ -572,6 +585,28 @@ export struct NotesPage {
     .backgroundColor($r('app.color.canvas'))
   }
 
+  @Builder
+  private secondaryPage() {
+    AppModalFrame({ content: (): void => this.secondaryPageContent() })
+  }
+
+  @Builder
+  private secondaryPageContent() {
+        Row() {
+          Column() {
+            if (this.noteEditor.editing) this.editor()
+            else NoteCandidateExtractor({ tagOptions: this.data.availableTags, importRevision: this.extractRevision,
+              newRevision: this.navigationNewRevision, onRegisterBack: (back: () => void) => this.extractorBack = back,
+              onNew: () => this.closeExtraction(false, true),
+              onBusyChange: (busy: boolean) => this.onEditorBusyChange(busy || this.extracting),
+              onClose: () => this.closeExtraction(),
+              onSaved: () => this.closeExtraction(true) })
+          }
+            .width('100%').constraintSize({ maxWidth: READING_MAX_WIDTH }).height('100%')
+        }.width('100%').height('100%').justifyContent(FlexAlign.Center)
+          .backgroundColor($r('app.color.canvas'))
+  }
+
   build() {
     Column() {
       if (this.isLargeWorkspace()) {
@@ -584,20 +619,15 @@ export struct NotesPage {
             LoadingHintAnchor({ loading: true, onChange: this.onLoadingHintChange })
           }
         }.width('100%').height('100%').justifyContent(FlexAlign.Center).hitTestBehavior(HitTestMode.None)
-      if (this.noteEditor.editing || this.extracting) {
-        Row() {
-          Column() {
-            if (this.noteEditor.editing) this.editor()
-            else NoteCandidateExtractor({ tagOptions: this.data.availableTags, importRevision: this.extractRevision,
-              newRevision: this.navigationNewRevision,
-              onNew: () => this.closeExtraction(false, true),
-              onBusyChange: (busy: boolean) => this.onEditorBusyChange(busy || this.extracting),
-              onClose: () => this.closeExtraction(),
-              onSaved: () => this.closeExtraction(true) })
-          }
-            .width('100%').constraintSize({ maxWidth: READING_MAX_WIDTH }).height('100%')
-        }.width('100%').height('100%').justifyContent(FlexAlign.Center)
-          .backgroundColor($r('app.color.canvas')).transition(secondaryPageTransition())
+      if (this.isLargeWorkspace() && (this.noteEditor.editing || this.extracting)) {
+        this.secondaryPageContent()
+      }
+      if (!this.isLargeWorkspace()) {
+        Column().width(0).height(0)
+          .bindContentCover(this.noteEditor.editing || this.extracting, this.secondaryPage(), {
+            transition: floatingSurfaceTransition(), backgroundColor: Color.Transparent, enableSafeArea: true,
+            onWillDismiss: () => this.requestSecondaryBack()
+          })
       }
       }.width('100%').layoutWeight(1)
     }.width('100%').height('100%')

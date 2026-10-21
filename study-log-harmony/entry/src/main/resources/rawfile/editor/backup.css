@@ -5,4 +5,7 @@ header,.row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}header{po
 .cell{display:grid;grid-template-columns:36px minmax(0,1fr);min-height:29px}.historical{border-left:1px solid var(--hairline)}.number{padding:4px 6px;color:var(--muted);font:11px/1.65 monospace;text-align:right;border-right:1px solid var(--hairline);user-select:none}code{padding:4px 10px;font:13px/1.65 monospace;white-space:pre-wrap;overflow-wrap:anywhere;min-width:0;tab-size:4}
 .changed .current,.removed .current{background:color-mix(in srgb,var(--error) 7%,var(--canvas))}.changed .historical,.added .historical{background:color-mix(in srgb,var(--teal) 8%,var(--canvas))}.removed .historical,.added .current{background:var(--soft)}mark{background:transparent;color:inherit}.current mark.changed{background:color-mix(in srgb,var(--error) 24%,transparent)}.historical mark.changed{background:color-mix(in srgb,var(--teal) 28%,transparent)}
 header>div{display:flex;align-items:center;justify-content:space-between;gap:12px}header small{font-size:11px;text-align:right}
-@media(max-width:500px){html{scroll-snap-type:x mandatory}header,.row{width:200%}header>div{scroll-snap-align:start}header{z-index:1}}
+html.single-column{overflow-x:hidden}html.single-column header,html.single-column .row{grid-template-columns:minmax(0,1fr);width:100%}
+html.single-column:not([data-backup-side="current"]) .cell.current,html.single-column:not([data-backup-side="current"]) header>div:first-child{display:none}
+html.single-column[data-backup-side="current"] .cell.historical,html.single-column[data-backup-side="current"] header>div:last-child{display:none}
+html.single-column .historical{border-left:0}html.single-column header{z-index:1}

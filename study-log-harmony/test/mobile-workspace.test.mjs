@@ -95,3 +95,89 @@ test('log outline yields the left edge to workspace navigation before recognitio
   assert.equal(h.judgeOutlinePan({ tag: 'log_outline' }, event(20)), 'reject');
   assert.equal(h.judgeOutlinePan({ tag: 'log_outline' }, event(370)), 'continue');
 });
+
+
+test('secondary note back preserves dirty work and uses the same close guard as the header', async () => {
+  let dialog, focusCleared = 0, extractorBacks = 0;
+  const Host = await methods('features/notes/NotesPage.ets', ['requestSecondaryBack', 'closeEditor'], {
+    AlertDialog: { show: value => dialog = value }, $r: value => value
+  });
+  const h = Object.assign(new Host(), { data: { saving: false }, continuation: { busy: false },
+    imageUploading: false, noteEditor: { editing: true, baseline: 'saved' }, extracting: false,
+    extractorBack: () => extractorBacks++, editorValue: () => 'changed', reportDirty() {},
+    getUIContext: () => ({ getFocusController: () => ({ clearFocus: () => focusCleared++ }) }) });
+  h.requestSecondaryBack();
+  assert.equal(h.noteEditor.editing, true);
+  assert.ok(dialog); assert.equal(focusCleared, 1);
+  dialog.primaryButton.action(); assert.equal(h.noteEditor.editing, true);
+  dialog.secondaryButton.action(); assert.equal(h.noteEditor.editing, false);
+  h.extracting = true; h.requestSecondaryBack(); assert.equal(extractorBacks, 1);
+  h.noteEditor.editing = true; h.data.saving = true; dialog = undefined;
+  h.requestSecondaryBack(); assert.equal(h.noteEditor.editing, true); assert.equal(dialog, undefined);
+});
+
+test('system dismissal of extraction cannot discard candidates or leave an active request', async () => {
+  let dialog, closed = 0;
+  const Host = await methods('features/notes/components/NoteCandidateExtractor.ets', ['confirmClose', 'confirmLeave'], {
+    AlertDialog: { show: value => dialog = value }, $r: value => value
+  });
+  const h = Object.assign(new Host(), { backRevision: 1, loading: false, saving: false,
+    drafts: [{ title: 'unsaved candidate' }], onClose: () => closed++, onNew() {},
+    getUIContext: () => ({ getFocusController: () => ({ clearFocus() {} }) }) });
+  h.confirmClose(); assert.equal(closed, 0); assert.ok(dialog);
+  dialog.primaryButton.action(); assert.equal(closed, 0); assert.equal(h.drafts.length, 1);
+  dialog.secondaryButton.action(); assert.equal(closed, 1);
+  h.loading = true; dialog = undefined; h.confirmClose(); assert.equal(closed, 1); assert.equal(dialog, undefined);
+  h.loading = false; h.drafts = []; h.confirmClose(); assert.equal(closed, 2);
+});
+
+test('compact secondary pages use native covers while preserving the mounted workspace', async () => {
+  const notes = await readFile(new URL('features/notes/NotesPage.ets', base), 'utf8');
+  assert.match(notes, /if \(this\.isLargeWorkspace\(\) && \(this\.noteEditor\.editing \|\| this\.extracting\)\)/);
+  assert.match(notes, /bindContentCover\(this\.noteEditor\.editing \|\| this\.extracting, this\.secondaryPage\(\)/);
+  assert.match(notes, /onWillDismiss: \(\) => this\.requestSecondaryBack\(\)/);
+  assert.match(notes, /onRegisterBack: \(back: \(\) => void\) => this\.extractorBack = back/);
+});
+
+
+test('history Back cancels a narrow preview before leaving the version list and protects restore', async () => {
+  const Host = await methods('features/logs/components/BackupPanel.ets', ['requestBack']);
+  let closed = 0, locked = false;
+  const h = Object.assign(new Host(), { backRevision: 1, panelWidth: 400, selected: { id: 'old' },
+    preview: { id: 'old' }, previewLoading: true, previewRevision: 4, revision: 4,
+    restoring: false, busy: () => locked, onClose: () => closed++ });
+  h.requestBack();
+  assert.equal(h.selected == null, true); assert.equal(h.preview == null, true);
+  assert.equal(h.previewLoading, false); assert.equal(closed, 0);
+  assert.ok(h.previewRevision === 5 || h.revision === 5);
+  h.requestBack(); assert.equal(closed, 1);
+  locked = true; h.restoring = true; h.selected = { id: 'keep' };
+  h.requestBack(); assert.equal(h.selected.id, 'keep'); assert.equal(closed, 1);
+});
+
+test('history narrow navigation is a native cover with a full-height list and explicit detail step', async () => {
+  const header = await readFile(new URL('features/logs/components/CompactLogHeader.ets', base), 'utf8');
+  assert.match(header, /bindContentCover\(\$\$this.backupOpen/);
+  assert.doesNotMatch(header, /bindSheet\(\$\$this.backupOpen/);
+  const panel = await readFile(new URL('features/logs/components/BackupPanel.ets', base), 'utf8');
+  assert.match(panel, /else if \(this.selected\)/);
+  assert.doesNotMatch(panel, /this.panelHeight \* 0.32/);
+  assert.match(panel, /id\(`backup_side_\$\{side\}`\)/);
+});
+
+
+test('a preview arriving after Back cannot reopen the history detail', async () => {
+  let resolve;
+  const pending = new Promise(done => resolve = done);
+  const Host = await methods('features/logs/components/BackupPanel.ets', ['selectVersion', 'requestBack'], {
+    apiClient: { get: () => pending }, backupTiming() {}
+  });
+  const h = Object.assign(new Host(), { panelWidth: 400, revision: 0, lifecycle: 0, previewRevision: 0,
+    restoring: false, busy: () => false, date: '2026-01-02',
+    repository: { preview: () => pending }, onClose() {},
+    renderPreview() { assert.fail('obsolete preview must not render'); } });
+  const loading = h.selectVersion({ id: 'old', kind: 'write' });
+  h.requestBack(); resolve({ preview: { id: 'old' } }); await loading;
+  assert.equal(h.selected == null, true); assert.equal(h.preview == null, true);
+  assert.equal(h.previewLoading, false);
+});

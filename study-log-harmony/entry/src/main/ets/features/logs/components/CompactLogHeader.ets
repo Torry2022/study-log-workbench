@@ -1,3 +1,5 @@
+import { AppModalFrame } from '../../../common/ui/AppModalFrame';
+import { floatingSurfaceTransition } from '../../../common/ui/WorkspaceMotion';
 import { AppSheetFrame } from '../../../common/ui/AppSheetFrame';
 import { LengthMetrics } from '@kit.ArkUI';
 import { WorkspaceBreakpoint } from '../../../common/AppConfig';
@@ -16,7 +18,8 @@ export struct CompactLogHeader {
   @Prop backupRestoring: boolean = false;
   @Link backupOpen: boolean;
   @Link moreOpen: boolean;
-  @BuilderParam backupSheet: () => void = this.emptyContent;
+  @BuilderParam backupSheet: (registerBack: (back: () => void) => void) => void = this.emptyContent;
+  private backupBack: () => void = () => {};
   @BuilderParam moreActionsPanel: () => void = this.emptyContent;
   onMode: (mode: string) => void = () => {};
   onSave: () => void = () => {};
@@ -26,13 +29,13 @@ export struct CompactLogHeader {
   private emptyContent() {}
 
   @Builder
-  private safeBackupSheet() {
-    AppSheetFrame({ bottomSheet: true, fillAvailableHeight: true, content: (): void => this.backupSheet() })
+  private safeMoreActionsPanel() {
+    AppSheetFrame({ bottomSheet: !this.desktopWindowChrome && this.workspaceBreakpoint === WorkspaceBreakpoint.COMPACT, fillAvailableHeight: false, content: (): void => this.moreActionsPanel() })
   }
 
   @Builder
-  private safeMoreActionsPanel() {
-    AppSheetFrame({ bottomSheet: !this.desktopWindowChrome && this.workspaceBreakpoint === WorkspaceBreakpoint.COMPACT, fillAvailableHeight: false, content: (): void => this.moreActionsPanel() })
+  private backupPage() {
+    AppModalFrame({ content: (): void => this.backupSheet((back: () => void) => this.backupBack = back) })
   }
 
   build() {
@@ -45,13 +48,9 @@ export struct CompactLogHeader {
         .fontFeature('"tnum" 1')
         .fontColor($r('app.color.ink'))
         .layoutWeight(1)
-        .bindSheet($$this.backupOpen, this.safeBackupSheet(), {
-          height: SheetSize.LARGE,
-          onWillDismiss: (action: DismissSheetAction) => { if (!this.backupRestoring) action.dismiss(); },
-          dragBar: false,
-          showClose: false,
-          maskColor: $r('app.color.scrim'),
-          radius: LengthMetrics.vp(12)
+        .bindContentCover($$this.backupOpen, this.backupPage(), {
+          transition: floatingSurfaceTransition(), backgroundColor: Color.Transparent, enableSafeArea: true,
+          onWillDismiss: () => { if (!this.backupRestoring) this.backupBack(); }
         })
 
       Stack() {

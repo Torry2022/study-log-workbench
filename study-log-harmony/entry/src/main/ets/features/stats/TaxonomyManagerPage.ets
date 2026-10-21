@@ -1,3 +1,4 @@
+import { SearchPageHeader } from '../../common/ui/WorkspaceChrome';
 import { appFeedback, FeedbackTone } from '../../common/ui/AppFeedback';
 import { AppDropdown, SearchField } from '../../common/ui/FormControls';
 import { EmptyState, InlineStatus, LoadFailure } from '../../common/ui/FeedbackStates';
@@ -234,7 +235,11 @@ export struct TaxonomyManagerPage {
 
   build() {
     Column() {
+      if (this.workspaceBreakpoint === WorkspaceBreakpoint.COMPACT) {
+        SearchPageHeader({ title: '分类管理', backLabel: '返回统计', onBack: () => this.requestBack() })
+      }
       Row({ space: 8 }) {
+        if (this.workspaceBreakpoint !== WorkspaceBreakpoint.COMPACT) {
         Button({ type: ButtonType.Normal, stateEffect: false }) {
           SymbolGlyph($r('sys.symbol.chevron_backward')).fontSize(18).fontColor([$r('app.color.ink')])
         }
@@ -246,6 +251,9 @@ export struct TaxonomyManagerPage {
             .fontColor($r('app.color.ink'))
           Text('由 AI 整理学习领域，审核后保存').fontSize(11).fontColor($r('app.color.muted'))
         }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+        } else {
+          Text('审核分类后保存').fontSize(12).fontColor($r('app.color.muted')).layoutWeight(1)
+        }
         Button(this.data.busy ? '保存中' : '保存分类', { type: ButtonType.Normal })
           .height(38).padding({ left: 12, right: 12 }).fontSize(12).fontWeight(FontWeight.Medium)
           .fontColor($r('app.color.on_primary')).backgroundColor($r('app.color.primary'))
@@ -253,7 +261,8 @@ export struct TaxonomyManagerPage {
             !this.data.hasPendingSuggestions() && !this.data.loading && !this.data.loadFailed &&
             !this.data.conflict && this.data.hasChanges()).onClick(() => this.save())
       }
-      .width('100%').height(62).padding({ left: 10, right: 12 })
+      .width('100%').height(this.workspaceBreakpoint === WorkspaceBreakpoint.COMPACT ? 52 : 62)
+        .padding({ left: this.workspaceBreakpoint === WorkspaceBreakpoint.COMPACT ? 16 : 10, right: 12 })
       .border({ width: { bottom: 1 }, color: $r('app.color.hairline_soft') })
 
       Scroll() {

@@ -1,3 +1,4 @@
+import { SearchPageHeader } from '../../../common/ui/WorkspaceChrome';
 import { common } from '@kit.AbilityKit';
 import { fileIo, picker } from '@kit.CoreFileKit';
 import { droppedFileUris } from '../../../common/files/DroppedFiles';
@@ -119,6 +120,7 @@ export struct NoteCandidateExtractor {
   @Prop initialMessage: string = '';
   onClose: () => void = () => {};
   @Prop @Watch('requestNew') newRevision: number = 0;
+  onRegisterBack: (back: () => void) => void = () => {};
   onNew: () => void = () => {};
   onBusyChange: (busy: boolean) => void = () => {};
   onSaved: () => void = () => {};
@@ -139,11 +141,13 @@ export struct NoteCandidateExtractor {
   private lifecycleRevision: number = 0;
 
   aboutToAppear(): void {
+    this.onRegisterBack(() => this.confirmClose());
     this.recordedAt = this.timestamp();
     this.acceptImport();
   }
 
   aboutToDisappear(): void {
+    this.onRegisterBack(() => {});
     this.lifecycleRevision++;
     this.files.forEach((file: NoteImportFile) => { try { fileIo.unlinkSync(file.path); } catch (_) {} });
   }
@@ -293,6 +297,7 @@ export struct NoteCandidateExtractor {
 
   private confirmLeave(createNew: boolean): void {
     if (this.loading || this.saving) return;
+    this.getUIContext().getFocusController().clearFocus();
     const leave = (): void => { if (createNew) this.onNew(); else this.onClose(); };
     if (this.drafts.length === 0) { leave(); return; }
     AlertDialog.show({ message: createNew ? '候选随记尚未保存，确认放弃并新建吗？' : '候选随记尚未保存，确定返回列表吗？',
@@ -559,8 +564,14 @@ export struct NoteCandidateExtractor {
   }
 
   build() {
+    Column() {
+      if (this.workspaceBreakpoint === WorkspaceBreakpoint.COMPACT) {
+        SearchPageHeader({ title: 'AI 提取随记', backLabel: '返回随记', backId: 'note_extractor_back',
+          backAvailable: !this.loading && !this.saving, onBack: () => this.confirmClose() })
+      }
     Scroll() {
       Column({ space: 16 }) {
+        if (this.workspaceBreakpoint !== WorkspaceBreakpoint.COMPACT) {
         Row({ space: 12 }) {
           ToolbarAction({ label: '返回随记列表', useSymbol: true, symbol: $r('sys.symbol.chevron_backward'),
             showLabel: false, available: !this.loading && !this.saving,
@@ -571,6 +582,7 @@ export struct NoteCandidateExtractor {
           }.layoutWeight(1).alignItems(HorizontalAlign.Start)
         }.width('100%').padding({ top: 16, bottom: 16 })
           .border({ width: { bottom: 1 }, color: $r('app.color.hairline') })
+        }
         this.materials()
         if (!activeInstance.capabilities?.features.aiNoteExtraction.configured) {
           Text('尚未配置随记提取模型').fontSize(12).fontColor($r('app.color.muted'))
@@ -601,9 +613,10 @@ export struct NoteCandidateExtractor {
         left: this.workspaceBreakpoint === WorkspaceBreakpoint.COMPACT ? 16 : 24,
         right: this.workspaceBreakpoint === WorkspaceBreakpoint.COMPACT ? 16 : 24 })
         .alignItems(HorizontalAlign.Start)
-    }.width('100%').height('100%').align(Alignment.TopStart).scrollBar(BarState.Auto)
+    }.width('100%').layoutWeight(1).align(Alignment.TopStart).scrollBar(BarState.Auto)
       .backgroundColor($r('app.color.canvas'))
       .onAreaChange((_old: Area, area: Area) => this.contentWidth = Number(area.width))
+    }.width('100%').height('100%')
   }
 }
 

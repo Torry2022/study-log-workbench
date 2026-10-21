@@ -1956,8 +1956,8 @@ export struct LogsReaderPage {
   }
 
   @Builder
-  private backupSheet() {
-    BackupPanel({ date: this.session.day?.date || '', maximized: $backupMaximized, themePreference: this.themePreference,
+  private backupSheet(registerBack: (back: () => void) => void = () => {}) {
+    BackupPanel({ onRegisterBack: registerBack, date: this.session.day?.date || '', maximized: $backupMaximized, themePreference: this.themePreference,
       onClose: () => this.closeBackup(),
       onBeforeRestore: () => this.beforeRestore(),
       onRestored: (day: DayEntry) => this.applyRestoredDay(day),
@@ -2028,7 +2028,7 @@ export struct LogsReaderPage {
     } else {
       CompactLogHeader({ selectedDate: this.session.selectedDate, workspaceBreakpoint: this.workspaceBreakpoint,
         desktopWindowChrome: this.desktopWindowChrome,
-        backupRestoring: this.backupBusy, backupOpen: $backupOpen, backupSheet: (): void => this.backupSheet(),
+        backupRestoring: this.backupBusy, backupOpen: $backupOpen, backupSheet: (registerBack: (back: () => void) => void): void => this.backupSheet(registerBack),
         sourceMode: this.sourceMode, saving: this.documents.saving, dirty: this.editorReady && this.session.isDirty(),
         moreOpen: $moreOpen, moreActionsPanel: (): void => this.compactMoreActionsPanel(),
         onActionsDisappear: () => this.handleActionsDisappear(),
@@ -2303,12 +2303,14 @@ export struct LogsReaderPage {
     if (this.aiOpen && !this.aiClosing) return;
     this.aiClosing = false;
     this.aiOpen = true;
+    if (!this.isWide()) { this.aiOffset = 0; return; }
     this.moveAiTools(0);
   }
 
   private closeAiTools(): void {
     if (this.sidebar.sidebarAnimating) return;
     if (!this.aiOpen || this.aiClosing) return;
+    if (!this.isWide()) { this.aiOpen = false; this.aiOffset = 420; return; }
     this.aiClosing = true;
     this.moveAiTools(420);
   }
@@ -2420,6 +2422,11 @@ export struct LogsReaderPage {
   }
 
   @Builder
+  private aiToolsPage() {
+    AppModalFrame({ content: (): void => this.aiToolsPanel() })
+  }
+
+  @Builder
   private aiToolsPanel() {
     LogAiPanel({ mode: $aiMode, instruction: this.ai.instruction,
       material: this.ai.material, output: this.ai.output,
@@ -2444,7 +2451,7 @@ export struct LogsReaderPage {
       onGenerate: () => this.ai.generate(this.session.selectedDate),
       onHighlight: () => this.highlightAiDraft(), onApply: () => this.applyAiOutput() })
     .width(this.isWide() ? this.aiPanelWidth : '100%').height('100%')
-    .translate({ x: (this.isWide() ? this.aiPanelWidth : this.aiAvailableWidth) * this.aiOffset / 420 })
+    .translate({ x: this.isWide() ? this.aiPanelWidth * this.aiOffset / 420 : 0 })
     .flexShrink(0).id('log_ai_panel')
   }
 
@@ -2528,58 +2535,7 @@ export struct LogsReaderPage {
               ContentRefresh({ refreshEnabled: !this.isWide() && !this.sourceMode && !this.session.isDirty() &&
                 !this.documents.dayRequestLoading && !this.documents.saving, refreshId: 'logs_content_refresh',
                 onRefresh: () => this.refreshCurrentDay(this.session.selectedDate), content: () => {
-              MarkdownReader({ content: this.previewText, contentMode: 'log', documentKey: this.session.selectedDate,
-                onWorkspaceKey: (event: KeyEvent) => this.onWorkspaceKey(event),
-                onImageDrop: (event: DragEvent) => this.receivePreviewImages(event),
-                themePreference: this.themePreference,
-                stableViewport: this.isWide(), fillAvailableWidth: this.splitMode,
-                viewportRequestRevision: this.modeLayoutRevision + this.reading.workspaceLayoutRevision,
-                restoreScrollOffset: this.previewRestoreOffset,
-                showBackToTop: !this.isWide(), trackScrollProgress: true,
-                scrollToTopRequestRevision: this.previewTopRequest,
-                onScrollProgress: (progress: number) => this.previewProgress = progress,
-                onScrollPosition: (offset: number) => {
-                  this.previewOffset = offset;
-                  if (this.renderedPreviewDate) this.previewScrollOffsets[this.renderedPreviewDate] = Math.max(0, offset);
-                },
-                onViewportReady: () => {
-                  this.workspaceTransition.finish('mode');
-                  this.navigationCommands.readingReady();
-                },
-                onContentRendered: (_content: string, date: string) => {
-                  if (date !== this.session.selectedDate) return;
-                  this.renderedPreviewDate = date;
-                  this.workspaceTransition.finish('document');
-                  if (!(this.sourceMode || this.splitMode && !this.isWide())) this.logDocumentReady(date);
-                },
-                onRenderReady: () => {
-                  this.readerReady = true;
-                  this.workspaceTransition.finish('document');
-                },
-                onRenderFailed: (date: string) => {
-                  if (date !== this.session.selectedDate) return;
-                  this.readFailed = true;
-                  this.retryRead = async () => this.loadDay(date);
-                  this.errorMessage = '日志正文渲染失败，请刷新重试';
-                  this.showReadFailure();
-                  this.workspaceTransition.finish('document');
-                  if (!(this.sourceMode || this.splitMode && !this.isWide())) this.logNavigationFailed(date);
-                },
-                targetHeading: this.targetHeading, targetHeadingIndex: this.targetHeadingIndex,
-                outlineRequestRevision: this.outlineRequestRevision,
-                targetHeadingId: this.targetHeadingId,
-                targetKind: this.targetKind, targetQuery: this.targetQuery, targetRevision: this.targetRevision,
-                onTargetResult: (kind: string, found: boolean) => this.showTargetResult(kind, found),
-                trackActiveHeading: true,
-                onActiveHeading: (headingId: string) => this.updateActiveOutline(headingId),
-                onInternalLink: (date: string, heading: string) => {
-                  const targetDate = date || this.session.selectedDate;
-                  if (!targetDate) return;
-                  if (targetDate === this.session.selectedDate) this.openInternalLink(targetDate, heading);
-                  else this.confirmDiscard(() => this.openInternalLink(targetDate, heading));
-                } })
-                .width('100%').height('100%').id('log_reading_surface')
-                .onAreaChange((_oldArea: Area, area: Area) => this.readingViewportChanged(area))
+                this.previewReader()
               } }).width('100%').height('100%')
               if (!this.previewText.trim() && this.readerReady) {
                 Column({ space: 8 }) {
@@ -2625,6 +2581,62 @@ export struct LogsReaderPage {
   }
 
   @Builder
+  private previewReader() {
+    MarkdownReader({ content: this.previewText, contentMode: 'log', documentKey: this.session.selectedDate,
+      onWorkspaceKey: (event: KeyEvent) => this.onWorkspaceKey(event),
+      onImageDrop: (event: DragEvent) => this.receivePreviewImages(event),
+      themePreference: this.themePreference,
+      stableViewport: this.isWide(), fillAvailableWidth: this.splitMode,
+      viewportRequestRevision: this.modeLayoutRevision + this.reading.workspaceLayoutRevision,
+      restoreScrollOffset: this.previewRestoreOffset,
+      showBackToTop: !this.isWide(), trackScrollProgress: true,
+      scrollToTopRequestRevision: this.previewTopRequest,
+      onScrollProgress: (progress: number) => this.previewProgress = progress,
+      onScrollPosition: (offset: number) => {
+        this.previewOffset = offset;
+        if (this.renderedPreviewDate) this.previewScrollOffsets[this.renderedPreviewDate] = Math.max(0, offset);
+      },
+      onViewportReady: () => {
+        this.workspaceTransition.finish('mode');
+        this.navigationCommands.readingReady();
+      },
+      onContentRendered: (_content: string, date: string) => {
+        if (date !== this.session.selectedDate) return;
+        this.renderedPreviewDate = date;
+        this.workspaceTransition.finish('document');
+        if (!(this.sourceMode || this.splitMode && !this.isWide())) this.logDocumentReady(date);
+      },
+      onRenderReady: () => {
+        this.readerReady = true;
+        this.workspaceTransition.finish('document');
+      },
+      onRenderFailed: (date: string) => {
+        if (date !== this.session.selectedDate) return;
+        this.readFailed = true;
+        this.retryRead = async () => this.loadDay(date);
+        this.errorMessage = '日志正文渲染失败，请刷新重试';
+        this.showReadFailure();
+        this.workspaceTransition.finish('document');
+        if (!(this.sourceMode || this.splitMode && !this.isWide())) this.logNavigationFailed(date);
+      },
+      targetHeading: this.targetHeading, targetHeadingIndex: this.targetHeadingIndex,
+      outlineRequestRevision: this.outlineRequestRevision,
+      targetHeadingId: this.targetHeadingId,
+      targetKind: this.targetKind, targetQuery: this.targetQuery, targetRevision: this.targetRevision,
+      onTargetResult: (kind: string, found: boolean) => this.showTargetResult(kind, found),
+      trackActiveHeading: true,
+      onActiveHeading: (headingId: string) => this.updateActiveOutline(headingId),
+      onInternalLink: (date: string, heading: string) => {
+        const targetDate = date || this.session.selectedDate;
+        if (!targetDate) return;
+        if (targetDate === this.session.selectedDate) this.openInternalLink(targetDate, heading);
+        else this.confirmDiscard(() => this.openInternalLink(targetDate, heading));
+      } })
+      .width('100%').height('100%').id('log_reading_surface')
+      .onAreaChange((_oldArea: Area, area: Area) => this.readingViewportChanged(area))
+  }
+
+  @Builder
   private logContent() {
       Row() {
         Stack({ alignContent: Alignment.BottomEnd }) {
@@ -2651,9 +2663,12 @@ export struct LogsReaderPage {
             .clip(true).id('log_ai_dock')
         }
       }.width('100%').height('100%').backgroundColor($r('app.color.canvas'))
-      if (this.aiOpen && !this.isWide() && this.selectedTab() === 0) {
-        Stack({ alignContent: Alignment.TopEnd }) { this.aiToolsPanel() }
-          .width('100%').height('100%').zIndex(2)
+      if (!this.isWide()) {
+        Column().width(0).height(0)
+          .bindContentCover($$this.aiOpen, this.aiToolsPage(), {
+            transition: floatingSurfaceTransition(), backgroundColor: Color.Transparent, enableSafeArea: true,
+            onWillDismiss: () => this.closeAiTools()
+          })
       }
       if (this.outlineOpen && this.selectedTab() === 0) {
         Stack({ alignContent: Alignment.TopEnd }) {

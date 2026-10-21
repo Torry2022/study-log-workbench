@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 const source = await readFile(new URL('../entry/src/main/ets/features/logs/components/BackupPanel.ets', import.meta.url), 'utf8');
-const methods = ['aboutToAppear', 'aboutToDisappear', 'renderPreview', 'selectVersion'].map(name => {
+const methods = ['aboutToAppear', 'aboutToDisappear', 'renderPreview', 'selectVersion', 'requestBack'].map(name => {
   const match = new RegExp(`^  (?:private )?(?:async )?${name}\\(`, 'm').exec(source);
   assert.ok(match);
   const end = source.slice(match.index + 1).search(/^  (?:private |aboutTo|@Builder|build\()/m);
@@ -19,9 +19,9 @@ function subject() {
   Object.assign(panel, { lifecycle: 0, listRevision: 0, previewRevision: 1, frameBridge: {},
     webPageReady: true, webContentReady: false, previewLoading: false, previewError: '', conflict: false,
     selected: { id: 'one', createdAt: '2026-09-30' }, preview: { id: 'one', currentContent: 'current', historicalContent: 'history' },
-    loadVersions() {}, onBusyChange() {}, darkTheme: () => true, time: () => '09-30', busy: () => false });
+    loadVersions() {}, onBusyChange() {}, onRegisterBack(back) { panel.systemBack = back; }, darkTheme: () => true, time: () => '09-30', busy: () => false });
   panel.controller = { async runJavaScript(script) {
-    runInNewContext(script, { window: { renderBackup: (...args) => renders.push(args),
+    runInNewContext(script, { document: { documentElement: { dataset: {}, classList: { toggle() {} } } }, window: { renderBackup: (...args) => renders.push(args),
       backupFrames: { rendered: revision => panel.frameBridge.onRendered(revision) } },
       requestAnimationFrame: callback => frames.push(callback) });
   } };
@@ -71,4 +71,13 @@ test('switching backup versions keeps the previous preview covered until the nex
   assert.equal(panel.webContentReady, false);
   frames.shift()();
   assert.equal(panel.webContentReady, true);
+});
+
+
+test('the registered system Back clears a narrow preview before pending paint can reveal it', async () => {
+  const { panel, frames } = subject(); panel.panelWidth = 400;
+  await panel.renderPreview(); panel.systemBack();
+  frames.shift()(); frames.shift()();
+  assert.equal(panel.selected, undefined); assert.equal(panel.preview, undefined);
+  assert.equal(panel.webContentReady, false);
 });

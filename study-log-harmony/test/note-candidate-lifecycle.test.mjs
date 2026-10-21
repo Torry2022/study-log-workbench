@@ -30,7 +30,7 @@ function subject() {
   const panel = new module.exports.Panel();
   Object.assign(panel, { lifecycleRevision: 0, files: [{ path: 'synthetic-a' }, { path: 'synthetic-b' }],
     drafts: [{ id: 'candidate', body: '合成', selected: true }], loading: false, saving: false,
-    onBusyChange: value => busy.push(value), onSaved: () => calls.push('saved'), newTags: () => [],
+    onRegisterBack() {}, onBusyChange: value => busy.push(value), onSaved: () => calls.push('saved'), newTags: () => [],
     toDraft: value => value, values: () => [] });
   return { panel, activeInstance, calls, busy, release, reject, apiClient };
 }

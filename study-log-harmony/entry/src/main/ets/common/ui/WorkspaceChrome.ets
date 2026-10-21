@@ -57,6 +57,8 @@ export struct SearchPageHeader {
   @Consume('workspaceBreakpoint') private workspaceBreakpoint: WorkspaceBreakpoint;
   @Prop title: string = '';
   @Prop backLabel: string = '返回';
+  @Prop backId: string = '';
+  @Prop backAvailable: boolean = true;
   onBack: () => void = () => {};
 
   build() {
@@ -65,7 +67,7 @@ export struct SearchPageHeader {
         SymbolGlyph($r('sys.symbol.chevron_backward')).fontSize(20).fontColor([$r('app.color.ink')])
       }
       .width(42).height(42).padding(0).borderRadius(8).clip(true)
-      .backgroundColor(Color.Transparent).accessibilityText(this.backLabel).bindTips(this.backLabel, WORKSPACE_TIPS)
+      .backgroundColor(Color.Transparent).id(this.backId).enabled(this.backAvailable).accessibilityText(this.backLabel).bindTips(this.backLabel, WORKSPACE_TIPS)
       .onClick(() => { this.getUIContext().getFocusController().clearFocus(); this.onBack(); })
       Row() {
         Text(this.title)

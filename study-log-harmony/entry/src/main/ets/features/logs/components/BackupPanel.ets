@@ -2,7 +2,7 @@ import { KeyCode } from '@kit.InputKit';
 import { webview } from '@kit.ArkWeb';
 import { WorkspaceBreakpoint } from '../../../common/AppConfig';
 import { apiClient, ApiError } from '../../../common/network/ApiClient';
-import { ActionPanelHeader } from '../../../common/ui/WorkspaceChrome';
+import { SearchPageHeader } from '../../../common/ui/WorkspaceChrome';
 import { InlineStatus, LoadFailure } from '../../../common/ui/FeedbackStates';
 import { iconTint } from '../../../common/ui/IconTint';
 import { workspaceSerifFamily } from '../../../common/ui/Typography';
@@ -26,6 +26,8 @@ export struct BackupPanel {
   @StorageProp('systemTheme') @Watch('themeChanged') private systemTheme: string = 'light';
   @Link maximized: boolean;
   @Prop date: string = '';
+  onRegisterBack: (back: () => void) => void = () => {};
+  @State private comparisonSide: string = 'historical';
   @Prop @Watch('themeChanged') themePreference: string = 'system';
   onClose: () => void = () => {};
   onBeforeRestore: () => Promise<boolean> = async () => false;
@@ -46,7 +48,6 @@ export struct BackupPanel {
   @State private previewError: string = '';
   @State private restoreError: string = '';
   @State private panelWidth: number = 0;
-  @State private panelHeight: number = 0;
   private repository: BackupRepository = new BackupRepository(apiClient);
   private controller: webview.WebviewController = new webview.WebviewController();
   private frameBridge: BackupFrameBridge = new BackupFrameBridge();
@@ -56,6 +57,7 @@ export struct BackupPanel {
   private previewRevision: number = 0;
 
   aboutToAppear(): void {
+    this.onRegisterBack(() => this.requestBack());
     const lifecycle = ++this.lifecycle;
     this.frameBridge.onRendered = (revision: number) => {
       if (lifecycle === this.lifecycle && revision === this.previewRevision && this.webPageReady) {
@@ -66,6 +68,7 @@ export struct BackupPanel {
   }
 
   aboutToDisappear(): void {
+    this.onRegisterBack(() => {});
     this.lifecycle++;
     this.listRevision++;
     this.previewRevision++;
@@ -74,6 +77,41 @@ export struct BackupPanel {
 
   private busy(): boolean { return this.confirming || this.restoring; }
   private wide(): boolean { return this.panelWidth >= 760; }
+
+  private requestBack(): void {
+    if (this.busy()) return;
+    if (this.panelWidth < 760 && this.selected) {
+      this.previewRevision++;
+      this.selected = undefined;
+      this.preview = undefined;
+      this.previewLoading = false;
+      this.webPageReady = false; this.webContentReady = false; this.previewError = ''; this.restoreError = '';
+      return;
+    }
+    this.onClose();
+  }
+
+  private selectComparisonSide(side: string): void {
+    this.comparisonSide = side;
+    this.controller.runJavaScript(`document.documentElement.dataset.backupSide = ${JSON.stringify(side)};document.documentElement.classList.toggle('single-column',${this.panelWidth < 760})`)
+      .catch(() => {});
+  }
+
+  @Builder
+  private comparisonTabs() {
+    Row({ space: 0 }) {
+      ForEach(['current', 'historical'], (side: string) => {
+        Button(side === 'current' ? '当前内容' : '历史内容', { type: ButtonType.Normal })
+          .layoutWeight(1).height(38).fontSize(13).fontWeight(FontWeight.Medium)
+          .fontColor(this.comparisonSide === side ? $r('app.color.ink') : $r('app.color.muted'))
+          .backgroundColor(this.comparisonSide === side ? $r('app.color.canvas') : Color.Transparent)
+          .borderRadius(6).id(`backup_side_${side}`)
+          .onClick(() => this.selectComparisonSide(side))
+      }, (side: string) => side)
+    }.width('100%').padding(2).margin({ bottom: 8 })
+      .backgroundColor($r('app.color.surface_soft'))
+      .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8)
+  }
 
   private time(value: string): string {
     const date = new Date(value);
@@ -149,7 +187,7 @@ export struct BackupPanel {
     const revision = this.previewRevision;
     const label = this.selected ? this.time(this.selected.createdAt) : '';
     try {
-      await this.controller.runJavaScript(`window.renderBackup(${JSON.stringify(preview.currentContent)},` +
+      await this.controller.runJavaScript(`document.documentElement.dataset.backupSide = ${JSON.stringify(this.comparisonSide)};document.documentElement.classList.toggle('single-column',${this.panelWidth < 760});window.renderBackup(${JSON.stringify(preview.currentContent)},` +
         `${JSON.stringify(preview.historicalContent)},${this.darkTheme()},${JSON.stringify(label)});` +
         `requestAnimationFrame(() => requestAnimationFrame(() => window.backupFrames.rendered(${revision})));`);
     } catch (_) {
@@ -271,6 +309,9 @@ export struct BackupPanel {
             Row() {
               Text(this.time(version.createdAt)).fontSize(12).fontColor($r('app.color.body')).layoutWeight(1)
               Text(this.formatSize(version.sizeBytes)).fontSize(11).fontColor($r('app.color.muted'))
+            if (this.panelWidth < 760) {
+              SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(12).fontColor([$r('app.color.muted')]).margin({ left: 8 })
+            }
             }
           }.width('100%').height(36).padding({ left: 10, right: 10 }).borderRadius(6)
             .backgroundColor(this.selected?.id === version.id ? $r('app.color.surface_card') : Color.Transparent)
@@ -285,10 +326,10 @@ export struct BackupPanel {
         }
       }.width('100%').padding(12).alignItems(HorizontalAlign.Start)
     }.id('backup_versions').width(this.wide() ? 250 : '100%')
-      .height(this.wide() ? '100%' : Math.min(260, Math.max(120, this.panelHeight * 0.32)))
+      .height('100%')
       .align(Alignment.TopStart).scrollBar(BarState.Auto)
       .backgroundColor($r('app.color.canvas'))
-      .border({ width: this.wide() ? { right: 1 } : { bottom: 1 }, color: $r('app.color.hairline') })
+      .border({ width: this.wide() ? { right: 1 } : 0, color: $r('app.color.hairline') })
   }
 
   @Builder
@@ -319,6 +360,9 @@ export struct BackupPanel {
         LoadFailure({ title: '历史版本读取失败', message: this.previewError,
           onRetry: () => { if (this.selected) this.selectVersion(this.selected); } })
       } else if (this.preview) {
+        if (this.panelWidth < 760) {
+          this.comparisonTabs()
+        }
         Stack() {
           Web({ src: $rawfile('editor/backup.html'), controller: this.controller, renderMode: RenderMode.SYNC_RENDER })
             .id('backup_comparison_web').width('100%').height('100%')
@@ -373,11 +417,14 @@ export struct BackupPanel {
   }
 
   build() {
+    Column() {
+      if (this.panelWidth < 760) {
+        SearchPageHeader({ title: this.selected ? '版本对比' : '日志历史版本',
+          backLabel: this.selected ? '返回版本列表' : '返回日志', backAvailable: !this.busy(),
+          onBack: () => this.requestBack() })
+      }
     Column({ space: 12 }) {
-      if (this.breakpoint === WorkspaceBreakpoint.COMPACT) {
-        ActionPanelHeader({ title: '日志历史版本', closeLabel: '关闭日志历史版本', showDragBar: true,
-          onClose: () => { if (!this.busy()) this.onClose(); } })
-      } else {
+      if (this.panelWidth >= 760) {
         Row({ space: 8 }) {
           Image($r('app.media.database_backup')).width(24).height(24)
             .colorFilter(iconTint($r('app.color.primary'))).margin({ right: 8 })
@@ -410,21 +457,24 @@ export struct BackupPanel {
           Row() { this.versionList(); Column() { this.comparison() }.layoutWeight(1).height('100%') }
             .width('100%').layoutWeight(1)
             .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8).clip(true)
-        } else {
-          this.versionList()
+        } else if (this.selected) {
           Column() { this.comparison() }.width('100%').layoutWeight(1)
+        } else {
+          Column() { this.versionList() }.width('100%').layoutWeight(1)
         }
       }
-    }.width('100%').height('100%').padding({ left: 16, right: 16, top: 8, bottom: 18 })
+    }.width('100%').layoutWeight(1).padding({ left: 16, right: 16, top: 8, bottom: 18 })
       .backgroundColor($r('app.color.canvas'))
       .onAreaChange((_old, area) => {
+        const wasWide = this.panelWidth >= 760;
         this.panelWidth = Number(area.width);
-        this.panelHeight = Number(area.height);
+        if (wasWide !== (this.panelWidth >= 760) && this.preview) this.selectComparisonSide(this.comparisonSide);
       })
       .onKeyEvent((event: KeyEvent) => {
         if (event.type !== KeyType.Down || event.keyCode !== KeyCode.KEYCODE_ESCAPE) return false;
-        if (!this.busy()) this.onClose();
+        this.requestBack();
         return true;
       })
+    }.width('100%').height('100%').backgroundColor($r('app.color.canvas'))
   }
 }

@@ -25,6 +25,7 @@ import { CompactLogHeader } from './components/CompactLogHeader';
 import { BackupPanel } from './components/BackupPanel';
 import { LogImageUpload } from './LogImageUpload';
 import { LogSearchResult } from './LogSearchPanel';
+import { ContentRefresh } from '../../common/ui/ContentRefresh';
 import { ToolbarAction } from '../../common/ui/ToolbarAction';
 import { WORKSPACE_TIPS } from '../../common/ui/WorkspaceTips';
 import { LogDisplayModeControl } from './components/LogDisplayModeControl';
@@ -587,6 +588,12 @@ export struct LogsReaderPage {
     this.outlineGestureActive = width > 0 && startX >= width - 144 && startX <= width - 16;
   }
 
+  private judgeOutlinePan(info: GestureInfo, event: BaseGestureEvent): GestureJudgeResult {
+    if (info.tag !== 'log_outline') return GestureJudgeResult.CONTINUE;
+    this.handleOutlinePanStart(event as GestureEvent);
+    return this.outlineGestureActive ? GestureJudgeResult.CONTINUE : GestureJudgeResult.REJECT;
+  }
+
   private handleOutlinePanEnd(event: GestureEvent): void {
     if (!this.outlineGestureActive) return;
     const pan = event as PanGestureEvent;
@@ -1003,6 +1010,7 @@ export struct LogsReaderPage {
   private async save(): Promise<void> { await this.documents.save(); }
 
   private async refreshNavigation(date: string): Promise<void> {
+    this.favoritesData.load();
     const lifecycle = this.lifecycle;
     const month = date.slice(0, 7);
     try {
@@ -1368,6 +1376,7 @@ export struct LogsReaderPage {
   }
 
   private async acceptDeletedDay(day: DayEntry, date: string): Promise<void> {
+    this.favoritesData.load();
     const lifecycle = this.lifecycle;
     const revision = this.documents.dayLoadRevision;
     const body = this.bodyFromDay(day);
@@ -2516,7 +2525,10 @@ export struct LogsReaderPage {
                 color: $r('app.color.hairline') })
             Row() {
               Stack({ alignContent: Alignment.TopEnd }) {
-              MarkdownReader({ content: this.previewText, contentMode: 'log', documentKey: this.session.day.date,
+              ContentRefresh({ refreshEnabled: !this.isWide() && !this.sourceMode && !this.session.isDirty() &&
+                !this.documents.dayRequestLoading && !this.documents.saving, refreshId: 'logs_content_refresh',
+                onRefresh: () => this.refreshCurrentDay(this.session.selectedDate), content: () => {
+              MarkdownReader({ content: this.previewText, contentMode: 'log', documentKey: this.session.selectedDate,
                 onWorkspaceKey: (event: KeyEvent) => this.onWorkspaceKey(event),
                 onImageDrop: (event: DragEvent) => this.receivePreviewImages(event),
                 themePreference: this.themePreference,
@@ -2568,6 +2580,7 @@ export struct LogsReaderPage {
                 } })
                 .width('100%').height('100%').id('log_reading_surface')
                 .onAreaChange((_oldArea: Area, area: Area) => this.readingViewportChanged(area))
+              } }).width('100%').height('100%')
               if (!this.previewText.trim() && this.readerReady) {
                 Column({ space: 8 }) {
                   SymbolGlyph($r('sys.symbol.doc_text')).fontSize(20).fontColor([$r('app.color.muted_soft')])
@@ -2718,9 +2731,10 @@ export struct LogsReaderPage {
       .bindContentCover($$this.favoriteGroupDialogOpen, this.favoriteGroupDialog(), {
         transition: floatingSurfaceTransition(), backgroundColor: Color.Transparent, enableSafeArea: true
       })
-      .parallelGesture(PanGesture({ direction: PanDirection.All, distance: 6 })
-        .onActionStart((event: GestureEvent) => this.handleOutlinePanStart(event))
+      .parallelGesture(PanGesture({ direction: PanDirection.Horizontal, distance: 6 })
+        .tag('log_outline')
         .onActionEnd((event: GestureEvent) => this.handleOutlinePanEnd(event))
         .onActionCancel(() => this.outlineGestureActive = false))
+      .onGestureJudgeBegin((info: GestureInfo, event: BaseGestureEvent) => this.judgeOutlinePan(info, event))
   }
 }

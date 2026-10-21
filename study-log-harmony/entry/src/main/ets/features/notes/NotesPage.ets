@@ -1,3 +1,4 @@
+import { ContentRefresh } from '../../common/ui/ContentRefresh';
 import { appFeedback, FeedbackTone } from '../../common/ui/AppFeedback';
 import { MODULE_HEADER_LEFT_INSET } from '../../common/ui/WorkspaceChrome';
 import { iconTint } from '../../common/ui/IconTint';
@@ -549,7 +550,8 @@ export struct NotesPage {
         Stack({ alignContent: Alignment.BottomEnd }) {
           Stack() {
             Row() {
-              Column() { this.list() }
+              ContentRefresh({ refreshEnabled: !this.isLargeWorkspace() && !this.noteEditor.editing && !this.extracting,
+                refreshId: 'notes_content_refresh', onRefresh: () => this.load(), content: () => { this.list() } })
                 .width('100%').constraintSize({ maxWidth: READING_MAX_WIDTH }).height('100%')
             }.width('100%').height('100%').justifyContent(FlexAlign.Center)
             ResultSurfaceCover({ controller: this.resultSurface })

@@ -1,3 +1,4 @@
+import { SearchPageHeader } from '../../../common/ui/WorkspaceChrome';
 import { FormKeyboardContext } from '../../../common/ui/FormKeyboardContext';
 import { ToolbarAction } from '../../../common/ui/ToolbarAction';
 import { SegmentIndicator } from '../../../common/ui/SegmentIndicator';
@@ -87,6 +88,9 @@ export struct LogAiPanel {
 
   build() {
     Column() {
+      if (!this.desktop) {
+        SearchPageHeader({ title: '日志 AI 工具', backLabel: '返回日志', onBack: this.onClose })
+      }
       Row({ space: 8 }) {
         Stack() {
           SegmentIndicator({ selected: this.mode === 'generate' ? 0 : 1, inset: 2 })
@@ -96,9 +100,11 @@ export struct LogAiPanel {
           }.width('100%').height('100%').padding(2)
         }.layoutWeight(1).height(42).backgroundColor($r('app.color.surface_soft'))
           .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8).clip(true)
-        ToolbarAction({ label: this.desktop ? '收起右侧栏' : '关闭 AI 工具', showLabel: false,
-          useSymbol: true, symbol: this.desktop ? $r('sys.symbol.chevron_forward') : $r('sys.symbol.xmark'),
-          segmented: true, controlHeight: 42, iconWidth: 38, onAction: this.onClose }).id('log_ai_close_button')
+        if (this.desktop) {
+          ToolbarAction({ label: '收起右侧栏', showLabel: false,
+            useSymbol: true, symbol: $r('sys.symbol.chevron_forward'),
+            segmented: true, controlHeight: 42, iconWidth: 38, onAction: this.onClose }).id('log_ai_close_button')
+        }
       }.width('100%').height(this.desktop ? 64 : undefined)
         .padding({ left: 14, right: 14, top: this.desktop ? 0 : 14, bottom: this.desktop ? 0 : 14 })
         .alignItems(VerticalAlign.Center).id('log_ai_header')
@@ -118,6 +124,7 @@ export struct LogAiPanel {
                 .value(this.presets.find((item: GenerationPreset) => item.id === this.presetId)?.name || '现有默认方案')
                 .width('100%').height(40).font({ size: 14 }).fontColor($r('app.color.body'))
                 .backgroundColor($r('app.color.surface_soft')).borderRadius(8)
+                .optionWidth(OptionWidthMode.FIT_TRIGGER)
                 .optionFont({ size: 13 }).optionFontColor($r('app.color.body'))
                 .optionBgColor($r('app.color.canvas'))
                 .selectedOptionFont({ size: 13, weight: FontWeight.Medium })

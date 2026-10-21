@@ -95,7 +95,7 @@ export struct WorkspaceSurface {
   }
 
   private changeSearch(query: string, reset: boolean = false): void { this.search.changeLogSearchQuery(query, reset); }
-  private closeSearch(): void { this.searchOpen = false; this.search.dismissSearchResults(); }
+  private closeSearch(): void { this.getUIContext().getFocusController().clearFocus(); this.searchOpen = false; this.search.dismissSearchResults(); }
 
   private showSearchHistory(): boolean { return this.search.showSearchHistory(); }
 
@@ -124,7 +124,7 @@ export struct WorkspaceSurface {
           onHeadings: () => { this.search.searchHeadingsOnly = !this.search.searchHeadingsOnly; this.changeSearch(this.search.searchQuery, true); },
           onCase: () => { this.search.searchIgnoreCase = !this.search.searchIgnoreCase; this.changeSearch(this.search.searchQuery, true); },
           onSelect: (result: LogSearchResult) => this.navigationCommands.searchResult(result) })
-          .width('100%').height('100%').transition(secondaryPageTransition())
+          .width('100%').height('100%')
       }
   }
 

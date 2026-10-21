@@ -22,6 +22,7 @@ function workspace() {
     workspaceKey: (event, code, ctrl = false, shift = false, alt = false) => event.type === 0 && event.keyCode === code && !!event.ctrl === ctrl && !!event.shift === shift && !!event.alt === alt });
   const page = new module.exports.Workspace();
   Object.assign(page, { connected: true, desktopCommands: { blocked: () => false, handleKey: () => { throw new Error('Application key delegated to log page'); }, closeMenu: () => false, closeOutline: () => false }, sidebar: {navigationOpen:false}, reading: {logsReadingMode:false}, modules: { topRequests: [0,0,0,0,0], noteSaveRevision: 0 }, qaNavigation: {},
+    getUIContext: () => ({ getFocusController: () => ({ clearFocus() {} }) }),
     desktopThemeOpen: true, topMoreOpen: false, searchOpen: false,
     isWide: () => true, focusWorkspaceRegion: () => { throw new Error('Focus escaped open theme panel'); } });
   return page;
@@ -89,7 +90,7 @@ test('Escape preserves application, local menu, calendar, local outline, search 
 test('system Back dismisses the top layer before asking to exit', () => {
   const page = workspace();
   let terminations = 0;
-  page.getUIContext = () => ({ getHostContext: () => ({ terminateSelf: () => terminations++ }) });
+  page.getUIContext = () => ({ getFocusController: () => ({ clearFocus() {} }), getHostContext: () => ({ terminateSelf: () => terminations++ }) });
   page.helpOpen = true;
   page.searchOpen = true;
   page.search = { dismissSearchResults() {} };

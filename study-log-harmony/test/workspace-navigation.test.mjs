@@ -151,14 +151,15 @@ test('late module capture cannot override a newer module selection', async () =>
   assert.equal(page.selectedModule, 4);
 });
 
-test('revisiting notes requests a list refresh through the mounted page', async () => {
+test('revisiting notes preserves cached content; explicit refresh reaches the mounted page', async () => {
   const { page } = workspace(0);
   assert.equal(page.modules.notesRefreshRevision, 0);
   await page.switchModule(1, false, false);
-  assert.equal(page.modules.notesRefreshRevision, 1);
+  assert.equal(page.modules.notesRefreshRevision, 0);
   await page.switchModule(0, false, false);
   await page.switchModule(1, false, false);
-  assert.equal(page.modules.notesRefreshRevision, 2);
+  assert.equal(page.modules.notesRefreshRevision, 0);
+  page.modules.notesRefreshRevision++;
 
   assert.match(contentSource, /refreshRevision:\s*this\.modules\.notesRefreshRevision/);
   assert.match(notesSource, /@Prop @Watch\('refreshRevisionChanged'\) refreshRevision/);

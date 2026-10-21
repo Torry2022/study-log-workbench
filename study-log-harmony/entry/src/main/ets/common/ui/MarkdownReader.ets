@@ -492,6 +492,7 @@ export struct MarkdownReader {
         .offset({ x: this.stableViewport ? this.surfaceInset : 0 })
         .opacity(this.webContentReady ? 1 : 0)
         .backgroundColor($r('app.color.canvas'))
+        .nestedScroll({ scrollForward: NestedScrollMode.SELF_FIRST, scrollBackward: NestedScrollMode.SELF_FIRST })
         .onDrop(this.onImageDrop)
         .javaScriptAccess(true)
         .javaScriptProxy({ object: this.frameBridge, name: 'readerFrames', methodList: ['rendered', 'viewportReady', 'previewImage', 'failed', 'activeHeading', 'bottomInsetReady'], controller: this.controller })

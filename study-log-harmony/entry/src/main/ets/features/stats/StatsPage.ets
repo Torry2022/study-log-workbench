@@ -1,3 +1,4 @@
+import { ContentRefresh } from '../../common/ui/ContentRefresh';
 import { AppSheetFrame } from '../../common/ui/AppSheetFrame';
 import { appFeedback } from '../../common/ui/AppFeedback';
 import { LengthMetrics } from '@kit.ArkUI';
@@ -701,7 +702,8 @@ export struct StatsPage {
           headerId: 'desktop_page_stats', onOpenLog: this.onOpenLog })
       }
       Row() {
-        this.pageBody()
+        ContentRefresh({ refreshEnabled: !this.isLargeWorkspace(), refreshId: 'stats_content_refresh',
+          onRefresh: () => this.refreshStats(), content: () => { this.pageBody() } })
       }.width('100%').layoutWeight(1).justifyContent(FlexAlign.Center)
     }.width('100%').height('100%')
   }

@@ -1,3 +1,4 @@
+import { ContentRefresh } from '../../common/ui/ContentRefresh';
 import { AppSheetFrame } from '../../common/ui/AppSheetFrame';
 import { WORKSPACE_TIPS } from '../../common/ui/WorkspaceTips';
 import { workspacePreferences } from '../../common/storage/WorkspacePreferences';
@@ -428,15 +429,19 @@ export struct FavoritesPage {
                   this.sortDropdown('100%')
                 }.layoutWeight(1)
                 this.viewToggle()
+                Text(this.resultCountText()).id('favorites_compact_result_count')
+                  .fontSize(11).fontColor($r('app.color.muted')).maxLines(1).flexShrink(0)
               }.width('100%')
             }.width('100%').padding({ left: 16, right: 16, top: 8, bottom: 8 })
           }
-          Row({ space: 8 }) {
-            Text(this.resultCountText()).id('favorites_result_count').fontSize(12).fontColor($r('app.color.muted'))
-              .visibility(this.visible.length > 0 ? Visibility.Visible : Visibility.Hidden)
-            Text(this.filterText()).id('favorites_filter_summary').layoutWeight(1).fontSize(12).fontColor($r('app.color.muted'))
-              .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
-          }.width('100%').height(40).padding({ left: 16, right: 16 })
+          if (this.isLargeWorkspace() || this.filterText()) {
+            Row({ space: 8 }) {
+              Text(this.resultCountText()).id('favorites_result_count').fontSize(12).fontColor($r('app.color.muted'))
+                .visibility(this.isLargeWorkspace() && this.visible.length > 0 ? Visibility.Visible : Visibility.None)
+              Text(this.filterText()).id('favorites_filter_summary').layoutWeight(1).fontSize(12).fontColor($r('app.color.muted'))
+                .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+            }.width('100%').height(this.isLargeWorkspace() ? 40 : 24).padding({ left: 16, right: 16 })
+          }
         }.width('100%')
           .onAreaChange((_oldValue, newValue) => {
             this.topToolsHeight = Number(newValue.height);
@@ -547,7 +552,8 @@ export struct FavoritesPage {
           })
       }
       Row() {
-        this.pageBody()
+        ContentRefresh({ refreshEnabled: !this.isLargeWorkspace(), refreshId: 'favorites_content_refresh',
+          onRefresh: () => this.load(), content: () => { this.pageBody() } })
       }.width('100%').layoutWeight(1).justifyContent(FlexAlign.Center)
     }.width('100%').height('100%')
   }

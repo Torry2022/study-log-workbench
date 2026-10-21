@@ -65,7 +65,8 @@ export struct SearchPageHeader {
         SymbolGlyph($r('sys.symbol.chevron_backward')).fontSize(20).fontColor([$r('app.color.ink')])
       }
       .width(42).height(42).padding(0).borderRadius(8).clip(true)
-      .backgroundColor(Color.Transparent).accessibilityText(this.backLabel).bindTips(this.backLabel, WORKSPACE_TIPS).onClick(this.onBack)
+      .backgroundColor(Color.Transparent).accessibilityText(this.backLabel).bindTips(this.backLabel, WORKSPACE_TIPS)
+      .onClick(() => { this.getUIContext().getFocusController().clearFocus(); this.onBack(); })
       Row() {
         Text(this.title)
           .fontFamily(workspaceSansFamily(this.workspaceBreakpoint))

@@ -166,13 +166,19 @@ struct Index {
     const finger = pan.fingerList.length > 0 ? pan.fingerList[0] : undefined;
     const width = Number(pan.target.area.width);
     const startX = finger ? finger.localX - pan.offsetX : -1;
-    this.navigationGestureActive = width > 0 && startX >= 16 && startX <= 144;
+    this.navigationGestureActive = width > 0 && startX >= 16 && startX <= 32;
+  }
+
+  private judgeNavigationPan(info: GestureInfo, event: BaseGestureEvent): GestureJudgeResult {
+    if (info.tag !== 'workspace_drawer') return GestureJudgeResult.CONTINUE;
+    this.handleNavigationPanStart(event as GestureEvent);
+    return this.navigationGestureActive ? GestureJudgeResult.CONTINUE : GestureJudgeResult.REJECT;
   }
 
   private handleNavigationPanEnd(event: GestureEvent): void {
     if (!this.navigationGestureActive) return;
     const pan = event as PanGestureEvent;
-    const horizontalIntent = Math.abs(pan.offsetX) >= Math.abs(pan.offsetY) * 0.8;
+    const horizontalIntent = Math.abs(pan.offsetX) >= Math.abs(pan.offsetY) * 1.5;
     const shouldOpen = horizontalIntent && (pan.offsetX > 48 || pan.velocityX > 450);
     this.navigationGestureActive = false;
     if (shouldOpen) this.openNavigation();
@@ -575,8 +581,6 @@ struct Index {
     this.selectedModule = index;
     this.modules.moduleRequestedTab = -1;
     view.changed(index);
-    if (index === 1) this.modules.notesRefreshRevision += 1;
-    if (index === 2) this.modules.favoritesRefreshRevision += 1;
     if (index === 3) this.qaNavigation.loadQaNavigation();
     if (index === 4) this.modules.statsVisitRevision += 1;
     if (index === 0) this.refreshNavigationLists().catch(() => {
@@ -970,7 +974,7 @@ struct Index {
     if (this.qaNavigation.qaRenameId) { this.qaNavigation.qaRenameId = ''; return true; }
     if (this.qaNavigation.qaMenuId) { this.qaNavigation.qaMenuId = ''; return true; }
     if (this.desktopCommands.closeOutline()) return true;
-    if (this.searchOpen) { this.searchOpen = false; this.search.dismissSearchResults(); return true; }
+    if (this.searchOpen) { this.getUIContext().getFocusController().clearFocus(); this.searchOpen = false; this.search.dismissSearchResults(); return true; }
     if (this.sidebar.navigationOpen) { this.closeNavigation(); return true; }
     if (this.modules.taxonomyOpen) { this.confirmTaxonomyLeave(() => {}); return true; }
     if (this.reading.logsReadingMode) { this.setLogsReadingMode(false); return true; }
@@ -1179,9 +1183,10 @@ struct Index {
     }.width('100%').height('100%').backgroundColor($r('app.color.canvas'))
       .onAreaChange((_oldArea, area) => this.updateBreakpoint(Number(area.width)))
       .onKeyEvent((event: KeyEvent) => this.handleWorkspaceKey(event))
-      .parallelGesture(PanGesture({ direction: PanDirection.All, distance: 6 })
-        .onActionStart((event: GestureEvent) => this.handleNavigationPanStart(event))
+      .gesture(PanGesture({ direction: PanDirection.Horizontal, distance: 6 })
+        .tag('workspace_drawer')
         .onActionEnd((event: GestureEvent) => this.handleNavigationPanEnd(event))
         .onActionCancel(() => this.cancelNavigationPan()))
+      .onGestureJudgeBegin((info: GestureInfo, event: BaseGestureEvent) => this.judgeNavigationPan(info, event))
   }
 }

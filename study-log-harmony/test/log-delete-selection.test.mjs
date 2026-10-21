@@ -25,7 +25,7 @@ function setup(months, days, fails = false) {
   Object.assign(page, { session, logNavigation:nav, lifecycle:1, documents:{dayLoadRevision:1},
     initialDraft:{namespace:'test', date:'2026-02-05'}, restoredDraftApplied:false,
     editor:{ready:false}, bodyFromDay:()=>'', reportDraft(){}, coverLogDocument:async()=>{},
-    workspaceTransition:{finish(){}}, modules:{pendingLogDate:''}, logNavigationFailed(){},
+    favoritesData:{load(){}}, workspaceTransition:{finish(){}}, modules:{pendingLogDate:''}, logNavigationFailed(){},
     message:e=>e.message, showReadFailure(){},
     reads:{invalidate(){}, months:async()=>{if(fails)throw Error('offline');return {months};}, days:async()=>({days})},
     loadDay:async date=>{opened.push(date);session.commitDocument({date,exists:true,version:'v2'},'remaining');} });

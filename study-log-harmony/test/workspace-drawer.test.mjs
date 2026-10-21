@@ -52,7 +52,7 @@ test('wide or unbound workspaces do not open the narrow navigation drawer', () =
 
 test('original left-edge gesture opens the drawer only for intentional horizontal navigation', () => {
   function start(x) { return { fingerList: [{ localX: x }], offsetX: 0, target: { area: { width: 420 } } }; }
-  for (const [x, dx, dy, velocity, expected] of [[70, 80, 10, 0, true], [70, 20, 0, 500, true],
+  for (const [x, dx, dy, velocity, expected] of [[20, 80, 10, 0, true], [20, 20, 0, 500, true], [70, 80, 0, 0, false],
     [200, 80, 0, 0, false], [4, 80, 0, 0, false], [70, 80, 200, 600, false], [70, -80, 0, -600, false]]) {
     const { root } = fixture();
     root.handleNavigationPanStart(start(x));

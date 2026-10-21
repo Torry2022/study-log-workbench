@@ -1,6 +1,5 @@
 import { SearchField } from '../../common/ui/FormControls';
 import { SearchPageHeader } from '../../common/ui/WorkspaceChrome';
-import { WorkspaceBreakpoint } from '../../common/AppConfig';
 import { EmptyState, InlineStatus } from '../../common/ui/FeedbackStates';
 import { workspaceKey } from '../../common/ui/WorkspaceKeys';
 import { KeyCode } from '@kit.InputKit';
@@ -18,7 +17,6 @@ export interface LogSearchResponse { results: LogSearchResult[]; }
 
 @Component
 export struct LogSearchPanel {
-  @Consume('workspaceBreakpoint') private workspaceBreakpoint: WorkspaceBreakpoint;
   @Prop query: string = '';
   @Prop headingsOnly: boolean = false;
   @Prop ignoreCase: boolean = true;
@@ -60,9 +58,9 @@ export struct LogSearchPanel {
       Row() {
         SearchField({ value: this.query, placeholder: this.headingsOnly ? '搜索小节标题' : '搜索日志内容',
           focusKey: 'global_log_search', focusRevision: this.focusRevision,
-          showHeadingToggle: this.workspaceBreakpoint !== WorkspaceBreakpoint.COMPACT,
+          showHeadingToggle: true,
           headingOnly: this.headingsOnly,
-          showCaseToggle: this.workspaceBreakpoint !== WorkspaceBreakpoint.COMPACT,
+          showCaseToggle: true,
           caseSensitive: !this.ignoreCase,
           onHeadingToggle: () => { this.activeIndex = -1; this.onHeadings(); },
           onCaseToggle: () => { this.activeIndex = -1; this.onCase(); },
@@ -107,7 +105,7 @@ export struct LogSearchPanel {
             }
           }, (result: LogSearchResult) => result.date)
         }.layoutWeight(1).width('100%').padding({ left: 14, right: 14, top: 4, bottom: 20 })
-          .scrollBar(BarState.Off).edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
+          .scrollBar(BarState.Off).edgeEffect(EdgeEffect.None)
       }
     }.width('100%').height('100%').backgroundColor($r('app.color.canvas'))
   }

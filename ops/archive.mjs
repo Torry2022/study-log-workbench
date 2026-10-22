@@ -272,9 +272,10 @@ async function interruptRestoredTasks(root) {
   const db = new DatabaseSync(file);
   let transaction = false;
   try {
-    db.exec("PRAGMA trusted_schema=OFF; PRAGMA synchronous=FULL;");
     const schema = db.prepare("PRAGMA user_version").get().user_version;
-    if (![1, 2].includes(schema) || db.prepare("PRAGMA quick_check").get().quick_check !== "ok") throw new Error("Unsupported task database");
+    if (![1, 2, 3].includes(schema)) throw new Error("Unsupported task database");
+    db.exec("PRAGMA trusted_schema=OFF; PRAGMA synchronous=FULL;");
+    if (db.prepare("PRAGMA quick_check").get().quick_check !== "ok") throw new Error("Unsupported task database");
     db.exec("BEGIN IMMEDIATE"); transaction = true;
     db.prepare(`UPDATE tasks SET state='interrupted',owner=NULL,generation=generation+1,revision=revision+1,
       stage='',error='从归档恢复的未完成任务不会自动执行，请确认后重试',updated_at=?

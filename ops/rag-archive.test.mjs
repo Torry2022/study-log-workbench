@@ -88,6 +88,34 @@ test('offline archive keeps JSON receipt and SQLite result consistent; restore i
   assert.deepEqual(await fs.readFile(jsonFile), jsonBefore); assert.deepEqual(await fs.readFile(path.join(f.data, 'state/rag-tasks.sqlite')), dbBefore);
 });
 
+for (const schema of [1, 2, 3]) test(`archive restores task schema ${schema} without downgrading or discarding pending results`, async t => {
+  const f = await fixture(t), store = new RagTaskStore(f.data), owner = `${process.pid}:${randomUUID()}`;
+  const succeeded = store.create(input(), []); store.leader(owner); store.claim(owner);
+  store.finish(store.get(succeeded.id), 'succeeded', { answer: '合成待保存结果', citations: [] }); store.release(succeeded.id);
+  const queued = store.create(input(), []); store.close();
+  const file = path.join(f.data, 'state/rag-tasks.sqlite'), db = new DatabaseSync(file);
+  const payload = JSON.parse(db.prepare('SELECT input FROM tasks WHERE id=?').get(succeeded.id).input);
+  if (schema === 3) payload.editMessageId = 'synthetic-original-question';
+  const serialized = JSON.stringify(payload);
+  db.prepare('UPDATE tasks SET input=? WHERE id=?').run(serialized, succeeded.id);
+  db.exec(`PRAGMA user_version=${schema}`); db.close();
+  const original = await fs.readFile(file);
+  await backupInstance(f.root, f.archive);
+  assert.equal((await verifyArchive(f.archive)).manifest.version, 2, 'SQLite version is independent of archive format');
+  await restoreInstance(f.archive, f.target);
+  const restored = new DatabaseSync(path.join(f.target, 'data/state/rag-tasks.sqlite'));
+  try {
+    assert.equal(restored.prepare('PRAGMA user_version').get().user_version, schema);
+    const result = restored.prepare('SELECT * FROM tasks WHERE id=?').get(succeeded.id);
+    assert.equal(result.input, serialized); assert.equal(result.state, 'succeeded'); assert.equal(result.save_state, 'pending');
+    assert.equal(JSON.parse(result.result).answer, '合成待保存结果');
+    assert.equal(restored.prepare('SELECT state FROM tasks WHERE id=?').get(queued.id).state, 'interrupted');
+    assert.equal(restored.prepare('SELECT count(*) AS n FROM leases').get().n, 0);
+    assert.equal(restored.prepare('SELECT count(*) AS n FROM worker').get().n, 0);
+  } finally { restored.close(); }
+  assert.deepEqual(await fs.readFile(file), original);
+});
+
 for (const kind of ['corrupt', 'future']) test(`restore fails closed for ${kind} task database and retains incomplete marker`, async t => {
   const f = await fixture(t), file = path.join(f.data, 'state/rag-tasks.sqlite'); await fs.mkdir(path.dirname(file));
   if (kind === 'corrupt') await fs.writeFile(file, 'synthetic invalid SQLite');

@@ -456,7 +456,7 @@ export function useRag(options: Options) {
   function changeQuestionEdit(body: string) {
     const owner = states.current.get(selectedId.current)!, draft = owner.edits.get(owner.editingId);
     if (!draft || owner.generating || owner.pendingTask) return;
-    draft.body = body; draft.error = ""; notify();
+    draft.body = body; notify();
   }
   function cancelQuestionEdit() {
     const owner = states.current.get(selectedId.current)!;
@@ -475,14 +475,24 @@ export function useRag(options: Options) {
     }
   }
   async function reloadQuestionEdit() {
-    const owner = states.current.get(selectedId.current)!;
+    const owner = states.current.get(selectedId.current)!, id = owner.editingId, draft = owner.edits.get(id);
     if (owner.generating || owner.saving || owner.pendingTask) return;
-    await showSavedSession(owner);
-    if (!owned(owner) || !owner.session || owner.awaitingSession) return;
-    for (const [id, draft] of owner.edits) {
-      if (owner.session.messages.some(message => message.id === id && message.role === "user")) { draft.baseVersion = owner.session.version; draft.error = ""; }
-      else draft.error = "原问题已不在当前会话中，修改内容仍保留。";
+    if (!draft || deletedSessions.current.has(owner.id) || owner.session && !owner.session.messages.some(message => message.id === id && message.role === "user")) return;
+    const current = () => owned(owner) && selectedId.current === owner.id && owner.editingId === id && owner.edits.get(id) === draft;
+    const selected = owner.task;
+    if (selected?.state === "succeeded" && selected.saveState !== "saved") {
+      if (!await live.current.onConfirm({ title: "重新读取当前会话？", message: "将放弃当前选中的未保存回答，保留问题修改稿。", confirmLabel: "重试", tone: "danger" })) return;
+      if (!current() || owner.task !== selected || !taskClient.current) return;
+      owner.saving = true; notify();
+      try { await taskClient.current.remove(selected.id); taskSnapshots.current.delete(selected.id); }
+      catch (failure) { if (current()) draft.error = failure instanceof Error ? failure.message : "放弃结果未完成，请重试"; return; }
+      finally { if (owned(owner)) { owner.saving = false; notify(); } }
+      if (!current()) return;
     }
+    await showSavedSession(owner);
+    if (!current() || !owner.session || owner.awaitingSession) return;
+    if (owner.session.messages.some(message => message.id === id && message.role === "user")) { draft.baseVersion = owner.session.version; draft.error = ""; }
+    else draft.error = "原问题已不在当前会话中，修改内容仍保留。";
     notify();
   }
   async function sendQuestionEdit() {
@@ -586,6 +596,7 @@ export function useRag(options: Options) {
     // requested route, rather than reloading and discarding that retained draft.
     const target = live.current.routeSessionId;
     const retryingNavigation = Boolean(target && target !== loadedRoute.current);
+    if ((!target || target === owner.id) && owner.editingId && owner.edits.has(owner.editingId)) return reloadQuestionEdit();
     if (!retryingNavigation && !owner.pendingSave && owner.task && taskClient.current && !owner.generating && !owner.saving) {
       const selected = owner.task, revision = owner.viewRevision;
       const discard = selected.state === "succeeded" && selected.saveState !== "saved";
@@ -633,16 +644,20 @@ export function useRag(options: Options) {
   const displayMessages = taskCapability?.supported && !state.pendingTask ? projection.messages : messages;
   const otherActive = [...taskSnapshots.current.values()].some(task => task.applicable !== false && task.sessionId === state.id && ragTaskActive(task) && task.id !== state.task?.id);
   const historicalTask = Boolean(state.task && state.task.id !== latestTask?.id);
+  const questionEdit = state.editingId ? state.edits.get(state.editingId) : undefined;
+  const editOrphaned = deletedSessions.current.has(state.id) || Boolean(state.session && !state.session.messages.some(message => message.role === "user" && message.id === state.editingId));
+  const editRecoveryError = questionEdit && !editOrphaned ? questionEdit.error || state.saveError ||
+    (state.awaitingSession ? "回答状态尚未确认，请重试读取会话。" : !questionEdit.baseVersion || questionEdit.baseVersion !== state.session?.version ? "会话版本尚未确认，请重试后继续编辑。" : "") : "";
   return { sessions: displayedSessions, activeSessionId: selectedId.current, sessionActivity, session, messages: displayMessages, question, setQuestion,
     answerMode, setAnswerMode, query, setQuery, loading, historyError, retryHistory: () => setHistoryRevision(value => value + 1),
     taskConnectionError, retryTaskConnection: () => { void taskClient.current?.refresh(); },
     questionEditing: taskCapability?.questionEditing === true && !projection.historical,
     editableQuestionIds: state.session?.messages.filter(message => message.role === "user").map(message => message.id) || [],
-    questionEdit: state.editingId && state.edits.get(state.editingId) ? { id: state.editingId, ...state.edits.get(state.editingId)!,
-      orphaned: deletedSessions.current.has(state.id) || Boolean(state.session && !state.session.messages.some(message => message.role === "user" && message.id === state.editingId)) } : null,
+    questionEdit: questionEdit ? { id: state.editingId, ...questionEdit,
+      orphaned: editOrphaned } : null,
     beginQuestionEdit, changeQuestionEdit, cancelQuestionEdit, sendQuestionEdit, reloadQuestionEdit,
     messageTimes: originalRagMessageTimes([...taskSnapshots.current.values()].filter(task => task.sessionId === state.id)),
-    initializing, generating, saving, stage, error: navigationError || error, saveError, serverTask: Boolean(state.task), savingSelection: Boolean(state.selectionSave), submissionBlocked: state.awaitingSession || historicalTask || otherActive, canRetrySave: Boolean(state.pendingSave) || state.task?.saveState !== "conflict", configured, configurationError, focusToken, navigationToken, answerStartToken, dirty,
+    initializing, generating, saving, stage, error: navigationError || error || editRecoveryError, saveError, serverTask: Boolean(state.task), savingSelection: Boolean(state.selectionSave), submissionBlocked: state.awaitingSession || historicalTask || otherActive, canRetrySave: Boolean(state.pendingSave) || state.task?.saveState !== "conflict", configured, configurationError, focusToken, navigationToken, answerStartToken, dirty,
     viewingPreviousAnswer: Boolean(selectedParent && selectedParent.id !== state.session?.messages.at(-1)?.id), selectAnswerVersion, saveAnswer, discardAnswer,
     beforeLeave, confirmExit, refreshConfiguration, refreshList, reloadSession, submit: () => submit(), regenerate: (answerId?: string) => { if (answerId) { const answer = answerProjection(states.current.get(selectedId.current)!).messages.find(message => message.id === answerId); if (!answer?.canRegenerate && !answer?.canRetry) return; } return submit(true); }, stop: () => {
       const owner = states.current.get(selectedId.current)!;

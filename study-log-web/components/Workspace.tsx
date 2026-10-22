@@ -266,10 +266,10 @@ export function Workspace() {
       <RagWorkspace noLogs={!logs.navigationLoading && !logs.navigationError && !logs.months.length} onOpenLog={openLog} active={active} visible={logs.selection.view === "qa"} disabled={!rag.configured || rag.saving || rag.submissionBlocked || Boolean(rag.saveError)} answerActionBusy={rag.saving} messages={rag.messages} initializing={rag.initializing}
         messageTimes={rag.messageTimes} questionEditing={rag.questionEditing} editableQuestionIds={rag.editableQuestionIds} questionEdit={rag.questionEdit}
         onBeginQuestionEdit={rag.beginQuestionEdit} onQuestionEditChange={rag.changeQuestionEdit} onCancelQuestionEdit={rag.cancelQuestionEdit}
-        onSendQuestionEdit={() => void rag.sendQuestionEdit()} onReloadQuestionEdit={() => void rag.reloadQuestionEdit()}
+        onSendQuestionEdit={() => void rag.sendQuestionEdit()}
         feedback={<>
           {rag.taskConnectionError && <div className="editor-navigation-status" role="alert">{rag.taskConnectionError}<button className="button secondary" onClick={rag.retryTaskConnection}>重试连接</button></div>}
-          {rag.error && <div className="editor-navigation-status" role="alert">{rag.error}<button className="button secondary" onClick={rag.clearError}>关闭</button><button className="button secondary" onClick={() => void rag.reloadSession()}>重新读取</button></div>}
+          {rag.error && !rag.questionEdit?.orphaned && <div className="editor-navigation-status" role="alert">{rag.error}{!rag.questionEdit && <button className="button secondary" onClick={rag.clearError}>关闭</button>}<button className="button secondary" disabled={rag.saving || rag.generating || !active} onClick={() => void rag.reloadSession()}>重试</button></div>}
           {((!rag.serverTask || rag.savingSelection) && (rag.saveError || rag.saving)) && <div className="editor-navigation-status" role={rag.saveError ? "alert" : "status"}>{rag.saveError || "正在保存问答历史…"}{rag.saveError && <>{rag.canRetrySave && <button className="button secondary" disabled={rag.saving || !active} onClick={rag.retrySave}>重试保存</button>}<button className="button secondary" disabled={rag.saving || !active} onClick={() => void rag.reloadSession()}>{rag.savingSelection ? "重新读取会话" : rag.serverTask ? "放弃未保存回答并重新读取" : "放弃本地回答并重新读取"}</button></>}</div>}
         </>}
         availability={rag.configurationError ? <FeatureAvailability title="暂时无法提问" description="提问需要配置模型和日志检索服务，设置方法见“检查说明”；已有问答记录仍可查看。" messages={[rag.configurationError]} onCheck={() => void rag.refreshConfiguration()} /> : undefined}

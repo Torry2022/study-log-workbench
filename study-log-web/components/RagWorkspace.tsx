@@ -42,7 +42,6 @@ interface RagWorkspaceProps {
   onQuestionEditChange?: (body: string) => void;
   onCancelQuestionEdit?: () => void;
   onSendQuestionEdit?: () => void;
-  onReloadQuestionEdit?: () => void;
   viewingPreviousAnswer?: boolean;
   answerActionBusy?: boolean;
   onAnswerVersion: (questionId: string, answerId: string) => void;
@@ -82,7 +81,6 @@ export function RagWorkspace({
   onQuestionEditChange,
   onCancelQuestionEdit,
   onSendQuestionEdit,
-  onReloadQuestionEdit,
   viewingPreviousAnswer = false,
   answerActionBusy = false,
   onAnswerVersion,
@@ -483,8 +481,7 @@ export function RagWorkspace({
                   questionEdit?.id === message.id ? <form className="rag-question-editor" onSubmit={event => { event.preventDefault(); followOutputRef.current = true; onSendQuestionEdit?.(); }}>
                     <textarea autoFocus aria-label="编辑问题" value={questionEdit.body} maxLength={2000} disabled={generating || answerActionBusy}
                       onChange={event => onQuestionEditChange?.(event.target.value)} />
-                    {questionEdit.error && <div className="rag-message-state error" role="alert">{questionEdit.error}</div>}
-                    <div className="rag-question-edit-actions"><button className="button secondary" type="button" disabled={generating || answerActionBusy} onClick={onReloadQuestionEdit}>重新读取并核对</button><button className="button secondary" type="button" disabled={generating || answerActionBusy} onClick={onCancelQuestionEdit}>取消</button>
+                    <div className="rag-question-edit-actions"><button className="button secondary" type="button" disabled={generating || answerActionBusy} onClick={onCancelQuestionEdit}>取消</button>
                       <button className="button primary" type="submit" disabled={disabled || generating || answerActionBusy || !questionEdit.body.trim()}>发送</button></div>
                   </form> : <>
                     <p>{message.content}</p>

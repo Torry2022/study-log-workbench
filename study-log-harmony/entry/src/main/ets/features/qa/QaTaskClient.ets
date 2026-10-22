@@ -35,6 +35,11 @@ export class QaTaskClient {
     if (this.stopped || this.binding !== this.transport.getConnectionBinding()) throw new Error('连接已切换或已停止查看，请重新连接');
   }
   private notify(): void { if (!this.stopped) this.onChange(); }
+  private supersededTask(task: QaTask): QaTask {
+    const copy = JSON.parse(JSON.stringify(task)) as QaTask;
+    copy.applicable = false;
+    return copy;
+  }
   private async updatePending(input: QaTaskSubmission, remove: boolean = false): Promise<void> {
     const work = this.writes.catch(() => {}).then(async () => {
       const next = this.pending.filter((item: QaTaskSubmission) => item.submissionId !== input.submissionId);
@@ -105,11 +110,11 @@ export class QaTaskClient {
     if (!validTask(task)) throw new Error('任务快照响应不完整');
     if (this.stopped || this.binding !== this.transport.getConnectionBinding() || this.removed.has(task.id) || this.deletedSessions.has(task.sessionId)) return;
     if (task.applicable === false) this.superseded.add(task.id);
-    if (this.superseded.has(task.id)) task = { ...task, applicable: false };
+    if (this.superseded.has(task.id)) task = this.supersededTask(task);
     const old = this.tasks.find((item: QaTask) => item.id === task.id);
     if (old && old.revision > task.revision) {
       if (task.applicable !== false || old.applicable === false) return;
-      task = { ...old, applicable: false };
+      task = this.supersededTask(old);
     }
     if (old && old.revision >= task.revision && old.applicable === task.applicable) return;
     this.tasks = [...this.tasks.filter((item: QaTask) => item.id !== task.id), task]; this.notify();
@@ -142,7 +147,7 @@ export class QaTaskClient {
           if (task.applicable === false || this.superseded.has(task.id)) {
             this.superseded.add(task.id);
             const known = this.tasks.find((item: QaTask) => item.id === task.id);
-            if (known && known.applicable !== false) this.accept({ ...known, applicable: false });
+            if (known && known.applicable !== false) this.accept(this.supersededTask(known));
             return;
           }
           const old = latest.get(task.sessionId);
@@ -185,7 +190,7 @@ export class QaTaskClient {
       if (task.applicable === false) {
         this.superseded.add(task.id);
         const known = this.tasks.find((item: QaTask) => item.id === task.id);
-        if (known && known.applicable !== false) this.accept({ ...known, applicable: false });
+        if (known && known.applicable !== false) this.accept(this.supersededTask(known));
       }
       if (!this.tasks.some((old: QaTask) => old.id === task.id && old.revision >= task.revision && old.applicable === task.applicable)) await this.read(task.id);
     }

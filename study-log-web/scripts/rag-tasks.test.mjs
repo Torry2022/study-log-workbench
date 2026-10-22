@@ -6,6 +6,8 @@ import os from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import { execFileSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { RagTaskRuntime } from '../lib/rag-task-runtime.ts';
 import { RagTaskStore } from '../lib/rag-task-store.ts';
@@ -62,6 +64,101 @@ test('no subscriber is needed to finish and atomically persist the answer in its
   const saved = await getRagSession(input.sessionId);
   assert.equal(saved.messages.length, 2); assert.equal(saved.messages[1].content, completed.answer);
   assert.equal((await listRagSessions()).length, 1);
+});
+
+test('question editing derives the authoritative prefix and only commits the branch with its answer', async () => {
+  const r = runtime(executor({ delay: 80 })); r.start();
+  const first = await r.create(submission()); await done(r, first.id);
+  let saved = await getRagSession(first.sessionId);
+  const second = await r.create(submission({ sessionId: first.sessionId, baseVersion: saved.version, question: '后续问题' })); await done(r, second.id);
+  saved = await getRagSession(first.sessionId);
+  const original = JSON.stringify(saved), target = saved.messages[0].id;
+  const input = submission({ sessionId: saved.id, baseVersion: saved.version, question: '修改首个问题', editMessageId: target, history: [{ role: 'user', content: '不可信前缀' }] });
+  const edited = await r.create(input);
+  assert.equal(JSON.stringify(await getRagSession(saved.id)), original);
+  assert.deepEqual(r.store.get(edited.id).input.history, []);
+  assert.deepEqual(r.store.get(edited.id).input.replacedQuestionIds, [saved.messages[0].id, saved.messages[2].id]);
+  assert.equal((await r.create(input)).id, edited.id);
+  await done(r, edited.id);
+  const updated = await getRagSession(saved.id);
+  assert.equal(updated.messages.length, 2); assert.equal(updated.messages[0].content, input.question);
+  assert.notEqual(updated.messages[0].id, target);
+  const clock = new DatabaseSync(path.join(process.env.LOG_ROOT, 'state/rag-tasks.sqlite'));
+  clock.prepare('UPDATE tasks SET created_at=? WHERE id=?').run('2099-01-01T00:00:00.000Z', second.id); clock.close();
+  // Applicability follows committed question identities, even with reversed clocks.
+  assert.equal((await r.get(first.id)).applicable, false); assert.equal((await r.get(second.id)).applicable, false);
+  const beforeRead = await fs.readFile(path.join(process.env.LOG_ROOT, 'state/rag-tasks.sqlite'));
+  await r.list(saved.id); await r.get(first.id);
+  assert.deepEqual(await fs.readFile(path.join(process.env.LOG_ROOT, 'state/rag-tasks.sqlite')), beforeRead);
+  assert.equal(r.store.get(first.id).result.answer, completed.answer);
+  await assert.rejects(r.save(first.id), error => error.code === 'RAG_TASK_SUPERSEDED');
+  assert.deepEqual((await getRagSession(saved.id)).messages, updated.messages);
+  assert.equal((await r.create(input)).id, edited.id);
+  assert.equal((await getRagSession(saved.id)).messages.length, 2);
+});
+
+test('failed and cancelled edits keep the entire original branch and retry retains the edit target', async () => {
+  const oldMessages = pair('原问题');
+  const initial = await createRagSession({ id: uuid(), mutationId: uuid(), baseVersion: null, answerMode: 'logs_only', messages: [...oldMessages,
+    { id: 'later-user', role: 'user', content: '后续问题', status: 'complete' }, { id: 'later-answer', role: 'assistant', content: '后续回答', status: 'complete' }] });
+  const r = runtime(executor({ delay: 40, error: { message: '合成失败' } })); r.start();
+  const input = submission({ sessionId: initial.id, baseVersion: initial.version, editMessageId: initial.messages[0].id, question: '修改后的问题' });
+  const failed = await r.create(input); assert.equal((await done(r, failed.id)).state, 'failed');
+  assert.deepEqual(await getRagSession(initial.id), initial);
+  await assert.rejects(r.create({ ...input, submissionId: uuid(), retryTaskId: failed.id, editMessageId: initial.messages[2].id }), error => error.code === 'RAG_INVALID_INPUT');
+  const retry = await r.create({ ...input, submissionId: uuid(), retryTaskId: failed.id });
+  assert.equal(retry.editMessageId, input.editMessageId);
+  await r.cancel(retry.id); await wait(60);
+  assert.deepEqual(await getRagSession(initial.id), initial);
+  await assert.rejects(r.create({ ...input, submissionId: uuid(), editMessageId: initial.messages[1].id }), error => error.code === 'RAG_SESSION_CONFLICT');
+});
+
+test('an edit result cannot overwrite concurrent session changes or accept stale targets', async () => {
+  const oldMessages = pair('原问题');
+  const initial = await createRagSession({ id: uuid(), mutationId: uuid(), baseVersion: null, answerMode: 'logs_only', messages: oldMessages });
+  const r = runtime(executor({ delay: 100 })); r.start();
+  const task = await r.create(submission({ sessionId: initial.id, baseVersion: initial.version, editMessageId: oldMessages[0].id, question: '修改问题' }));
+  const changed = await updateRagSession(initial.id, { mutationId: uuid(), baseVersion: initial.version, answerMode: initial.answerMode, messages: [oldMessages[0], { ...oldMessages[1], content: '另一端保存' }] });
+  const result = await until(() => r.get(task.id), task => task.saveState === 'conflict');
+  assert.equal(result.state, 'succeeded'); assert.deepEqual(await getRagSession(initial.id), changed);
+  await assert.rejects(r.create(submission({ sessionId: initial.id, baseVersion: initial.version, editMessageId: oldMessages[0].id })), error => error.code === 'RAG_SESSION_CONFLICT');
+});
+
+test('the first edit and SQLite 3 fence commit atomically; old writers reject without writing', async () => {
+  const store = new RagTaskStore(process.env.LOG_ROOT); stores.push(store);
+  const file = path.join(process.env.LOG_ROOT, 'state/rag-tasks.sqlite');
+  const sql = new DatabaseSync(file);
+  const input = submission({ baseVersion: 'a'.repeat(64), editMessageId: 'original-user' });
+  try {
+    sql.exec("CREATE TRIGGER reject_edit BEFORE INSERT ON tasks BEGIN SELECT RAISE(ABORT, 'synthetic insert failure'); END");
+    assert.throws(() => store.create(input), /synthetic insert failure/);
+    assert.equal(sql.prepare('PRAGMA user_version').get().user_version, 2);
+    assert.equal(sql.prepare('SELECT count(*) AS n FROM tasks').get().n, 0);
+    sql.exec('DROP TRIGGER reject_edit');
+    store.create(input);
+    assert.equal(sql.prepare('PRAGMA user_version').get().user_version, 3);
+    store.create(input);
+  } finally { sql.close(); }
+  const reopened = new RagTaskStore(process.env.LOG_ROOT); stores.push(reopened);
+  const before = await fs.readFile(file);
+  const oldSource = execFileSync('git', ['show', '3a7fb36:study-log-web/lib/rag-task-store.ts'], { encoding: 'utf8' });
+  const legacy = path.join(fixture, 'old-task-store.ts'); await fs.writeFile(legacy, oldSource);
+  const script = `import {RagTaskStore} from ${JSON.stringify(pathToFileURL(legacy).href)};try{new RagTaskStore(process.argv[1]);process.exit(2);}catch(e){if(!e.message.includes('newer application'))throw e;}`;
+  execFileSync(process.execPath, ['--experimental-strip-types', '--input-type=module', '-e', script, process.env.LOG_ROOT], { stdio: 'pipe' });
+  assert.deepEqual(await fs.readFile(file), before);
+  const check = new DatabaseSync(file); assert.equal(check.prepare('PRAGMA user_version').get().user_version, 3); check.close();
+});
+
+test('listing tasks across sessions reads the authoritative session file once', async () => {
+  const r = runtime(executor());
+  for (let i = 0; i < 6; i++) {
+    const saved = await createRagSession({ id: uuid(), mutationId: uuid(), baseVersion: null, answerMode: 'logs_only', messages: pair('合成问题' + i) });
+    r.store.create(submission({ sessionId: saved.id, baseVersion: saved.version }));
+  }
+  const readFile = fs.readFile; let reads = 0;
+  fs.readFile = async (...args) => { if (String(args[0]).endsWith('state' + path.sep + 'rag-sessions.json')) reads++; return readFile(...args); };
+  try { assert.equal((await r.list()).length, 6); assert.equal(reads, 1); }
+  finally { fs.readFile = readFile; }
 });
 
 test('simultaneous and late identical submissions share one task; changed content conflicts', async () => {

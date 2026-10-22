@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarDays, ChevronDown, RefreshCw, Settings2, TrendingDown, TrendingUp } from "lucide-react";
+import { CalendarDays, ChevronDown, RefreshCw, TrendingDown, TrendingUp } from "lucide-react";
 import { useMemo, useState } from "react";
 import { WorkspaceState } from "../WorkspaceState";
 import type { DomainCount, MonthlyStats, StatsEntry, TagCount } from "@/lib/stats-types";
@@ -20,7 +20,6 @@ type StatsOverviewProps = {
   classificationReady: boolean;
   onMonthChange: (month: string) => void;
   onRefresh: () => void;
-  onOpenManager: () => void;
   onOpenEntry: (entry: StatsEntry) => void;
 };
 
@@ -89,7 +88,6 @@ export function StatsOverview({
   classificationReady,
   onMonthChange,
   onRefresh,
-  onOpenManager,
   onOpenEntry
 }: StatsOverviewProps) {
   const [activeDomain, setActiveDomain] = useState<string | null>(null);
@@ -169,9 +167,6 @@ export function StatsOverview({
           </label>
           <button className="button secondary" onClick={onRefresh} disabled={busy || !selectedMonth}>
             <RefreshCw size={15} />刷新
-          </button>
-          <button className="button secondary" onClick={onOpenManager}>
-            <Settings2 size={15} />分类管理
           </button>
         </div>
       </div>

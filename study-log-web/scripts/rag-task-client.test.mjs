@@ -1,11 +1,32 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { RagTaskClient, ragTaskMessages, validRagTask } from '../lib/rag-task-client.ts';
+import { RagTaskClient, ragTaskMessages, validRagTask, newestRagTask, ragTaskRetained } from '../lib/rag-task-client.ts';
 import { ApiRequestError } from '../lib/client-http.ts';
 
 const instance = randomUUID();
 const input = () => ({ submissionId: randomUUID(), sessionId: randomUUID(), baseVersion: null, question: '合成问题', mode: 'logs_only', createdAt: new Date().toISOString() });
+
+test('newest and retained task selection ignore a newer superseded branch', () => {
+  const usable={id:'first',sessionId:'s',createdAt:'2026-10-01T00:00:00Z',state:'running',saveState:'pending'};
+  const oldBranch={...usable,id:'second',createdAt:'2026-10-02T00:00:00Z',applicable:false};
+  assert.equal(newestRagTask([usable,oldBranch],'s'),usable);
+  assert.equal(ragTaskRetained(oldBranch),false);assert.equal(ragTaskRetained(usable),true);
+});
+
+test('an older in-flight GET cannot revive a task after a same-revision superseded summary',async()=>{
+ const original=taskFor(input()),snapshots=[];let release;
+ const delayed=new Promise(resolve=>{release=resolve;});
+ const client=new RagTaskClient(instance,{getItem:()=>null,setItem(){},removeItem(){}},
+  {task:value=>snapshots.push(value),pending(){},rejected(){},missing(){},error(){}},
+  async url=>url==='/api/rag/tasks'?{tasks:[{...original,applicable:false}]}:delayed);
+ client.track(original);
+ const oldRead=client.select(original.id);await client.refresh();
+ assert.equal(snapshots.at(-1).applicable,false);
+ release({task:{...original,applicable:true}});await oldRead;
+ client.track(original);await client.select(original.id);
+ assert.ok(snapshots.every(task=>task.applicable===false));client.stop();
+});
 const taskFor = value => ({ id: randomUUID(), ...value, replaceLast: false, state: 'running', revision: 1, updatedAt: value.createdAt,
   partial: '合成片段', stage: '正在回答', result: null, error: '', errorCode: '', saveState: 'pending', saveError: '' });
 const storage = () => { const values = new Map(); return { values, getItem: key => values.get(key) || null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) }; };

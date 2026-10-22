@@ -8,6 +8,7 @@ import type { RagAnswerMode, RagChatMessage, RagSession, RagSessionSummary } fro
 import { RagTaskClient, ragTaskMessages, ragTaskRetained, newestRagTask, type PendingRagTask } from "@/lib/rag-task-client";
 import { ragAnswerVersions } from "@/lib/rag-answer-versions";
 import { ragTaskActive, type RagTask } from "@/lib/rag-task-types";
+import { originalRagMessageTimes } from "@/lib/rag-message-time";
 
 interface Options {
   active: boolean; visible: boolean; routeSessionId: string; routeToken: number;
@@ -15,16 +16,19 @@ interface Options {
   onRoute: (id: string) => void;
 }
 interface Snapshot { id: string; mutationId: string; baseVersion: string | null; answerMode: RagAnswerMode; messages: RagChatMessage[] }
+interface QuestionEdit { body: string; baseVersion: string; error: string; submissionId?: string }
 interface SessionState {
   id: string; session: RagSession | null; messages: RagChatMessage[]; question: string; answerMode: RagAnswerMode;
   unsaved: boolean; generating: boolean; saving: boolean; stage: string; error: string; saveError: string;
   pendingSave: Snapshot | null; selectionSave: Snapshot | null; request: AbortController | null; unread: boolean; createdAt: string;
   task: RagTask | null; pendingTask: PendingRagTask | null; awaitingSession: boolean; viewRevision: number;
+  editingId: string; edits: Map<string, QuestionEdit>;
 }
 function sessionState(id: string, session: RagSession | null = null): SessionState {
   return { id, session, messages: session?.messages || [], question: "", answerMode: session?.answerMode || "logs_only",
     unsaved: false, generating: false, saving: false, stage: "", error: "", saveError: "", pendingSave: null, selectionSave: null,
-    request: null, unread: false, createdAt: session?.createdAt || new Date().toISOString(), task: null, pendingTask: null, awaitingSession: false, viewRevision: 0 };
+    request: null, unread: false, createdAt: session?.createdAt || new Date().toISOString(), task: null, pendingTask: null, awaitingSession: false, viewRevision: 0,
+    editingId: "", edits: new Map() };
 }
 function validSession(value: unknown): value is RagSession {
   const item = value as RagSession | undefined;
@@ -50,20 +54,21 @@ export function useRag(options: Options) {
   const setError = (value: string) => { states.current.get(selectedId.current)!.error = value; notify(); };
   const [query, setQuery] = useState("");
   const currentQuery = useRef(query); currentQuery.current = query;
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [historyError, setHistoryError] = useState("");
   const [historyRevision, setHistoryRevision] = useState(0);
   const [initializing, setInitializing] = useState(false);
   const [navigationError, setNavigationError] = useState("");
   const [configured, setConfigured] = useState(false);
   const [configurationError, setConfigurationError] = useState("");
-  const [taskCapability, setTaskCapability] = useState<{ instanceId: string; supported: boolean; ready: boolean } | null>(null);
+  const [taskCapability, setTaskCapability] = useState<{ instanceId: string; supported: boolean; ready: boolean; questionEditing: boolean } | null>(null);
   const taskClient = useRef<RagTaskClient | null>(null);
   const taskScope = useRef("");
   const taskSnapshots = useRef(new Map<string, RagTask>());
   const answerViews = useRef(new Map<string, Map<string, string>>());
   const deletedSessions = useRef(new Set<string>());
   const submittedTasks = useRef(new Set<string>());
+  const dismissedEdits = useRef(new Set<string>());
   const [taskConnectionError, setTaskConnectionError] = useState("");
   const [focusToken, setFocusToken] = useState(0);
   const [navigationToken, setNavigationToken] = useState(0);
@@ -72,10 +77,12 @@ export function useRag(options: Options) {
   const loadRequest = useRef<AbortController | null>(null);
   const titleJobs = useRef(new Map<string, Promise<{ before: string; after: RagSession } | null>>());
   const loadedRoute = useRef<string | null>(null);
+  const listRequestId = useRef(0);
   const refreshList = useCallback(async (signal?: AbortSignal) => {
     if (!live.current.active) return;
-    const search = currentQuery.current;
+    const search = currentQuery.current, id = ++listRequestId.current, epoch = activationEpoch.current;
     const result = await requestJson<{ sessions: RagSessionSummary[] }>(`/api/rag/sessions?q=${encodeURIComponent(search)}`, { signal });
+    if (signal?.aborted || !live.current.active || id !== listRequestId.current || epoch !== activationEpoch.current || search !== currentQuery.current) return;
     if (!Array.isArray(result.sessions)) throw new Error("历史列表响应不完整，请重试");
     if (!signal?.aborted && live.current.active && search === currentQuery.current) setSessions(result.sessions);
   }, []);
@@ -83,11 +90,11 @@ export function useRag(options: Options) {
     if (!live.current.active) return;
     const epoch = activationEpoch.current;
     try {
-      const result = await requestJson<{ instanceId: string; features: { ragTasks?: { supported: boolean; configured: boolean; protocolVersion: number }; rag?: { supported: boolean; configured: boolean; issues?: Array<{ message: string }> } } }>("/api/capabilities");
+      const result = await requestJson<{ instanceId: string; features: { ragTasks?: { supported: boolean; configured: boolean; protocolVersion: number; questionEditing?: boolean }; rag?: { supported: boolean; configured: boolean; issues?: Array<{ message: string }> } } }>("/api/capabilities");
       if (!live.current.active || epoch !== activationEpoch.current) return;
       const tasks = result.features?.ragTasks;
       // Only an absent capability is the legacy path. An advertised but unavailable runtime must not silently lose durability.
-      setTaskCapability({ instanceId: result.instanceId, supported: Boolean(tasks?.supported), ready: Boolean(tasks?.configured && tasks.protocolVersion === 1) });
+      setTaskCapability({ instanceId: result.instanceId, supported: Boolean(tasks?.supported), ready: Boolean(tasks?.configured && tasks.protocolVersion === 1), questionEditing: tasks?.questionEditing === true });
       const enabled = Boolean(result.features?.rag?.supported && result.features.rag.configured);
       const issues = result.features?.rag?.issues?.map(issue => issue.message).filter(Boolean).join("；");
       const taskReady = !tasks?.supported || tasks.configured && tasks.protocolVersion === 1;
@@ -97,15 +104,18 @@ export function useRag(options: Options) {
   useEffect(() => {
     if (!options.active || !options.visible) return;
     const controller = new AbortController(); setLoading(true); setHistoryError("");
-    const timer = setTimeout(() => { void refreshList(controller.signal).catch(failure => { if (!controller.signal.aborted) setHistoryError(failure.message); }).finally(() => { if (!controller.signal.aborted) setLoading(false); }); }, query ? 150 : 0);
+    const timer = setTimeout(() => { void refreshList(controller.signal).catch(failure => { if (!controller.signal.aborted) setHistoryError(failure instanceof TypeError ? "历史问答暂时无法更新，请检查连接后重试" : failure.message); }).finally(() => { if (!controller.signal.aborted) setLoading(false); }); }, query ? 150 : 0);
     return () => { clearTimeout(timer); controller.abort(); };
   }, [options.active, options.visible, query, refreshList, historyRevision]);
   useEffect(() => { if (options.active && options.visible) void refreshConfiguration(); }, [options.active, options.visible, refreshConfiguration]);
   const install = useCallback((value: SessionState) => {
     const previous = states.current.get(selectedId.current);
-    if (previous?.id && previous !== value && !previous.generating && !previous.saving && !previous.unsaved && !previous.pendingSave && !previous.question.trim() && !previous.unread) states.current.delete(previous.id);
+    if (previous?.id && previous !== value && !previous.generating && !previous.saving && !previous.unsaved && !previous.pendingSave && !previous.question.trim() && !previous.edits.size && !previous.unread) states.current.delete(previous.id);
     states.current.set(value.id, value); selectedId.current = value.id; value.unread = false;
-    if (value.id && taskClient.current) void taskClient.current.readSession(value.id).catch(failure => { if (states.current.get(value.id) === value) { value.error = failure.message; notify(); } });
+    if (value.id && taskClient.current) {
+      const client = taskClient.current, epoch = activationEpoch.current;
+      void client.readSession(value.id).catch(failure => { if (taskClient.current === client && epoch === activationEpoch.current && states.current.get(value.id) === value) setTaskConnectionError(failure instanceof TypeError ? "回答版本暂时无法更新，请重试连接" : failure.message); });
+    }
     notify(); setNavigationToken(token => token + 1);
   }, [notify]);
   useEffect(() => {
@@ -113,7 +123,7 @@ export function useRag(options: Options) {
     if (taskScope.current && taskScope.current !== taskCapability.instanceId) {
       for (const item of states.current.values()) item.request?.abort();
       states.current = new Map([["", sessionState("")]]); selectedId.current = ""; loadedRoute.current = null;
-      titleJobs.current.clear(); submittedTasks.current.clear(); taskSnapshots.current.clear(); answerViews.current.clear(); deletedSessions.current.clear(); setSessions([]); setNavigationToken(token => token + 1); live.current.onRoute(""); notify();
+      titleJobs.current.clear(); submittedTasks.current.clear(); dismissedEdits.current.clear(); taskSnapshots.current.clear(); answerViews.current.clear(); deletedSessions.current.clear(); setSessions([]); setNavigationToken(token => token + 1); live.current.onRoute(""); notify();
     }
     taskScope.current = taskCapability.instanceId;
     if (!taskCapability.supported) { setTaskConnectionError(""); return; }
@@ -139,12 +149,14 @@ export function useRag(options: Options) {
           if (!current() || deletedSessions.current.has(input.sessionId)) return;
           submittedTasks.current.add(input.submissionId); rememberTitleOwners();
           const owner = ownerFor(input.sessionId);
+          if (input.editMessageId && input.baseVersion && !owner.edits.has(input.editMessageId)) owner.edits.set(input.editMessageId, { body: input.question, baseVersion: input.baseVersion, error: "", submissionId: input.submissionId });
           if (owner.task?.submissionId === input.submissionId) return;
           answerViews.current.delete(owner.id); owner.viewRevision++;
           owner.pendingTask = input; owner.generating = true; owner.createdAt = input.createdAt;
           owner.stage = input.cancelRequested ? "正在确认停止…" : "正在确认问答任务…";
           const previous = owner.session?.messages || [];
-          owner.messages = [...(input.replaceLast ? previous.slice(0, -2) : previous), { id: `${input.submissionId}:user`, role: "user", content: input.question, status: "complete" },
+          const editIndex = input.editMessageId ? previous.findIndex(message => message.id === input.editMessageId && message.role === "user") : -1;
+          owner.messages = [...(editIndex >= 0 ? previous.slice(0, editIndex) : input.replaceLast ? previous.slice(0, -2) : previous), { id: `${input.submissionId}:user`, role: "user", content: input.question, status: "complete" },
             { id: `${input.submissionId}:assistant`, role: "assistant", content: "", status: "streaming" }];
           notify();
         },
@@ -152,6 +164,11 @@ export function useRag(options: Options) {
           if (!current() || deletedSessions.current.has(task.sessionId)) return;
           taskSnapshots.current.set(task.id, task);
           const owner = ownerFor(task.sessionId), previous = owner.task;
+          if (task.applicable === false) {
+            if (owner.task?.id === task.id) void showSavedSession(owner);
+            notify(); return;
+          }
+          if (owner.pendingTask && owner.pendingTask.submissionId !== task.submissionId) { notify(); return; }
           const latest = newestRagTask(taskSnapshots.current.values(), owner.id);
           if (latest?.id !== task.id) { notify(); return; }
           owner.task = task; owner.pendingTask = null; owner.generating = ragTaskActive(task); owner.unsaved = false;
@@ -173,7 +190,12 @@ export function useRag(options: Options) {
               const result = await requestJson<{ session: RagSession }>(`/api/rag/sessions/${task.sessionId}`);
               if (!validSession(result.session) || result.session.id !== task.sessionId) throw new Error("会话响应不完整，请重新读取");
               if (!current() || owner.task !== task || states.current.get(owner.id) !== owner) return;
+              if (task.editMessageId && task.saveState === "saved" && !result.session.messages.some(message => message.id === `${task.id}:assistant`)) throw new Error("读取到的会话仍为旧版本，请重新读取。");
               owner.session = result.session; owner.messages = ragTaskMessages(task, result.session, task.id !== newestRagTask(taskSnapshots.current.values(), owner.id)?.id); owner.awaitingSession = false;
+              if (task.editMessageId && task.saveState === "saved" && owner.edits.get(task.editMessageId)?.submissionId === task.submissionId) {
+                owner.edits.delete(task.editMessageId);
+                if (owner.editingId === task.editMessageId) owner.editingId = "";
+              }
               setSessions(list => [result.session, ...list.filter(item => item.id !== owner.id)]);
               if (task.saveState === "saved" && submittedTasks.current.delete(task.submissionId)) { rememberTitleOwners(); generateTitle(owner, result.session); }
             } catch (failure) {
@@ -181,7 +203,19 @@ export function useRag(options: Options) {
               if (task.saveState === "saved") owner.error = "回答已在服务端保存，但读取会话失败，请重新读取。";
             }
           }
-          if (current() && owner.task === task) { owner.saving = task.state === "succeeded" && task.saveState === "pending"; if (task.saveState === "saved") void refreshList().catch(() => {}); notify(); }
+          if (current() && owner.task === task) {
+            if (task.editMessageId && !dismissedEdits.current.has(task.submissionId) && ["failed", "cancelled", "interrupted"].includes(task.state)) {
+              owner.messages = owner.session?.messages || [];
+              const existing = owner.edits.get(task.editMessageId);
+              if (existing?.submissionId === task.submissionId || !existing && !owner.editingId) {
+                const draft = existing || { body: task.question, baseVersion: "", error: "", submissionId: task.submissionId };
+                draft.error = task.state === "cancelled" ? "已停止，原对话未改动。" : task.error || "回答未完成，原对话未改动。";
+                if (!draft.baseVersion) draft.error += " 请重新读取会话，核对后再发送。";
+                owner.edits.set(task.editMessageId, draft); owner.editingId = task.editMessageId;
+              }
+            }
+            owner.saving = task.state === "succeeded" && task.saveState === "pending"; if (task.saveState === "saved") void refreshList().catch(() => {}); notify();
+          }
         },
         rejected(input, failure) {
           if (!current() || deletedSessions.current.has(input.sessionId)) return;
@@ -189,7 +223,11 @@ export function useRag(options: Options) {
           if (owner.pendingTask?.submissionId !== input.submissionId) return;
           owner.pendingTask = null; owner.generating = false; owner.stage = ""; owner.messages = owner.session?.messages || [];
           submittedTasks.current.delete(input.submissionId); rememberTitleOwners();
-          owner.question ||= input.question; owner.error = failure.message; notify();
+          if (input.editMessageId) {
+            const draft = owner.edits.get(input.editMessageId);
+            if (draft?.submissionId === input.submissionId) { draft.error = failure.message; owner.editingId = input.editMessageId; }
+          } else { owner.question ||= input.question; owner.error = failure.message; }
+          notify();
         },
         missing(task) {
           if (!current()) return;
@@ -240,7 +278,7 @@ export function useRag(options: Options) {
   useEffect(() => {
     if (options.visible && state.unread) { state.unread = false; notify(); }
   }, [options.visible, state, notify]);
-  const dirty = [...states.current.values()].some(item => item.question.trim() || item.unsaved || item.pendingSave || !item.task && !item.pendingTask && (item.generating || item.saving));
+  const dirty = [...states.current.values()].some(item => item.question.trim() || item.edits.size || item.unsaved || item.pendingSave || !item.task && !item.pendingTask && (item.generating || item.saving));
   useEffect(() => {
     if (!dirty) return;
     const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
@@ -261,7 +299,7 @@ export function useRag(options: Options) {
     if (!(await live.current.onConfirm({ title: "退出工作台？", message: taskCapability?.supported ? "将放弃尚未发送的草稿。已提交的问答继续由服务器处理，重新登录后可以查看。" : "将停止正在生成的问答，并放弃各会话未保存的回答和草稿。已保存的历史会话不受影响。", confirmLabel: "放弃并退出", tone: "danger" }))) return false;
     for (const item of states.current.values()) item.request?.abort();
     activationEpoch.current++; states.current = new Map([["", sessionState("")]]); selectedId.current = "";
-    loadedRoute.current = null; titleJobs.current.clear(); notify();
+    loadedRoute.current = null; titleJobs.current.clear(); dismissedEdits.current.clear(); notify();
     return true;
   }
   async function showSavedSession(owner: SessionState, resetView = false) {
@@ -274,13 +312,27 @@ export function useRag(options: Options) {
       const result = await requestJson<{ session: RagSession }>(`/api/rag/sessions/${owner.id}`);
       if (!validSession(result.session) || result.session.id !== owner.id) throw new Error("会话响应不完整，请重新读取");
       if (!current()) return;
+      const committed = newestRagTask([...taskSnapshots.current.values()].filter(task => task.sessionId === owner.id), owner.id);
+      if (committed?.editMessageId && committed.saveState === "saved" && !result.session.messages.some(message => message.id === `${committed.id}:assistant`)) throw new Error("读取到的会话仍为旧版本，请重新读取。");
       owner.session = result.session; owner.messages = result.session.messages; owner.awaitingSession = false; owner.error = "";
+      if (committed?.editMessageId && committed.saveState === "saved" && owner.edits.get(committed.editMessageId)?.submissionId === committed.submissionId) {
+        owner.edits.delete(committed.editMessageId);
+        if (owner.editingId === committed.editMessageId) owner.editingId = "";
+      }
       if (resetView) { answerViews.current.delete(owner.id); if (owner.question === draft) owner.question = ""; }
       setSessions(list => [result.session, ...list.filter(item => item.id !== owner.id)]);
     } catch (failure) {
       if (!current()) return;
       if (failure instanceof ApiRequestError && failure.status === 404) {
         const remaining = [...taskSnapshots.current.values()].some(task => task.sessionId === owner.id);
+        if (owner.edits.size) {
+          deletedSessions.current.add(owner.id); answerViews.current.delete(owner.id);
+          for (const task of taskSnapshots.current.values()) if (task.sessionId === owner.id) taskSnapshots.current.delete(task.id);
+          owner.session = null; owner.messages = []; owner.task = null; owner.pendingTask = null; owner.awaitingSession = false;
+          owner.error = "会话已删除，修改稿仍保留，可复制或取消编辑。";
+          for (const draft of owner.edits.values()) { draft.baseVersion = ""; draft.error = owner.error; }
+          setSessions(list => list.filter(item => item.id !== owner.id)); return;
+        }
         if (owner.session || !remaining) {
           deletedSessions.current.add(owner.id);
           for (const task of taskSnapshots.current.values()) if (task.sessionId === owner.id) taskSnapshots.current.delete(task.id);
@@ -394,10 +446,62 @@ export function useRag(options: Options) {
     } catch (failure) { if (owned(owner) && epoch === activationEpoch.current) owner.saveError = failure instanceof Error ? failure.message : "保存历史失败，请重试"; }
     finally { if (owned(owner) && epoch === activationEpoch.current) { owner.saving = false; notify(); } }
   }
+  function beginQuestionEdit(id: string) {
+    const owner = states.current.get(selectedId.current)!;
+    const message = owner.session?.messages.find(message => message.id === id && message.role === "user");
+    if (!message || !taskCapability?.questionEditing || owner.generating || owner.saving || owner.awaitingSession || owner.pendingTask || answerProjection(owner).historical) return;
+    if (!owner.edits.has(id)) owner.edits.set(id, { body: message.content, baseVersion: owner.session!.version, error: "" });
+    owner.editingId = id; notify();
+  }
+  function changeQuestionEdit(body: string) {
+    const owner = states.current.get(selectedId.current)!, draft = owner.edits.get(owner.editingId);
+    if (!draft || owner.generating || owner.pendingTask) return;
+    draft.body = body; draft.error = ""; notify();
+  }
+  function cancelQuestionEdit() {
+    const owner = states.current.get(selectedId.current)!;
+    if (owner.generating || owner.pendingTask) return;
+    const submissionId = owner.edits.get(owner.editingId)?.submissionId;
+    if (submissionId) dismissedEdits.current.add(submissionId);
+    if (owner.task?.editMessageId === owner.editingId && !ragTaskActive(owner.task)) {
+      dismissedEdits.current.add(owner.task.submissionId); owner.task = null;
+    }
+    owner.edits.delete(owner.editingId); owner.editingId = ""; notify();
+    const nextOrphan = [...owner.edits.keys()].find(id => !owner.session?.messages.some(message => message.id === id && message.role === "user"));
+    if (nextOrphan) owner.editingId = nextOrphan;
+    if (!owner.edits.size && deletedSessions.current.has(owner.id)) {
+      const fresh = sessionState(""); fresh.question = owner.question;
+      states.current.delete(owner.id); install(fresh); loadedRoute.current = ""; live.current.onRoute("");
+    }
+  }
+  async function reloadQuestionEdit() {
+    const owner = states.current.get(selectedId.current)!;
+    if (owner.generating || owner.saving || owner.pendingTask) return;
+    await showSavedSession(owner);
+    if (!owned(owner) || !owner.session || owner.awaitingSession) return;
+    for (const [id, draft] of owner.edits) {
+      if (owner.session.messages.some(message => message.id === id && message.role === "user")) { draft.baseVersion = owner.session.version; draft.error = ""; }
+      else draft.error = "原问题已不在当前会话中，修改内容仍保留。";
+    }
+    notify();
+  }
+  async function sendQuestionEdit() {
+    const owner = states.current.get(selectedId.current)!, id = owner.editingId, draft = owner.edits.get(id);
+    if (!draft || !taskCapability?.questionEditing || !taskClient.current || !live.current.active || !live.current.visible || !configured ||
+      owner.generating || owner.saving || owner.pendingTask || owner.pendingSave || owner.awaitingSession || initializing || answerProjection(owner).historical) return;
+    const text = draft.body.trim();
+    if (!text || text.length > 2000) return;
+    if (!draft.baseVersion || !owner.session?.messages.some(message => message.id === id && message.role === "user")) { draft.error = "请重新读取会话后核对要修改的问题。"; notify(); return; }
+    const input: PendingRagTask = { submissionId: clientUuid(), sessionId: owner.id, baseVersion: draft.baseVersion,
+      question: text, mode: owner.answerMode, editMessageId: id, createdAt: new Date().toISOString() };
+    draft.error = ""; draft.submissionId = input.submissionId; owner.error = "";
+    try { setAnswerStartToken(value => value + 1); await taskClient.current.submit(input); }
+    catch (failure) { if (owned(owner)) { draft.error = failure instanceof Error ? failure.message : "修改尚未提交，原对话未改动。"; notify(); } }
+  }
   async function submit(regenerate = false) {
     const state = states.current.get(selectedId.current)!;
-    if (!live.current.active || !live.current.visible || !configured || state.generating || initializing || state.saving || state.pendingSave || state.awaitingSession) return;
-    if (state.task && state.task.id !== newestRagTask(taskSnapshots.current.values(), state.id)?.id || [...taskSnapshots.current.values()].some(task => task.sessionId === state.id && ragTaskActive(task) && task.id !== state.task?.id)) return;
+    if (!live.current.active || !live.current.visible || !configured || state.generating || initializing || state.saving || state.pendingSave || state.awaitingSession || state.editingId) return;
+    if (state.task && state.task.id !== newestRagTask(taskSnapshots.current.values(), state.id)?.id || [...taskSnapshots.current.values()].some(task => task.applicable !== false && task.sessionId === state.id && ragTaskActive(task) && task.id !== state.task?.id)) return;
     if (regenerate && (answerProjection(state).historical || state.question.trim())) return;
     const text = regenerate ? state.messages.at(-2)?.content || "" : state.question.trim();
     if (!text || text.length > 2000) return;
@@ -413,7 +517,7 @@ export function useRag(options: Options) {
     }
     if (taskCapability?.supported) {
       if (!taskClient.current || state.pendingTask) return;
-      const retryingTask = regenerate && state.task && state.task.state !== "succeeded";
+      const retryingTask = regenerate && state.task && !state.task.editMessageId && state.task.state !== "succeeded";
       const input: PendingRagTask = { submissionId: clientUuid(), sessionId: state.id, baseVersion: state.session?.version || null,
         question: text, mode: state.answerMode, createdAt: new Date().toISOString(),
         ...(retryingTask ? { retryTaskId: state.task!.id } : {}),
@@ -513,7 +617,7 @@ export function useRag(options: Options) {
   const localSessions: RagSessionSummary[] = [];
   for (const item of states.current.values()) {
     if (!item.id) continue;
-    if (item.generating || [...taskSnapshots.current.values()].some(task => task.sessionId === item.id && ragTaskActive(task))) sessionActivity[item.id] = "generating";
+    if (item.generating || [...taskSnapshots.current.values()].some(task => task.applicable !== false && task.sessionId === item.id && ragTaskActive(task))) sessionActivity[item.id] = "generating";
     else if (item.saving) sessionActivity[item.id] = "saving";
     else if (item.unsaved || item.pendingSave || item.saveError || item.question.trim() || item.task && item.task.state !== "succeeded" || [...taskSnapshots.current.values()].some(task => task.sessionId === item.id && ragTaskRetained(task))) sessionActivity[item.id] = "unsaved";
     else if (item.unread) sessionActivity[item.id] = "unread";
@@ -527,10 +631,18 @@ export function useRag(options: Options) {
   const parentQuestionId = state.session?.messages.at(-2)?.id;
   const selectedParent = parentQuestionId ? projection.messages.find(message => message.questionId === parentQuestionId) : undefined;
   const displayMessages = taskCapability?.supported && !state.pendingTask ? projection.messages : messages;
-  const otherActive = [...taskSnapshots.current.values()].some(task => task.sessionId === state.id && ragTaskActive(task) && task.id !== state.task?.id);
+  const otherActive = [...taskSnapshots.current.values()].some(task => task.applicable !== false && task.sessionId === state.id && ragTaskActive(task) && task.id !== state.task?.id);
   const historicalTask = Boolean(state.task && state.task.id !== latestTask?.id);
   return { sessions: displayedSessions, activeSessionId: selectedId.current, sessionActivity, session, messages: displayMessages, question, setQuestion,
-    answerMode, setAnswerMode, query, setQuery, loading, historyError: historyError || taskConnectionError, retryHistory: () => { setHistoryRevision(value => value + 1); void taskClient.current?.refresh(); }, initializing, generating, saving, stage, error: navigationError || error, saveError, serverTask: Boolean(state.task), savingSelection: Boolean(state.selectionSave), submissionBlocked: state.awaitingSession || historicalTask || otherActive, canRetrySave: Boolean(state.pendingSave) || state.task?.saveState !== "conflict", configured, configurationError, focusToken, navigationToken, answerStartToken, dirty,
+    answerMode, setAnswerMode, query, setQuery, loading, historyError, retryHistory: () => setHistoryRevision(value => value + 1),
+    taskConnectionError, retryTaskConnection: () => { void taskClient.current?.refresh(); },
+    questionEditing: taskCapability?.questionEditing === true && !projection.historical,
+    editableQuestionIds: state.session?.messages.filter(message => message.role === "user").map(message => message.id) || [],
+    questionEdit: state.editingId && state.edits.get(state.editingId) ? { id: state.editingId, ...state.edits.get(state.editingId)!,
+      orphaned: deletedSessions.current.has(state.id) || Boolean(state.session && !state.session.messages.some(message => message.role === "user" && message.id === state.editingId)) } : null,
+    beginQuestionEdit, changeQuestionEdit, cancelQuestionEdit, sendQuestionEdit, reloadQuestionEdit,
+    messageTimes: originalRagMessageTimes([...taskSnapshots.current.values()].filter(task => task.sessionId === state.id)),
+    initializing, generating, saving, stage, error: navigationError || error, saveError, serverTask: Boolean(state.task), savingSelection: Boolean(state.selectionSave), submissionBlocked: state.awaitingSession || historicalTask || otherActive, canRetrySave: Boolean(state.pendingSave) || state.task?.saveState !== "conflict", configured, configurationError, focusToken, navigationToken, answerStartToken, dirty,
     viewingPreviousAnswer: Boolean(selectedParent && selectedParent.id !== state.session?.messages.at(-1)?.id), selectAnswerVersion, saveAnswer, discardAnswer,
     beforeLeave, confirmExit, refreshConfiguration, refreshList, reloadSession, submit: () => submit(), regenerate: (answerId?: string) => { if (answerId) { const answer = answerProjection(states.current.get(selectedId.current)!).messages.find(message => message.id === answerId); if (!answer?.canRegenerate && !answer?.canRetry) return; } return submit(true); }, stop: () => {
       const owner = states.current.get(selectedId.current)!;

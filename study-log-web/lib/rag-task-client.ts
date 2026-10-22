@@ -36,6 +36,8 @@ export function validRagTask(value: unknown): value is RagTask {
   return Boolean(task && uuid(task.id) && uuid(task.sessionId) && uuid(task.submissionId) &&
     Number.isSafeInteger(task.revision) && task.revision > 0 && states.includes(task.state) && saves.includes(task.saveState) &&
     typeof task.createdAt === "string" && typeof task.updatedAt === "string" && typeof task.question === "string" &&
+    (task.applicable === undefined || typeof task.applicable === "boolean") &&
+    (task.editMessageId === undefined || typeof task.editMessageId === "string" && task.editMessageId.length > 0 && task.editMessageId.length <= 120 && !task.replaceLast) &&
     typeof task.partial === "string" && typeof task.stage === "string" && typeof task.error === "string" && typeof task.saveError === "string" &&
     typeof task.replaceLast === "boolean" && ["logs_only", "logs_and_general"].includes(task.mode) &&
     (task.questionMessageId === undefined || typeof task.questionMessageId === "string" && !!task.questionMessageId) &&
@@ -44,10 +46,10 @@ export function validRagTask(value: unknown): value is RagTask {
     (task.result === null || typeof task.result?.answer === "string" && Array.isArray(task.result.citations)) &&
     (task.state !== "succeeded" || task.result?.answer.trim()));
 }
-export const ragTaskRetained = (task: Pick<RagTask, "state" | "saveState">) => ragTaskActive(task) || task.state === "succeeded" && task.saveState !== "saved" && task.saveState !== "deleted";
-export function newestRagTask<T extends Pick<RagTask, "id" | "sessionId" | "createdAt">>(tasks: Iterable<T>, sessionId: string): T | undefined {
+export const ragTaskRetained = (task: Pick<RagTask, "state" | "saveState" | "applicable">) => task.applicable !== false && (ragTaskActive(task) || task.state === "succeeded" && task.saveState !== "saved" && task.saveState !== "deleted");
+export function newestRagTask<T extends Pick<RagTask, "id" | "sessionId" | "createdAt"> & { applicable?: boolean }>(tasks: Iterable<T>, sessionId: string): T | undefined {
   let latest: T | undefined;
-  for (const task of tasks) if (task.sessionId === sessionId && (!latest || `${task.createdAt}:${task.id}` > `${latest.createdAt}:${latest.id}`)) latest = task;
+  for (const task of tasks) if (task.applicable !== false && task.sessionId === sessionId && (!latest || `${task.createdAt}:${task.id}` > `${latest.createdAt}:${latest.id}`)) latest = task;
   return latest;
 }
 export function ragTaskMessages(task: RagTask, session: RagSession | null, historical = false): RagChatMessage[] {
@@ -55,7 +57,8 @@ export function ragTaskMessages(task: RagTask, session: RagSession | null, histo
   // The JSON session is authoritative after save, including later edits by another client.
   if (task.saveState === "saved" && session) return session.messages;
   const previous = session?.messages || [];
-  const prefix = task.replaceLast ? previous.slice(0, -2) : previous;
+  const editIndex = task.editMessageId ? previous.findIndex(message => message.id === task.editMessageId && message.role === "user") : -1;
+  const prefix = editIndex >= 0 ? previous.slice(0, editIndex) : task.replaceLast ? previous.slice(0, -2) : previous;
   return [...prefix, { id: task.questionMessageId || `${task.id}:user`, role: "user", content: task.question, status: "complete" },
     { id: `${task.id}:assistant`, role: "assistant", content: task.state === "succeeded" ? task.result!.answer : task.partial,
       status: ragTaskActive(task) ? "streaming" : task.state === "succeeded" ? "complete" : task.state === "cancelled" ? "stopped" : "error",
@@ -77,6 +80,7 @@ export class RagTaskClient {
   private readonly controller = new AbortController();
   private readonly tasks = new Map<string, RagTask>();
   private readonly removed = new Set<string>();
+  private readonly superseded = new Set<string>();
   private timer: ReturnType<typeof setTimeout> | undefined;
   private refreshing: Promise<void> | null = null;
   private sending = new Map<string, Promise<void>>();
@@ -98,7 +102,7 @@ export class RagTaskClient {
   viewSession(id: string) { this.viewedSession = id; this.syncStream(); }
   private syncStream() {
     const latest = newestRagTask(this.tasks.values(), this.viewedSession);
-    const task = latest && (ragTaskActive(latest) || latest.state === "succeeded" && latest.saveState === "pending") ? latest : undefined;
+    const task = latest && latest.applicable !== false && (ragTaskActive(latest) || latest.state === "succeeded" && latest.saveState === "pending") ? latest : undefined;
     if (this.stream?.id === task?.id) return;
     this.stream?.controller.abort(); this.stream = null;
     if (!task || this.stopped) return;
@@ -118,6 +122,7 @@ export class RagTaskClient {
       typeof value.question !== "string" || !value.question.trim() || value.question.length > 2000 ||
       !["logs_only", "logs_and_general"].includes(value.mode) || typeof value.createdAt !== "string" ||
       value.replaceLast !== undefined && typeof value.replaceLast !== "boolean" ||
+      value.editMessageId !== undefined && (typeof value.editMessageId !== "string" || !value.editMessageId.trim() || value.editMessageId.length > 120 || value.replaceLast === true) ||
       value.retryTaskId !== undefined && !uuid(value.retryTaskId) ||
       value.cancelRequested !== undefined && typeof value.cancelRequested !== "boolean")) throw new Error("待确认问答记录无法读取，请保留浏览器数据后重试");
     return values;
@@ -130,11 +135,18 @@ export class RagTaskClient {
     const values = this.pending().filter(item => item.submissionId !== id);
     if (values.length) this.storage.setItem(this.key, JSON.stringify(values)); else this.storage.removeItem(this.key);
   }
-  private async accept(value: unknown, expected?: Pick<RagTask, "sessionId" | "submissionId">) {
-    if (!validRagTask(value) || expected && (value.sessionId !== expected.sessionId || value.submissionId !== expected.submissionId)) throw new Error("任务快照响应不完整，请重新连接");
+  private async accept(snapshot: unknown, expected?: Pick<RagTask, "sessionId" | "submissionId">) {
+    if (!validRagTask(snapshot) || expected && (snapshot.sessionId !== expected.sessionId || snapshot.submissionId !== expected.submissionId)) throw new Error("任务快照响应不完整，请重新连接");
+    let value = snapshot;
     if (this.stopped || this.removed.has(value.id)) return;
+    if (value.applicable === false) this.superseded.add(value.id);
+    if (this.superseded.has(value.id)) value = { ...value, applicable: false };
     const old = this.tasks.get(value.id);
-    if (old && old.revision >= value.revision) return;
+    if (old && old.revision > value.revision) {
+      if (value.applicable !== false || old.applicable === false) return;
+      value = { ...old, applicable: false };
+    }
+    if (old && old.revision >= value.revision && old.applicable === value.applicable) return;
     this.tasks.set(value.id, value);
     this.syncStream();
     await this.callbacks.task(value);
@@ -166,7 +178,12 @@ export class RagTaskClient {
   track(task: RagTask) {
     // A new viewing connection must still reconcile tasks known by the retained workspace,
     // even when the server has since moved them into saved history.
-    if (validRagTask(task)) { this.tasks.set(task.id, task); this.syncStream(); }
+    if (validRagTask(task)) {
+      if (task.applicable === false) this.superseded.add(task.id);
+      const old = this.tasks.get(task.id);
+      if (old && old.revision > task.revision) return;
+      this.tasks.set(task.id, this.superseded.has(task.id) ? { ...task, applicable: false } : task); this.syncStream();
+    }
   }
   async refresh() {
     if (this.stopped) return;
@@ -178,13 +195,19 @@ export class RagTaskClient {
         if (!Array.isArray(result.tasks) || result.tasks.some(task => !uuid(task.id) || !uuid(task.sessionId) || !uuid(task.submissionId) || !states.includes(task.state) || !saves.includes(task.saveState) || !Number.isSafeInteger(task.revision))) throw new Error("任务列表响应不完整");
         const latest = new Map<string, RagTaskSummary>();
         for (const task of result.tasks) {
+          if (task.applicable === false || this.superseded.has(task.id)) {
+            this.superseded.add(task.id);
+            const known = this.tasks.get(task.id);
+            if (known && known.applicable !== false) await this.accept({ ...known, applicable: false });
+            continue;
+          }
           const old = latest.get(task.sessionId);
           if (!old || `${task.createdAt}:${task.id}` > `${old.createdAt}:${old.id}`) latest.set(task.sessionId, task);
         }
         const retainedSessions = new Set(result.tasks.filter(ragTaskRetained).map(task => task.sessionId));
         await Promise.all(result.tasks.filter(task => {
           const old = this.tasks.get(task.id);
-          if (old) return old.revision < task.revision;
+          if (old) return old.revision < task.revision || old.applicable !== task.applicable;
           // Unresolved results are not history: a newer task in the same session cannot hide them.
           return ragTaskRetained(task) || latest.get(task.sessionId)?.id === task.id &&
             (task.saveState !== "saved" && task.saveState !== "deleted" || retainedSessions.has(task.sessionId));
@@ -241,16 +264,20 @@ export class RagTaskClient {
     if (!validRagTask(result.task) || result.task.id !== id) throw new Error("任务快照响应不完整，请重试");
     if (this.stopped || this.removed.has(id)) return;
     const old = this.tasks.get(id);
-    if (!old || old.revision < result.task.revision) this.tasks.set(id, result.task);
-    this.syncStream();
-    await this.callbacks.task(this.tasks.get(id)!);
+    await this.accept(result.task);
+    if (this.tasks.get(id) === old && old) await this.callbacks.task(old);
   }
   async readSession(sessionId: string) {
     if (!uuid(sessionId)) throw new Error("会话标识无效");
     const result = await this.request<{ tasks: RagTaskSummary[] }>(`/api/rag/tasks?sessionId=${encodeURIComponent(sessionId)}`);
     if (!Array.isArray(result.tasks) || result.tasks.some(task => !uuid(task.id) || task.sessionId !== sessionId || !uuid(task.submissionId) || !Number.isSafeInteger(task.revision))) throw new Error("回答版本列表响应不完整");
     for (const task of result.tasks) {
-      if (this.tasks.has(task.id) && this.tasks.get(task.id)!.revision >= task.revision) continue;
+      if (task.applicable === false) {
+        this.superseded.add(task.id);
+        const known = this.tasks.get(task.id);
+        if (known && known.applicable !== false) await this.accept({ ...known, applicable: false });
+      }
+      if (this.tasks.has(task.id) && this.tasks.get(task.id)!.revision >= task.revision && this.tasks.get(task.id)!.applicable === task.applicable) continue;
       const value = (await this.request<{ task: RagTask }>(`/api/rag/tasks/${task.id}`)).task;
       if (value?.id !== task.id) throw new Error("回答版本身份不匹配");
       await this.accept(value, task);

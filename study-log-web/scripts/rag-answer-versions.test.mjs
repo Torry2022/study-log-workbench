@@ -5,6 +5,26 @@ const pair = (id, content = id) => [{id, role:'user', content:'同一个问题'}
 const task = (id, questionId, previousAnswer, patch = {}) => ({id, sessionId:'session', questionMessageId:questionId, previousAnswer,
   question:'同一个问题', createdAt:id, revision:1, state:'succeeded', saveState:'saved', result:{answer:id,citations:[{sourceId:'S1',date:'2026-02-02',heading:id}]}, partial:'', ...patch});
 
+test('an inapplicable old branch cannot restore removed questions or offered versions',()=>{
+  const saved=pair('current'), old=task('old','removed',undefined,{applicable:false,saveState:'error'});
+  const projection=ragAnswerVersions(saved,[old],new Map());
+  assert.equal(projection.messages.length,2);assert.equal(projection.messages[0].id,'current');
+  assert.deepEqual(projection.messages[1].versions,['current-a']);
+});
+
+test('an edit previews only its prefix while failure or cancellation restores the saved branch',()=>{
+  const saved=[...pair('q1'),...pair('q2'),...pair('q3')];
+  const edit=task('t4','t4:user',undefined,{editMessageId:'q2',state:'running',saveState:'pending',partial:'新回答',result:null});
+  const downstream=task('t3','q3',saved[5],{createdAt:'t3'});
+  const preview=ragAnswerVersions(saved,[downstream,edit],new Map());
+  assert.deepEqual(preview.messages.filter(m=>m.role==='user').map(m=>m.id),['q1','t4:user']);
+  assert.equal(saved.length,6);
+  for(const state of ['failed','cancelled','interrupted']) {
+    const restored=ragAnswerVersions(saved,[downstream,{...edit,state}],new Map());
+    assert.deepEqual(restored.messages.filter(m=>m.role==='user').map(m=>m.id),['q1','q2','q3']);
+  }
+});
+
 test('versions are scoped by question identity, never repeated wording; canonical content wins',()=>{
   const [q1,old] = pair('q1'), [q2,a2] = pair('q2');
   const t=task('t1','q1',old), current={...old,id:'t1:assistant',content:'authoritative edit'};

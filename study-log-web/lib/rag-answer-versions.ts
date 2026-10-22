@@ -18,8 +18,16 @@ export interface RagAnswerMessage extends RagChatMessage {
 
 /** Preview-only selection; sending commits the selected last answer before building its context. */
 export function ragAnswerVersions(saved: RagChatMessage[], tasks: RagTask[], choices: ReadonlyMap<string, string>, readingTaskId?: string) {
-  const ordered = [...tasks].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
-  const pairs = [...saved], messages: RagAnswerMessage[] = [];
+  let ordered = tasks.filter(task => task.applicable !== false && !(task.editMessageId && ['failed', 'cancelled', 'interrupted'].includes(task.state)))
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+  const edit = ordered.at(-1);
+  const editIndex = edit?.editMessageId && edit.saveState !== 'saved' ? saved.findIndex(message => message.role === 'user' && message.id === edit.editMessageId) : -1;
+  const prefix = editIndex >= 0 ? saved.slice(0, editIndex) : saved;
+  if (editIndex >= 0) {
+    const prefixIds = new Set(prefix.filter(message => message.role === 'user').map(message => message.id));
+    ordered = ordered.filter(task => task.id === edit!.id || prefixIds.has(task.questionMessageId || `${task.id}:user`));
+  }
+  const pairs = [...prefix], messages: RagAnswerMessage[] = [];
   const latest = ordered.at(-1);
   for (const task of ordered) {
     const id = task.questionMessageId || `${task.id}:user`;

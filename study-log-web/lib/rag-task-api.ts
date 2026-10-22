@@ -43,16 +43,18 @@ export async function taskSubmission(request: NextRequest): Promise<RagTaskSubmi
   let body;
   try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks))); }
   catch { throw new RagTaskError("RAG_INVALID_INPUT", "请求正文必须是JSON", 400); }
-  if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).some(key => !["submissionId", "sessionId", "baseVersion", "question", "mode", "history", "replaceLast", "retryTaskId"].includes(key)) ||
+  if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).some(key => !["submissionId", "sessionId", "baseVersion", "question", "mode", "history", "replaceLast", "retryTaskId", "editMessageId"].includes(key)) ||
     typeof body.question !== "string" || !body.question.trim() || body.question.trim().length > 2000 ||
     ![body.submissionId, body.sessionId].every(value => typeof value === "string" && /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(value)) ||
     body.baseVersion !== null && (typeof body.baseVersion !== "string" || !/^[a-f0-9]{64}$/.test(body.baseVersion)) ||
     body.history !== undefined && !Array.isArray(body.history) || body.replaceLast !== undefined && typeof body.replaceLast !== "boolean" ||
+    body.editMessageId !== undefined && (typeof body.editMessageId !== "string" || !body.editMessageId.trim() || body.editMessageId.length > 120 || body.replaceLast === true || body.baseVersion === null) ||
     body.retryTaskId !== undefined && (typeof body.retryTaskId !== "string" || !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(body.retryTaskId)) ||
     body.mode !== undefined && !["logs_only", "logs_and_general"].includes(body.mode)) throw new RagTaskError("RAG_INVALID_INPUT", "任务请求无效", 400);
   try {
     return { submissionId: body.submissionId.toLowerCase(), sessionId: body.sessionId.toLowerCase(), baseVersion: body.baseVersion,
       question: body.question.trim(), mode: body.mode || "logs_only", history: parseRagHistory(body.history), ...(body.replaceLast === true ? { replaceLast: true } : {}),
+      ...(body.editMessageId !== undefined ? { editMessageId: body.editMessageId } : {}),
       ...(body.retryTaskId ? { retryTaskId: body.retryTaskId.toLowerCase() } : {}) };
   } catch { throw new RagTaskError("RAG_INVALID_INPUT", "历史问答格式无效", 400); }
 }

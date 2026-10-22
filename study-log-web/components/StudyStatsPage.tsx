@@ -54,7 +54,7 @@ export function StudyStatsPage({ stats, onOpenEntry, onOpenLog }: Props) {
           !stats.months.length ? <WorkspaceState kind="empty" icon={BarChart3} title="暂无统计数据" description="保存日志后，按日期统计记录天数，按三级标题统计小节与主题。数量不代表掌握程度；无需配置模型即可查看基础统计。" layout="module" actions={onOpenLog ? <button className="button secondary" type="button" onClick={onOpenLog}><FileText size={15} />前往日志</button> : undefined} /> : <StatsOverview key={stats.monthlyStats.month} months={monthOptions} selectedMonth={stats.monthlyStats.month} stats={stats.monthlyStats}
             classificationReady={stats.monthlyStats.classificationReady !== false}
             busy={stats.busy || stats.loading} pending={stats.loading} onMonthChange={month => void stats.changeMonth(month)} onRefresh={stats.refreshStats}
-            onOpenManager={stats.showManager} onOpenEntry={entry => { void onOpenEntry?.(entry); }} />}
+            onOpenEntry={entry => { void onOpenEntry?.(entry); }} />}
       </> : <>
         {stats.dirty && <p className="stats-draft-status" role="status">分类有未保存修改</p>}
         <TaxonomyManager taxonomy={stats.taxonomy} savedTaxonomy={stats.savedTaxonomy} catalog={stats.catalog}

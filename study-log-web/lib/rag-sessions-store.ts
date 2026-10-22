@@ -244,19 +244,27 @@ export function ensureRagTaskSessionFormat(): Promise<void> {
     await write(root, file, raw);
   });
 }
-export function inspectRagTaskSession(id: string, base?: string | null): Promise<{ session: RagSession | null; deleted: boolean; matchesBaseVersion: boolean }> {
+function inspectTaskSession(file: SessionsFile, target: string, base?: string | null) {
+  const record = file.sessions.find(item => item.id === target);
+  return { session: record ? session(record) : null, deleted: file.tombstones.some(item => item.id === target),
+    appliedTaskIds: (file.taskReceipts || []).filter(receipt => receipt.sessionId === target).map(receipt => receipt.taskId),
+    matchesBaseVersion: base !== undefined && (record ? taskVersionMatches(record, base) : base === null) };
+}
+export function inspectRagTaskSession(id: string, base?: string | null) {
   const target = uuid(id);
+  return queued(async root => inspectTaskSession((await read(root)).file, target, base), true);
+}
+export function inspectRagTaskSessions(ids: string[]) {
+  const targets = [...new Set(ids.map(uuid))];
   return queued(async root => {
     const file = (await read(root)).file;
-    const record = file.sessions.find(item => item.id === target);
-    return { session: record ? session(record) : null, deleted: file.tombstones.some(item => item.id === target),
-      matchesBaseVersion: base !== undefined && (record ? taskVersionMatches(record, base) : base === null) };
+    return new Map(targets.map(target => [target, inspectTaskSession(file, target)]));
   }, true);
 }
 
 /** Receipt and messages share one atomic JSON replacement. Reconciliation never appends twice. */
 export function applyRagTaskResult(input: { taskId: string; sessionId: string; baseVersion: string | null;
-  question: string; answerMode: RagAnswerMode; answer: string; citations: RagCitation[]; groundingWarning?: string; replaceLast?: boolean; questionMessageId?: string }): Promise<RagSession> {
+  question: string; answerMode: RagAnswerMode; answer: string; citations: RagCitation[]; groundingWarning?: string; replaceLast?: boolean; questionMessageId?: string; editMessageId?: string }): Promise<RagSession> {
   const taskId = uuid(input.taskId), id = uuid(input.sessionId);
   const digest = hash(JSON.stringify(input));
   return queued(async root => {
@@ -271,8 +279,10 @@ export function applyRagTaskResult(input: { taskId: string; sessionId: string; b
     if (existing ? !taskVersionMatches(existing, input.baseVersion) : input.baseVersion !== null) throw new RagSessionConflictError();
     if ((file.taskReceipts?.length || 0) >= 10000) throw new RagSessionStorageError();
     const previous = existing?.messages || [];
+    const editIndex = input.editMessageId === undefined ? -1 : previous.findIndex(message => message.id === input.editMessageId && message.role === "user");
+    if (input.editMessageId !== undefined && (editIndex < 0 || input.replaceLast)) throw new RagSessionConflictError();
     if (input.replaceLast && (previous.length < 2 || previous.at(-2)?.content !== input.question)) throw new RagSessionConflictError();
-    const content = messages([...(input.replaceLast ? previous.slice(0, -2) : previous),
+    const content = messages([...(editIndex >= 0 ? previous.slice(0, editIndex) : input.replaceLast ? previous.slice(0, -2) : previous),
       { id: input.replaceLast ? previous.at(-2)!.id : input.questionMessageId || `${taskId}:user`, role: "user", content: input.question, status: "complete" },
       { id: `${taskId}:assistant`, role: "assistant", content: input.answer, citations: input.citations, status: "complete",
         ...(input.groundingWarning ? { groundingWarning: input.groundingWarning } : {}) }]);

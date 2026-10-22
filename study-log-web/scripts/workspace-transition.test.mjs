@@ -24,23 +24,20 @@ function setup(reduced=false, overrides={}){
   return {hook:module.exports.useWorkspaceTransition(),callbacks,transitions,frames,document,cleanups};
 }
 
-test('superseded native updates resolve false and cannot execute an obsolete navigation',async()=>{
-  const {hook,callbacks}=setup();const updates=[];
-  const first=hook.runTransition('workspace',()=>updates.push('old'));
-  const second=hook.runTransition('workspace',()=>updates.push('new'));
-  await callbacks[0]();await callbacks[1]();
-  assert.equal(await first,false);assert.equal(await second,true);assert.deepEqual(updates,['new']);
-});
-
-test('native module changes name both visible bodies and restore each original name',async()=>{
-  const surface=name=>({style:{viewTransitionName:name},getBoundingClientRect:()=>({left:260,top:146,width:1180,height:754})});
-  const old=surface(''),next=surface('original-next');let current=old;
-  const {hook,callbacks,transitions}=setup(false,{querySelector:selector=>selector==='[data-workspace-transition-shell]'?null:current});
-  const applied=hook.runTransition('workspace',()=>current=next);
-  assert.equal(old.style.viewTransitionName,'workspace-content');
-  await callbacks[0]();assert.equal(await applied,true);assert.equal(next.style.viewTransitionName,'workspace-content');
-  transitions[0].skipTransition();await Promise.resolve();await Promise.resolve();
-  assert.equal(old.style.viewTransitionName,'');assert.equal(next.style.viewTransitionName,'original-next');
+test('module changes keep old snapshot dimensions and cancel superseded presentation without native geometry',async()=>{
+  const classes={add(){},remove(){}};
+  const copies=[];
+  const surface=(width,height)=>({style:{viewTransitionName:''},classList:classes,querySelectorAll:()=>[],scrollTop:0,scrollLeft:0,
+    getBoundingClientRect:()=>({left:260,top:146,right:260+width,bottom:146+height,width,height}),
+    cloneNode:()=>{const copy={style:{},classList:classes,scrollTop:0,scrollLeft:0,querySelectorAll:()=>[],removeAttribute(){},setAttribute(){},isConnected:false,remove(){this.isConnected=false;}};copies.push(copy);return copy;}});
+  const old=surface(1180,2000),next=surface(800,754);let current=old;
+  const {hook,callbacks}=setup(false,{body:{append:n=>{n.isConnected=true;}},querySelector:selector=>selector==='[data-workspace-transition-shell]'?null:current});
+  assert.equal(await hook.runTransition('workspace',()=>current=next,{waitForReady:true}),true);
+  assert.equal(copies[0].style.width,'1180px');assert.equal(copies[0].style.height,'2000px');
+  assert.equal(callbacks.length,0);assert.equal(current.style.viewTransitionName,'');
+  assert.equal(await hook.runTransition('workspace',()=>current=old,{waitForReady:true}),true);
+  assert.equal(copies[0].isConnected,false);assert.equal(copies[1].style.width,'800px');assert.equal(copies[1].style.height,'754px');
+  hook.cancelTransition();assert.equal(copies[1].isConnected,false);
 });
 
 test('retained CSS snapshot updates its clipping boundary when sticky toolbar moves',()=>{

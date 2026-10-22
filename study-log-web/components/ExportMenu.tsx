@@ -25,8 +25,10 @@ export function ExportMenu({ scopes, onExport, busy, disabled = false, variant =
     const outside = (event: PointerEvent) => {
       if (event.target instanceof Node && !wrapper.current?.contains(event.target)) setOpen(false);
     };
+    const close = () => setOpen(false);
     document.addEventListener("pointerdown", outside);
-    return () => document.removeEventListener("pointerdown", outside);
+    window.addEventListener("blur", close);
+    return () => { document.removeEventListener("pointerdown", outside); window.removeEventListener("blur", close); };
   }, [open]);
   useEffect(() => { if (busy || disabled) setOpen(false); }, [busy, disabled]);
 
@@ -37,7 +39,7 @@ export function ExportMenu({ scopes, onExport, busy, disabled = false, variant =
   </button>);
   if (variant === "items") return <>{items}</>;
   return <div className="export-menu log-action-export" ref={wrapper}
-    onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false); }}
+    onBlur={(event) => { if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget)) setOpen(false); }}
     onKeyDown={(event) => {
       if (event.key === "Escape" && open) { event.preventDefault(); event.stopPropagation(); setOpen(false); trigger.current?.focus(); }
       if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {

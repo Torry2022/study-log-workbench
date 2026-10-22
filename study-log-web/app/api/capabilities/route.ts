@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
       serverVersion: packageInfo.version,
       aiConfiguration: { provider, templates },
       features: {
-        ragTasks: { supported: true, configured: Boolean(currentRagTaskRuntime()), protocolVersion: 1 },
+        ragTasks: { supported: true, configured: Boolean(currentRagTaskRuntime()), protocolVersion: 1, questionEditing: true },
         aiWriting: { supported: true, configured: provider.configured && templates.generation.configured },
         aiHighlighting: { supported: true, configured: provider.configured && templates.highlighting.configured },
         aiNoteExtraction: { supported: true, configured: provider.configured && templates.extraction.configured },

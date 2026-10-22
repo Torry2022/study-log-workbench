@@ -16,7 +16,7 @@ export class RagTaskError extends Error {
 export function isRagTaskError(error: unknown): error is RagTaskError {
   return error instanceof Error && (error as RagTaskError)[taskErrorIdentity] === true;
 }
-export interface TaskRecord extends RagTask { input: RagTaskSubmission & { questionMessageId?: string; previousAnswer?: import("./rag-types").RagChatMessage }; generation: number; fingerprint: string; owner: string | null }
+export interface TaskRecord extends RagTask { input: RagTaskSubmission & { questionMessageId?: string; previousAnswer?: import("./rag-types").RagChatMessage; parentQuestionIds?: string[]; replacedQuestionIds?: string[] }; generation: number; fingerprint: string; owner: string | null }
 const now = () => new Date().toISOString();
 const uuid = (value: unknown) => typeof value === "string" && /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(value);
 const fail = (code: string, message: string, status = 409): never => { throw new RagTaskError(code, message, status); };
@@ -50,7 +50,7 @@ export class RagTaskStore {
     }
     this.db = new DatabaseSync(file);
     const schema = (this.db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
-    if (schema > 2) { this.db.close(); throw new Error("Task database requires a newer application"); }
+    if (schema > 3) { this.db.close(); throw new Error("Task database requires a newer application"); }
     this.db.exec("PRAGMA busy_timeout=1000; PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL; PRAGMA secure_delete=ON; PRAGMA max_page_count=32768;");
     this.db.exec(`CREATE TABLE IF NOT EXISTS tasks (
       id TEXT PRIMARY KEY, submission_id TEXT UNIQUE NOT NULL, session_id TEXT NOT NULL, fingerprint TEXT NOT NULL,
@@ -63,7 +63,7 @@ export class RagTaskStore {
       CREATE TABLE IF NOT EXISTS worker (id INTEGER PRIMARY KEY CHECK(id=1), owner TEXT NOT NULL, expires INTEGER NOT NULL);
       `);
     if (!(this.db.prepare("PRAGMA table_info(tasks)").all() as { name: string }[]).some(column => column.name === "error_code")) this.db.exec("ALTER TABLE tasks ADD COLUMN error_code TEXT NOT NULL DEFAULT ''");
-    this.db.exec("PRAGMA user_version=2");
+    if (schema < 2) this.db.exec("PRAGMA user_version=2");
     fs.chmodSync(file, 0o600);
   }
   close() { this.db.close(); }
@@ -116,10 +116,11 @@ export class RagTaskStore {
     const row = this.db.prepare("SELECT * FROM tasks WHERE submission_id=?").get(id);
     return row ? this.decode(row as Record<string, unknown>) : null;
   }
-  create(input: RagTaskSubmission, history: RagHistoryMessage[] = input.history, association: Pick<TaskRecord["input"], "questionMessageId" | "previousAnswer"> = {}): TaskRecord {
+  create(input: RagTaskSubmission, history: RagHistoryMessage[] = input.history, association: Pick<TaskRecord["input"], "questionMessageId" | "previousAnswer" | "parentQuestionIds" | "replacedQuestionIds"> = {}): TaskRecord {
     if (!uuid(input.submissionId) || !uuid(input.sessionId) || (input.baseVersion !== null && (typeof input.baseVersion !== "string" || !/^[a-f0-9]{64}$/.test(input.baseVersion))) ||
       typeof input.question !== "string" || !input.question.trim() || input.question.length > 2000 || !["logs_only", "logs_and_general"].includes(input.mode) ||
       input.retryTaskId !== undefined && !uuid(input.retryTaskId) || !Array.isArray(input.history) || Buffer.byteLength(JSON.stringify(input)) > 128 * 1024) fail("RAG_INVALID_INPUT", "任务请求无效", 400);
+    if (input.editMessageId !== undefined && (typeof input.editMessageId !== "string" || !input.editMessageId.trim() || input.editMessageId.length > 120 || input.replaceLast || input.baseVersion === null)) fail("RAG_INVALID_INPUT", "修改问题的目标无效", 400);
     const fingerprint = createHash("sha256").update(JSON.stringify(input)).digest("hex");
     return this.transaction(() => {
       const existing = this.db.prepare("SELECT * FROM tasks WHERE submission_id=?").get(input.submissionId);
@@ -132,6 +133,9 @@ export class RagTaskStore {
       if ((this.db.prepare("SELECT count(*) AS n FROM tasks WHERE state='queued'").get() as { n: number }).n >= 8) fail("RAG_QUEUE_FULL", "等待任务已满，请稍后提交", 429);
       if ((this.db.prepare("SELECT count(*) AS n FROM tasks").get() as { n: number }).n >= 10000) fail("RAG_TASK_CAPACITY", "任务身份记录已达容量，请先备份并联系维护者", 507);
       const id = randomUUID(), time = now();
+      // Accepted edit semantics must never be replayed by an older writer as an append.
+      // The schema fence and its first task are committed or rolled back together.
+      if (input.editMessageId) this.db.exec("PRAGMA user_version=3");
       this.db.prepare("INSERT INTO tasks(id,submission_id,session_id,fingerprint,state,created_at,updated_at,input) VALUES(?,?,?,?,'queued',?,?,?)")
         .run(id, input.submissionId, input.sessionId, fingerprint, time, time, JSON.stringify({ ...input, history, ...association }));
       return this.get(id);
@@ -204,6 +208,19 @@ export class RagTaskStore {
     this.db.prepare(`UPDATE tasks SET state=CASE WHEN state IN ('queued','running') THEN 'cancelled' ELSE state END,
       generation=generation+1,input='{}',partial='',result=NULL,error='',error_code='',stage='',save_error='',save_state='deleted',removed=1,
       revision=revision+1,updated_at=? WHERE session_id=? AND removed=0`).run(now(), sessionId);
+  }
+  branchApplicability(sessionId: string, messages: import("./rag-types").RagChatMessage[], appliedTaskIds: string[]): Map<string, boolean> {
+    const questions = new Set(messages.filter(message => message.role === "user").map(message => message.id));
+    const records = this.db.prepare("SELECT * FROM tasks WHERE session_id=? AND removed=0").all(sessionId).map(row => this.decode(row as Record<string, unknown>));
+    const committed = records.filter(task => task.input.editMessageId && appliedTaskIds.includes(task.id));
+    const replaced = new Set(committed.flatMap(task => task.input.replacedQuestionIds || [task.input.editMessageId!]));
+    return new Map(records.map(task => {
+      const questionId = task.input.questionMessageId || `${task.id}:user`;
+      const applicable = questions.has(questionId) || !committed.length ||
+        !replaced.has(questionId) && (task.input.editMessageId ? questions.has(task.input.editMessageId) :
+          task.input.parentQuestionIds !== undefined && task.input.parentQuestionIds.every(id => questions.has(id) && !replaced.has(id)));
+      return [task.id, applicable];
+    }));
   }
   shutdown(owner: string) {
     this.db.prepare("UPDATE tasks SET state='interrupted',generation=generation+1,revision=revision+1,error='服务已停止，任务未自动重试',updated_at=? WHERE state='running' AND owner=?").run(now(), owner);

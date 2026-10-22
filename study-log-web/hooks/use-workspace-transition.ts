@@ -32,7 +32,6 @@ export function useWorkspaceTransition() {
   const tokenRef = useRef(0);
   const readyRef = useRef<{ token: number; resolve: () => void; timer: ReturnType<typeof setTimeout> } | null>(null);
   const snapshotRef = useRef<HTMLElement | null>(null);
-  const nativeTransitionRef = useRef<{ transition: ViewTransition; restoreNames: () => void } | null>(null);
 
   const finishWaiting = useCallback(() => {
     const pending = readyRef.current;
@@ -47,9 +46,6 @@ export function useWorkspaceTransition() {
   const cancelTransition = useCallback(() => {
     tokenRef.current++;
     finishWaiting();
-    nativeTransitionRef.current?.transition.skipTransition?.();
-    nativeTransitionRef.current?.restoreNames();
-    nativeTransitionRef.current = null;
     snapshotRef.current?.remove();
     snapshotRef.current = null;
     document.querySelectorAll<HTMLElement>("[data-workspace-transition-surface]").forEach(surface => {
@@ -63,7 +59,6 @@ export function useWorkspaceTransition() {
     update: () => void,
     options: TransitionOptions = {}
   ) => {
-    const transitionDocument = document as TransitionDocument;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     cancelTransition();
     const token = tokenRef.current;
@@ -97,76 +92,6 @@ export function useWorkspaceTransition() {
         right: Math.max(0, window.innerWidth - (rect?.right ?? window.innerWidth))
       };
     };
-
-    // Document and mode changes restore the reading anchor after rendering.
-    // Native snapshots freeze viewport positions while that scroll settles.
-    const restoresReadingPosition = kind === "log-document" || kind === "log-mode";
-    if (!restoresReadingPosition && supportsStableViewTransitions(transitionDocument)) {
-      const namedSurface = document.querySelector<HTMLElement>(surfaceSelector);
-      const previousNames = new Map<HTMLElement, string>();
-      const nameSurface = (surface: HTMLElement | null) => {
-        if (!surface || previousNames.has(surface)) return;
-        previousNames.set(surface, surface.style.viewTransitionName);
-        surface.style.viewTransitionName = "workspace-content";
-      };
-      nameSurface(namedSurface);
-      let namesRestored = false;
-      const restoreTransitionNames = () => {
-        if (namesRestored) return;
-        namesRestored = true;
-        previousNames.forEach((name, surface) => { surface.style.viewTransitionName = name; });
-      };
-      let clipFrame = 0;
-      const updateClip = () => {
-        if (tokenRef.current !== token) return;
-        const bounds = visibleBounds();
-        // Native snapshots paint above sticky controls. Clip in the animated
-        // group's coordinates while scroll restoration changes its position.
-        const surfaceRect = namedSurface?.getBoundingClientRect();
-        const group = getComputedStyle(document.documentElement, "::view-transition-group(workspace-content)");
-        const transform = group.transform !== "none" ? new DOMMatrix(group.transform) : null;
-        const left = transform?.m41 ?? surfaceRect?.left ?? 0;
-        const top = transform?.m42 ?? surfaceRect?.top ?? 0;
-        const width = parseFloat(group.width) || surfaceRect?.width || 0;
-        const height = parseFloat(group.height) || surfaceRect?.height || 0;
-        const style = document.documentElement.style;
-        style.setProperty("--workspace-transition-top", `${Math.max(0, bounds.top - top)}px`);
-        style.setProperty("--workspace-transition-left", `${Math.max(0, bounds.left - left)}px`);
-        style.setProperty("--workspace-transition-right", `${Math.max(0, left + width - window.innerWidth + bounds.right)}px`);
-        style.setProperty("--workspace-transition-bottom", `${Math.max(0, top + height - window.innerHeight)}px`);
-        clipFrame = requestAnimationFrame(updateClip);
-      };
-      updateClip();
-      try {
-        const transition = transitionDocument.startViewTransition!(() => {
-          if (!applyUpdate()) return;
-          // Public module slots keep separate bodies mounted. Name the newly
-          // visible body too, rather than capturing a hidden log surface.
-          nameSurface(document.querySelector<HTMLElement>(surfaceSelector));
-          if (!options.waitForReady) return;
-          return new Promise<void>((resolve) => {
-            const timer = setTimeout(() => {
-              if (readyRef.current?.token === token) readyRef.current = null;
-              resolve();
-            }, READY_DEADLINE_MS);
-            readyRef.current = { token, resolve, timer };
-          });
-        });
-        nativeTransitionRef.current = { transition, restoreNames: restoreTransitionNames };
-        void transition.finished.finally(() => {
-          cancelAnimationFrame(clipFrame);
-          resolveApplied(false);
-          if (nativeTransitionRef.current?.transition === transition) nativeTransitionRef.current = null;
-          restoreTransitionNames();
-          clearTransitionState();
-        }).catch(() => {});
-        return applied;
-      } catch {
-        cancelAnimationFrame(clipFrame);
-        restoreTransitionNames();
-        clearTransitionState();
-      }
-    }
 
     const currentSurface = document.querySelector<HTMLElement>(surfaceSelector);
     let snapshot: HTMLElement | null = null;

@@ -3,7 +3,7 @@ import { getLogRoot } from "./config.ts";
 import { configureRagThinking, getChatConfig, getLightChatConfig } from "./ai-config.ts";
 import { getMcpConfig } from "./mcp-config.ts";
 import { createRagQueryStream, type RagQueryConfig, type RagQueryInput } from "./rag-query.ts";
-import { applyRagTaskResult, ensureRagTaskSessionFormat, inspectRagTaskSession, deletedRagSessionIds, RagSessionConflictError, RagSessionNotFoundError, RagSessionInputError } from "./rag-sessions-store.ts";
+import { applyRagTaskResult, ensureRagTaskSessionFormat, inspectRagTaskSession, inspectRagTaskSessions, deletedRagSessionIds, RagSessionConflictError, RagSessionNotFoundError, RagSessionInputError } from "./rag-sessions-store.ts";
 import { RagTaskError, RagTaskStore, type TaskRecord } from "./rag-task-store.ts";
 import type { RagTask, RagTaskResult, RagTaskSubmission, RagTaskSummary } from "./rag-task-types.ts";
 import { parseRagHistory } from "./rag-answer.ts";
@@ -17,6 +17,7 @@ type Execute = (input: RagQueryInput, signal: AbortSignal) => ReadableStream<Uin
 const publicValue = (task: TaskRecord): RagTask => {
   const { input: _input, generation: _generation, fingerprint: _fingerprint, owner: _owner, ...value } = task;
   return { ...value, replaceLast: task.input.replaceLast === true,
+    ...(task.input.editMessageId ? { editMessageId: task.input.editMessageId } : {}),
     questionMessageId: task.input.questionMessageId || (!task.input.replaceLast ? `${task.id}:user` : undefined),
     ...(task.input.previousAnswer ? { previousAnswer: task.input.previousAnswer } : {}) };
 };
@@ -41,7 +42,7 @@ export class RagTaskRuntime {
   async create(input: RagTaskSubmission): Promise<RagTask> {
     const existing = this.store.submitted(input.submissionId);
     let history = input.history;
-    let association: Pick<TaskRecord["input"], "questionMessageId" | "previousAnswer"> = {};
+    let association: Pick<TaskRecord["input"], "questionMessageId" | "previousAnswer" | "parentQuestionIds" | "replacedQuestionIds"> = {};
     if (!existing) {
       let current;
       try { current = await inspectRagTaskSession(input.sessionId, input.baseVersion); }
@@ -49,18 +50,23 @@ export class RagTaskRuntime {
       if (current.deleted) throw new RagTaskError("RAG_SESSION_DELETED", "会话已删除，不会重新创建", 410);
       if (!current.matchesBaseVersion) throw new RagTaskError("RAG_SESSION_CONFLICT", "会话已变化，请重新读取", 409);
       const messages = current.session?.messages || [];
+      const editIndex = input.editMessageId === undefined ? -1 : messages.findIndex(message => message.id === input.editMessageId && message.role === "user");
+      if (input.editMessageId !== undefined && (editIndex < 0 || input.replaceLast || input.baseVersion === null)) throw new RagTaskError("RAG_SESSION_CONFLICT", "要修改的问题已变化，请重新读取", 409);
       if (input.replaceLast && (messages.length < 2 || messages.at(-2)?.content !== input.question)) throw new RagTaskError("RAG_SESSION_CONFLICT", "要重新生成的问题已变化，请重新读取", 409);
       if (input.replaceLast) association = { questionMessageId: messages.at(-2)!.id, previousAnswer: messages.at(-1)! };
       if (input.retryTaskId) {
         const previous = this.store.get(input.retryTaskId);
         const latest = this.store.list(input.sessionId).sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)).at(-1);
         if (previous.sessionId !== input.sessionId || previous.question !== input.question ||
-          latest?.id !== previous.id || Boolean(previous.input.replaceLast) !== Boolean(input.replaceLast) || !["failed", "cancelled", "interrupted"].includes(previous.state))
+          latest?.id !== previous.id || previous.input.editMessageId !== input.editMessageId || Boolean(previous.input.replaceLast) !== Boolean(input.replaceLast) || !["failed", "cancelled", "interrupted"].includes(previous.state))
           throw new RagTaskError("RAG_INVALID_INPUT", "要重试的问答任务不匹配", 400);
         association.questionMessageId = previous.input.questionMessageId || association.questionMessageId || `${previous.id}:user`;
       }
       if (!current.session && input.history.length) throw new RagTaskError("RAG_INVALID_INPUT", "请先保存原会话，再继续后台问答", 400);
-      history = parseRagHistory((input.replaceLast ? messages.slice(0, -2) : messages).map(({ role, content, citations }) => ({ role, content,
+      const prefix = editIndex >= 0 ? messages.slice(0, editIndex) : input.replaceLast ? messages.slice(0, -2) : messages;
+      association.parentQuestionIds = prefix.filter(message => message.role === "user").map(message => message.id);
+      if (editIndex >= 0) association.replacedQuestionIds = messages.slice(editIndex).filter(message => message.role === "user").map(message => message.id);
+      history = parseRagHistory(prefix.map(({ role, content, citations }) => ({ role, content,
         ...(citations?.length ? { sourceRefs: citations.map(({ date, fileName, heading, contentHash }) => ({ date, fileName, heading, contentHash })) } : {}) })));
     }
     await ensureRagTaskSessionFormat();
@@ -69,14 +75,23 @@ export class RagTaskRuntime {
   }
   async get(id: string): Promise<RagTask> {
     const task = this.store.get(id);
-    if ((await inspectRagTaskSession(task.sessionId)).deleted) {
+    const current = await inspectRagTaskSession(task.sessionId);
+    if (current.deleted) {
       this.store.scrubSession(task.sessionId); throw new RagTaskError("RAG_TASK_NOT_FOUND", "会话及所属任务已删除", 404);
     }
-    return publicValue(task);
+    const applicable = current.session ? this.store.branchApplicability(task.sessionId, current.session.messages, current.appliedTaskIds).get(id) !== false : true;
+    return { ...publicValue(task), ...(!applicable ? { applicable: false } : {}) };
   }
   async list(sessionId?: string): Promise<RagTaskSummary[]> {
-    for (const id of await deletedRagSessionIds()) this.store.scrubSession(id);
-    return this.store.list(sessionId);
+    const tasks = this.store.list(sessionId);
+    if (!tasks.length) return tasks;
+    const sessions = await inspectRagTaskSessions(tasks.map(task => task.sessionId));
+    const applicability = new Map<string, boolean>();
+    for (const [id, current] of sessions) {
+      if (current.deleted) { this.store.scrubSession(id); continue; }
+      if (current.session) for (const [taskId, applicable] of this.store.branchApplicability(id, current.session.messages, current.appliedTaskIds)) applicability.set(taskId, applicable);
+    }
+    return tasks.filter(task => !sessions.get(task.sessionId)?.deleted).map(task => applicability.get(task.id) === false ? { ...task, applicable: false } : task);
   }
   async cancel(id: string) {
     await this.get(id);
@@ -89,13 +104,14 @@ export class RagTaskRuntime {
     if (this.executing === id) this.controller?.abort();
   }
   async save(id: string): Promise<RagTask> {
-    await this.get(id);
+    if ((await this.get(id)).applicable === false) throw new RagTaskError("RAG_TASK_SUPERSEDED", "该结果属于修改前的分支，未写入当前会话", 409);
     const task = this.store.get(id);
     if (task.state !== "succeeded" || !task.result) throw new RagTaskError("RAG_TASK_NOT_COMPLETE", "任务尚无完整结果");
     try {
       await applyRagTaskResult({ taskId: task.id, sessionId: task.sessionId, baseVersion: task.input.baseVersion,
         question: task.input.question, answerMode: task.input.mode, answer: task.result.answer,
         questionMessageId: task.input.questionMessageId,
+        ...(task.input.editMessageId ? { editMessageId: task.input.editMessageId } : {}),
         citations: task.result.citations, ...(task.result.groundingWarning ? { groundingWarning: task.result.groundingWarning } : {}),
         ...(task.input.replaceLast ? { replaceLast: true } : {}) });
       this.store.saved(id, "saved");

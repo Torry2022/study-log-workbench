@@ -351,10 +351,6 @@ html.reading-mode-transition .workspace { transition: none; }
   to { opacity: 1; transform: translateX(0); }
 }
 @keyframes workspace-content-old { to { opacity: 0; transform: translateX(-8px); } }
-@keyframes workspace-content-new {
-  from { opacity: 1; transform: translateX(8px); }
-  to { opacity: 1; transform: translateX(0); }
-}
 .workspace-content-revealing { animation: workspace-content-reveal 160ms ease-out both; }
 .workspace-position-revealing { animation: result-surface-enter 160ms ease-out both; }
 .workspace-content-waiting { opacity: 0; }
@@ -366,14 +362,7 @@ html.reading-mode-transition .workspace { transition: none; }
   contain: paint;
 }
 .workspace-transition-snapshot-exiting { animation: workspace-content-old 160ms ease-out both; }
-::view-transition-old(workspace-content) { animation: workspace-content-old 160ms ease-out both; }
-::view-transition-new(workspace-content) { mix-blend-mode: normal; animation: workspace-content-new 160ms ease-out both; }
-html[data-workspace-transition] { view-transition-name: none; }
-html[data-workspace-transition]::view-transition-group(workspace-content) {
-  clip-path: inset(var(--workspace-transition-top, 0px) var(--workspace-transition-right, 0px) var(--workspace-transition-bottom, 0px) var(--workspace-transition-left, 0px));
-}
-html[data-workspace-transition]::view-transition-old(root),
-html[data-workspace-transition]::view-transition-new(root) { animation: none; }
+html[data-workspace-transition="workspace"] .workspace { transition: none; }
 
 @keyframes result-surface-enter { from { opacity: 0.72; } to { opacity: 1; } }
 .result-surface-reveal { animation: result-surface-enter 140ms ease-out both; }
@@ -386,6 +375,7 @@ html[data-workspace-transition]::view-transition-new(root) { animation: none; }
 .reader-toolbar-container.pending > .reader-toolbar,
 .date-section-title.pending { position: relative; }
 .reader-toolbar-container.pending > .reader-toolbar::after,
+.rag-history-search.pending::after,
 .date-section-title.pending::after {
   content: "";
   position: absolute;
@@ -451,6 +441,7 @@ html[data-workspace-transition]::view-transition-new(root) { animation: none; }
   .secondary-page-reveal,
   .reader-toolbar-container.pending > .reader-toolbar::after,
   .date-section-title.pending::after,
+  .rag-history-search.pending::after,
   .help-dialog-backdrop,
   .internal-link-dialog-backdrop,
   .favorite-group-dialog-backdrop,
@@ -467,6 +458,4 @@ html[data-workspace-transition]::view-transition-new(root) { animation: none; }
   .diff-dialog,
   .generation-presets-dialog,
   .image-lightbox-stage { animation-duration: 1ms !important; }
-  ::view-transition-old(workspace-content),
-  ::view-transition-new(workspace-content) { animation-duration: 0s; }
 }

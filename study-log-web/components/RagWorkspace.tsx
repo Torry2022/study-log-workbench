@@ -2,8 +2,8 @@
 
 import "@/app/rag-workspace.css";
 
-import { BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, Copy, FileText, LoaderCircle, MessageSquareText, RotateCcw, Send, Square } from "lucide-react";
-import { type FormEvent, type KeyboardEvent, type ReactNode, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, Copy, FileText, LoaderCircle, MessageSquareText, Pencil, RotateCcw, Send, Square } from "lucide-react";
+import { Fragment, type FormEvent, type KeyboardEvent, type ReactNode, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { MarkdownPreview } from "@/components/MarkdownPreview";
 import { WorkspaceState } from "@/components/WorkspaceState";
 import type { RagAnswerMode, RagChatMessage, RagCitation } from "@/lib/rag-types";
@@ -11,6 +11,7 @@ import { stripRagCitationLabels } from "@/lib/rag-answer";
 import type { RagAnswerMessage } from "@/lib/rag-answer-versions";
 import { useSmoothRagAnswer } from "@/hooks/use-smooth-rag-answer";
 import { captureRagReadingAnchor, ragDocumentWillScroll, restoreRagReadingAnchor, type RagReadingAnchor } from "@/lib/rag-reading-anchor";
+import { ragTimeSeparators } from "@/lib/rag-message-time";
 
 const RagAnswerBody = memo(function RagAnswerBody({ message, content, enabled, themeMode, onCitation }: {
   message: RagAnswerMessage; content: string; enabled: boolean; themeMode: "light" | "dark";
@@ -33,6 +34,15 @@ interface RagWorkspaceProps {
   visible: boolean;
   disabled?: boolean;
   messages: RagAnswerMessage[];
+  messageTimes?: ReadonlyMap<string, string>;
+  questionEditing?: boolean;
+  editableQuestionIds?: string[];
+  questionEdit?: { id: string; body: string; error: string; orphaned?: boolean } | null;
+  onBeginQuestionEdit?: (id: string) => void;
+  onQuestionEditChange?: (body: string) => void;
+  onCancelQuestionEdit?: () => void;
+  onSendQuestionEdit?: () => void;
+  onReloadQuestionEdit?: () => void;
   viewingPreviousAnswer?: boolean;
   answerActionBusy?: boolean;
   onAnswerVersion: (questionId: string, answerId: string) => void;
@@ -64,6 +74,15 @@ export function RagWorkspace({
   visible,
   disabled = false,
   messages,
+  messageTimes,
+  questionEditing = false,
+  editableQuestionIds = [],
+  questionEdit = null,
+  onBeginQuestionEdit,
+  onQuestionEditChange,
+  onCancelQuestionEdit,
+  onSendQuestionEdit,
+  onReloadQuestionEdit,
   viewingPreviousAnswer = false,
   answerActionBusy = false,
   onAnswerVersion,
@@ -129,6 +148,10 @@ export function RagWorkspace({
   useEffect(() => {
     if (question.trim() || generating) setComposerHidden(false);
   }, [generating, question]);
+
+  useLayoutEffect(() => {
+    if (questionEdit?.error) followOutputRef.current = false;
+  }, [questionEdit?.error]);
 
   useLayoutEffect(() => {
     if (enabled && lastNavigationToken.current === sessionNavigationToken) return;
@@ -269,7 +292,7 @@ export function RagWorkspace({
 
   function submit(event?: FormEvent) {
     event?.preventDefault();
-    if (!enabled || disabled || !question.trim() || generating) return;
+    if (!enabled || disabled || !question.trim() || generating || questionEdit) return;
     followOutputRef.current = true;
     onSubmit();
   }
@@ -280,8 +303,8 @@ export function RagWorkspace({
     submit();
   }
 
-  async function copyAnswer(message: RagChatMessage) {
-    const content = stripRagCitationLabels(message.content);
+  async function copyMessage(message: RagChatMessage) {
+    const content = message.role === "user" ? message.content : stripRagCitationLabels(message.content);
 
     try {
       if (!navigator.clipboard?.writeText) throw new Error("Clipboard API unavailable");
@@ -314,6 +337,7 @@ export function RagWorkspace({
 
   // Bottom ownership survives completion until the reader acts on the conversation.
   const releaseFollowing = () => { followOutputRef.current = false; };
+  const timeSeparators = ragTimeSeparators(messages.map(message => message.id), messageTimes || new Map());
 
   return (<>
     {enabled && <div className="reader-toolbar-container"><div className="reader-toolbar reader-toolbar-qa">
@@ -323,9 +347,15 @@ export function RagWorkspace({
     <div onPointerDownCapture={releaseFollowing} onKeyDownCapture={releaseFollowing} ref={workspaceRef} className={`rag-workspace${messages.length > 0 ? " has-messages" : ""}`} hidden={!enabled}>
       <div className="rag-conversation" aria-live="polite">
         {feedback}
+        {questionEdit?.orphaned && <div className="rag-question-editor" role="alert">
+          <div className="rag-message-state error">原问题已不在当前会话中，修改稿仍保留。</div>
+          <textarea aria-label="保留的修改稿" value={questionEdit.body} maxLength={2000}
+            disabled={generating || answerActionBusy} onChange={event => onQuestionEditChange?.(event.target.value)} />
+          <div className="rag-question-edit-actions"><button className="button secondary" type="button" onClick={() => void copyMessage({ id: questionEdit.id, role: "user", content: questionEdit.body })}>复制修改稿</button><button className="button secondary" type="button" onClick={onCancelQuestionEdit}>取消编辑</button></div>
+        </div>}
         {initializing && messages.length === 0 ? (
           <WorkspaceState kind="loading" title="正在加载历史问答" className="rag-empty" />
-        ) : messages.length === 0 ? (
+        ) : messages.length === 0 && !questionEdit?.orphaned ? (
           <WorkspaceState
             kind="empty"
             icon={MessageSquareText}
@@ -344,7 +374,9 @@ export function RagWorkspace({
         ) : (
           <div className="rag-message-list">
             {messages.map((message, index) => (
-              <article className={`rag-message rag-message-${message.role}`} key={message.id}>
+              <Fragment key={message.id}>
+              {timeSeparators.has(message.id) && <div className="rag-time-separator" role="separator"><time dateTime={timeSeparators.get(message.id)!.time}>{timeSeparators.get(message.id)!.label}</time></div>}
+              <article className={`rag-message rag-message-${message.role}`}>
                 <div className="rag-message-label">{message.role === "user" ? "你" : "日志问答"}</div>
                 {message.role === "assistant" ? (
                   <>
@@ -431,7 +463,7 @@ export function RagWorkspace({
                           <button type="button" aria-label="下一个回答版本" disabled={message.versionIndex === message.versions!.length - 1} onClick={() => { followOutputRef.current = false; onAnswerVersion(message.questionId!, message.versions![message.versionIndex! + 1]); }}><ChevronRight size={14} /></button>
                         </div>}
                         {message.content && <>
-                        <button type="button" onClick={() => void copyAnswer(message)}>
+                        <button type="button" onClick={() => void copyMessage(message)}>
                           {copiedMessageId === message.id ? <Check size={14} /> : <Copy size={14} />}
                           {copiedMessageId === message.id ? "已复制" : "复制"}
                         </button>
@@ -448,9 +480,25 @@ export function RagWorkspace({
                     )}
                   </>
                 ) : (
-                  <p>{message.content}</p>
+                  questionEdit?.id === message.id ? <form className="rag-question-editor" onSubmit={event => { event.preventDefault(); followOutputRef.current = true; onSendQuestionEdit?.(); }}>
+                    <textarea autoFocus aria-label="编辑问题" value={questionEdit.body} maxLength={2000} disabled={generating || answerActionBusy}
+                      onChange={event => onQuestionEditChange?.(event.target.value)} />
+                    {questionEdit.error && <div className="rag-message-state error" role="alert">{questionEdit.error}</div>}
+                    <div className="rag-question-edit-actions"><button className="button secondary" type="button" disabled={generating || answerActionBusy} onClick={onReloadQuestionEdit}>重新读取并核对</button><button className="button secondary" type="button" disabled={generating || answerActionBusy} onClick={onCancelQuestionEdit}>取消</button>
+                      <button className="button primary" type="submit" disabled={disabled || generating || answerActionBusy || !questionEdit.body.trim()}>发送</button></div>
+                  </form> : <>
+                    <p>{message.content}</p>
+                    <div className="rag-answer-actions rag-user-actions">
+                      <button type="button" aria-label="复制问题" onClick={() => void copyMessage(message)}>{copiedMessageId === message.id ? <Check size={14} /> : <Copy size={14} />}{copiedMessageId === message.id ? "已复制" : "复制"}</button>
+                      <button type="button" aria-label="编辑此问题" disabled={!questionEditing || !editableQuestionIds.includes(message.id) || disabled || generating}
+                        title={questionEditing ? "修改此问题并重新回答" : "当前会话暂不可修改问题"}
+                        onClick={() => { followOutputRef.current = false; readingAnchorRef.current = null;
+                          scrollYRef.current = window.scrollY; onBeginQuestionEdit?.(message.id); }}><Pencil size={14} />编辑</button>
+                    </div>
+                  </>
                 )}
               </article>
+              </Fragment>
             ))}
           </div>
         )}
@@ -493,7 +541,7 @@ export function RagWorkspace({
             <Square size={15} fill="currentColor" />
           </button>
         ) : (
-          <button className="rag-send" type="submit" disabled={disabled || !question.trim()} title="发送问题" aria-label="发送问题">
+          <button className="rag-send" type="submit" disabled={disabled || !question.trim() || Boolean(questionEdit)} title="发送问题" aria-label="发送问题">
             <Send size={17} />
           </button>
         )}

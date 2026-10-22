@@ -45,6 +45,13 @@ export async function fixture() {
     write: async raw => { if (local.fail) throw Error('storage unavailable'); local.raw = raw; writes.push(raw); } };
   const transport = {
     getConnectionBinding: () => 'synthetic-connection',
+    put: async (path, body) => {
+      requests.push({ method: 'PUT', path, body: plain(body) });
+      const saved = sessions.get(path.split('/').at(-1));
+      if (!saved || saved.version !== body.baseVersion) throw new runtime.ApiError('会话已变化', 409);
+      Object.assign(saved, { messages: plain(body.messages), version: 'b'.repeat(64) });
+      return { session: plain(saved) };
+    },
     get: async path => {
       if (path === '/rag/sessions') return { sessions: [...sessions.values()] };
       const result = sessions.get(path.split('/').at(-1)); if (!result) throw new runtime.ApiError('deleted session', 404);

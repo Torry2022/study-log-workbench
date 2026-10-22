@@ -23,7 +23,7 @@ Web 631 项通过、3 项既有跳过，类型检查和生产构建通过；MCP 
 | 文件 | SHA-256 |
 | --- | --- |
 | study-log-desktop-0.1.5-x64-setup.exe | `414e3ad49188d00c07edeef752214b9baa2adacb53e63fcd3adbedd969a2ab9c` |
-| study-log-harmony-0.1.5-unsigned.hap | `dc8fd9496093ce699a9d7b10a8642e870394564cfd97978fde00595ff606e394` |
+| study-log-harmony-0.1.5-unsigned.hap | `6c2144b1d2dc15695012bb93880d74114591ad6966f0a6106bf8eb12f4aa8788` |
 | study-log-server-0.1.5.zip | `19ebc6377e31b8e944d4b5af652c1d3a6d8e7560911bd8cd1451906128bb2279` |
 
 Windows 安装器未签名；鸿蒙 HAP 需自行签名。版本说明见 [部署附件说明](../deploy/RELEASE-NOTES.md)。Windows 构建 ID `lgqGbOTv-EowRX5unJNQW`。
@@ -37,3 +37,7 @@ Windows 安装器未签名；鸿蒙 HAP 需自行签名。版本说明见 [部�
 - tools：`sha256:e5cb5ba0d18ddd1338c1053ece1d9423fabee1539ba7f0dff42a0eeb810fa41f`
 
 完整本机证据位于维护者 0.1.5-20261021 发布目录，公开附件以 [v0.1.5 发布页](https://github.com/Torry2022/study-log-workbench-public/releases/tag/v0.1.5) 与 SHA256SUMS.txt 为准。
+
+## 2026-10-22 鸿蒙更新
+
+2026-10-22：v0.1.5 鸿蒙问答同步个人版的回答版本定位与所选版本续问。保持输入框原显隐，版本切换只发起一次布局后到底请求；已续问父轮固定所选版本，原任务结果保留。鸿蒙测试 346 项、Chromium/WebKit 浅深色与窄宽屏 8 组（每组 8 次切换）通过；实际会话存储／任务运行时的正常续问、响应丢失重试、并发冲突三组通过，无付费调用。Pura 90 API24 模拟器原位安装同源维护者签名包，4→3→2→1→2→3→4 六次长短切换保持输入框隐藏，回答操作区均在可见底部。公开 HAP 为 release 未签名包，版本仍为 0.1.5/10500。只替换鸿蒙附件和校验文件，Windows、服务器包与镜像沿用此前验收产物；本轮未复验物理手机、未修改网页或增加 Wiki。

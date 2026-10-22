@@ -98,6 +98,7 @@ export struct QaPage {
   @State private readerScrollOffset: number = 0;
   @State private readerScrollProgress: number = 0;
   @State private scrollToTopRequestRevision: number = 0;
+  @State private answerVersionRevision: number = 0;
   @State private copiedAnswerId: string = '';
   @State private questionFocused: boolean = false;
   private composingQuestion: boolean = false;
@@ -193,6 +194,7 @@ export struct QaPage {
   }
 
   private resetComposerScroll(): void {
+    this.answerVersionRevision = 0;
     this.lastScrollY = 0;
     this.scrollTravel = 0;
     this.scrollDirection = 0;
@@ -302,7 +304,10 @@ export struct QaPage {
         this.copiedAnswerId = message.id;
         setTimeout(() => { if (this.copiedAnswerId === message.id) this.copiedAnswerId = ''; }, 2000);
       } catch (_) { appFeedback.show('复制失败，请重试', 'error'); }
-    } else if (action === 'version' && message.questionId) await this.data.selectAnswerVersion(message.questionId, target);
+    } else if (action === 'version' && !this.data.taskSaving && message.questionId && message.versions?.includes(target)) {
+      await this.data.selectAnswerVersion(message.questionId, target);
+      this.answerVersionRevision += 1;
+    }
     else if (action === 'regenerate') await this.data.regenerateAnswer(id);
     else if (action === 'save' && message.taskId) await this.data.saveAnswer(message.taskId);
     else if (action === 'retry' && message.taskId) await this.data.retryAnswer(message.taskId);
@@ -400,6 +405,7 @@ export struct QaPage {
                 showBackToTop: false,
                 trackScrollProgress: true,
                 scrollToTopRequestRevision: this.scrollToTopRequestRevision,
+                scrollToEndRequestRevision: this.answerVersionRevision,
                 themePreference: this.themePreference,
                 onScrollPosition: (yOffset: number, layoutChange: boolean) => this.handleReaderScroll(yOffset, layoutChange),
                 onScrollProgress: (progress: number) => this.readerScrollProgress = progress,
@@ -425,7 +431,7 @@ export struct QaPage {
                 onRetry: () => this.data.openSession(this.data.failedSessionId) })
               Column({ space: 8 }) {
                 TextArea({ text: this.data.question, controller: this.questionController,
-                  placeholder: this.data.viewingPreviousAnswer() ? '切回当前回答后可继续提问' : '询问学习日志中的内容' })
+                  placeholder: '询问学习日志中的内容' })
                   .width('100%').constraintSize({ minHeight: 42, maxHeight: 126 }).fontSize(14)
                   .padding({ left: 2, right: 2, top: 10, bottom: 10 })
                   .enterKeyType(EnterKeyType.NEW_LINE)

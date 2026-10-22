@@ -64,6 +64,8 @@ export class QaSessionController {
   private taskClient?: QaTaskClient;
   private selectedTask?: QaTask;
   private answerViews: Map<string, string> = new Map<string, string>();
+  private selectionWrite?: RagSessionWriteRequest;
+  private selectionSessionId: string = '';
 
   private canonical: Map<string, RagSession> = new Map<string, RagSession>();
   private remoteSessions: RagSessionSummary[] = [];
@@ -100,7 +102,10 @@ export class QaSessionController {
     for (let index = 0; index < pairs.length; index += 2) {
       const question = pairs[index], answer = pairs[index + 1];
       if (!answer) continue;
-      const related = tasks.filter((task: QaTask) => (task.questionMessageId || `${task.id}:user`) === question.id);
+      const continuing = this.taskClient?.pending.some((input: QaTaskSubmission) => input.sessionId === this.sessionId && !input.replaceLast);
+      const relatedTasks = tasks.filter((task: QaTask) => (task.questionMessageId || `${task.id}:user`) === question.id);
+      const related = index < saved.length && (index < pairs.length - 2 || continuing) &&
+        relatedTasks.every((task: QaTask) => task.saveState === 'saved') ? [] : relatedTasks;
       const variants: RagChatMessage[] = [];
       related.forEach((task: QaTask) => {
         if (task.previousAnswer && !variants.some((item: RagChatMessage) => item.id === task.previousAnswer?.id)) variants.push(task.previousAnswer);
@@ -130,10 +135,10 @@ export class QaSessionController {
 
   async selectAnswerVersion(questionId: string, answerId: string): Promise<void> {
     const message = this.answerMessages().find((item: QaAnswerMessage) => item.questionId === questionId);
-    if (!message?.versions?.includes(answerId)) return;
+    if (this.taskSaving || !message?.versions?.includes(answerId)) return;
     this.answerViews.set(`${this.sessionId}:${questionId}`, answerId);
     this.taskBlocked = this.blockTaskSubmission();
-    // Notify the observed UI without changing the canonical conversation or its reader position.
+    // Selecting a version changes only the preview; sending commits that selection.
     this.messages = [...this.messages];
   }
 
@@ -552,7 +557,10 @@ export class QaSessionController {
 
   private blockTaskSubmission(): boolean {
     const client = this.taskClient, task = this.selectedTask;
-    return !client?.ready || this.canonicalReadFailed || this.viewingPreviousAnswer() ||
+    const selected = this.answerMessages().find((item: QaAnswerMessage) => item.questionId ===
+      this.canonical.get(this.sessionId)?.messages.slice(-2)[0]?.id);
+    return !client?.ready || this.canonicalReadFailed ||
+      !!selected && (selected.status === 'streaming' || selected.status === 'error' || selected.status === 'stopped' || !selected.content.trim()) ||
       !!task && task.state === 'succeeded' && task.saveState === 'pending' ||
       !!client?.pending.some((input: QaTaskSubmission) => input.sessionId === this.sessionId) ||
       !!client?.tasks.some((item: QaTask) => item.sessionId === this.sessionId && taskActive(item) && item.id !== task?.id);
@@ -600,10 +608,49 @@ export class QaSessionController {
     }
   }
 
+  private async commitAnswerSelection(): Promise<boolean> {
+    if (!this.viewingPreviousAnswer()) return true;
+    const sessionId = this.sessionId, saved = this.canonical.get(sessionId);
+    const answer = this.answerMessages().find((item: QaAnswerMessage) => item.questionId === saved?.messages.slice(-2)[0]?.id);
+    if (!saved || !answer || !answer.content.trim() || ['streaming', 'error', 'stopped'].includes(answer.status || '')) return false;
+    const selected: RagChatMessage = { id: answer.id, role: 'assistant', content: answer.content,
+      citations: answer.citations, status: 'complete', groundingWarning: answer.groundingWarning };
+    const messages = [...saved.messages.slice(0, -1), selected];
+    if (this.selectionSessionId !== sessionId || this.selectionWrite?.baseVersion !== saved.version ||
+      JSON.stringify(this.selectionWrite?.messages) !== JSON.stringify(messages)) {
+      this.selectionSessionId = sessionId;
+      this.selectionWrite = { mutationId: util.generateRandomUUID(), baseVersion: saved.version,
+        answerMode: saved.answerMode, messages };
+    }
+    const revision = ++this.sessionRequestRevision;
+    this.taskSaving = true;
+    try {
+      const response = await this.transport.put<RagSessionResponse>(`/rag/sessions/${encodeURIComponent(sessionId)}`, this.selectionWrite);
+      if (this.pageDisposed || this.sessionId !== sessionId || revision !== this.sessionRequestRevision) return false;
+      this.canonical.set(sessionId, response.session); this.sessionVersion = response.session.version;
+      this.messages = response.session.messages;
+      this.answerViews.delete(`${sessionId}:${saved.messages[saved.messages.length - 2].id}`);
+      this.selectionWrite = undefined;
+      return true;
+    } catch (error) {
+      if (this.sessionId === sessionId && revision === this.sessionRequestRevision) {
+        this.errorMessage = error instanceof Error ? error.message : '所选回答保存失败，尚未发送问题，请重试';
+      }
+      return false;
+    } finally { this.taskSaving = false; }
+  }
+
   private async sendTask(replaceLast: boolean = false, retryTaskId: string = ''): Promise<void> {
     const client = this.taskClient, question = this.question.trim();
     if (!client || !question || question.length > 2000 || this.sending || this.sessionLoading || this.taskSaving || this.taskBlocked || this.taskSaveError) return;
     if (!client.ready) { this.errorMessage = '任务协议尚未就绪，请重试检查'; return; }
+    const originSessionId = this.sessionId;
+    this.sending = true;
+    if (!await this.commitAnswerSelection()) {
+      if (this.sessionId === originSessionId) this.sending = false;
+      else { this.taskFingerprint = ''; this.applyTasks(); }
+      return;
+    }
     if (!this.sessionId) { this.sessionId = util.generateRandomUUID(); this.view.onActiveSessionChange(this.sessionId); }
     const sessionId = this.sessionId;
     const input: QaTaskSubmission = { submissionId: util.generateRandomUUID(), sessionId, baseVersion: this.canonical.get(sessionId)?.version || this.sessionVersion || null, question, mode: this.answerMode, replaceLast };

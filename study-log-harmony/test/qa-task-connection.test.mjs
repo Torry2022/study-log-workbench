@@ -25,8 +25,8 @@ test('native answer handler uses message and version identities after updates', 
   assert.ok(start > 0 && end > start); const method = source.slice(start, end), module = { exports: {} };
   runInNewContext(ts.transpileModule(`export class Page { ${method} }`, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText,
     { module, exports: module.exports });
-  const page = new module.exports.Page(), selected = [];
-  page.data = { answerMessages: () => [{ id: 'answer-A', role: 'assistant', questionId: 'question-A' }, { id: 'answer-B', role: 'assistant', questionId: 'question-B' }],
+  const page = new module.exports.Page(), selected = []; page.answerVersionRevision = 0;
+  page.data = { answerMessages: () => [{ id: 'answer-A', role: 'assistant', questionId: 'question-A', versions: ['older-A', 'answer-A'] }, { id: 'answer-B', role: 'assistant', questionId: 'question-B' }],
     selectAnswerVersion: (questionId, answerId) => selected.push([questionId, answerId]) };
   await page.answerAction('answer-A', 'version', 'older-A');
   await page.answerAction('unknown', 'version', 'older-B');

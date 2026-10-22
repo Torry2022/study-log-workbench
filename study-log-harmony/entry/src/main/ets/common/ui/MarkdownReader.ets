@@ -52,6 +52,7 @@ export struct MarkdownReader {
   @Prop @Watch('contentTopInsetChanged') contentTopInset: number = 0;
   @Prop @Watch('contentBottomInsetChanged') contentBottomInset: number = 0;
   @Prop followEnd: boolean = false;
+  @Prop @Watch('contentChanged') scrollToEndRequestRevision: number = 0;
   @Prop resetScrollOnContentChange: boolean = false;
   @Prop @Watch('contentChanged') documentKey: string = '';
   @Prop restoreScrollOffset: number = 0;
@@ -94,6 +95,7 @@ export struct MarkdownReader {
   @State private scrollOffset: number = 0;
   @State private scrollProgress: number = 0;
   private handledTargetRevision: number = -1;
+  private handledEndRevision: number = 0;
   private lastRenderKey: string = '';
   private completedContentKey: string = '';
   private renderSequence: number = 0;
@@ -148,6 +150,15 @@ export struct MarkdownReader {
     };
     this.frameBridge.onRendered = (sequence: number) => {
       if (!this.acceptsRender(sequence)) return;
+      const endRevision = this.scrollToEndRequestRevision;
+      if (endRevision > 0 && endRevision !== this.handledEndRevision) {
+        this.controller.runJavaScript('window.scrollY', (error, result: string) => {
+          if (!this.acceptsRender(sequence)) return;
+          const offset = Number.parseFloat(result);
+          if (!error && !Number.isNaN(offset)) this.onScrollPosition(offset, true);
+          this.handledEndRevision = endRevision;
+        });
+      } else this.handledEndRevision = endRevision;
       this.completedContentKey = this.desiredContentKey();
       this.webContentReady = true;
       this.measureScrollRange();
@@ -239,7 +250,7 @@ export struct MarkdownReader {
       usesWideTypography(this.workspaceBreakpoint) ? 'wide' : 'compact',
       this.targetHeading, this.targetHeadingIndex, this.targetHeadingId, this.targetKind,
       this.targetQuery, this.targetRevision, this.followEnd, this.resetScrollOnContentChange,
-      this.documentKey, Math.max(0, this.restoreScrollOffset)
+      this.documentKey, Math.max(0, this.restoreScrollOffset), this.scrollToEndRequestRevision
     ]);
   }
 
@@ -279,7 +290,7 @@ export struct MarkdownReader {
       (kind === 'search' ? `window.scrollToText(${query}, true)` :
         (this.targetHeading || this.targetHeadingId ?
           `window.scrollToHeading(${heading}, ${this.targetHeadingIndex}, ${headingId})` : 'window.scrollToTop()')) :
-      (this.followEnd ? 'window.scrollTo(0, document.body.scrollHeight)' :
+      (this.followEnd || this.scrollToEndRequestRevision > 0 && this.scrollToEndRequestRevision !== this.handledEndRevision ? 'window.scrollTo(0, document.body.scrollHeight)' :
         (documentChanged ? `window.scrollTo(0, ${restoreScrollOffset})` :
           (this.resetScrollOnContentChange && hasNewContent ? 'window.scrollToTop()' : 'true')));
     const targetResultUrl = JSON.stringify(
@@ -429,7 +440,8 @@ export struct MarkdownReader {
 
   private handleScroll(yOffset: number): void {
     this.scrollOffset = Math.max(0, yOffset);
-    this.onScrollPosition(yOffset, this.bottomInsetChanging);
+    this.onScrollPosition(yOffset, this.bottomInsetChanging ||
+      this.scrollToEndRequestRevision > 0 && this.scrollToEndRequestRevision !== this.handledEndRevision);
     this.measureActiveHeading();
     if (!this.showBackToTop && !this.trackScrollProgress) return;
     this.updateScrollProgress();

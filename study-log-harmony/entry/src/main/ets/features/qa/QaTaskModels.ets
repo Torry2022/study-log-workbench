@@ -8,9 +8,11 @@ export interface QaTaskSubmission {
   mode: string;
   replaceLast?: boolean;
   retryTaskId?: string;
+  editMessageId?: string;
   cancelRequested?: boolean;
 }
 export interface QaTaskSummary {
+  applicable?: boolean;
   id: string;
   submissionId: string;
   sessionId: string;
@@ -22,6 +24,7 @@ export interface QaTaskSummary {
 }
 export interface QaTaskResult { answer: string; citations: RagCitation[]; groundingWarning?: string; }
 export interface QaTask extends QaTaskSummary {
+  editMessageId?: string;
   questionMessageId?: string;
   previousAnswer?: RagChatMessage;
   question: string;
@@ -36,6 +39,7 @@ export interface QaTask extends QaTaskSummary {
 export interface QaTaskResponse { task: QaTask; }
 export interface QaTaskListResponse { tasks: QaTaskSummary[]; }
 export interface QaAnswerMessage extends RagChatMessage {
+  questionCreatedAt?: string;
   questionId?: string;
   versions?: string[];
   versionIndex?: number;
@@ -46,28 +50,33 @@ export interface QaAnswerMessage extends RagChatMessage {
   canRetry?: boolean;
   canDiscard?: boolean;
 }
-export interface QaTaskStorage { read: () => Promise<string>; write: (raw: string) => Promise<void>; }
+export interface QaTaskStorage {
+  read: () => Promise<string>; write: (raw: string) => Promise<void>;
+  readLegacy?: () => Promise<string>; clearLegacy?: () => Promise<void>;
+}
 
-export function taskActive(task: QaTaskSummary): boolean { return task.state === 'queued' || task.state === 'running'; }
+export function taskActive(task: QaTaskSummary): boolean { return task.applicable !== false && (task.state === 'queued' || task.state === 'running'); }
 export function taskRetained(task: QaTaskSummary): boolean {
-  return taskActive(task) || task.state === 'succeeded' && task.saveState !== 'saved' && task.saveState !== 'deleted';
+  return task.applicable !== false && (taskActive(task) || task.state === 'succeeded' && task.saveState !== 'saved' && task.saveState !== 'deleted');
 }
 export function latestTask(tasks: QaTask[], sessionId: string): QaTask | undefined {
   let latest: QaTask | undefined;
   tasks.forEach((task: QaTask) => {
-    if (task.sessionId === sessionId && (!latest || `${task.createdAt}:${task.id}` > `${latest.createdAt}:${latest.id}`)) latest = task;
+    if (task.applicable !== false && task.sessionId === sessionId && (!latest || `${task.createdAt}:${task.id}` > `${latest.createdAt}:${latest.id}`)) latest = task;
   });
   return latest;
 }
 export function validTaskSummary(task: QaTaskSummary): boolean {
   const uuid = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i;
   return !!task && uuid.test(task.id) && uuid.test(task.sessionId) && uuid.test(task.submissionId) &&
+    (task.applicable === undefined || typeof task.applicable === 'boolean') &&
     Number.isSafeInteger(task.revision) && task.revision > 0 && typeof task.createdAt === 'string' && typeof task.updatedAt === 'string' &&
     ['queued', 'running', 'succeeded', 'failed', 'cancelled', 'interrupted'].includes(task.state) &&
     ['pending', 'saved', 'conflict', 'error', 'deleted'].includes(task.saveState);
 }
 export function validTask(task: QaTask): boolean {
   return validTaskSummary(task) && typeof task.question === 'string' && typeof task.partial === 'string' &&
+    (task.editMessageId === undefined || typeof task.editMessageId === 'string' && !!task.editMessageId.trim() && task.editMessageId.length <= 120 && !task.replaceLast) &&
     (task.questionMessageId === undefined || typeof task.questionMessageId === 'string' && task.questionMessageId.length > 0 && task.questionMessageId.length <= 120) &&
     (task.previousAnswer === undefined || !!task.previousAnswer && task.previousAnswer.role === 'assistant' &&
       typeof task.previousAnswer.id === 'string' && task.previousAnswer.id.length > 0 && typeof task.previousAnswer.content === 'string' &&
@@ -81,7 +90,8 @@ export function taskMessages(task: QaTask, session?: RagSession, historical: boo
   if (historical) session = undefined;
   if (task.saveState === 'saved' && session) return session.messages;
   const previous = session?.messages || [];
-  return [...(task.replaceLast ? previous.slice(0, -2) : previous),
+  const editIndex = task.editMessageId ? previous.findIndex((message: RagChatMessage) => message.role === 'user' && message.id === task.editMessageId) : -1;
+  return [...(editIndex >= 0 ? previous.slice(0, editIndex) : task.replaceLast ? previous.slice(0, -2) : previous),
     { id: task.questionMessageId || `${task.id}:user`, role: 'user', content: task.question },
     { id: `${task.id}:assistant`, role: 'assistant', content: task.result?.answer || task.partial,
       status: taskActive(task) ? 'streaming' : task.state === 'succeeded' ? 'complete' : task.state === 'cancelled' ? 'stopped' : 'error',

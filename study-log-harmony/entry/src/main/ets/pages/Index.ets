@@ -651,12 +651,13 @@ struct Index {
     const view = this.workspaceNavigationView;
     if (!view) return;
     if (this.modules.qaBusy) { appFeedback.show('请先停止当前回答', 'error'); return; }
-    if (!this.modules.qaDirty && !this.modules.qaPending) { action(); return; }
-    AlertDialog.show({ message: this.modules.qaPending ? '当前问答尚未保存，确定放弃吗？' : '问答输入尚未提交，确定放弃吗？',
+    if (!this.modules.qaDirty && !this.modules.qaPending && !this.modules.qaEditDirty) { action(); return; }
+    AlertDialog.show({ message: this.modules.qaPending ? '当前问答尚未保存，确定放弃吗？' : '问答草稿尚未提交，确定放弃吗？',
       primaryButton: { value: '继续编辑', action: () => {} },
       secondaryButton: { value: '放弃', fontColor: $r('app.color.error'), action: () => {
         if (this.workspaceNavigationView !== view) return;
-        this.modules.qaDirty = false; this.modules.qaPending = false; this.modules.qaDiscardRevision++; action();
+        this.modules.qaDirty = false; this.modules.qaPending = false; this.modules.qaEditDirty = false;
+        this.modules.qaDiscardRevision++; action();
       } } });
   }
 
@@ -1135,7 +1136,7 @@ struct Index {
           logContent: (): void => this.logContent(), search: this.search, searchOpen: $searchOpen,
           onSelect: (index: number) => this.requestModule(index, false, false, () => {}, ''),
           navigationCommands: $workspaceCommands,
-          onOpenTaxonomy: () => this.openTaxonomy(), onCloseTaxonomy: () => this.confirmTaxonomyLeave(() => {}),
+          onCloseTaxonomy: () => this.confirmTaxonomyLeave(() => {}),
           onContentArea: (area: Area) => this.workspaceNavigationView?.workspaceAreaChanged(area),
           onWorkspaceArea: (area: Area) => this.workspaceCommands.readingOrigin(area) })
           .width('100%').height('100%')

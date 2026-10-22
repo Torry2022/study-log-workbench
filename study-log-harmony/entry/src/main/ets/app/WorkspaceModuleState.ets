@@ -17,6 +17,7 @@ export class WorkspaceModuleState {
   qaGeneratingSessionId: string = '';
   qaDirty: boolean = false;
   qaPending: boolean = false;
+  qaEditDirty: boolean = false;
   qaSessionId: string = '';
   qaDeletedSessionId: string = '';
   qaDeletedSessionRevision: number = 0;

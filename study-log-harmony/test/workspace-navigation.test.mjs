@@ -137,6 +137,29 @@ test('server leave checks do not change modules before the final action', () => 
   assert.equal(page.selectedModule, 3);
 });
 
+test('inline question drafts survive module and session navigation but still guard workspace exit', () => {
+  const { root, page, dialogs } = workspace(3);
+  page.modules.qaEditDirty = true;
+  root.requestModule(1);
+  assert.equal(page.selectedModule, 1);
+  assert.equal(dialogs.length, 0);
+  assert.equal(page.modules.qaDiscardRevision, 0);
+  root.switchQaSession('other-session');
+  assert.equal(page.modules.qaSessionId, 'other-session');
+  assert.equal(dialogs.length, 0);
+  assert.equal(page.modules.qaEditDirty, true);
+  let exited = false;
+  root.confirmQaLeave(() => exited = true);
+  assert.equal(exited, false);
+  dialogs[0].primaryButton.action();
+  assert.equal(page.modules.qaEditDirty, true);
+  root.confirmQaLeave(() => exited = true);
+  dialogs[1].secondaryButton.action();
+  assert.equal(exited, true);
+  assert.equal(page.modules.qaEditDirty, false);
+  assert.match(contentSource, /onQuestionEditsChange:\s*\(dirty: boolean\) => this\.modules\.qaEditDirty = dirty/);
+});
+
 test('late module capture cannot override a newer module selection', async () => {
   const { page } = workspace(0);
   const releases = [];

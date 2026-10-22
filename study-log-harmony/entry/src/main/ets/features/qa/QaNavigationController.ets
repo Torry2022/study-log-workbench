@@ -38,14 +38,17 @@ export class QaNavigationController {
   async loadQaNavigation(): Promise<void> {
     if (!this.view.active() || this.qaNavigationLoading) return;
     const revision = ++this.qaNavigationRevision;
+    const binding = this.transport.getConnectionBinding();
+    const current = (): boolean => revision === this.qaNavigationRevision && binding === this.transport.getConnectionBinding() &&
+      (this.view.connected ? this.view.connected() : this.view.active());
     this.qaNavigationLoading = true;
     this.qaNavigationError = '';
     try {
       const response = await this.transport.get<RagSessionsResponse>('/rag/sessions');
-      if (revision !== this.qaNavigationRevision) return;
+      if (!current()) return;
       this.savedSessions = response.sessions; this.mergeTaskNavigation();
     } catch (_) {
-      if (revision !== this.qaNavigationRevision) return;
+      if (!current() || !this.view.active()) return;
       this.qaNavigationError = '历史问答读取失败';
     } finally {
       if (revision === this.qaNavigationRevision) this.qaNavigationLoading = false;

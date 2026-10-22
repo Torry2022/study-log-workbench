@@ -152,7 +152,7 @@ test('answer-version end requests wait for rendering and are consumed only by th
   reader.frameBridge.onRendered(reader.renderSequence);
   reader.scrollToEndRequestRevision = 1; reader.content = 'longer version'; reader.render();
   const versionSequence = reader.renderSequence;
-  assert.match(scripts.at(-1).script, /renderMarkdown[\s\S]*\.then\(\(\) => \{ window.scrollTo\(0, document.body.scrollHeight\)/);
+  assert.match(scripts.at(-1).script, /renderMarkdown[\s\S]*\.then\(\(\) => \{ if \("document" === 'qa' && window.readerActionRevision !== \d+\) return; window.scrollTo\(0, document.body.scrollHeight\)/);
   reader.content = 'newer version'; reader.scrollToEndRequestRevision = 2; reader.render();
   reader.frameBridge.onRendered(versionSequence);
   assert.equal(reader.handledEndRevision, 0, 'obsolete frame cannot consume the current request');

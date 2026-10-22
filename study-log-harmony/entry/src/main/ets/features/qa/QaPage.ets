@@ -11,7 +11,7 @@ import { apiClient } from '../../common/network/ApiClient';
 import { WorkspaceBreakpoint, READING_MAX_WIDTH } from '../../common/AppConfig';
 import { FrameAction } from '../../common/ui/FrameAction';
 import { RagChatMessage, RagCitation, RagSessionSummary } from './QaModels';
-import { QaSessionController } from './QaSessionController';
+import { QaSessionController, QaQuestionEdit } from './QaSessionController';
 import { createQaTaskConnection } from './QaTaskConnection';
 import { QaAnswerMessage } from './QaTaskModels';
 import { pasteboard } from '@kit.BasicServicesKit';
@@ -33,6 +33,18 @@ interface QaRenderMessage {
   failure?: string;
   attemptId?: string;
   groundingWarning?: string;
+  timeLabel?: string;
+  canEdit?: boolean;
+  editSupported?: boolean;
+  editBusy?: boolean;
+  editNeedsReview?: boolean;
+  editOrphan?: boolean;
+  editContent?: string;
+  editError?: string;
+  editToken?: string;
+  editRevision?: number;
+  documentKey?: string;
+
 }
 
 @Component
@@ -70,6 +82,7 @@ export struct QaPage {
   onGeneratingSessionChange: (id: string) => void = () => {};
   onDraftChange: (dirty: boolean) => void = () => {};
   onPendingChange: (pending: boolean) => void = () => {};
+  onQuestionEditsChange: (dirty: boolean) => void = () => {};
   onCitation: (date: string, heading: string, headingIndex: number) => void = () => {};
   onScrollStateChange: (scrolled: boolean) => void = () => {};
   onOpenLog: () => void = () => {};
@@ -85,10 +98,11 @@ export struct QaPage {
       this.onBusyChange(busy);
     },
     onPendingChange: (pending: boolean) => this.onPendingChange(pending),
+    onQuestionEditsChange: (dirty: boolean) => this.onQuestionEditsChange(dirty),
     onSessionReady: () => this.onSessionReady(),
     onBeforeSessionChange: () => this.onBeforeSessionChange(),
     resetComposerScroll: () => this.resetComposerScroll(),
-    beforeSend: () => { this.onDraftChange(false); this.getUIContext().getFocusController().clearFocus(); },
+    beforeSend: () => { this.followAnswer = true; this.onDraftChange(false); this.getUIContext().getFocusController().clearFocus(); },
     showComposer: () => this.setComposerHidden(false),
     afterFrame: (action: () => void) => this.getUIContext().postFrameCallback(new FrameAction(action))
   }, createQaTaskConnection());
@@ -101,6 +115,7 @@ export struct QaPage {
   @State private answerVersionRevision: number = 0;
   @State private copiedAnswerId: string = '';
   @State private questionFocused: boolean = false;
+  @State private followAnswer: boolean = true;
   private composingQuestion: boolean = false;
   private questionController: TextAreaController = new TextAreaController();
   private questionSelectionStart: number = 0;
@@ -218,6 +233,7 @@ export struct QaPage {
       this.lastScrollY = yOffset;
       return;
     }
+    if (this.data.sending && yOffset < this.lastScrollY - 2) this.followAnswer = false;
     if (this.readerScrollOffset <= 8) {
       this.lastScrollY = yOffset;
       this.scrollTravel = 0;
@@ -272,16 +288,48 @@ export struct QaPage {
   }
 
   private conversationPayload(): string {
+    const edit = this.data.questionEdit();
+    const editRevision = this.data.questionEditRevision;
+    let previousTime: number = 0;
     const messages: QaRenderMessage[] = this.data.answerMessages().map((message: QaAnswerMessage): QaRenderMessage => ({
       id: message.id, copied: this.copiedAnswerId === message.id, citations: message.citations, versions: message.versions, versionIndex: message.versionIndex,
       canRegenerate: message.canRegenerate, saveError: message.saveError, canSave: message.canSave, canRetry: message.canRetry, canDiscard: message.canDiscard,
       role: message.role,
+      timeLabel: message.role === 'user' ? this.questionTimeLabel(message.questionCreatedAt, previousTime,
+        (time: number) => previousTime = time) : '',
+      canEdit: this.workspaceActive && message.role === 'user' && this.data.canEditQuestion(message.id),
+      editSupported: message.role === 'user' && this.data.questionEditingSupported(),
+      editBusy: !this.workspaceActive || this.data.sending || this.data.taskSaving,
+      editNeedsReview: edit?.messageId === message.id && (!edit.baseVersion || edit.baseVersion !== this.data.sessionVersion || !!edit.error),
+      editContent: edit?.messageId === message.id ? edit.content : undefined,
+      editError: edit?.messageId === message.id ? edit.error : undefined,
+      editToken: edit?.messageId === message.id ? edit.token : undefined,
+      editRevision,
+      documentKey: this.data.sessionDocumentKey,
       content: message.role === 'user' ? message.content : this.answerMarkdown(message) || this.data.statusText,
       failure: this.data.failedAttempt?.answerId === message.id ? this.data.errorMessage : '',
       attemptId: this.data.failedAttempt?.answerId === message.id ? message.id : '',
       groundingWarning: message.groundingWarning
     }));
+    this.data.orphanQuestionEdits().forEach((draft: QaQuestionEdit): void => {
+      messages.push({ id: draft.messageId, role: 'user', content: draft.content, copied: this.copiedAnswerId === draft.messageId,
+        editContent: draft.content, editToken: draft.token, editOrphan: true, editRevision,
+        editBusy: !this.workspaceActive || this.data.sending || this.data.taskSaving,
+        editError: draft.error || '原问题已不在当前会话中，编辑稿仍保留，可复制或取消', documentKey: this.data.sessionDocumentKey });
+    });
     return JSON.stringify(messages);
+  }
+
+  private hasConversation(): boolean { return this.data.messages.length > 0 || this.data.orphanQuestionEdits().length > 0; }
+
+  private questionTimeLabel(createdAt: string | undefined, previous: number, remember: (time: number) => void): string {
+    if (!createdAt) return '';
+    const date = new Date(createdAt), time = date.getTime();
+    if (!Number.isFinite(time)) return '';
+    remember(time);
+    const day = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    if (previous && time - previous < 30 * 60 * 1000 && new Date(previous).toDateString() === date.toDateString()) return '';
+    return `${day} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
   }
 
   private answerMarkdown(message: RagChatMessage): string {
@@ -296,14 +344,12 @@ export struct QaPage {
   }
 
   private async answerAction(id: string, action: string, target: string): Promise<void> {
-    const message = this.data.answerMessages().find((item: QaAnswerMessage) => item.role === 'assistant' && item.id === id);
+    const message = this.data.answerMessages().find((item: QaAnswerMessage) => item.id === id);
     if (!message) return;
     if (action === 'copy') {
-      try {
-        await pasteboard.getSystemPasteboard().setData(pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, message.content));
-        this.copiedAnswerId = message.id;
-        setTimeout(() => { if (this.copiedAnswerId === message.id) this.copiedAnswerId = ''; }, 2000);
-      } catch (_) { appFeedback.show('复制失败，请重试', 'error'); }
+      await this.copyQaText(message.id, message.content);
+    } else if (message.role === 'user') {
+      if (action === 'edit') { this.followAnswer = false; this.data.beginQuestionEdit(id); }
     } else if (action === 'version' && !this.data.taskSaving && message.questionId && message.versions?.includes(target)) {
       await this.data.selectAnswerVersion(message.questionId, target);
       this.answerVersionRevision += 1;
@@ -317,6 +363,14 @@ export struct QaPage {
         primaryButton: { value: '保留', action: () => {} },
         secondaryButton: { value: '放弃', action: () => this.data.discardTask(taskId) } });
     }
+  }
+
+  private async copyQaText(id: string, content: string): Promise<void> {
+    try {
+      await pasteboard.getSystemPasteboard().setData(pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, content));
+      this.copiedAnswerId = id;
+      setTimeout(() => { if (this.copiedAnswerId === id) this.copiedAnswerId = ''; }, 2000);
+    } catch (_) { appFeedback.show('复制失败，请重试', 'error'); }
   }
 
   private composerHorizontalInset(): number {
@@ -340,14 +394,14 @@ export struct QaPage {
               LoadingHintAnchor({ loading: true, onChange: this.onLoadingHintChange })
                 .hitTestBehavior(HitTestMode.None)
             }
-            if (this.data.sessionLoading && this.data.messages.length === 0) {
+            if (this.data.sessionLoading && !this.hasConversation()) {
               ContentLoadingState({ text: '正在加载会话…' }).padding({ bottom: this.composerHeight })
-            } else if (this.data.failedSessionId && this.data.messages.length === 0) {
+            } else if (this.data.failedSessionId && !this.hasConversation()) {
               Column() {
                 LoadFailure({ title: '会话读取失败', message: this.data.errorMessage,
                   onRetry: () => this.data.openSession(this.data.failedSessionId) })
               }.width('100%').height('100%').padding({ bottom: this.composerHeight })
-            } else if (this.data.messages.length === 0) {
+            } else if (!this.hasConversation()) {
               Column({ space: 12 }) {
                 EmptyState({ embedded: true, symbol: $r('sys.symbol.message'), title: '关于日志，你想了解什么？', description: '从已有记录中回顾收获、查找线索。也可以选择下面的问题，修改后再发送。' })
                 Column({ space: 8 }) {
@@ -379,6 +433,16 @@ export struct QaPage {
                 onRenderReady: this.onWorkspaceLayoutReady,
                 content: this.conversationPayload(),
                 onQaAnswerAction: (id: string, action: string, target: string) => this.answerAction(id, action, target),
+                onQaQuestionEdit: (id: string, token: string, action: string, value: string) => {
+                  if (!this.workspaceActive || this.data.questionEdit(id)?.token !== token) return;
+                  if (action === 'cancel') this.data.cancelQuestionEdit(id);
+                  else if (action === 'copy') this.copyQaText(id, this.data.questionEdit(id)!.content);
+                  else if (action === 'review') this.data.reloadQuestionEdit(id);
+                  else {
+                    this.data.changeQuestionEdit(id, value);
+                    if (action === 'send') this.data.submitQuestionEdit(id);
+                  }
+                },
                 onQaAttemptAction: (id: string, action: string) => {
                   const attempt = this.data.failedAttempt;
                   if (!attempt || attempt.answerId !== id || this.data.sending) return;
@@ -401,7 +465,7 @@ export struct QaPage {
                 contentMode: 'qa',
                 contentBottomInset: this.composerHidden ? 0 : this.composerHeight,
                 fillAvailableWidth: true,
-                followEnd: this.data.sending,
+                followEnd: this.data.sending && this.followAnswer && !this.data.questionEdit()?.error,
                 showBackToTop: false,
                 trackScrollProgress: true,
                 scrollToTopRequestRevision: this.scrollToTopRequestRevision,
@@ -438,7 +502,7 @@ export struct QaPage {
                   .key('qa_question_input').id('qa_question_input')
                   .monopolizeEvents(true)
                   .backgroundColor(Color.Transparent).border({ width: 0 }).borderRadius(0)
-                  .enabled(!this.data.sending)
+                  .enabled(!this.data.sending && !this.data.questionEdit())
                   .onFocus(() => this.focusQuestion())
                   .onBlur(() => this.blurQuestion())
                   .onTextSelectionChange((start: number, end: number) => {
@@ -500,7 +564,7 @@ export struct QaPage {
                   .opacity(this.data.sending && (this.data.receivedDone || !!this.data.pendingWrite) ||
                     !this.data.sending && (this.data.sessionLoading || this.data.question.trim().length === 0) ? 0.58 : 1)
                   .enabled(this.data.sending ? !this.data.receivedDone && !this.data.pendingWrite :
-                    this.configured && !this.data.sessionLoading && !this.data.taskSaving && !this.data.taskBlocked && !this.data.taskSaveError && this.data.question.trim().length > 0)
+                    this.configured && !this.data.questionEdit() && !this.data.sessionLoading && !this.data.taskSaving && !this.data.taskBlocked && !this.data.taskSaveError && this.data.question.trim().length > 0)
                   .accessibilityText(this.data.sending ? (this.data.receivedDone || !!this.data.pendingWrite ?
                     '正在保存回答' : '停止生成') : '发送问题')
                   .bindTips(this.data.sending ? (this.data.receivedDone || !!this.data.pendingWrite ?

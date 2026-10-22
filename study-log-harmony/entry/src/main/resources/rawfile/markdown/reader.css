@@ -299,6 +299,12 @@ body { color: var(--body); font-family: "HarmonyOS Sans SC", system-ui, sans-ser
 .qa-message { min-width: 0; padding: 16px 0; border-bottom: 1px solid var(--hairline-soft); }
 .qa-message-label { margin-bottom: 8px; color: var(--muted); font-size: 12px; font-weight: 700; }
 .qa-message-user .qa-message-label { text-align: right; }
+.qa-message-time { margin: 0 0 16px; color: var(--muted); text-align: center; font-size: 12px; font-weight: 400; }
+.qa-user-actions { justify-content: flex-end; }
+.qa-question-editor { display: block; width: 100%; min-height: 120px; resize: vertical; padding: 12px 14px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--soft); color: var(--ink); font: inherit; line-height: 1.6; }
+.qa-question-editor:focus { outline: 2px solid var(--primary); outline-offset: 2px; }
+.qa-edit-error { color: var(--error); font-size: 13px; }
+.qa-edit-error:empty { display: none; }
 .markdown-body .qa-message-user > p { width: fit-content; max-width: 92%; margin: 0 0 0 auto; padding: 11px 14px; border-radius: 8px; background: var(--soft); color: var(--ink); line-height: 1.6; white-space: pre-wrap; }
 .qa-answer-body { color: var(--body); line-height: 1.7; }
 .qa-answer-body > :first-child { margin-top: 0; }
@@ -318,11 +324,14 @@ body { color: var(--body); font-family: "HarmonyOS Sans SC", system-ui, sans-ser
 .markdown-body .qa-source-detail p { margin: 0; color: var(--body); font-size: 13px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
 .markdown-body .qa-source-detail a { margin-top: 9px; min-height: 32px; padding: 0 8px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--hairline); border-radius: 6px; background: var(--canvas); color: var(--ink); font-size: 12px; text-decoration: none; }
 .qa-answer-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 8px; color: var(--muted); }
-.markdown-body .qa-answer-actions a, .qa-answer-actions > span { min-width: 32px; min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 9px; box-sizing: border-box; border: 1px solid var(--hairline); border-radius: 6px; background: transparent; color: var(--muted); font-size: 12px; text-decoration: none; }
+.markdown-body .qa-answer-actions a, .qa-answer-actions > span, .qa-answer-actions > button { min-width: 32px; min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 9px; box-sizing: border-box; border: 1px solid var(--hairline); border-radius: 6px; background: transparent; color: var(--muted); font-family: inherit; font-size: 12px; text-decoration: none; }
+.qa-answer-actions > .qa-edit-send { background: var(--primary); color: #fff; border-color: var(--primary); }
+.qa-answer-actions > button:disabled { opacity: .35; }
+.qa-answer-actions > button[hidden] { display: none; }
 .qa-answer-actions > .qa-version-count { padding: 0 2px; border: 0; font-variant-numeric: tabular-nums; }
 .qa-answer-actions a, .qa-source-detail a, .qa-sources summary { -webkit-tap-highlight-color: transparent; }
-.markdown-body .qa-answer-actions a:active, .markdown-body .qa-source-detail a:active, .qa-sources summary:active { background: var(--interaction-hover); color: var(--ink); }
-.markdown-body .qa-answer-actions a:focus-visible, .markdown-body .qa-source-detail a:focus-visible, .qa-sources summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.markdown-body .qa-answer-actions a:active, .qa-answer-actions > button:not(:disabled):active, .markdown-body .qa-source-detail a:active, .qa-sources summary:active { background: var(--interaction-hover); color: var(--ink); }
+.markdown-body .qa-answer-actions a:focus-visible, .qa-answer-actions > button:focus-visible, .markdown-body .qa-source-detail a:focus-visible, .qa-sources summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .qa-answer-actions [aria-disabled="true"] { opacity: .35; }
 .qa-answer-actions svg, .qa-sources svg { flex-shrink: 0; }
 @media (max-width: 360px) {

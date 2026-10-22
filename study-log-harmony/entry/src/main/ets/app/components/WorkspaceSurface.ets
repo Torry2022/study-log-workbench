@@ -78,10 +78,14 @@ export struct WorkspaceSurface {
   @Link searchOpen: boolean;
   onSelect: (index: number) => void = () => {};
   @Link navigationCommands: WorkspaceNavigationCommands;
-  onOpenTaxonomy: () => void = () => {};
   onCloseTaxonomy: () => void = () => {};
   onContentArea: (area: Area) => void = () => {};
   onWorkspaceArea: (area: Area) => void = () => {};
+
+  private navigationTitle(): string {
+    return this.selectedModule === 0 ? '日志导航' : this.selectedModule === 1 ? '随记导航' :
+      this.selectedModule === 2 ? '收藏导航' : this.selectedModule === 3 ? '问答历史' : '统计导航';
+  }
 
   @Builder
   private logNavigationContent() {
@@ -203,7 +207,7 @@ export struct WorkspaceSurface {
     } else {
       Column() {
         Row() {
-        Text((this.selectedModule === 1) ? '年份和标签' : (this.selectedModule === 2) ? '筛选收藏' : '统计月份')
+        Text(this.navigationTitle())
           .fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.ink'))
           .layoutWeight(1)
         this.navigationFilterReset('navigation_popover_reset_filters')
@@ -230,8 +234,7 @@ export struct WorkspaceSurface {
     Column({ space: 1 }) {
       Row({ space: 10 }) {
         Image(WORKSPACE_TABS[this.selectedModule].activeIcon).width(20).height(20).objectFit(ImageFit.Contain)
-        Text((this.selectedModule === 1) ? '随记' : (this.selectedModule === 2) ? '收藏中心' : (this.selectedModule === 3) ? '知识问答' :
-          (this.selectedModule === 4) ? '学习统计' : '学习日志')
+        Text(this.navigationTitle())
           .fontFamily(workspaceSansFamily(this.workspaceBreakpoint)).fontSize(15)
           .fontWeight(FontWeight.Medium).fontColor($r('app.color.body_strong'))
           .maxLines(1).layoutWeight(1)
@@ -241,7 +244,7 @@ export struct WorkspaceSurface {
         }.width(40).height(40).padding(0).backgroundColor($r('app.color.canvas'))
           .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8).clip(true)
           .onClick(() => this.closeNavigation())
-          .id('navigation_drawer_close').accessibilityText('关闭侧栏').bindTips('关闭侧栏', WORKSPACE_TIPS)
+          .id('navigation_drawer_close').accessibilityText(`关闭${this.navigationTitle()}`).bindTips(`关闭${this.navigationTitle()}`, WORKSPACE_TIPS)
       }.width('100%').height(40)
       Text((this.selectedModule === 1) ? '按年份和标签筛选' : (this.selectedModule === 2) ? '按分组和日志月份筛选' :
         (this.selectedModule === 3) ? '历史会话' : (this.selectedModule === 4) ? '切换月份与管理分类' : '按月份和日期浏览')
@@ -311,7 +314,6 @@ export struct WorkspaceSurface {
       onNoteLink: (date: string, heading: string) => this.navigationCommands.noteLink(date, heading),
       onFavorite: (favorite: FavoriteHeading) => this.navigationCommands.favorite(favorite),
       onStatsEntry: (entry: StatsEntry) => this.navigationCommands.statsEntry(entry),
-      onOpenTaxonomy: () => this.onOpenTaxonomy(),
       onCloseTaxonomy: () => this.onCloseTaxonomy(),
       logContent: (): void => this.logContent() })
   }

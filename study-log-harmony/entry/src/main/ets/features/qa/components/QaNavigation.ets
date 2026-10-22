@@ -117,7 +117,6 @@ export struct QaNavigation {
                     }
                     Text(session.title).fontSize(13).fontWeight(FontWeight.Regular).fontColor($r('app.color.body'))
                       .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis }).layoutWeight(1)
-                    Text(this.qaUpdatedLabel(session)).fontSize(12).fontWeight(FontWeight.Regular).fontColor($r('app.color.muted_soft')).flexShrink(0)
                   }.width('100%')
                 }
                 .id(`qa_session_${session.id}`)
@@ -143,6 +142,8 @@ export struct QaNavigation {
                     if (!event.isVisible && this.qaMenuId === session.id) this.onMenu('');
                   }
                 })
+                Text(this.qaUpdatedLabel(session)).fontSize(12).fontWeight(FontWeight.Regular)
+                  .fontColor($r('app.color.muted_soft')).textAlign(TextAlign.End).flexShrink(0)
               }.width('100%')
             }
             .width('100%')
@@ -157,6 +158,28 @@ export struct QaNavigation {
   }
 
   @Builder
+  private historySearch(rail: boolean = false) {
+    Row({ space: 6 }) {
+      SearchField({ value: this.qaSessionQuery, placeholder: '搜索历史问答',
+        focusKey: rail ? 'qa_rail_search' : 'qa_session_search', focusRevision: this.qaSearchRevision,
+        compact: true, showSubmit: false, onChange: (value: string) => this.onQuery(value), onSubmit: () => {} })
+        .layoutWeight(1)
+      if (this.qaSessions.length > 0) {
+        Stack() {
+          if (this.qaNavigationLoading) LoadingProgress().width(15).height(15).color($r('app.color.primary'))
+          else if (this.qaNavigationError) {
+            Button({ type: ButtonType.Normal }) {
+              Image($r('app.media.refresh_cw')).width(15).height(15).objectFit(ImageFit.Contain)
+            }.width(30).height(36).padding(0).backgroundColor(Color.Transparent).borderRadius(6)
+              .accessibilityText('历史问答更新失败，重试').bindTips(this.qaNavigationError, WORKSPACE_TIPS)
+              .onClick(() => this.onRetry())
+          }
+        }.width(30).height(36)
+      }
+    }.width('100%')
+  }
+
+  @Builder
   private qaNavigationContent() {
     Column({ space: 10 }) {
       Button({ type: ButtonType.Normal }) {
@@ -168,25 +191,16 @@ export struct QaNavigation {
       .width('100%').height(40).padding(0).backgroundColor($r('app.color.canvas'))
       .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8).clip(true)
       .enabled(!this.qaBusy).onClick(() => this.onSession(''))
-      SearchField({
-        value: this.qaSessionQuery,
-        placeholder: '搜索历史问答',
-        focusKey: 'qa_session_search',
-        focusRevision: this.qaSearchRevision,
-        compact: true,
-        showSubmit: false,
-        onChange: (value: string) => this.onQuery(value),
-        onSubmit: () => {}
-      })
+      this.historySearch()
       List({ space: 4 }) {
-        if (this.qaNavigationLoading) {
+        if (this.qaNavigationLoading && this.qaSessions.length === 0) {
           ListItem() {
             Row({ space: 8 }) {
               LoadingProgress().width(18).height(18).color($r('app.color.primary'))
               Text('正在加载历史记录').fontSize(12).fontColor($r('app.color.muted'))
             }.width('100%').height(52).justifyContent(FlexAlign.Center)
           }
-        } else if (this.qaNavigationError) {
+        } else if (this.qaNavigationError && this.qaSessions.length === 0) {
           ListItem() {
             InlineStatus({ text: this.qaNavigationError, error: true, retry: true,
               onRetry: () => this.onRetry() })
@@ -216,25 +230,17 @@ export struct QaNavigation {
       Text(this.qaRailPopover === 'search' ? '搜索历史' : '最近问答')
         .width('100%').fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.ink'))
       if (this.qaRailPopover === 'search') {
-        SearchField({
-          value: this.qaSessionQuery,
-          placeholder: '搜索历史问答',
-          focusKey: 'qa_rail_search',
-          compact: true,
-          showSubmit: false,
-          onChange: (value: string) => this.onQuery(value),
-          onSubmit: () => {}
-        })
+        this.historySearch(true)
       }
       List({ space: 4 }) {
-        if (this.qaNavigationLoading) {
+        if (this.qaNavigationLoading && this.qaSessions.length === 0) {
           ListItem() {
             Row({ space: 8 }) {
               LoadingProgress().width(18).height(18).color($r('app.color.primary'))
               Text('正在加载历史记录').fontSize(12).fontColor($r('app.color.muted'))
             }.width('100%').height(52).justifyContent(FlexAlign.Center)
           }
-        } else if (this.qaNavigationError) {
+        } else if (this.qaNavigationError && this.qaSessions.length === 0) {
           ListItem() {
             InlineStatus({ text: this.qaNavigationError, error: true, retry: true,
               onRetry: () => this.onRetry() })

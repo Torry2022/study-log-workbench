@@ -10,6 +10,7 @@ export class QaTaskClient {
   tasks: QaTask[] = [];
   pending: QaTaskSubmission[] = [];
   ready: boolean = false;
+  questionEditing: boolean = false;
   error: string = '';
   onChange: () => void = () => {};
   private transport: ApiClient;
@@ -17,6 +18,7 @@ export class QaTaskClient {
   private instanceId: string;
   private binding: string;
   private removed: Set<string> = new Set<string>();
+  private superseded: Set<string> = new Set<string>();
   private deletedSessions: Set<string> = new Set<string>();
   private sending: Map<string, Promise<void>> = new Map<string, Promise<void>>();
   private writes: Promise<void> = Promise.resolve();
@@ -42,19 +44,34 @@ export class QaTaskClient {
     });
     this.writes = work; await work;
   }
+  private parsePending(raw: string, legacy: boolean = false): QaTaskSubmission[] {
+    const values = JSON.parse(raw || '[]') as QaTaskSubmission[];
+    const uuid = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i;
+    if (!Array.isArray(values) || values.some((item: QaTaskSubmission) => !item || !uuid.test(item.submissionId) || !uuid.test(item.sessionId) ||
+      Object.keys(item).some((key: string) => !['submissionId', 'sessionId', 'baseVersion', 'question', 'mode', 'replaceLast', 'retryTaskId', 'editMessageId', 'cancelRequested'].includes(key)) ||
+      item.baseVersion !== null && !/^[a-f0-9]{64}$/.test(item.baseVersion) || typeof item.question !== 'string' || !item.question.trim() || item.question.length > 2000 ||
+      !['logs_only', 'logs_and_general'].includes(item.mode) || item.replaceLast !== undefined && typeof item.replaceLast !== 'boolean' ||
+      item.editMessageId !== undefined && (legacy || typeof item.editMessageId !== 'string' || !item.editMessageId.trim() || item.editMessageId.length > 120 || item.replaceLast || item.baseVersion === null) ||
+      item.retryTaskId !== undefined && !uuid.test(item.retryTaskId) || item.cancelRequested !== undefined && typeof item.cancelRequested !== 'boolean')) {
+      throw new Error('待确认问答记录无法读取，请保留本地数据后重试');
+    }
+    return values;
+  }
   async connect(): Promise<void> {
     this.stopped = false;
     const revision = ++this.revision;
     this.ready = false;
     try {
       this.checkConnection();
-      const values = JSON.parse(await this.storage.read() || '[]') as QaTaskSubmission[];
-      const uuid = /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i;
-      if (!Array.isArray(values) || values.some((item: QaTaskSubmission) => !item || !uuid.test(item.submissionId) || !uuid.test(item.sessionId) ||
-        item.baseVersion !== null && !/^[a-f0-9]{64}$/.test(item.baseVersion) || typeof item.question !== 'string' || !item.question.trim() || item.question.length > 2000 ||
-        !['logs_only', 'logs_and_general'].includes(item.mode) || item.replaceLast !== undefined && typeof item.replaceLast !== 'boolean' ||
-        item.retryTaskId !== undefined && !uuid.test(item.retryTaskId) ||
-        item.cancelRequested !== undefined && typeof item.cancelRequested !== 'boolean')) throw new Error('待确认问答记录无法读取，请保留本地数据后重试');
+      const values = this.parsePending(await this.storage.read());
+      const legacy = this.storage.readLegacy ? this.parsePending(await this.storage.readLegacy(), true) : [];
+      for (const input of legacy) {
+        const existing = values.find((item: QaTaskSubmission) => item.submissionId === input.submissionId);
+        if (!existing) values.push(input);
+        else if (JSON.stringify([existing.sessionId, existing.baseVersion, existing.question, existing.mode, existing.replaceLast, existing.retryTaskId, existing.editMessageId]) !==
+          JSON.stringify([input.sessionId, input.baseVersion, input.question, input.mode, input.replaceLast, input.retryTaskId, input.editMessageId])) throw new Error('待确认问答的提交身份冲突，请保留本地数据');
+        else if (input.cancelRequested) existing.cancelRequested = true;
+      }
       const capability = await this.transport.getForInstance<InstanceCapabilities>('/capabilities', this.instanceId);
       if (this.stopped || revision !== this.revision) return;
       if (capability.instanceId !== this.instanceId) throw new Error('服务器实例已变化，请重新连接');
@@ -62,7 +79,10 @@ export class QaTaskClient {
       // is durable before replaying any previously stored submission.
       if (values.length) await this.storage.write(JSON.stringify(values));
       if (this.stopped || revision !== this.revision) return;
+      if (legacy.length && this.storage.clearLegacy) await this.storage.clearLegacy();
+      if (this.stopped || revision !== this.revision) return;
       const task = capability.features.ragTasks;
+      this.questionEditing = task?.questionEditing === true;
       this.ready = !!task?.supported && task.configured && task.protocolVersion === 1;
       this.pending = values;
       this.error = this.ready ? '' : '问答任务执行器未就绪或协议不兼容，请重试检查';
@@ -84,8 +104,14 @@ export class QaTaskClient {
   private accept(task: QaTask): void {
     if (!validTask(task)) throw new Error('任务快照响应不完整');
     if (this.stopped || this.binding !== this.transport.getConnectionBinding() || this.removed.has(task.id) || this.deletedSessions.has(task.sessionId)) return;
+    if (task.applicable === false) this.superseded.add(task.id);
+    if (this.superseded.has(task.id)) task = { ...task, applicable: false };
     const old = this.tasks.find((item: QaTask) => item.id === task.id);
-    if (old && old.revision >= task.revision) return;
+    if (old && old.revision > task.revision) {
+      if (task.applicable !== false || old.applicable === false) return;
+      task = { ...old, applicable: false };
+    }
+    if (old && old.revision >= task.revision && old.applicable === task.applicable) return;
     this.tasks = [...this.tasks.filter((item: QaTask) => item.id !== task.id), task]; this.notify();
   }
   async read(id: string): Promise<void> {
@@ -113,13 +139,19 @@ export class QaTaskClient {
         if (!Array.isArray(response.tasks) || response.tasks.some((task: QaTaskSummary) => !validTaskSummary(task))) throw new Error('任务列表响应不完整');
         const latest = new Map<string, QaTaskSummary>();
         response.tasks.forEach((task: QaTaskSummary) => {
+          if (task.applicable === false || this.superseded.has(task.id)) {
+            this.superseded.add(task.id);
+            const known = this.tasks.find((item: QaTask) => item.id === task.id);
+            if (known && known.applicable !== false) this.accept({ ...known, applicable: false });
+            return;
+          }
           const old = latest.get(task.sessionId);
           if (!old || `${task.createdAt}:${task.id}` > `${old.createdAt}:${old.id}`) latest.set(task.sessionId, task);
         });
         const retained = response.tasks.filter(taskRetained).map((task: QaTaskSummary) => task.sessionId);
         const wanted = response.tasks.filter((task: QaTaskSummary) => {
           const old = this.tasks.find((item: QaTask) => item.id === task.id);
-          return old ? old.revision < task.revision : taskRetained(task) || latest.get(task.sessionId)?.id === task.id &&
+          return old ? old.revision < task.revision || old.applicable !== task.applicable : taskRetained(task) || latest.get(task.sessionId)?.id === task.id &&
             (task.saveState !== 'saved' && task.saveState !== 'deleted' || retained.includes(task.sessionId));
         });
         await Promise.all(wanted.map(async (task: QaTaskSummary): Promise<void> => {
@@ -150,15 +182,22 @@ export class QaTaskClient {
     if (!Array.isArray(response.tasks) || response.tasks.some((task: QaTaskSummary) => !validTaskSummary(task))) throw new Error('回答版本列表响应不完整');
     // Fetch only this conversation, not the result bodies of every conversation in discovery.
     for (const task of response.tasks.filter((item: QaTaskSummary) => item.sessionId === sessionId)) {
-      if (!this.tasks.some((old: QaTask) => old.id === task.id && old.revision >= task.revision)) await this.read(task.id);
+      if (task.applicable === false) {
+        this.superseded.add(task.id);
+        const known = this.tasks.find((item: QaTask) => item.id === task.id);
+        if (known && known.applicable !== false) this.accept({ ...known, applicable: false });
+      }
+      if (!this.tasks.some((old: QaTask) => old.id === task.id && old.revision >= task.revision && old.applicable === task.applicable)) await this.read(task.id);
     }
   }
   async submit(input: QaTaskSubmission): Promise<void> {
     this.checkConnection();
     if (!this.ready || this.stopped) throw new Error('任务协议尚未就绪，请重试检查');
+    if (input.editMessageId && !this.questionEditing) throw new Error('当前服务器不支持修改问题，请先更新服务器');
     await this.updatePending(input); if (!this.stopped) await this.send(input);
   }
   private async send(input: QaTaskSubmission): Promise<void> {
+    if (input.editMessageId && !this.questionEditing) throw new Error('当前服务器不支持修改问题，待确认编辑仍保留');
     const running = this.sending.get(input.submissionId); if (running) return running;
     const work = async (): Promise<void> => {
       try {
@@ -166,6 +205,7 @@ export class QaTaskClient {
         const body: QaTaskSubmission = { submissionId: input.submissionId, sessionId: input.sessionId, baseVersion: input.baseVersion,
           question: input.question, mode: input.mode, replaceLast: input.replaceLast };
         if (input.retryTaskId) body.retryTaskId = input.retryTaskId;
+        if (input.editMessageId) body.editMessageId = input.editMessageId;
         const response = await this.transport.postForInstance<QaTaskResponse>('/rag/tasks', body, this.instanceId);
         if (this.stopped) return;
         if (response.task.submissionId !== input.submissionId || response.task.sessionId !== input.sessionId) throw new Error('提交任务身份不匹配');
@@ -193,6 +233,7 @@ export class QaTaskClient {
       const cancelled: QaTaskSubmission = { submissionId: input.submissionId, sessionId: input.sessionId, baseVersion: input.baseVersion,
         question: input.question, mode: input.mode, replaceLast: input.replaceLast, cancelRequested: true };
       if (input.retryTaskId) cancelled.retryTaskId = input.retryTaskId;
+      if (input.editMessageId) cancelled.editMessageId = input.editMessageId;
       await this.updatePending(cancelled);
     }
     for (const task of this.tasks.filter((item: QaTask) => item.sessionId === sessionId && taskActive(item))) await this.cancel(task.id);

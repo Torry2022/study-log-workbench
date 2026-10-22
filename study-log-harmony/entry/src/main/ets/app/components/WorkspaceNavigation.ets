@@ -6,6 +6,7 @@ import { workspaceSansFamily } from '../../common/ui/Typography';
 export struct AppTopBar {
   @Consume('workspaceBreakpoint') private workspaceBreakpoint: WorkspaceBreakpoint;
   @Prop title: string = '学习日志';
+  @Prop navigationLabel: string = '打开日志导航';
   @Prop showSearch: boolean = true;
   @Prop showDivider: boolean = false;
   onOpenNavigation: () => void = () => {};
@@ -55,7 +56,7 @@ export struct AppTopBar {
   build() {
     Stack({ alignContent: Alignment.Bottom }) {
       Row({ space: 6 }) {
-        this.imageButton($r('app.media.menu'), '打开导航', this.onOpenNavigation)
+        this.imageButton($r('app.media.menu'), this.navigationLabel, this.onOpenNavigation)
 
         Row() {
           Text(this.title)

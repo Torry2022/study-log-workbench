@@ -9,6 +9,8 @@ export function createQaTaskConnection(): QaTaskClient | undefined {
   const namespace = activeInstance.namespace;
   return new QaTaskClient(apiClient, {
     read: () => instanceStore.readQaPending(namespace),
-    write: (raw: string) => instanceStore.writeQaPending(namespace, raw)
+    write: (raw: string) => instanceStore.writeQaPending(namespace, raw),
+    readLegacy: () => instanceStore.readLegacyQaPending(namespace),
+    clearLegacy: () => instanceStore.clearLegacyQaPending(namespace)
   }, capabilities.instanceId);
 }

@@ -35,8 +35,6 @@ export struct StatsPage {
   @Prop requestedMonth: string = '';
   @Prop @Watch('requestedMonthChanged') requestedMonthRevision: number = 0;
   onOpenEntry: (entry: StatsEntry) => void = () => {};
-  onOpenTaxonomyManager: () => void = () => {};
-  @Prop showTaxonomyManager: boolean = false;
   onScrollStateChange: (scrolled: boolean) => void = () => {};
   onMonthsChange: (months: MonthSummary[]) => void = () => {};
   onMonthsLoadingChange: (loading: boolean) => void = () => {};
@@ -535,16 +533,6 @@ export struct StatsPage {
           .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8).clip(true)
           .enabled(!this.data.loading).onClick(() => this.refreshStats())
           .id('stats_refresh')
-          if (!this.isLargeWorkspace() && this.showTaxonomyManager) {
-          Button({ type: ButtonType.Normal }) {
-            Row({ space: 6 }) {
-              Image($r('app.media.settings_2')).width(15).height(15).objectFit(ImageFit.Contain)
-              Text('分类管理').fontSize(14).fontWeight(FontWeight.Medium)
-            }
-          }.layoutWeight(1).height(38).fontColor($r('app.color.ink')).backgroundColor($r('app.color.canvas'))
-          .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8).clip(true)
-          .onClick(() => this.onOpenTaxonomyManager())
-          }
         }.width(this.isLargeWorkspace() ? 112 : '100%')
           .padding({ left: 16, right: 16, bottom: this.isLargeWorkspace() ? 8 : 12, top: this.isLargeWorkspace() ? 8 : 0 })
         }

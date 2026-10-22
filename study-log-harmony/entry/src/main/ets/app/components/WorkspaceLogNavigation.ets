@@ -170,13 +170,13 @@ export struct WorkspaceLogNavigation {
       if (this.wide) {
         Row({ space: 6 }) {
           Image($r('app.media.tab_file_text_active')).width(19).height(19).objectFit(ImageFit.Contain)
-          Text('学习日志').fontSize(14).fontWeight(FontWeight.Medium)
+          Text('日志导航').fontSize(14).fontWeight(FontWeight.Medium)
             .fontColor($r('app.color.body_strong')).layoutWeight(1)
             .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
           Button({ type: ButtonType.Normal }) {
             SymbolGlyph($r('sys.symbol.chevron_left')).fontSize(16).fontColor([$r('app.color.body')])
           }.width(34).height(34).padding(0).backgroundColor(Color.Transparent).borderRadius(8)
-            .id('sidebar_collapse').accessibilityText('折叠侧栏').bindTips('折叠侧栏', WORKSPACE_TIPS)
+            .id('sidebar_collapse').accessibilityText('折叠日志导航').bindTips('折叠日志导航', WORKSPACE_TIPS)
             .onClick(() => this.onCollapse())
         }.width('100%').height(52).padding({ left: 16, right: 10 })
           .border({ width: { bottom: 1 }, color: $r('app.color.hairline_soft') })

@@ -94,6 +94,8 @@ export struct CompactWorkspaceTopBar {
   build() {
     AppTopBar({ title: (this.selectedModule === 1) ? '随记' : (this.selectedModule === 2) ? '收藏中心' :
       (this.selectedModule === 3) ? '知识问答' : (this.selectedModule === 4) ? '学习统计' : '学习日志',
+      navigationLabel: (this.selectedModule === 1) ? '打开随记导航' : (this.selectedModule === 2) ? '打开收藏导航' :
+        (this.selectedModule === 3) ? '打开问答历史' : (this.selectedModule === 4) ? '打开统计导航' : '打开日志导航',
       showSearch: this.selectedModule === 0 || (this.selectedModule === 3),
       showDivider: this.showTopBarDivider(),
       onOpenNavigation: () => this.onOpenNavigation(),

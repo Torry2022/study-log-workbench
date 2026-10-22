@@ -16,6 +16,10 @@ class ReaderFrameBridge {
   onViewportReady: (sequence: number) => void = () => {};
   onFailed: (sequence: number) => void = () => {};
   onActiveHeading: (headingId: string) => void = () => {};
+  onQaQuestionEdit: (key: string, id: string, token: string, action: string, value: string) => void = () => {};
+
+  qaQuestionEdit(key: string, id: string, token: string, action: string, value: string): void { this.onQaQuestionEdit(key, id, token, action, value); }
+
   onBottomInsetReady: (revision: number, offset: number) => void = () => {};
 
   bottomInsetReady(revision: number, offset: number): void { this.onBottomInsetReady(revision, offset); }
@@ -76,6 +80,7 @@ export struct MarkdownReader {
   onWikiCitationLink: (pageId: string, title: string) => void = () => {};
   onWikiReviewLink: (reviewId: string) => void = () => {};
   onQaAnswerAction: (id: string, action: string, target: string) => void = () => {};
+  onQaQuestionEdit: (id: string, token: string, action: string, value: string) => void = () => {};
   onQaAttemptAction: (id: string, action: string) => void = () => {};
   onWikiSourceLink: (kind: string, date: string, heading: string, noteId: string) => void = () => {};
   onTargetResult: (kind: string, found: boolean) => void = () => {};
@@ -133,6 +138,12 @@ export struct MarkdownReader {
 
   aboutToAppear(): void {
     this.active = true;
+    this.frameBridge.onQaQuestionEdit = (key: string, id: string, token: string, action: string, value: string) => {
+      if (this.active && this.ready && this.contentMode === 'qa' && key === this.documentKey &&
+        typeof id === 'string' && id.length > 0 && id.length <= 120 && ['change', 'send', 'cancel', 'copy', 'review'].includes(action) &&
+        typeof token === 'string' && token.length > 0 && token.length <= 120 &&
+        typeof value === 'string' && value.length <= 2000) this.onQaQuestionEdit(id, token, action, value);
+    };
     this.frameBridge.onBottomInsetReady = (revision: number, offset: number) => {
       if (!this.active || !this.ready || revision !== this.bottomInsetRevision) return;
       this.onScrollPosition(offset, true);
@@ -314,7 +325,8 @@ export struct MarkdownReader {
       `document.documentElement.style.setProperty('--content-top-inset', '${contentTopInset}px'); ` +
       `document.documentElement.style.setProperty('--reading-scale', '${this.readingScale}'); ` +
       `document.documentElement.dataset.typography = '${typography}'; ` +
-      `${renderContent}.then(() => { ${afterRenderAction}; ` +
+      `window.readerActionRevision = ${renderSequence}; ` +
+      `${renderContent}.then(() => { if (${contentMode} === 'qa' && window.readerActionRevision !== ${renderSequence}) return; ${afterRenderAction}; ` +
       `requestAnimationFrame(() => requestAnimationFrame(() => { window.readerFrames.rendered(${renderSequence}); })); })` +
       `.catch(() => window.readerFrames.failed(${renderSequence}))`,
       (error) => {
@@ -413,7 +425,7 @@ export struct MarkdownReader {
     if (this.handleTargetResult(url)) return true;
     if (url.startsWith('study-log://qa-answer?')) {
       const values = this.queryValues(url);
-      if (this.contentMode === 'qa' && values['id'] && ['copy', 'version', 'regenerate', 'save', 'retry', 'discard'].includes(values['action'])) {
+      if (this.contentMode === 'qa' && values['id'] && ['copy', 'edit', 'version', 'regenerate', 'save', 'retry', 'discard'].includes(values['action'])) {
         this.onQaAnswerAction(values['id'], values['action'], values['target'] || '');
       }
       return true;
@@ -509,7 +521,7 @@ export struct MarkdownReader {
         .nestedScroll({ scrollForward: NestedScrollMode.SELF_FIRST, scrollBackward: NestedScrollMode.SELF_FIRST })
         .onDrop(this.onImageDrop)
         .javaScriptAccess(true)
-        .javaScriptProxy({ object: this.frameBridge, name: 'readerFrames', methodList: ['rendered', 'viewportReady', 'previewImage', 'failed', 'activeHeading', 'bottomInsetReady'], controller: this.controller })
+        .javaScriptProxy({ object: this.frameBridge, name: 'readerFrames', methodList: ['rendered', 'viewportReady', 'previewImage', 'failed', 'activeHeading', 'bottomInsetReady', 'qaQuestionEdit'], controller: this.controller })
         .onAreaChange((_oldArea, area) => {
           if (this.stableViewport) return;
           this.viewportWidthPx = this.getUIContext().vp2px(Number(area.width));

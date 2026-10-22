@@ -1,5 +1,5 @@
 export interface FeatureCapability { supported: boolean; configured: boolean; }
-export interface TaskCapability extends FeatureCapability { protocolVersion: number; }
+export interface TaskCapability extends FeatureCapability { protocolVersion: number; questionEditing?: boolean; }
 export interface AiProviderConfiguration { configured: boolean; }
 export interface AiConfiguration { provider: AiProviderConfiguration; }
 export interface InstanceFeatures {
@@ -45,7 +45,8 @@ export function validCapabilities(value: InstanceCapabilities): boolean {
     !!value.features && validFeature(value.features.aiWriting) && validFeature(value.features.aiHighlighting) &&
     validFeature(value.features.aiNoteExtraction) && validFeature(value.features.aiTaxonomy) &&
     validFeature(value.features.rag) && (value.features.ragTasks === undefined ||
-      validFeature(value.features.ragTasks) && Number.isSafeInteger(value.features.ragTasks.protocolVersion) && value.features.ragTasks.protocolVersion > 0) && (value.aiConfiguration === undefined ||
+      validFeature(value.features.ragTasks) && Number.isSafeInteger(value.features.ragTasks.protocolVersion) && value.features.ragTasks.protocolVersion > 0 &&
+      (value.features.ragTasks.questionEditing === undefined || typeof value.features.ragTasks.questionEditing === 'boolean')) && (value.aiConfiguration === undefined ||
       (!!value.aiConfiguration && !!value.aiConfiguration.provider &&
         typeof value.aiConfiguration.provider.configured === 'boolean'));
 }

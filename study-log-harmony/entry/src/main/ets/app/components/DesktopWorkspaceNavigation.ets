@@ -25,6 +25,11 @@ export struct DesktopWorkspaceNavigation {
   onToday: () => void = () => {};
   onHeight: (height: number) => void = () => {};
 
+  private navigationTitle(): string {
+    return this.selectedModule === 0 ? '日志导航' : this.selectedModule === 1 ? '随记导航' :
+      this.selectedModule === 2 ? '收藏导航' : this.selectedModule === 3 ? '问答历史' : '统计导航';
+  }
+
   @Builder
   private railPopoverPanel() { this.popoverContent() }
 
@@ -54,7 +59,7 @@ export struct DesktopWorkspaceNavigation {
   @Builder
   private desktopNavigationRail() {
     Column({ space: 8 }) {
-      this.navigationRailButton('expand', $r('app.media.rail_chevron_right'), '展开侧栏',
+      this.navigationRailButton('expand', $r('app.media.rail_chevron_right'), `展开${this.navigationTitle()}`,
         () => { this.railPopover = ''; this.onExpand(-1); })
       if ((this.selectedModule === 3)) {
         this.navigationRailButton('new_question', $r('app.media.rail_square_pen'), '新建问答',
@@ -67,10 +72,10 @@ export struct DesktopWorkspaceNavigation {
       } else if ((this.selectedModule === 1)) {
         this.navigationRailButton('new_note', $r('app.media.rail_plus'), '新建随记',
           () => { this.railPopover = ''; this.modules.noteNewRevision++; }, false, !this.modules.notesBusy)
-        this.navigationRailButton('tags', $r('app.media.rail_tag'), '年份和标签',
+        this.navigationRailButton('tags', $r('app.media.rail_tag'), '随记导航',
           () => this.railPopover = this.railPopover === 'tags' ? '' : 'tags', this.railPopover === 'tags')
       } else if ((this.selectedModule === 2)) {
-        this.navigationRailButton('favorite_filters', $r('app.media.tab_star'), '筛选收藏',
+        this.navigationRailButton('favorite_filters', $r('app.media.tab_star'), '收藏导航',
           () => this.railPopover = this.railPopover === 'favorite_filters' ? '' : 'favorite_filters',
           this.railPopover === 'favorite_filters')
       } else if ((this.selectedModule === 4)) {
@@ -95,14 +100,14 @@ export struct DesktopWorkspaceNavigation {
   private moduleNavigationHeader() {
     Row({ space: 6 }) {
       Image(WORKSPACE_TABS[this.selectedModule].activeIcon).width(19).height(19).objectFit(ImageFit.Contain)
-      Text((this.selectedModule === 1) ? '随记' : (this.selectedModule === 2) ? '收藏中心' : (this.selectedModule === 3) ? '知识问答' : '学习统计')
+      Text(this.navigationTitle())
         .fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.body_strong')).layoutWeight(1)
         .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
       this.filtersContent()
       Button({ type: ButtonType.Normal }) {
         SymbolGlyph($r('sys.symbol.chevron_left')).fontSize(16).fontColor([$r('app.color.body')])
       }.width(34).height(34).padding(0).backgroundColor(Color.Transparent).borderRadius(8)
-        .id('sidebar_collapse').accessibilityText('折叠侧栏').bindTips('折叠侧栏', WORKSPACE_TIPS)
+        .id('sidebar_collapse').accessibilityText(`折叠${this.navigationTitle()}`).bindTips(`折叠${this.navigationTitle()}`, WORKSPACE_TIPS)
         .onClick(() => this.onCollapse())
     }.width('100%').height(52).padding({ left: 16, right: 10 })
       .border({ width: { bottom: 1 }, color: $r('app.color.hairline_soft') })

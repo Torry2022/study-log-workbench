@@ -24,7 +24,8 @@ const code = ts.transpileModule([...sources.slice(0, 3), ...sources.slice(4)].ma
 function subject(api = {}, history = {}) {
   const module = { exports: {} };
   const instance = { revision: 1, namespace: 'synthetic-a', activate() { this.revision++; this.namespace = ''; } };
-  const transport = { setToken() {}, get: async () => ({ favorites: [], groups: [] }), ...api };
+  const transport = { setToken() {}, getConnectionBinding: () => `${instance.namespace}:${instance.revision}`,
+    get: async () => ({ favorites: [], groups: [] }), ...api };
   runInNewContext(code, { module, exports: module.exports, apiClient: transport, activeInstance: instance,
     LoadingHintPlacement: class {}, util: { generateRandomUUID: () => 'synthetic-mutation' },
     logDraftStore: { initialize: async () => {}, load: () => undefined },

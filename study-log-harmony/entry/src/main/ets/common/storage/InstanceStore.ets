@@ -38,12 +38,23 @@ export class InstanceStore {
 
   async readQaPending(namespace: string): Promise<string> {
     if (!this.store) throw new Error('连接设置尚未初始化');
-    return await this.store.get(`rag-pending:${namespace}`, '[]') as string;
+    return await this.store.get(`rag-pending-v2:${namespace}`, '[]') as string;
   }
 
   async writeQaPending(namespace: string, raw: string): Promise<void> {
     if (!this.store) throw new Error('连接设置尚未初始化');
-    await this.store.put(`rag-pending:${namespace}`, raw);
+    await this.store.put(`rag-pending-v2:${namespace}`, raw);
+    await this.store.flush();
+  }
+
+  async readLegacyQaPending(namespace: string): Promise<string> {
+    if (!this.store) throw new Error('连接设置尚未初始化');
+    return await this.store.get(`rag-pending:${namespace}`, '[]') as string;
+  }
+
+  async clearLegacyQaPending(namespace: string): Promise<void> {
+    if (!this.store) throw new Error('连接设置尚未初始化');
+    await this.store.put(`rag-pending:${namespace}`, '[]');
     await this.store.flush();
   }
 }

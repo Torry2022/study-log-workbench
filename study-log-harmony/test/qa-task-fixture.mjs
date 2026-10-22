@@ -68,7 +68,7 @@ export async function fixture() {
       requests.push({ method: 'POST', path, body: plain(body), instance });
       if (path === '/rag/tasks') {
         let value = [...tasks.values()].find(item => item.submissionId === body.submissionId);
-        if (!value) { value = task(body.sessionId, { submissionId: body.submissionId, question: body.question, replaceLast: body.replaceLast === true }); tasks.set(value.id, value); }
+        if (!value) { value = task(body.sessionId, { submissionId: body.submissionId, question: body.question, replaceLast: body.replaceLast === true, editMessageId: body.editMessageId }); tasks.set(value.id, value); }
         return { task: plain(value) };
       }
       const value = tasks.get(path.split('/').at(-2)); if (!value) throw new runtime.ApiError('deleted task', 404);

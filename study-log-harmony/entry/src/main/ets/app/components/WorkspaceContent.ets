@@ -35,7 +35,6 @@ export struct WorkspaceContent {
   onNoteLink: (date: string, heading: string) => void = () => {};
   onFavorite: (favorite: FavoriteHeading) => void = () => {};
   onStatsEntry: (entry: StatsEntry) => void = () => {};
-  onOpenTaxonomy: () => void = () => {};
   onCloseTaxonomy: () => void = () => {};
   onWorkspaceKey: (event: KeyEvent) => boolean = () => false;
   onBeforeQaSessionChange: () => Promise<void> = async () => {};
@@ -61,6 +60,7 @@ export struct WorkspaceContent {
             onGeneratingSessionChange: (id: string) => this.modules.qaGeneratingSessionId = id,
             onDraftChange: (dirty: boolean) => this.modules.qaDirty = dirty,
             onPendingChange: (pending: boolean) => this.modules.qaPending = pending,
+            onQuestionEditsChange: (dirty: boolean) => this.modules.qaEditDirty = dirty,
             onScrollStateChange: (scrolled: boolean) => this.modules.qaScrolled = scrolled,
             onLoadingHintChange: (placement: LoadingHintPlacement) => this.modules.qaLoadingHint = placement,
             onOpenLog: () => this.onSelect(0),
@@ -112,7 +112,7 @@ export struct WorkspaceContent {
         .zIndex((this.selectedModule === 2) ? 1 : 0)
       Row() {
           Stack() {
-            StatsPage({ showTaxonomyManager: true, onOpenTaxonomyManager: () => this.onOpenTaxonomy(),
+            StatsPage({
               onScrollStateChange: (scrolled: boolean) => this.modules.statsScrolled = scrolled,
               topRevision: this.modules.topRequests[4],
               requestedMonth: this.modules.statsMonth, requestedMonthRevision: this.modules.statsMonthRevision,

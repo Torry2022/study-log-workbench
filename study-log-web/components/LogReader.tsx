@@ -6,6 +6,7 @@ import { BookOpen, ChevronLeft, ChevronRight, CornerUpLeft, DatabaseBackup, Edit
 import { MarkdownPreview, type InternalLinkTarget } from "./MarkdownPreview";
 import { buildMarkdownOutline } from "@/lib/markdown-outline";
 import { toEditableDayBody } from "@/lib/day-content";
+import { fitLogToolbar } from "@/lib/log-toolbar-layout";
 import { containModalFocus, lockBodyScroll } from "@/hooks/use-dialog-exit";
 import type { DayEntry, DaySummary, MonthSummary } from "@/lib/types";
 import { LOG_RELOAD_KEY, type LogReloadContext } from "@/lib/log-reload-restore";
@@ -384,6 +385,16 @@ export function LogReader({ onPositionReady, onCancelTransition, reloadContext, 
 
   useEffect(() => { setOutlineOpen(false); setActionsOpen(false); }, [date, reading, mode]);
   useEffect(() => { setToolbarMenuOpen(false); }, [active, date, reading, mode]);
+  useEffect(() => {
+    if (!active || !toolbarMenuOpen) return;
+    const closeWithEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setToolbarMenuOpen(false);
+      toolbarMenuTrigger.current?.focus({ preventScroll: true });
+    };
+    window.addEventListener("keydown", closeWithEscape);
+    return () => window.removeEventListener("keydown", closeWithEscape);
+  }, [active, toolbarMenuOpen]);
   useEffect(() => { setLinkError(""); }, [date]);
   useEffect(() => { if (!active) { linkRequest.current++; setOutlineOpen(false); setActionsOpen(false); } }, [active]);
   useEffect(() => { setLinkSelection(null); }, [date, active]);
@@ -399,10 +410,12 @@ export function LogReader({ onPositionReady, onCancelTransition, reloadContext, 
     const unlock = lockBodyScroll();
     return () => { release(); unlock(); };
   }, [outlineOpen]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = toolbar.current;
     if (!active || !element) return;
+    const controls = element.querySelector<HTMLElement>(".reader-log-controls");
     const update = () => {
+      if (controls) fitLogToolbar(controls);
       const reader = element.closest<HTMLElement>(".reader");
       reader?.style.setProperty("--reader-toolbar-height", `${element.offsetHeight}px`);
       element.closest<HTMLElement>(".workspace")?.style.setProperty("--log-toolbar-height", `${element.offsetHeight}px`);
@@ -410,10 +423,14 @@ export function LogReader({ onPositionReady, onCancelTransition, reloadContext, 
       if (!toolbarMenuTrigger.current?.getClientRects().length) setToolbarMenuOpen(false);
     };
     const observer = new ResizeObserver(update);
-    observer.observe(element); update();
+    observer.observe(element);
+    if (controls) { observer.observe(controls); for (const child of controls.children) observer.observe(child); }
+    update();
     window.addEventListener("resize", update);
     return () => { observer.disconnect(); window.removeEventListener("resize", update); };
-  }, [active, reading]);
+    // These inputs can swap equal-width actions without triggering ResizeObserver.
+  }, [active, reading, mode, ready, inlineOutlineVisible, headings.length, editing.busy,
+    navigation?.showAdjacent, Boolean(navigation?.onReturnRag), Boolean(navigation?.onReturnNotes), returnPoint]);
   useEffect(() => {
     if (!active || !ready || !editorReady) return;
     if (reloadRoute.current === navigationRevision) return;
@@ -486,14 +503,15 @@ export function LogReader({ onPositionReady, onCancelTransition, reloadContext, 
   return <>
     <div className={`reader-toolbar-container${loading && content.trim() ? " pending" : ""}`} ref={toolbar}><div className={`reader-toolbar reader-toolbar-log${reading ? " reading-active" : ""}`}>
       <div className="reading-mode-toolbar"><div className="reading-mode-identity"><BookOpen size={17} /><h2>{date}</h2></div><div className="reading-mode-actions">{dayNavigator()}{outlineButton}<button className="reading-mode-icon" type="button" aria-label="退出阅读" title="退出阅读模式" onClick={() => changeReading(false)}><Minimize2 size={17} /></button></div></div>
-      <div className="reader-log-identity"><span className="eyebrow">{day?.fileName || reloadContext?.fileName || "学习日志"}</span><div className="reader-heading-row"><h2>{dateLabel}</h2><div className="reader-navigator-desktop">{dayNavigator()}</div></div></div>
+      <div className="reader-log-identity"><span className="eyebrow">{day?.fileName || reloadContext?.fileName || "学习日志"}</span><div className="reader-heading-row"><h2>{dateLabel}</h2></div></div>
       <div className="reader-controls reader-log-controls">
+        <div className="reader-navigator-desktop">{dayNavigator()}</div>
         <div className="reader-secondary-actions">
-          {navigation?.onReturnNotes && <button className="button secondary" type="button" onClick={navigation.onReturnNotes}><CornerUpLeft size={15} />返回随记</button>}
+          {navigation?.onReturnNotes && <button className="button secondary" type="button" title="返回随记" onClick={navigation.onReturnNotes}><CornerUpLeft size={15} />返回随记</button>}
           {mode !== "preview" && <div className="toolbar-actions editor-toolbar-actions">
             <button className="button secondary" type="button" title="内部链接" aria-label="内部链接" disabled={!editorReady || attachments.busy || editing.busy} onClick={openLink}><Link2 size={15} />内部链接</button>
             <button className="button secondary" type="button" title="插入图片" aria-label="插入图片" disabled={!editorReady || attachments.busy || editing.busy} onClick={() => imageInput.current?.click()}><Upload size={15} />插入图片</button>
-            <button className="button secondary" type="button" disabled={!editing.dirty || editing.busy} onClick={editing.onDiscard}><Eye size={15} />放弃修改</button>
+            <button className="button secondary" type="button" title="放弃修改" disabled={!editing.dirty || editing.busy} onClick={editing.onDiscard}><Eye size={15} />放弃修改</button>
           </div>}
         </div>
         <div className="reader-mode-actions"><select className="log-mode-select" disabled={!date} value={mode} aria-label="工作区模式" onChange={event => changeMode(event.target.value as WorkspaceMode)}>{modes.map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select>{modeButtons()}</div>
@@ -502,7 +520,7 @@ export function LogReader({ onPositionReady, onCancelTransition, reloadContext, 
           <ExportMenu scopes={exportScopes} onExport={exporting.run} busy={exporting.busy} disabled={!active || !hasLogs} />
           <button className="button secondary log-action-backup" type="button" aria-label="日志历史版本" title="历史版本" disabled={!date || editing.busy} onClick={editing.onBackups}><DatabaseBackup size={15} />历史版本</button>
           <button className="button danger toolbar-danger-action log-action-delete" type="button" aria-label="删除当前日志" title="删除" disabled={!day?.exists || editing.busy} onClick={editing.onDelete}><Trash2 size={15} />删除</button>
-          <div className={`log-toolbar-more export-menu${mode === "preview" && !inlineOutlineVisible && headings.length && ready ? " has-log-menu-actions" : ""}${mode !== "preview" || navigation?.onReturnNotes ? " has-secondary-menu-actions" : ""}`} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setToolbarMenuOpen(false); }} onKeyDown={event => { if (event.key === "Escape" && toolbarMenuOpen) { event.preventDefault(); event.stopPropagation(); setToolbarMenuOpen(false); toolbarMenuTrigger.current?.focus(); } }}>
+          <div className={`log-toolbar-more export-menu${mode === "preview" && !inlineOutlineVisible && headings.length && ready ? " has-log-menu-actions" : ""}${mode !== "preview" || navigation?.onReturnNotes ? " has-secondary-menu-actions" : ""}`} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setToolbarMenuOpen(false); }}>
             <button ref={toolbarMenuTrigger} className="button secondary" type="button" title="更多日志操作" aria-label="更多操作" aria-expanded={toolbarMenuOpen} aria-controls="log-toolbar-popover" onClick={() => setToolbarMenuOpen(value => !value)}><MoreHorizontal size={18} /></button>
             {toolbarMenuOpen && <div id="log-toolbar-popover" className="export-popover log-toolbar-popover" role="group" aria-label="更多日志操作" onClick={event => { if (event.target instanceof Element && event.target.closest("button")) { toolbarMenuTrigger.current?.focus({ preventScroll: true }); setToolbarMenuOpen(false); } }}>
               <div className="log-overflow-navigation">{dayNavigator()}</div>

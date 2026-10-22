@@ -464,7 +464,7 @@ export function RagWorkspace({
           value={question}
           onChange={(event) => onQuestionChange(event.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={viewingPreviousAnswer ? "切回当前回答后可继续提问" : "询问学习日志中的内容"}
+          placeholder={viewingPreviousAnswer ? "继续提问将依据当前所选回答" : "询问学习日志中的内容"}
           aria-label="输入知识库问题"
           rows={1}
           disabled={generating}

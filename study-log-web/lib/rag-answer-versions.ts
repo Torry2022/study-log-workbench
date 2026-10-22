@@ -16,7 +16,7 @@ export interface RagAnswerMessage extends RagChatMessage {
   saving?: boolean;
 }
 
-/** A reading projection only. The saved conversation remains the submission context. */
+/** Preview-only selection; sending commits the selected last answer before building its context. */
 export function ragAnswerVersions(saved: RagChatMessage[], tasks: RagTask[], choices: ReadonlyMap<string, string>, readingTaskId?: string) {
   const ordered = [...tasks].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
   const pairs = [...saved], messages: RagAnswerMessage[] = [];

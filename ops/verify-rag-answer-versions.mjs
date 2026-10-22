@@ -50,7 +50,7 @@ try {
    await expect(page.getByRole('combobox',{name:'查看问答结果'})).toHaveCount(0);
    await answers.nth(0).getByRole('button',{name:'上一个回答版本'}).click();await expect(answers.nth(0)).toContainText('原始合成回答');await expect(answers.nth(0).locator('.rag-citation strong')).toHaveText('2026-09-01');await expect(answers.nth(1)).toContainText('第二题的合成回答');
    await answers.nth(0).getByRole('button',{name:'复制',exact:true}).click();assert.equal(await page.evaluate(()=>window.__copiedAnswer),'原始合成回答');
-   await input.fill('保留的合成草稿');await input.press('Enter');await expect(input).toHaveValue('保留的合成草稿');await expect(workspace.getByRole('button',{name:'发送问题'})).toBeDisabled();await expect(input).toHaveAttribute('placeholder','切回当前回答后可继续提问');
+   await input.fill('保留的合成草稿');await input.press('Enter');await expect(input).toHaveValue('保留的合成草稿');await expect(workspace.getByRole('button',{name:'发送问题'})).toBeDisabled();await expect(input).toHaveAttribute('placeholder','询问学习日志中的内容');
    await answers.nth(0).getByRole('button',{name:'下一个回答版本'}).click();await expect(answers.nth(0)).toContainText('第一题的新合成回答');await expect(answers.nth(0).locator('.rag-citation strong')).toHaveText('2026-09-02');await expect(input).toHaveValue('保留的合成草稿');
    await expect(answers.nth(1).getByRole('button',{name:'重新生成',exact:true})).toBeDisabled();await input.fill('');
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await page.screenshot({path:path.join(root,`${engine}-${width}-${theme}.png`),fullPage:true});

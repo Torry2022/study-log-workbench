@@ -38,9 +38,19 @@ html.theme-transitioning .theme-logo img {
   transition-property: opacity;
 }
 
+@keyframes reading-mode-view-out {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
 @keyframes reading-mode-view-in {
   from {
-    opacity: 0.78;
+    opacity: 0;
   }
 
   to {
@@ -49,11 +59,13 @@ html.theme-transitioning .theme-logo img {
 }
 
 html.reading-mode-transition::view-transition-old(root) {
-  display: none;
+  animation: reading-mode-view-out 240ms ease-out both;
+  mix-blend-mode: plus-lighter;
 }
 
 html.reading-mode-transition::view-transition-new(root) {
   animation: reading-mode-view-in 240ms ease-out both;
+  mix-blend-mode: plus-lighter;
 }
 
 html.reading-mode-transition::view-transition-group(root) { animation-duration: 240ms; }

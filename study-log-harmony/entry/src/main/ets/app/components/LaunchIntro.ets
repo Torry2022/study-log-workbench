@@ -89,7 +89,7 @@ export struct LaunchIntro {
           .width(84)
           .height(84)
           .borderRadius(17)
-          .backgroundColor($r('app.color.surface_soft'))
+          .backgroundColor($r('app.color.logo_surface'))
           .border({ width: 2, color: $r('app.color.hairline') })
           .scale({ x: this.frameVisible ? 1 : 0.76, y: this.frameVisible ? 1 : 0.76 })
           .opacity(this.frameVisible ? 1 : 0)

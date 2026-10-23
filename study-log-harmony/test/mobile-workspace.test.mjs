@@ -63,7 +63,7 @@ test('drawer only accepts a horizontal pull starting in its edge, never a list-a
   const h = Object.assign(new Host(), { connected: true, isWide: () => false, isLargeWorkspace: () => false,
     workspaceShortcutBlocked: () => false, selectedTab: 0, navigationGestureActive: false });
   let opened = 0; h.openNavigation = () => opened++;
-  for (const [x, dx, dy, expected] of [[20, 80, 5, 1], [70, 80, 0, 0], [200, 80, 0, 0],
+  for (const [x, dx, dy, expected] of [[20, 80, 5, 1], [50, 80, 5, 1], [64, 80, 0, 1], [70, 80, 0, 0], [200, 80, 0, 0],
     [20, 80, 100, 0], [20, -80, 0, 0], [4, 80, 0, 0]]) {
     opened = 0;
     h.handleNavigationPanStart({ fingerList: [{ localX: x }], offsetX: 0, target: { area: { width: 400 } } });
@@ -79,10 +79,28 @@ test('drawer rejects non-edge recognition before it can compete with the child l
   });
   const h = Object.assign(new Host(), { connected: true, isWide: () => false, isLargeWorkspace: () => false,
     workspaceShortcutBlocked: () => false, selectedTab: 0 });
-  const event = x => ({ fingerList: [{ localX: x }], offsetX: 0, target: { area: { width: 400 } } });
+  const event = (x, dx = 8, dy = 0) => ({ fingerList: [{ localX: x + dx }], offsetX: dx, offsetY: dy,
+    target: { area: { width: 400 } } });
   assert.equal(h.judgeNavigationPan({ tag: 'workspace_drawer' }, event(70)), 'reject');
   assert.equal(h.judgeNavigationPan({ tag: 'workspace_drawer' }, event(20)), 'continue');
+  assert.equal(h.judgeNavigationPan({ tag: 'workspace_drawer' }, event(50)), 'continue');
+  assert.equal(h.judgeNavigationPan({ tag: 'workspace_drawer' }, event(4)), 'reject');
+  assert.equal(h.judgeNavigationPan({ tag: 'workspace_drawer' }, event(20, -8)), 'reject');
+  assert.equal(h.judgeNavigationPan({ tag: 'workspace_drawer' }, event(20, 8, 12)), 'reject');
+  h.isWide = () => true;
+  assert.equal(h.judgeNavigationPan({ tag: 'workspace_drawer' }, event(20)), 'reject');
+  h.isWide = () => false; h.workspaceShortcutBlocked = () => true;
+  assert.equal(h.judgeNavigationPan({ tag: 'workspace_drawer' }, event(20)), 'reject');
   assert.equal(h.judgeNavigationPan({ tag: 'child_control' }, event(70)), 'continue');
+});
+
+test('workspace drawer precedes child gestures while calendar arrows have no default button padding', async () => {
+  const index = await readFile(new URL('pages/Index.ets', base), 'utf8');
+  assert.match(index, /\.priorityGesture\(PanGesture\(\{ direction: PanDirection.Horizontal, distance: 1 \}\)[\s\S]*?\.tag\('workspace_drawer'\)/);
+  const navigation = await readFile(new URL('app/components/WorkspaceLogNavigation.ets', base), 'utf8');
+  for (const arrow of ['‹', '›']) {
+    assert.ok(navigation.includes(`Button('${arrow}', { type: ButtonType.Normal }).width(36).height(36).padding(0)`));
+  }
 });
 
 test('log outline yields the left edge to workspace navigation before recognition', async () => {

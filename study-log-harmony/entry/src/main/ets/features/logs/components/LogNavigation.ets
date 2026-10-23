@@ -36,6 +36,18 @@ export struct LogNavigation {
       this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE;
   }
 
+  private collapsedMonths(): MonthSummary[] {
+    return this.navigationMonths.filter((month: MonthSummary, index: number) => index < 6 || month.id === this.navigationMonth);
+  }
+
+  private visibleMonths(): MonthSummary[] {
+    return this.navigationMonthsExpanded ? this.navigationMonths : this.collapsedMonths();
+  }
+
+  private hiddenMonthCount(): number {
+    return this.navigationMonths.length - this.collapsedMonths().length;
+  }
+
   private filteredNavigationDays(): DaySummary[] {
     const query = this.navigationDayQuery.trim().toLowerCase();
     if (!query) return this.navigationDays;
@@ -60,7 +72,7 @@ export struct LogNavigation {
       ListItem() {
         Flex({ wrap: FlexWrap.Wrap,
           justifyContent: this.isLargeWorkspace() ? FlexAlign.Start : FlexAlign.SpaceBetween }) {
-          ForEach(this.navigationMonthsExpanded ? this.navigationMonths : this.navigationMonths.slice(0, 6), (month: MonthSummary) => {
+          ForEach(this.visibleMonths(), (month: MonthSummary) => {
             Button({ type: ButtonType.Normal }) {
               Row() {
                 Text(month.label).fontSize(this.isLargeWorkspace() ? 14 : 12).fontWeight(FontWeight.Medium)
@@ -84,9 +96,9 @@ export struct LogNavigation {
               this.onMonth(month.id);
             })
           }, (month: MonthSummary) => `${month.id}:${month.dayCount}`)
-          if (this.navigationMonths.length > 6) {
+          if (this.hiddenMonthCount() > 0) {
             Button({ type: ButtonType.Normal }) {
-              Text(this.navigationMonthsExpanded ? '收起月份' : `展开其余 ${this.navigationMonths.length - 6} 个月份`)
+              Text(this.navigationMonthsExpanded ? '收起月份' : `展开剩余 ${this.hiddenMonthCount()} 个月份`)
                 .width('100%').textAlign(TextAlign.Start)
                 .fontSize(12).fontColor($r('app.color.muted'))
             }
@@ -97,9 +109,9 @@ export struct LogNavigation {
           }
         }.width('100%')
           .height((this.isLargeWorkspace() ? 42 : 51) * Math.ceil(
-            (this.navigationMonthsExpanded ? this.navigationMonths.length : Math.min(6, this.navigationMonths.length)) /
+            this.visibleMonths().length /
             (this.isLargeWorkspace() ? 1 : 2)) +
-            (this.navigationMonths.length > 6 ? (this.isLargeWorkspace() ? 28 : 40) : 0))
+            (this.hiddenMonthCount() > 0 ? (this.isLargeWorkspace() ? 28 : 40) : 0))
           .clip(true)
       }
       ListItem() {

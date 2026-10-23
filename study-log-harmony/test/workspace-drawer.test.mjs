@@ -70,3 +70,16 @@ test('original left-edge gesture opens the drawer only for intentional horizonta
   root.handleNavigationPanEnd({ offsetX: 80, offsetY: 0, velocityX: 0 });
   assert.equal(root.sidebar.navigationOpen, false);
 });
+
+
+test('navigation focus identity is independent of each module accessibility label', async () => {
+  const topbar = await readFile(new URL('../entry/src/main/ets/app/components/WorkspaceNavigation.ets', import.meta.url), 'utf8');
+  const idExpression = topbar.match(/\.id\(([^\n]+)\)/)[1];
+  const call = topbar.match(/this\.imageButton\(\$r\('app.media.menu'\), this\.navigationLabel, this\.onOpenNavigation, '([^']+)'\)/);
+  assert.ok(call, 'menu supplies a stable focus ID independently of its label');
+  const resolveId = new Function('label', 'focusKey', `return (${idExpression});`);
+  for (const label of ['打开日志导航', '打开随记导航', '打开收藏导航', '打开问答历史', '打开统计导航']) {
+    assert.equal(resolveId(label, call[1]), 'workspace_navigation_open');
+  }
+  assert.equal(resolveId('搜索', ''), '');
+});

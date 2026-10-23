@@ -72,11 +72,11 @@ export struct WorkspaceLogNavigation {
       Text(this.calendarMode === 'jump' ? '跳转到日期' : '选择新建日期')
         .fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.ink'))
       Row() {
-        Button('‹', { type: ButtonType.Normal }).width(36).height(36)
+        Button('‹', { type: ButtonType.Normal }).width(36).height(36).padding(0)
           .fontSize(20).fontColor($r('app.color.body')).backgroundColor(Color.Transparent)
           .accessibilityText('上一个月').onClick(() => this.shiftCalendar(-1))
         Text(this.logNavigation.calendarMonth).fontSize(14).fontColor($r('app.color.ink')).layoutWeight(1).textAlign(TextAlign.Center)
-        Button('›', { type: ButtonType.Normal }).width(36).height(36)
+        Button('›', { type: ButtonType.Normal }).width(36).height(36).padding(0)
           .fontSize(20).fontColor($r('app.color.body')).backgroundColor(Color.Transparent)
           .enabled(this.logNavigation.calendarMonth < this.calendarDate(new Date()).slice(0, 7))
           .accessibilityText('下一个月').onClick(() => this.shiftCalendar(1))

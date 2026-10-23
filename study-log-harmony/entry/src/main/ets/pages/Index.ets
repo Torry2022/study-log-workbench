@@ -166,12 +166,14 @@ struct Index {
     const finger = pan.fingerList.length > 0 ? pan.fingerList[0] : undefined;
     const width = Number(pan.target.area.width);
     const startX = finger ? finger.localX - pan.offsetX : -1;
-    this.navigationGestureActive = width > 0 && startX >= 16 && startX <= 32;
+    this.navigationGestureActive = width > 0 && startX >= 16 && startX <= 64;
   }
 
   private judgeNavigationPan(info: GestureInfo, event: BaseGestureEvent): GestureJudgeResult {
     if (info.tag !== 'workspace_drawer') return GestureJudgeResult.CONTINUE;
     this.handleNavigationPanStart(event as GestureEvent);
+    const pan = event as PanGestureEvent;
+    if (pan.offsetX <= 0 || pan.offsetX < Math.abs(pan.offsetY) * 1.5) this.navigationGestureActive = false;
     return this.navigationGestureActive ? GestureJudgeResult.CONTINUE : GestureJudgeResult.REJECT;
   }
 
@@ -1184,7 +1186,7 @@ struct Index {
     }.width('100%').height('100%').backgroundColor($r('app.color.canvas'))
       .onAreaChange((_oldArea, area) => this.updateBreakpoint(Number(area.width)))
       .onKeyEvent((event: KeyEvent) => this.handleWorkspaceKey(event))
-      .gesture(PanGesture({ direction: PanDirection.Horizontal, distance: 6 })
+      .priorityGesture(PanGesture({ direction: PanDirection.Horizontal, distance: 1 })
         .tag('workspace_drawer')
         .onActionEnd((event: GestureEvent) => this.handleNavigationPanEnd(event))
         .onActionCancel(() => this.cancelNavigationPan()))

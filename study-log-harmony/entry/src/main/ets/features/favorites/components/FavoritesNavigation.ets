@@ -102,10 +102,16 @@ export struct FavoritesNavigation {
 
   private months(): string[] { return this.data.months(); }
 
+  private collapsedMonths(): string[] {
+    return this.months().filter((month: string, index: number) => index < 6 || month === this.data.selectedMonth);
+  }
+
   private visibleMonths(): string[] {
-    const months = this.months();
-    if (this.monthsExpanded) return months;
-    return months.filter((month: string, index: number) => index < 6 || month === this.data.selectedMonth);
+    return this.monthsExpanded ? this.months() : this.collapsedMonths();
+  }
+
+  private hiddenMonthCount(): number {
+    return this.months().length - this.collapsedMonths().length;
   }
 
   @Builder
@@ -273,8 +279,8 @@ export struct FavoritesNavigation {
             selected: this.data.selectedMonth === month, onAction: () => this.data.selectMonth(month)
           })
         }, (month: string) => month)
-        if (this.months().length > this.visibleMonths().length || this.monthsExpanded) {
-          Text(this.monthsExpanded ? '收起月份' : `展开其余 ${this.months().length - this.visibleMonths().length} 个月份`)
+        if (this.hiddenMonthCount() > 0) {
+          Text(this.monthsExpanded ? '收起月份' : `展开剩余 ${this.hiddenMonthCount()} 个月份`)
             .width('100%').height(30).padding({ left: 10 }).fontSize(12).fontColor($r('app.color.muted'))
             .onClick(() => expandSection(this.getUIContext(), () => this.monthsExpanded = !this.monthsExpanded))
         }

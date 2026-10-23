@@ -14,14 +14,14 @@ export struct AppTopBar {
   onOpenMore: () => void = () => {};
 
   @Builder
-  private imageButton(icon: Resource, label: string, action: () => void) {
+  private imageButton(icon: Resource, label: string, action: () => void, focusKey: string = '') {
     Button({ type: ButtonType.Normal }) {
       Image(icon)
         .width(20)
         .height(20)
         .objectFit(ImageFit.Contain)
     }
-    .id(label === '打开导航' ? 'workspace_navigation_open' : '')
+    .id(focusKey)
     .width(42)
     .height(42)
     .padding(0)
@@ -56,7 +56,7 @@ export struct AppTopBar {
   build() {
     Stack({ alignContent: Alignment.Bottom }) {
       Row({ space: 6 }) {
-        this.imageButton($r('app.media.menu'), this.navigationLabel, this.onOpenNavigation)
+        this.imageButton($r('app.media.menu'), this.navigationLabel, this.onOpenNavigation, 'workspace_navigation_open')
 
         Row() {
           Text(this.title)

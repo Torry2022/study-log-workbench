@@ -348,6 +348,19 @@
   color: var(--ink);
 }
 
+/* Secondary month navigation keeps a full hit area without a bordered button. */
+.sidebar-months-toggle {
+  width: 100%; min-height: 32px; padding: 4px 10px; border: 0;
+  border-radius: var(--radius-md); background: transparent; color: var(--muted);
+  text-align: left; font-size: 12px; cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+@media (hover: hover) {
+  .sidebar-months-toggle:hover { background: var(--surface-card); color: var(--body); }
+}
+@media (pointer: coarse), (max-width: 1023px) {
+  .sidebar-months-toggle { min-height: 44px; }
+}
+
 .month-list,
 .day-list {
   display: grid;

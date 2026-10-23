@@ -1,3 +1,4 @@
+import { currentShanghaiYear } from '../../../common/ui/MonthNavigation';
 import { LengthMetrics } from '@kit.ArkUI';
 import { DaySummary, MonthSummary } from '../LogModels';
 import { WorkspaceBreakpoint } from '../../../common/AppConfig';
@@ -37,7 +38,7 @@ export struct LogNavigation {
   }
 
   private collapsedMonths(): MonthSummary[] {
-    return this.navigationMonths.filter((month: MonthSummary, index: number) => index < 6 || month.id === this.navigationMonth);
+    return this.navigationMonths.filter((month: MonthSummary) => month.id.startsWith(`${currentShanghaiYear()}-`) || month.id === this.navigationMonth);
   }
 
   private visibleMonths(): MonthSummary[] {
@@ -58,11 +59,6 @@ export struct LogNavigation {
 
   build() {
     List({ space: this.isLargeWorkspace() ? 8 : 12, scroller: this.logNavigationScroller }) {
-      if (!this.isLargeWorkspace()) {
-        ListItem() {
-          this.dateActions()
-        }
-      }
       ListItem() {
         Row({ space: 7 }) {
           SymbolGlyph($r('sys.symbol.calendar')).fontSize(15).fontColor([$r('app.color.primary_active')])
@@ -121,10 +117,8 @@ export struct LogNavigation {
           this.jumpDatePicker()
         }.width('100%')
       }
-      if (this.isLargeWorkspace()) {
-        ListItem() {
-          this.dateActions()
-        }
+      ListItem() {
+        this.dateActions()
       }
       ListItem() {
         SearchField({

@@ -1,3 +1,4 @@
+import { currentShanghaiYear } from '../../../common/ui/MonthNavigation';
 import { FormKeyboardContext } from '../../../common/ui/FormKeyboardContext';
 import { NavigationLabelStyle, NavigationCountStyle, NavigationSectionStyle } from '../../../common/ui/NavigationRowStyle';
 import { InteractiveSurface, animateHover } from '../../../common/ui/InteractiveSurface';
@@ -103,7 +104,7 @@ export struct FavoritesNavigation {
   private months(): string[] { return this.data.months(); }
 
   private collapsedMonths(): string[] {
-    return this.months().filter((month: string, index: number) => index < 6 || month === this.data.selectedMonth);
+    return this.months().filter((month: string) => month.startsWith(`${currentShanghaiYear()}-`) || month === this.data.selectedMonth);
   }
 
   private visibleMonths(): string[] {

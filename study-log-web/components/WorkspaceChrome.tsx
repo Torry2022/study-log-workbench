@@ -105,7 +105,8 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, module
   const shortcutPending = useRef(false);
   const shortcutActive = useRef(active); shortcutActive.current = active;
   const [monthsExpanded, setMonthsExpanded] = useState(false);
-  const collapsedMonths = months.filter((month, index) => index < 6 || month.id === selectedMonth);
+  const currentYear = todayInShanghai().slice(0, 4);
+  const collapsedMonths = months.filter(month => month.id.startsWith(`${currentYear}-`) || month.id === selectedMonth);
   const shownMonths = monthsExpanded ? months : collapsedMonths;
   const hiddenMonthCount = months.length - collapsedMonths.length;
   const [customDate, setCustomDate] = useState(todayInShanghai());
@@ -362,7 +363,7 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, module
             <div className="section-title inline" ref={monthHeading} tabIndex={-1}><CalendarDays size={15} /><span>日志月份</span></div>
             <div className="month-list">{shownMonths.map(month => <button key={month.id} type="button" className={`nav-item${month.id === selectedMonth ? " active" : ""}`} aria-current={month.id === selectedMonth ? "true" : undefined} onClick={() => { setQuery(""); onMonth(month.id); }}><span>{month.label}</span><small>{month.dayCount}</small></button>)}</div>
             {monthsError ? <WorkspaceState kind="error" title="月份加载失败" description={monthsError} layout="compact" actions={<button className="button secondary" type="button" onClick={onRetry}>重试</button>} /> : showMonthsLoading ? <WorkspaceState kind="loading" title="正在加载月份" layout="compact" /> : !monthsLoading && !months.length && <WorkspaceState kind="empty" title="暂无月份记录" layout="compact" />}
-            {hiddenMonthCount > 0 && <button className="button secondary full" type="button" aria-expanded={monthsExpanded} onClick={() => setMonthsExpanded(value => !value)}>{monthsExpanded ? "收起月份" : `展开剩余 ${hiddenMonthCount} 个月份`}</button>}
+            {hiddenMonthCount > 0 && <button className="sidebar-months-toggle" type="button" aria-expanded={monthsExpanded} onClick={() => setMonthsExpanded(value => !value)}>{monthsExpanded ? "收起月份" : `展开剩余 ${hiddenMonthCount} 个月份`}</button>}
           </div>
           <div className="sidebar-section grow" data-log-section="dates">
             <div className={`section-title date-section-title${loading && days.length ? " pending" : ""}`}><span className="section-title-left"><FileText size={15} />日志日期</span><DateJump months={months} selectedDate={selectedDate} active={active && (!compact || panel === "navigation")} openRequest={dateJumpRequest} onDate={date => selectSidebarDate(date)} /></div>

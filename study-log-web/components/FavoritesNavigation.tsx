@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { CalendarDays, Edit3, Folders, MoreHorizontal, Plus, Trash2 } from "lucide-react";
+import { todayInShanghai } from "@/lib/study-date";
 import type { FavoritesController } from "@/hooks/use-favorites";
 import "@/app/favorites.css";
 
@@ -28,7 +29,8 @@ export function FavoritesNavigation({ favorites, active = true }: { favorites: F
   }
   const inGroup = favorites.favorites.filter(item => favorites.filters.group === "all" || (favorites.filters.group === "ungrouped" ? !item.groupIds.length : item.groupIds.includes(favorites.filters.group)));
   const months = [...new Set(inGroup.map(item => item.month))].sort((a, b) => b.localeCompare(a));
-  const collapsedMonths = months.filter((month, index) => index < 6 || month === favorites.filters.month);
+  const currentYear = todayInShanghai().slice(0, 4);
+  const collapsedMonths = months.filter(month => month.startsWith(`${currentYear}-`) || month === favorites.filters.month);
   const shownMonths = monthsExpanded ? months : collapsedMonths;
   const hiddenMonthCount = months.length - collapsedMonths.length;
   const managedGroup = favorites.groups.find(group => group.id === control?.id);
@@ -56,6 +58,6 @@ export function FavoritesNavigation({ favorites, active = true }: { favorites: F
     <div className="sidebar-section"><div className="section-title inline"><CalendarDays size={15} />日志月份</div><div className="month-list">
       <button className={`nav-item${favorites.filters.month === "all" ? " active" : ""}`} type="button" onClick={() => favorites.filter({ month: "all" })}><span>全部月份</span><small>{inGroup.length}</small></button>
       {shownMonths.map(month => <button className={`nav-item${favorites.filters.month === month ? " active" : ""}`} type="button" key={month} onClick={() => favorites.filter({ month })}><span>{month}</span><small>{inGroup.filter(item => item.month === month).length}</small></button>)}
-    </div>{hiddenMonthCount > 0 && <button className="button secondary" type="button" onClick={() => setMonthsExpanded(value => !value)}>{monthsExpanded ? "收起月份" : `展开剩余 ${hiddenMonthCount} 个月份`}</button>}</div>
+    </div>{hiddenMonthCount > 0 && <button className="sidebar-months-toggle" type="button" aria-expanded={monthsExpanded} onClick={() => setMonthsExpanded(value => !value)}>{monthsExpanded ? "收起月份" : `展开剩余 ${hiddenMonthCount} 个月份`}</button>}</div>
   </div>;
 }

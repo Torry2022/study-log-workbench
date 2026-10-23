@@ -2,7 +2,9 @@ import { LogNavigation } from '../../features/logs/components/LogNavigation';
 import { LogNavigationController } from '../../features/logs/LogNavigationController';
 import { DaySummary } from '../../features/logs/LogModels';
 import { WORKSPACE_TIPS } from '../../common/ui/WorkspaceTips';
-import { expandSection } from '../../common/ui/WorkspaceMotion';
+import { AppModalFrame } from '../../common/ui/AppModalFrame';
+import { AppModalScrim } from '../../common/ui/AppModalScrim';
+import { floatingSurfaceTransition, expandSection } from '../../common/ui/WorkspaceMotion';
 
 @Component
 export struct WorkspaceLogNavigation {
@@ -51,6 +53,7 @@ export struct WorkspaceLogNavigation {
     const cells: string[] = [];
     for (let index = 0; index < (first.getDay() + 6) % 7; index++) cells.push('');
     for (let day = 1; day <= count; day++) cells.push(`${this.logNavigation.calendarMonth}-${day.toString().padStart(2, '0')}`);
+    while (cells.length < 42) cells.push('');
     return cells;
   }
 
@@ -69,8 +72,18 @@ export struct WorkspaceLogNavigation {
   @Builder
   private logCalendar() {
     Column({ space: 8 }) {
-      Text(this.calendarMode === 'jump' ? '跳转到日期' : '选择新建日期')
-        .fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.ink'))
+      Row({ space: 8 }) {
+        Text(this.calendarMode === 'jump' ? '跳转到日期' : '选择新建日期')
+          .fontSize(14).fontWeight(FontWeight.Medium).fontColor($r('app.color.ink')).layoutWeight(1)
+        if (!this.wide) {
+          Button({ type: ButtonType.Normal }) {
+            SymbolGlyph($r('sys.symbol.xmark')).fontSize(17).fontColor([$r('app.color.muted')])
+          }.width(34).height(34).padding(0).backgroundColor($r('app.color.surface_soft'))
+            .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8).clip(true)
+            .id('log_calendar_close').accessibilityText('关闭日期选择')
+            .onClick(() => this.calendarOpen = false)
+        }
+      }.width('100%')
       Row() {
         Button('‹', { type: ButtonType.Normal }).width(36).height(36).padding(0)
           .fontSize(20).fontColor($r('app.color.body')).backgroundColor(Color.Transparent)
@@ -102,15 +115,35 @@ export struct WorkspaceLogNavigation {
           .accessibilityText(date).onClick(() => this.selectCalendarDate(date))
         }, (date: string, index: number) => `${date}:${index}`)
       }.width('100%')
-      if (this.logNavigation.calendarError) {
-        Button('读取失败，点击重试', { type: ButtonType.Normal }).fontSize(12)
-          .fontColor($r('app.color.muted')).backgroundColor(Color.Transparent).onClick(() => this.loadCalendar())
-      } else {
-        Text(this.logNavigation.calendarLoading ? '正在读取日志日期…' :
-          this.calendarMode === 'jump' ? '有记录的日期可直接跳转' : '选定日期后，点击“新建”打开日志')
-          .fontSize(12).fontColor($r('app.color.muted'))
-      }
-    }.width(280).padding(14)
+      Column() {
+        if (this.logNavigation.calendarError) {
+          Button('读取失败，点击重试', { type: ButtonType.Normal }).fontSize(12)
+            .fontColor($r('app.color.muted')).backgroundColor(Color.Transparent).onClick(() => this.loadCalendar())
+        } else {
+          Text(this.logNavigation.calendarLoading ? '正在读取日志日期…' :
+            this.calendarMode === 'jump' ? '有记录的日期可直接跳转' : '选定日期后，点击“新建”打开日志')
+            .fontSize(12).fontColor($r('app.color.muted'))
+        }
+      }.width('100%').height(56).justifyContent(FlexAlign.Center).id('log_calendar_feedback')
+    }.width(this.wide ? 280 : '100%').padding(14).id('log_calendar_content')
+  }
+
+  @Builder
+  private calendarDialog() {
+    AppModalFrame({ content: (): void => this.calendarDialogContent() })
+  }
+
+  @Builder
+  private calendarDialogContent() {
+    Stack({ alignContent: Alignment.Center }) {
+      AppModalScrim({ onDismiss: () => this.calendarOpen = false })
+      Scroll() { this.logCalendar() }
+        .width('90%').constraintSize({ maxWidth: 360, maxHeight: '86%' })
+        .height(LayoutPolicy.wrapContent).scrollBar(BarState.Auto).edgeEffect(EdgeEffect.None)
+        .backgroundColor($r('app.color.canvas'))
+        .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(12).clip(true)
+        .id('log_calendar_dialog')
+    }.width('100%').height('100%').backgroundColor(Color.Transparent)
   }
 
   @Builder
@@ -138,10 +171,10 @@ export struct WorkspaceLogNavigation {
         .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8).clip(true)
         .id('log_create_date_picker').accessibilityText('选择新建日期')
         .onClick(() => this.onOpenCalendar('create'))
-        .bindPopup(this.calendarOpen && this.calendarMode === 'create', {
+        .bindPopup(this.wide && this.calendarOpen && this.calendarMode === 'create', {
           builder: this.logCalendar(), placement: Placement.Bottom, enableArrow: false,
           popupColor: $r('app.color.canvas'), radius: 8,
-          onStateChange: (event) => { if (!event.isVisible && this.calendarMode === 'create') this.calendarOpen = false; }
+          onStateChange: (event) => { if (this.wide && !event.isVisible && this.calendarMode === 'create') this.calendarOpen = false; }
         })
         Button('+ 新建', { type: ButtonType.Normal }).height(40).padding({ left: 10, right: 10 })
           .fontSize(13).fontColor($r('app.color.ink')).backgroundColor($r('app.color.canvas'))
@@ -158,10 +191,10 @@ export struct WorkspaceLogNavigation {
     }.width(28).height(28).padding(0).backgroundColor(Color.Transparent)
       .id('log_jump_date_picker').accessibilityText('跳转到指定日期')
       .onClick(() => this.onOpenCalendar('jump'))
-      .bindPopup(this.calendarOpen && this.calendarMode === 'jump', {
+      .bindPopup(this.wide && this.calendarOpen && this.calendarMode === 'jump', {
         builder: this.logCalendar(), placement: Placement.BottomRight, enableArrow: false,
         popupColor: $r('app.color.canvas'), radius: 8,
-        onStateChange: (event) => { if (!event.isVisible && this.calendarMode === 'jump') this.calendarOpen = false; }
+        onStateChange: (event) => { if (this.wide && !event.isVisible && this.calendarMode === 'jump') this.calendarOpen = false; }
       })
   }
 
@@ -201,6 +234,10 @@ export struct WorkspaceLogNavigation {
     }
     .width('100%').height('100%')
     .backgroundColor(this.wide ? $r('app.color.surface_soft') : $r('app.color.canvas'))
+    .bindContentCover(this.calendarOpen && !this.wide, this.calendarDialog(), {
+      transition: floatingSurfaceTransition(), backgroundColor: Color.Transparent, enableSafeArea: true,
+      onWillDismiss: () => this.calendarOpen = false
+    })
   }
 
 }

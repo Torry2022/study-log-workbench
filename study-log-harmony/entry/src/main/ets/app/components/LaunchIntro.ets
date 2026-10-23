@@ -94,43 +94,16 @@ export struct LaunchIntro {
           .scale({ x: this.frameVisible ? 1 : 0.76, y: this.frameVisible ? 1 : 0.76 })
           .opacity(this.frameVisible ? 1 : 0)
 
-        Stack({ alignContent: Alignment.TopStart }) {
-          Row() {}
-            .width(4.6)
-            .height(39.4)
-            .borderRadius(2.3)
-            .backgroundColor($r('app.color.primary'))
-            .position({ x: 21.3, y: 22.3 })
-          Circle()
-            .width(10.5)
-            .height(10.5)
-            .fill($r('app.color.primary'))
-            .position({ x: 18.4, y: 17.1 })
-          Circle()
-            .width(10.5)
-            .height(10.5)
-            .fill($r('app.color.primary'))
-            .position({ x: 18.4, y: 36.8 })
-          Circle()
-            .width(10.5)
-            .height(10.5)
-            .fill($r('app.color.primary'))
-            .position({ x: 18.4, y: 56.4 })
-        }
+        Image($r('app.media.launch_nodes'))
         .width(84)
         .height(84)
+        .objectFit(ImageFit.Contain)
         .translate({ x: this.nodesGathered ? 0 : -introHorizontalTravel })
 
-        Stack({ alignContent: Alignment.TopStart }) {
-          Row() {}
-            .width(23.6)
-            .height(5.3)
-            .borderRadius(2.7)
-            .backgroundColor($r('app.color.ink'))
-            .position({ x: 36.8, y: 19.7 })
-        }
+        Image($r('app.media.launch_top'))
         .width(84)
         .height(84)
+        .objectFit(ImageFit.Contain)
         .translate({ y: this.topGathered ? 0 : -introVerticalTravel })
 
         Image($r('app.media.launch_arrow'))
@@ -139,16 +112,10 @@ export struct LaunchIntro {
         .objectFit(ImageFit.Contain)
         .translate({ x: this.middleGathered ? 0 : introHorizontalTravel })
 
-        Stack({ alignContent: Alignment.TopStart }) {
-          Row() {}
-            .width(23.6)
-            .height(5.3)
-            .borderRadius(2.7)
-            .backgroundColor($r('app.color.ink'))
-            .position({ x: 36.8, y: 59.1 })
-        }
+        Image($r('app.media.launch_bottom'))
         .width(84)
         .height(84)
+        .objectFit(ImageFit.Contain)
         .translate({ y: this.bottomGathered ? 0 : introVerticalTravel })
 
         Text('记录所学，连接所思')

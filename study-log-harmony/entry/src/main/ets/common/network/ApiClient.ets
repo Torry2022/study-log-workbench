@@ -120,6 +120,46 @@ export class ApiClient {
     }
   }
 
+  // Task observation owns its connection; it must never cancel a generation or another reader.
+  async getEventStreamForInstance(path: string, instanceId: string, onChunk: (chunk: string) => void,
+    cancellation: ReadCancellation): Promise<void> {
+    cancellation.check();
+    const binding = this.getConnectionBinding(), token = this.token;
+    const current = (): boolean => !cancellation.cancelled && binding === this.getConnectionBinding();
+    const decoder = util.TextDecoder.create('utf-8');
+    let parseFailure: Error | undefined;
+    const events: rcp.HttpEventsHandler = { onDataReceive: (data: ArrayBuffer): void => {
+      if (!current() || parseFailure) return;
+      try { onChunk(decoder.decodeToString(new Uint8Array(data), { stream: true })); }
+      catch (error) { parseFailure = error instanceof Error ? error : new Error('任务事件解析失败');
+        try { session.cancel(request); } catch (_) { /* The read may have just completed. */ } }
+    } };
+    const session = rcp.createSession({ requestConfiguration: {
+      transfer: { autoRedirect: false, timeout: { connectMs: 15000, transferMs: 120000 } },
+      tracing: { httpEventsHandler: events }
+    } });
+    const headers: rcp.RequestHeaders = { accept: 'text/event-stream', 'X-Study-Log-Instance': instanceId };
+    if (token) headers['authorization'] = `Bearer ${token}`;
+    const request = new rcp.Request(activeInstance.apiUrl(path), 'GET', headers);
+    cancellation.bind(() => { try { session.cancel(request); } catch (_) {} });
+    try {
+      const response = await session.fetch(request).catch(() => {
+        cancellation.check();
+        if (!current()) throw new ApiStreamCancelledError();
+        throw parseFailure || new ApiError('任务事件连接中断，正在重新连接', 0, 'NETWORK_ERROR');
+      });
+      cancellation.check();
+      if (!current()) throw new ApiStreamCancelledError();
+      if (parseFailure) throw parseFailure;
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        if (response.statusCode === 401 && token) this.onUnauthorized();
+        throw new ApiError(`任务事件请求失败（${response.statusCode}）`, response.statusCode);
+      }
+      const tail = decoder.decodeToString(new Uint8Array(), { stream: false });
+      if (tail) onChunk(tail);
+    } finally { cancellation.release(); session.close(); }
+  }
+
   async download(path: string): Promise<ArrayBuffer> {
     const instanceRevision = activeInstance.revision;
     const sessionRevision = this.sessionRevision;

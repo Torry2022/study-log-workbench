@@ -293,3 +293,10 @@ for (const own of [true, false]) test(`explicit authoritative reread clears ${ow
   if (own) { assert.equal(f.ui.questionEdit, null); assert.equal(f.ui.error, ''); }
   else { assert.equal(f.ui.questionEdit.body, '当前编辑稿'); assert.equal(f.ui.questionEdit.orphaned, true); }
 });
+
+
+test('queued task means awaiting execution without inventing an older blocked answer', async t => {
+  const f = fixture(); t.after(() => f.dispose()); await f.settle();
+  await f.feed(f.task({ editMessageId: undefined, state: 'queued', error: '', partial: '', stage: '' })); f.render();
+  assert.equal(f.ui.generating, true); assert.doesNotMatch(f.ui.stage, /前一|上一/);
+});

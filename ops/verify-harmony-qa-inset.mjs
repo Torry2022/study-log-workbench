@@ -32,12 +32,12 @@ try {
           await page.waitForFunction(revision => window.insetEvents.some(event => event.revision === revision), revision);
           const geometry = await page.evaluate(() => {
             window.scrollTo(0, document.documentElement.scrollHeight);
-            const main = document.querySelector('main'), actions = document.querySelector('.qa-answer-actions');
-            return { viewport: innerHeight, padding: parseFloat(getComputedStyle(main).paddingBottom),
+            const main = document.querySelector('main'), actions = document.querySelector('.qa-message-assistant .qa-answer-actions');
+            return { viewport: innerHeight, padding: parseFloat(getComputedStyle(main).paddingBottom), footerSlot: parseFloat(getComputedStyle(main, '::after').height),
               tail: innerHeight - actions.getBoundingClientRect().bottom,
               sameBody: window.originalAnswer === document.querySelector('.qa-answer-body'), overflow: document.body.scrollWidth > innerWidth };
           });
-          assert.equal(geometry.viewport, 800); assert.equal(geometry.padding, inset + 24);
+          assert.equal(geometry.viewport, 800); assert.equal(geometry.padding, 24); assert.equal(geometry.footerSlot, inset);
           assert.ok(Math.abs(geometry.tail - inset - 41) < 2, JSON.stringify(geometry));
           assert.equal(geometry.sameBody, true); assert.equal(geometry.overflow, false);
           report.checks.push({ engine, width, theme, inset, ...geometry });

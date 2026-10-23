@@ -32,7 +32,8 @@ test('composer clearance changes do not count as upward gestures and focused inp
   page.questionFocused = true; page.handleReaderScroll(200);
   assert.equal(page.composerHidden, false);
   const body = qa.slice(qa.indexOf('MarkdownReader({'), qa.indexOf('Column({ space: 6 })'));
-  assert.match(body, /contentBottomInset: this.composerHidden \? 0 : this.composerHeight/);
+  assert.match(body, /contentBottomInset: this.composerHeight/);
+  assert.doesNotMatch(body, /contentBottomInset: this.composerHidden/);
   assert.doesNotMatch(body, /padding\(\{ bottom: this.composerHeight \}\)/);
 });
 test('reader inset updates never rerender content and reject stale and disposed layout acknowledgments', () => {
@@ -51,4 +52,11 @@ test('reader inset updates never rerender content and reject stale and disposed 
   assert.equal(page.bottomInsetChanging, false); assert.deepEqual(offsets, [[100, true]]);
   page.aboutToDisappear(); page.frameBridge.onBottomInsetReady(2, 50);
   assert.deepEqual(offsets, [[100, true]]);
+});
+
+test('native reaching the end reveals the input without changing the measured footer slot', () => {
+  const page = subject(qa, ['setComposerHidden', 'handleReaderProgress']);
+  Object.assign(page,{composerHidden:true,composerHeight:132,readerScrollOffset:500});
+  page.handleReaderProgress(0.5);assert.equal(page.composerHidden,true);
+  page.handleReaderProgress(1);assert.equal(page.composerHidden,false);assert.equal(page.composerHeight,132);
 });

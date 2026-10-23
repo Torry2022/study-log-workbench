@@ -174,7 +174,7 @@ export function useRag(options: Options) {
           owner.task = task; owner.pendingTask = null; owner.generating = ragTaskActive(task); owner.unsaved = false;
           if (!ragTaskActive(task) && task.state !== "succeeded" && submittedTasks.current.delete(task.submissionId)) rememberTitleOwners();
           owner.answerMode = task.mode; owner.createdAt = task.createdAt; owner.error = "";
-          owner.stage = task.state === "queued" ? "正在等待前一项问答完成…" : task.stage;
+          owner.stage = task.state === "queued" ? "正在等待执行…" : task.stage;
           owner.saving = task.state === "succeeded" && (task.saveState === "pending" || task.saveState === "saved" && previous?.saveState !== "saved");
           owner.saveError = task.state === "succeeded" && ["conflict", "error"].includes(task.saveState) ? task.saveError || "回答已保留，尚未写入会话" : "";
           // Show the complete result while fetching the authoritative session, never append a snapshot delta.

@@ -370,6 +370,8 @@
 
 .rag-composer-slot.is-hidden { pointer-events: none; opacity: 0; }
 
+.rag-composer-slot.is-at-end { position: relative; bottom: auto; }
+
 .rag-composer {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 42px;

@@ -334,7 +334,7 @@ test('final sources may arrive after deltas and an abstention clears candidate c
 
 test('durable submission uses the task protocol instead of legacy generation and client session writes', async () => {
   const Controller = await loadController(), submitted = [];
-  const tasks = { ready: true, tasks: [], pending: [], error: '', onChange() {},
+  const tasks = { ready: true, tasks: [], pending: [], error: '', connectionError: '', onChange() {}, viewSession() {},
     submit: async input => { submitted.push(structuredClone(input)); }, refresh: async () => {}, start: async () => {}, stop() {} };
   const controller = new Controller({ postStream: async () => assert.fail('must not generate through the legacy stream'),
     post: async () => assert.fail('must not save a task result from the client'), get: async () => ({ sessions: [] }) }, view(), tasks);

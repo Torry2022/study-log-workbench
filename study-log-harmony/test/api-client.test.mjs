@@ -245,3 +245,47 @@ test('export ZIP uses the current instance and does not treat binary data as JSO
   pending[0]({ statusCode: 200, body, toString: () => 'not JSON' });
   assert.deepEqual(Array.from(new Uint8Array(await request)), [0x50, 0x4b, 0x03, 0x04]);
 });
+
+
+test('owned native task events deliver UTF-8 chunks before fetch completes and isolate cancellation', async () => {
+  const connections = [], requests = [];
+  const { ApiClient } = await loadEts('ApiClient', {
+    '@kit.RemoteCommunicationKit': { rcp: {
+      Request: class { constructor(...args) { this.args = args; requests.push(args); } },
+      createSession(config) { const connection = { config, cancelled: 0, closed: 0,
+        fetch: () => new Promise((resolve, reject) => { connection.resolve = resolve; connection.reject = reject; }),
+        cancel() { connection.cancelled++; connection.reject(Error('cancelled transport')); }, close() { connection.closed++; } };
+        connections.push(connection); return connection; }
+    } }, './InstanceConfig': { activeInstance }
+  });
+  activeInstance.activate('https://synthetic-events.example', 'events');
+  const client = new ApiClient(); client.setToken('synthetic-token');
+  const one = new ReadCancellation(), two = new ReadCancellation(), chunks = [];
+  const first = client.getEventStreamForInstance('/rag/tasks/a/events?after=2', 'synthetic-instance', chunk => chunks.push(chunk), one);
+  const firstRejected = assert.rejects(first, /cancelled|取消/);
+  const second = client.getEventStreamForInstance('/rag/tasks/b/events?after=3', 'synthetic-instance', () => {}, two);
+  const raw = new TextEncoder().encode('data: 流式中文\n\n');
+  for (const byte of raw) connections[0].config.requestConfiguration.tracing.httpEventsHandler.onDataReceive(Uint8Array.of(byte).buffer);
+  assert.equal(chunks.join(''), 'data: 流式中文\n\n');
+  assert.equal(requests[0][1], 'GET'); assert.equal(requests[0][2]['X-Study-Log-Instance'], 'synthetic-instance');
+  one.cancel(); await firstRejected; assert.equal(connections[0].cancelled, 1); assert.equal(connections[1].cancelled, 0);
+  connections[1].resolve({ statusCode: 200 }); await second; assert.equal(connections[1].closed, 1);
+});
+
+
+test('native task observation rejects a stale-instance unauthorized completion without logging out current instance', async () => {
+  let complete; const configurations = [];
+  const { ApiClient } = await loadEts('ApiClient', {
+    '@kit.RemoteCommunicationKit': { rcp: { Request: class {}, createSession(config) {
+      configurations.push(config); return { fetch: () => new Promise(resolve => complete=resolve), close() {}, cancel() {} };
+    } } }, './InstanceConfig': { activeInstance }
+  });
+  activeInstance.activate('https://old-observer.example', 'old-observer');
+  const client = new ApiClient(); client.setToken('old-synthetic-token');
+  let unauthorized=0, chunks=''; client.setUnauthorizedHandler(()=>unauthorized++);
+  const pending=client.getEventStreamForInstance('/rag/tasks/a/events', 'old-instance', chunk=>chunks+=chunk, new ReadCancellation());
+  activeInstance.activate('https://new-observer.example', 'new-observer'); client.setToken('new-synthetic-token');
+  configurations[0].requestConfiguration.tracing.httpEventsHandler.onDataReceive(new TextEncoder().encode('stale').buffer);
+  complete({statusCode:401}); await assert.rejects(pending,/取消/);
+  assert.equal(chunks,''); assert.equal(unauthorized,0); assert.equal(client.getToken(),'new-synthetic-token');
+});

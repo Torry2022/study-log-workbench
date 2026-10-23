@@ -292,3 +292,17 @@ test('leaving during selection save never submits into the newly opened conversa
   assert.equal(f.controller.sessionId, other.id); assert.equal(f.controller.sending, true);
   assert.equal(f.requests.some(r => r.method === 'POST'), false);
 });
+
+test('explicit retry can address a failed replacement without permitting a new follow-up from that failed preview', async t => {
+  const f = await controller(t), saved=session();f.sessions.set(saved.id,saved);
+  const failed=task(saved.id,{replaceLast:true,questionMessageId:saved.messages[0].id,question:saved.messages[0].content,state:'failed',partial:'失败片段',error:'合成失败',previousAnswer:saved.messages[1]});
+  f.tasks.set(failed.id,failed);await f.client.refresh();await f.controller.openSession(saved.id);await settle();
+  assert.equal(f.controller.taskBlocked,true,'a normal follow-up must not use the failed preview as history');
+  f.controller.question='新的追问';await f.controller.send();assert.equal(f.requests.some(r=>r.method==='POST'),false);
+  f.controller.question='';
+  assert.equal(f.controller.answerMessages().find(item=>item.taskId===failed.id).canRetry,true,'the actual reader must expose the addressed retry action');
+  await f.controller.retryAnswer(failed.id);
+  const request=f.requests.find(r=>r.method==='POST'&&r.path==='/rag/tasks');assert.ok(request,'explicit retry addresses the failed execution');
+  assert.equal(request.body.retryTaskId,failed.id);assert.equal(request.body.replaceLast,true);
+  assert.equal(f.requests.some(r=>r.method==='PUT'),false,'never save a failed preview as selected history');
+});

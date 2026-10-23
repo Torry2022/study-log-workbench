@@ -5,13 +5,13 @@ export class QaStreamParser {
   reset(): void { this.buffer = ''; }
 
   push(chunk: string): string[] {
-    this.buffer += chunk.replace(/\r\n/g, '\n');
+    this.buffer += chunk;
     const blocks: string[] = [];
-    let boundary = this.buffer.indexOf('\n\n');
-    while (boundary >= 0) {
-      blocks.push(this.buffer.slice(0, boundary));
-      this.buffer = this.buffer.slice(boundary + 2);
-      boundary = this.buffer.indexOf('\n\n');
+    let boundary = /\r?\n\r?\n/.exec(this.buffer);
+    while (boundary) {
+      blocks.push(this.buffer.slice(0, boundary.index).replace(/\r\n/g, '\n'));
+      this.buffer = this.buffer.slice(boundary.index + boundary[0].length);
+      boundary = /\r?\n\r?\n/.exec(this.buffer);
     }
     return blocks;
   }

@@ -17,6 +17,7 @@
   <script src="katex.min.js"></script>
   <script src="auto-render.min.js"></script>
   <script src="mermaid.min.js"></script>
+  <script src="qa-presentation.js"></script>
 </head>
 <body>
   <main id="reader" class="markdown-body"></main>
@@ -26,8 +27,10 @@
     let instanceOrigin = '';
 
     function setReaderBottomInset(inset, revision) {
+      const atEnd = document.documentElement.scrollHeight - innerHeight - scrollY <= 2;
       document.documentElement.style.setProperty('--reader-bottom-inset', `${inset}px`);
       requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (atEnd) window.scrollTo(0, document.documentElement.scrollHeight);
         if (window.readerFrames) window.readerFrames.bottomInsetReady(revision, window.scrollY);
       }));
     }
@@ -262,6 +265,7 @@
     // Same Lucide geometry as RagWorkspace; license: markdown/licenses/lucide.txt.
     function qaIcon(name) {
       const paths = {
+        loading: ['M12 3a9 9 0 1 0 9 9'],
         copy: ['M9 8h11a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2', 'M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2'],
         regenerate: ['M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8', 'M3 3v5h5'],
         edit: ['M12 20h9', 'M16.5 3.5a2.12 2.12 0 0 1 3 3L9 17l-4 1 1-4Z'],
@@ -369,6 +373,12 @@
           answer.className = 'qa-answer-body';
           answer.innerHTML = DOMPurify.sanitize(marked.parse(String(message.content || ''), { gfm: true, breaks: false }));
           article.appendChild(answer);
+          if (!String(message.content || '').trim() && (message.status === 'streaming' || message.displayPending)) {
+            const progress = document.createElement('div'); progress.className = 'qa-answer-pending'; progress.setAttribute('role', 'status');
+            progress.appendChild(qaIcon('loading'));
+            const text = document.createElement('span'); text.textContent = message.stage || '正在生成回答…';
+            progress.appendChild(text); article.appendChild(progress);
+          }
           if (message.groundingWarning) {
             const warning = document.createElement('div');
             warning.className = 'qa-grounding-warning';
@@ -398,7 +408,7 @@
             });
             article.appendChild(sources);
           }
-          if (message.id) {
+          if (message.id && !message.displayPending && message.status !== 'streaming') {
             const actions = document.createElement('div'); actions.className = 'qa-answer-actions';
             const action = (kind, title, target = '') => {
               const link = document.createElement('a');
@@ -492,6 +502,69 @@
       window.scrollTo({ top: 0, behavior: 'auto' });
       return true;
     };
+
+    // Only live answers enter the presentation clock. Reopened history and
+    // selected old versions render immediately, with no replay or scroll steal.
+    function installQaPresentation() {
+    const renderReceivedMarkdown = window.renderMarkdown;
+    const qaPresentation = new QaPresentation();
+    let qaPresentationInput = null, qaPresentationTimer = 0, qaPaintRevision = 0, qaDetached = false;
+    const motionAllowed = () => !document.hidden && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+    window.cancelQaPresentation = () => {
+      clearTimeout(qaPresentationTimer); qaPresentationTimer = 0; qaPresentationInput = null;
+      qaPresentation.reset(); qaPaintRevision++;
+    };
+    async function paintQaPresentation() {
+      clearTimeout(qaPresentationTimer); qaPresentationTimer = 0;
+      const input = qaPresentationInput, revision = ++qaPaintRevision;
+      if (!input) return;
+      qaPresentation.advance(performance.now());
+      const messages = input.messages.map(message => message.id === input.answerId ?
+        { ...message, content: qaPresentation.text, displayPending: qaPresentation.pending } : message);
+      await renderReceivedMarkdown(JSON.stringify(messages), input.token, input.theme, 'qa', input.origin);
+      if (revision !== qaPaintRevision || input !== qaPresentationInput) return;
+      if (input.follow && !qaDetached) window.scrollTo(0, document.documentElement.scrollHeight);
+      if (qaPresentation.pending) qaPresentationTimer = setTimeout(() => {
+        paintQaPresentation().catch(() => window.readerFrames?.failed?.(window.readerActionRevision));
+      }, 50);
+    }
+    window.renderMarkdown = async function(markdown, token, theme, mode, origin = '', documentKey = '', mayFollow = false) {
+      if (mode !== 'qa') { window.cancelQaPresentation(); return renderReceivedMarkdown(markdown, token, theme, mode, origin); }
+      const messages = JSON.parse(markdown || '[]'), answer = messages.filter(message => message.role === 'assistant').at(-1);
+      const key = `${documentKey}:${answer?.id || ''}`, previousKey = qaPresentation.key;
+      const wasLive = qaPresentation.eligible;
+      qaPresentation.update(key, answer?.content || '', answer?.status, performance.now(), motionAllowed());
+      if (previousKey !== key) qaDetached = false;
+      qaPresentationInput = { messages, answerId: answer?.id, token, theme, origin, documentKey,
+        follow: mayFollow && (qaPresentation.eligible || previousKey === key && wasLive) };
+      return paintQaPresentation();
+    };
+    function detachQaFollow() {
+      if (!qaPresentationInput || qaDetached) return;
+      qaDetached = true;
+      window.readerFrames?.qaFollowStopped?.(qaPresentationInput.documentKey);
+    }
+    document.addEventListener('wheel', event => { if (event.deltaY < 0) detachQaFollow(); }, { passive: true });
+    let qaTouchY = 0;
+    document.addEventListener('touchstart', event => qaTouchY = event.touches[0]?.clientY || 0, { passive: true });
+    document.addEventListener('touchmove', event => {
+      const y = event.touches[0]?.clientY || 0;
+      if (y > qaTouchY + 2) detachQaFollow();
+      qaTouchY = y;
+    }, { passive: true });
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && qaPresentationInput) {
+        qaPresentation.update(qaPresentation.key, qaPresentation.target, 'complete', performance.now(), false);
+        paintQaPresentation();
+      }
+    });
+    window.addEventListener('pagehide', window.cancelQaPresentation);
+    window.followQaLayout = () => {
+      if (qaPresentationInput?.follow && !qaDetached && reader.classList.contains('qa-conversation')) {
+        window.scrollTo(0, document.documentElement.scrollHeight);
+      }
+    };
+    }
 
     window.currentHeadingId = function() {
       const headings = Array.from(reader.querySelectorAll('h2, h3, h4, h5, h6'));
@@ -589,7 +662,7 @@
       });
     }
     window.addEventListener('resize', refreshOutlineGeometry);
-    new ResizeObserver(refreshOutlineGeometry).observe(reader);
+    new ResizeObserver(() => { refreshOutlineGeometry(); window.followQaLayout?.(); }).observe(reader);
 
     let viewportRevision = 0;
     window.waitForReaderViewport = function(widthPx, stableViewport = false, requestSequence = 0) {
@@ -676,6 +749,7 @@
       await renderDiagrams(resolvedTheme);
       return true;
     };
+    installQaPresentation();
   </script>
 </body>
 </html>

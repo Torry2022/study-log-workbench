@@ -1,9 +1,12 @@
 import { ApiClient, ApiError } from '../../common/network/ApiClient';
+import { ReadCancellation } from '../../common/network/ReadCancellation';
+import { QaStreamParser } from './QaStreamParser';
 import { InstanceCapabilities } from '../../common/network/InstanceConfig';
-import { QaTask, QaTaskListResponse, QaTaskResponse, QaTaskStorage, QaTaskSubmission, QaTaskSummary, taskActive, taskRetained, validTask, validTaskSummary } from './QaTaskModels';
+import { QaTask, QaTaskListResponse, QaTaskResponse, QaTaskStorage, QaTaskSubmission, QaTaskSummary, taskActive, taskRetained, latestTask, validTask, validTaskSummary } from './QaTaskModels';
 
 interface RemoveResponse { removed: boolean; }
 class TaskAction {}
+interface TaskConnection { id: string; cancellation: ReadCancellation; }
 
 // One instance's protocol connection. Disconnecting discovery never cancels execution.
 export class QaTaskClient {
@@ -12,6 +15,10 @@ export class QaTaskClient {
   ready: boolean = false;
   questionEditing: boolean = false;
   error: string = '';
+  connectionError: string = '';
+  private connectionTaskId: string = '';
+  private viewedSession: string = '';
+  private stream?: TaskConnection;
   onChange: () => void = () => {};
   private transport: ApiClient;
   private storage: QaTaskStorage;
@@ -30,6 +37,43 @@ export class QaTaskClient {
   constructor(transport: ApiClient, storage: QaTaskStorage, instanceId: string) {
     this.transport = transport; this.storage = storage; this.instanceId = instanceId;
     this.binding = transport.getConnectionBinding();
+  }
+  viewSession(id: string): void {
+    if (this.viewedSession !== id) this.connectionError = '';
+    this.viewedSession = id; this.syncStream();
+  }
+  private syncStream(): void {
+    const latest = latestTask(this.tasks, this.viewedSession);
+    const task = latest && (taskActive(latest) || latest.state === 'succeeded' && latest.saveState === 'pending') ? latest : undefined;
+    if (this.stream?.id === task?.id) return;
+    this.stream?.cancellation.cancel(); this.stream = undefined;
+    if (task?.id !== this.connectionTaskId) this.connectionError = '';
+    if (!task || this.stopped || this.binding !== this.transport.getConnectionBinding()) { this.connectionError = ''; return; }
+    const connection: TaskConnection = { id: task.id, cancellation: new ReadCancellation() };
+    const parser = new QaStreamParser(); this.stream = connection;
+    this.transport.getEventStreamForInstance(`/rag/tasks/${task.id}/events?after=${task.revision}`, this.instanceId,
+      (chunk: string): void => {
+        if (this.stream !== connection || connection.cancellation.cancelled || this.stopped) return;
+        for (const block of parser.push(chunk)) {
+          const lines = block.split('\n');
+          const name = lines.find((line: string) => line.startsWith('event:'))?.slice(6).trim() || 'message';
+          const data = lines.filter((line: string) => line.startsWith('data:')).map((line: string) => line.slice(5).trimStart()).join('\n');
+          if (!data) continue;
+          if (name === 'error') throw new Error('任务事件读取失败，正在重新连接');
+          if (name !== 'snapshot') continue;
+          const value = (JSON.parse(data) as QaTaskResponse).task;
+          if (!validTask(value) || value.id !== task.id || value.sessionId !== task.sessionId || value.submissionId !== task.submissionId) throw new Error('任务事件身份或快照不完整');
+          this.accept(value);
+        }
+      }, connection.cancellation).then(() => {
+        if (this.stream === connection && !connection.cancellation.cancelled && !this.stopped) {
+          this.connectionTaskId = task.id; this.connectionError = '任务事件连接中断，正在重新连接'; this.notify();
+        }
+      }).catch((error: Error) => {
+        if (this.stream === connection && !connection.cancellation.cancelled && !this.stopped) {
+          this.connectionTaskId = task.id; this.connectionError = error.message; this.notify();
+        }
+      }).finally(() => { if (this.stream === connection) this.stream = undefined; });
   }
   private checkConnection(): void {
     if (this.stopped || this.binding !== this.transport.getConnectionBinding()) throw new Error('连接已切换或已停止查看，请重新连接');
@@ -105,7 +149,7 @@ export class QaTaskClient {
     };
     this.connect().then(() => { if (!this.stopped) this.timer = setTimeout(() => tick(), 1000); });
   }
-  stop(): void { this.stopped = true; this.revision++; clearTimeout(this.timer); }
+  stop(): void { this.stopped = true; this.revision++; clearTimeout(this.timer); this.stream?.cancellation.cancel(); this.stream = undefined; }
   private accept(task: QaTask): void {
     if (!validTask(task)) throw new Error('任务快照响应不完整');
     if (this.stopped || this.binding !== this.transport.getConnectionBinding() || this.removed.has(task.id) || this.deletedSessions.has(task.sessionId)) return;
@@ -116,8 +160,10 @@ export class QaTaskClient {
       if (task.applicable !== false || old.applicable === false) return;
       task = this.supersededTask(old);
     }
-    if (old && old.revision >= task.revision && old.applicable === task.applicable) return;
-    this.tasks = [...this.tasks.filter((item: QaTask) => item.id !== task.id), task]; this.notify();
+    const recovered = this.connectionTaskId === task.id && !!this.connectionError;
+    if (recovered) this.connectionError = '';
+    if (old && old.revision >= task.revision && old.applicable === task.applicable) { if (recovered) this.notify(); return; }
+    this.tasks = [...this.tasks.filter((item: QaTask) => item.id !== task.id), task]; this.syncStream(); this.notify();
   }
   async read(id: string): Promise<void> {
     try {
@@ -156,7 +202,7 @@ export class QaTaskClient {
         const retained = response.tasks.filter(taskRetained).map((task: QaTaskSummary) => task.sessionId);
         const wanted = response.tasks.filter((task: QaTaskSummary) => {
           const old = this.tasks.find((item: QaTask) => item.id === task.id);
-          return old ? old.revision < task.revision || old.applicable !== task.applicable : taskRetained(task) || latest.get(task.sessionId)?.id === task.id &&
+          return old ? old.revision < task.revision || old.applicable !== task.applicable || this.connectionTaskId === task.id && !!this.connectionError : taskRetained(task) || latest.get(task.sessionId)?.id === task.id &&
             (task.saveState !== 'saved' && task.saveState !== 'deleted' || retained.includes(task.sessionId));
         });
         await Promise.all(wanted.map(async (task: QaTaskSummary): Promise<void> => {
@@ -178,7 +224,7 @@ export class QaTaskClient {
         this.error = error instanceof Error ? error.message : '任务读取失败，请重试'; this.notify();
       }
     };
-    this.refreshing = work().finally(() => { this.refreshing = undefined; });
+    this.refreshing = work().finally(() => { this.refreshing = undefined; this.syncStream(); });
     return this.refreshing;
   }
   async readSessionTasks(sessionId: string): Promise<void> {

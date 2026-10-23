@@ -16,6 +16,9 @@ class ReaderFrameBridge {
   onViewportReady: (sequence: number) => void = () => {};
   onFailed: (sequence: number) => void = () => {};
   onActiveHeading: (headingId: string) => void = () => {};
+  onQaFollowStopped: (key: string) => void = () => {};
+  qaFollowStopped(key: string): void { this.onQaFollowStopped(key); }
+
   onQaQuestionEdit: (key: string, id: string, token: string, action: string, value: string) => void = () => {};
 
   qaQuestionEdit(key: string, id: string, token: string, action: string, value: string): void { this.onQaQuestionEdit(key, id, token, action, value); }
@@ -56,6 +59,7 @@ export struct MarkdownReader {
   @Prop @Watch('contentTopInsetChanged') contentTopInset: number = 0;
   @Prop @Watch('contentBottomInsetChanged') contentBottomInset: number = 0;
   @Prop followEnd: boolean = false;
+  @Prop presentationFollowEnd: boolean = false;
   @Prop @Watch('contentChanged') scrollToEndRequestRevision: number = 0;
   @Prop resetScrollOnContentChange: boolean = false;
   @Prop @Watch('contentChanged') documentKey: string = '';
@@ -79,6 +83,7 @@ export struct MarkdownReader {
   onCitationLink: (date: string, heading: string, headingIndex: number) => void = () => {};
   onWikiCitationLink: (pageId: string, title: string) => void = () => {};
   onWikiReviewLink: (reviewId: string) => void = () => {};
+  onQaFollowStopped: () => void = () => {};
   onQaAnswerAction: (id: string, action: string, target: string) => void = () => {};
   onQaQuestionEdit: (id: string, token: string, action: string, value: string) => void = () => {};
   onQaAttemptAction: (id: string, action: string) => void = () => {};
@@ -138,6 +143,9 @@ export struct MarkdownReader {
 
   aboutToAppear(): void {
     this.active = true;
+    this.frameBridge.onQaFollowStopped = (key: string) => {
+      if (this.active && this.ready && this.contentMode === 'qa' && key === this.documentKey) this.onQaFollowStopped();
+    };
     this.frameBridge.onQaQuestionEdit = (key: string, id: string, token: string, action: string, value: string) => {
       if (this.active && this.ready && this.contentMode === 'qa' && key === this.documentKey &&
         typeof id === 'string' && id.length > 0 && id.length <= 120 && ['change', 'send', 'cancel', 'copy', 'review'].includes(action) &&
@@ -181,6 +189,7 @@ export struct MarkdownReader {
   }
 
   aboutToDisappear(): void {
+    if (this.ready && this.contentMode === 'qa') this.controller.runJavaScript('window.cancelQaPresentation?.()');
     this.active = false;
     this.renderSequence++;
     this.viewportSequence++;
@@ -261,7 +270,7 @@ export struct MarkdownReader {
       usesWideTypography(this.workspaceBreakpoint) ? 'wide' : 'compact',
       this.targetHeading, this.targetHeadingIndex, this.targetHeadingId, this.targetKind,
       this.targetQuery, this.targetRevision, this.followEnd, this.resetScrollOnContentChange,
-      this.documentKey, Math.max(0, this.restoreScrollOffset), this.scrollToEndRequestRevision
+      this.documentKey, Math.max(0, this.restoreScrollOffset), this.scrollToEndRequestRevision, this.presentationFollowEnd
     ]);
   }
 
@@ -319,7 +328,8 @@ export struct MarkdownReader {
     const reuseContent = this.contentMode === 'log' && this.completedContentKey === this.desiredContentKey();
     if (!reuseContent) this.completedContentKey = '';
     const renderContent = reuseContent ? 'Promise.resolve()' :
-      `window.renderMarkdown(${markdown}, ${token}, '${theme}', ${contentMode}, ${origin})`;
+      `window.renderMarkdown(${markdown}, ${token}, '${theme}', ${contentMode}, ${origin}, ` +
+      `${JSON.stringify(this.documentKey)}, ${this.presentationFollowEnd})`;
     this.controller.runJavaScript(
       (documentChanged ? 'window.clearLocatedHeading(); ' : '') +
       `document.documentElement.style.setProperty('--content-top-inset', '${contentTopInset}px'); ` +
@@ -521,7 +531,7 @@ export struct MarkdownReader {
         .nestedScroll({ scrollForward: NestedScrollMode.SELF_FIRST, scrollBackward: NestedScrollMode.SELF_FIRST })
         .onDrop(this.onImageDrop)
         .javaScriptAccess(true)
-        .javaScriptProxy({ object: this.frameBridge, name: 'readerFrames', methodList: ['rendered', 'viewportReady', 'previewImage', 'failed', 'activeHeading', 'bottomInsetReady', 'qaQuestionEdit'], controller: this.controller })
+        .javaScriptProxy({ object: this.frameBridge, name: 'readerFrames', methodList: ['rendered', 'viewportReady', 'previewImage', 'failed', 'activeHeading', 'bottomInsetReady', 'qaQuestionEdit', 'qaFollowStopped'], controller: this.controller })
         .onAreaChange((_oldArea, area) => {
           if (this.stableViewport) return;
           this.viewportWidthPx = this.getUIContext().vp2px(Number(area.width));

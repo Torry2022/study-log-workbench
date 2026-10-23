@@ -115,6 +115,7 @@ export function RagWorkspace({
   const copyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [composerHidden, setComposerHidden] = useState(false);
+  const [composerDocked, setComposerDocked] = useState(false);
   const [expandedCitationKey, setExpandedCitationKey] = useState<string | null>(null);
   const enabled = active && visible;
   const output = messages.at(-1);
@@ -128,13 +129,6 @@ export function RagWorkspace({
     };
   }, []);
 
-  useEffect(() => {
-    if (!enabled) return;
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    textarea.style.height = "auto";
-    textarea.style.height = `${Math.min(textarea.scrollHeight, 180)}px`;
-  }, [enabled, question]);
 
   useEffect(() => {
     if (enabled && focusRequestToken > lastFocusToken.current) {
@@ -172,6 +166,28 @@ export function RagWorkspace({
     scrollYRef.current = window.scrollY;
   }, [enabled]);
 
+  const updateComposerDock = useCallback(() => {
+    if (!enabled) return;
+    const conversation = workspaceRef.current?.querySelector('.rag-conversation');
+    if (!conversation) return;
+    const lastMessage = conversation.querySelector(".rag-message:last-child");
+    const answer = lastMessage?.querySelector(".rag-answer");
+    const terminal = lastMessage?.querySelector(".rag-answer-pending, .rag-message-state, .rag-answer-actions");
+    const tail = answer ? answer.getBoundingClientRect().bottom : terminal ? terminal.getBoundingClientRect().top : conversation.getBoundingClientRect().bottom;
+    setComposerDocked(tail <= window.innerHeight);
+  }, [enabled]);
+  useLayoutEffect(updateComposerDock);
+
+  useLayoutEffect(() => {
+    if (!enabled) return;
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const atBottom = document.documentElement.scrollHeight - window.scrollY - window.innerHeight <= 2;
+    textarea.style.height = 'auto';
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 180)}px`;
+    if (atBottom) { readingAnchorRef.current = null; followLatest(); }
+  }, [enabled, question, followLatest]);
+
   useLayoutEffect(() => {
     if (!enabled) {
       wasAnswerStartTokenRef.current = answerStartToken;
@@ -207,12 +223,13 @@ export function RagWorkspace({
       if (!root.getClientRects().length) { followOutputRef.current = false; readingAnchorRef.current = null; return; }
       if (followOutputRef.current) followLatest();
       else restoreReading();
+      updateComposerDock();
     });
     observer.observe(root);
     const content = root.querySelector(".rag-message-list");
     if (content) observer.observe(content);
     return () => observer.disconnect();
-  }, [enabled, sessionNavigationToken, hasMessages, restoreReading, followLatest]);
+  }, [enabled, sessionNavigationToken, hasMessages, restoreReading, followLatest, updateComposerDock]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -247,6 +264,7 @@ export function RagWorkspace({
       const maximum = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
       const clamped = scrollYRef.current > maximum + 1 && Math.abs(currentScrollY - maximum) <= 1;
       scrollYRef.current = currentScrollY;
+      updateComposerDock();
       // A shorter document can clamp the viewport upward without user input.
       if (delta < -1 && !clamped) followOutputRef.current = false;
       else if (presenting && delta > 0 && remaining <= 2) followOutputRef.current = true;
@@ -281,12 +299,14 @@ export function RagWorkspace({
     window.addEventListener("touchstart", handleTouchStart, { passive: true });
     window.addEventListener("touchmove", handleTouchMove, { passive: true });
     window.addEventListener("keydown", handleKey);
+    window.addEventListener("resize", updateComposerDock);
     return () => {
       window.removeEventListener("scroll", handleScroll); window.removeEventListener("wheel", handleWheel);
       window.removeEventListener("touchstart", handleTouchStart); window.removeEventListener("touchmove", handleTouchMove);
       window.removeEventListener("keydown", handleKey);
+      window.removeEventListener("resize", updateComposerDock);
     };
-  }, [enabled, generating, presenting, question]);
+  }, [enabled, generating, presenting, question, updateComposerDock]);
 
   function submit(event?: FormEvent) {
     event?.preventDefault();
@@ -334,7 +354,9 @@ export function RagWorkspace({
   }, []);
 
   // Bottom ownership survives completion until the reader acts on the conversation.
-  const releaseFollowing = () => { followOutputRef.current = false; };
+  const releaseFollowing = (event: { target: EventTarget | null }) => {
+    if (event.target instanceof Element && event.target.closest(".rag-conversation")) followOutputRef.current = false;
+  };
   const timeSeparators = ragTimeSeparators(messages.map(message => message.id), messageTimes || new Map());
 
   return (<>
@@ -501,7 +523,7 @@ export function RagWorkspace({
         )}
       </div>
 
-      <div className={`rag-composer-slot${composerHidden ? " is-hidden" : ""}`}>
+      <div className={`rag-composer-slot${composerHidden ? " is-hidden" : ""}${composerDocked ? " is-at-end" : ""}`}>
       <form className={`rag-composer${composerHidden ? " is-hidden" : ""}`} onSubmit={submit} ref={composerRef}>
         {availability}
         <textarea

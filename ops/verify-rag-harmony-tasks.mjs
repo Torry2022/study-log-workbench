@@ -27,7 +27,7 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function until(read, accept, timeout = 20000) {
   const start = Date.now(); while (true) { const value = await read(); if (accept(value)) return value; if (Date.now() - start > timeout) throw Error(`Timed out: ${JSON.stringify(value)}`); await pause(40); }
 }
-let web, base, token, streams = 0, active = 0, peak = 0, serverLog = '', current, losePost = false, heldRead;
+let web, base, token, streams = 0, active = 0, peak = 0, serverLog = '', current, losePost = false, heldRead, disconnectNextEvent = false;
 const waiting = new Map(), clients = [];
 const model = http.createServer(async (req, res) => {
   let raw = ''; for await (const chunk of req) raw += chunk;
@@ -85,7 +85,10 @@ try {
           const response = await fetch(url, { method: request.method, headers: request.headers, body: request.body, signal: controller.signal });
           const handler = configuration?.requestConfiguration?.tracing?.httpEventsHandler;
           const chunks = [];
-          for await (const chunk of response.body) { chunks.push(chunk); handler?.onDataReceive?.(chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength)); }
+          for await (const chunk of response.body) {
+            chunks.push(chunk); handler?.onDataReceive?.(chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength));
+            if (disconnectNextEvent && url.pathname.endsWith('/events')) { disconnectNextEvent = false; controller.abort(); throw Error('synthetic task observation disconnect'); }
+          }
           const bytes = Buffer.concat(chunks), value = { statusCode: response.status, body: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), toString: () => bytes.toString('utf8') };
           if (request.method === 'POST' && url.pathname.endsWith('/rag/tasks') && losePost) { losePost = false; throw Error('synthetic acknowledgement lost'); }
           if (heldRead?.path === url.pathname) { const hold = heldRead; heldRead = undefined; hold.started(); await hold.gate; }
@@ -110,9 +113,29 @@ try {
     clients.push(controller); controller.activate(); await client.connect(); return { client, controller };
   };
   current = await native(); current.controller.question = '合成保存应如何操作？'; const n1 = streams + 1; await current.controller.send(); const sid = current.controller.sessionId;
-  await until(() => streams, n => n >= n1); current.controller.dispose(); finish(n1); await complete((await call('/rag/tasks')).tasks.find(task => task.sessionId === sid).id);
+  await until(() => streams, n => n >= n1);
+  await until(() => current.controller.messages.at(-1)?.content || '', text => text.includes(`合成回答${n1}`));
+  assert.equal(current.controller.sending, true); assert.ok(waiting.has(n1), 'native text arrives while model is still held open');
+  record('native actual GET events expose first answer fragments before model completion');
+  current.controller.dispose(); finish(n1); await complete((await call('/rag/tasks')).tasks.find(task => task.sessionId === sid).id);
   current = await native(); await current.controller.openSession(sid); assert.equal(current.controller.messages.length, 2); assert.ok(current.controller.messages[1].citations.length); assert.equal(streams, n1);
   record('native source submits once, disconnects, then reopens the server-saved cited answer');
+  await until(() => ({ sending: current.controller.sending, loading: current.controller.sessionLoading, saving: current.controller.taskSaving, blocked: current.controller.taskBlocked, saveError: current.controller.taskSaveError }), value => !value.sending && !value.loading && !value.saving && !value.blocked && !value.saveError);
+  const onNativeChange = current.client.onChange; report.connectionErrors = [];
+  current.client.onChange = () => { if (current.client.connectionError) report.connectionErrors.push(current.client.connectionError); onNativeChange(); };
+  disconnectNextEvent = true; const continuous = streams + 1;
+  current.controller.question = '合成保存下一次如何操作？'; await current.controller.send();
+  await until(() => current.controller.messages.at(-1)?.content || '', text => text.includes(`合成回答${continuous}`));
+  await until(() => report.connectionErrors.length, value => value > 0);
+  const accepted = current.client.tasks.find(task => task.sessionId === sid && task.state === 'running'); assert.ok(accepted);
+  await current.client.refresh();
+  await until(() => current.client.connectionError, value => value === '');
+  assert.equal(streams, continuous); assert.ok(waiting.has(continuous));
+  assert.ok(current.controller.messages.at(-1).content.includes(`合成回答${continuous}`));
+  await current.controller.stop(); await until(() => readTask(accepted.id), value => value.state === 'cancelled');
+  await current.client.refresh(); assert.equal(current.controller.sending, false);
+  record('continuous native question reconnects the same observed task without duplicate execution and stops explicitly');
+
 
   const local = new Map(), createWebClient = () => new RagTaskClient(capabilities.instanceId, { getItem: key => local.get(key) || null, setItem: (key, value) => local.set(key, value), removeItem: key => local.delete(key) },
     { task() {}, pending() {}, rejected(_input, error) { throw error; }, missing() {}, error() {} }, async (route, init = {}) => {
@@ -191,7 +214,8 @@ try {
     // A fresh native viewer retries the latest failed web task, while older
     // retained results remain readable beside their own question.
     current.controller.dispose(); current = await native(); await current.controller.openSession(sid); assert.equal(current.controller.taskCanRetry, true);
-    const retryStream = streams + 1, priorIds = new Set(current.client.tasks.map(task => task.id)); await current.controller.retryTask();
+    await until(() => ({ loading: current.controller.sessionLoading, blocked: current.controller.taskBlocked, saving: current.controller.taskSaving }), value => !value.loading && !value.saving);
+    const retryStream = streams + 1, priorIds = new Set(current.client.tasks.map(task => task.id)); await current.controller.retryAnswer(`${original.id}`);
     const retriedId = current.client.tasks.find(task => task.sessionId === sid && !priorIds.has(task.id))?.id; assert.ok(retriedId); assert.notEqual(retriedId, original.id);
     const retried = await readTask(retriedId); assert.equal(retried.replaceLast, replaceLast); assert.equal(retried.question, originalInput.question);
     await until(() => streams, value => value >= retryStream); finish(retryStream); assert.equal((await complete(retriedId)).saveState, 'saved');

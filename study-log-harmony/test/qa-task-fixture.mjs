@@ -17,6 +17,10 @@ export async function loadQaTasks(apiExports) {
       require(name) { if (!(name in dependencies)) throw Error(`Missing dependency: ${name}`); return dependencies[name]; } });
     dependencies[`./${name}`] = module.exports; return module.exports;
   };
+  const cancellationSource = await readFile(new URL('../entry/src/main/ets/common/network/ReadCancellation.ets', import.meta.url), 'utf8');
+  const cancellationModule = { exports: {} };
+  runInNewContext(ts.transpileModule(cancellationSource, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, { module: cancellationModule, exports: cancellationModule.exports, Error });
+  dependencies['../../common/network/ReadCancellation'] = cancellationModule.exports;
   const models = await load('QaTaskModels'); await load('QaStreamParser');
   const { QaTaskClient } = await load('QaTaskClient'), { QaSessionController } = await load('QaSessionController'), { QaNavigationController } = await load('QaNavigationController');
   return { QaTaskClient, QaSessionController, QaNavigationController, ApiError: network.ApiError, ...models };
@@ -45,6 +49,7 @@ export async function fixture() {
     write: async raw => { if (local.fail) throw Error('storage unavailable'); local.raw = raw; writes.push(raw); } };
   const transport = {
     getConnectionBinding: () => 'synthetic-connection',
+    getEventStreamForInstance: (path, instance, emit, cancellation) => new Promise(resolve => cancellation.bind(resolve)),
     put: async (path, body) => {
       requests.push({ method: 'PUT', path, body: plain(body) });
       const saved = sessions.get(path.split('/').at(-1));

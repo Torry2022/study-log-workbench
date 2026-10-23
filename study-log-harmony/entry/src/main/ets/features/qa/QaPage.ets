@@ -30,6 +30,8 @@ interface QaRenderMessage {
   canDiscard?: boolean;
   role: string;
   content: string;
+  status?: string;
+  stage?: string;
   failure?: string;
   attemptId?: string;
   groundingWarning?: string;
@@ -265,6 +267,11 @@ export struct QaPage {
     return this.data.messages.length > 0 && this.readerScrollOffset > 8 && !this.questionFocused && !this.data.sending;
   }
 
+  private handleReaderProgress(progress: number): void {
+    this.readerScrollProgress = progress;
+    if (progress >= 0.999 && this.readerScrollOffset > 8) this.setComposerHidden(false);
+  }
+
   @Builder
   private qaBackToTopButton() {
     Stack() {
@@ -306,7 +313,9 @@ export struct QaPage {
       editToken: edit?.messageId === message.id ? edit.token : undefined,
       editRevision,
       documentKey: this.data.sessionDocumentKey,
-      content: message.role === 'user' ? message.content : this.answerMarkdown(message) || this.data.statusText,
+      content: message.role === 'user' ? message.content : this.answerMarkdown(message),
+      status: message.status,
+      stage: message.role === 'assistant' && message.status === 'streaming' ? this.data.statusText : '',
       failure: this.data.failedAttempt?.answerId === message.id ? this.data.errorMessage : '',
       attemptId: this.data.failedAttempt?.answerId === message.id ? message.id : '',
       groundingWarning: message.groundingWarning
@@ -463,16 +472,18 @@ export struct QaPage {
                   this.onSessionReady();
                 },
                 contentMode: 'qa',
-                contentBottomInset: this.composerHidden ? 0 : this.composerHeight,
+                contentBottomInset: this.composerHeight,
                 fillAvailableWidth: true,
                 followEnd: this.data.sending && this.followAnswer && !this.data.questionEdit()?.error,
+                presentationFollowEnd: this.followAnswer && !this.data.questionEdit()?.error,
+                onQaFollowStopped: () => this.followAnswer = false,
                 showBackToTop: false,
                 trackScrollProgress: true,
                 scrollToTopRequestRevision: this.scrollToTopRequestRevision,
                 scrollToEndRequestRevision: this.answerVersionRevision,
                 themePreference: this.themePreference,
                 onScrollPosition: (yOffset: number, layoutChange: boolean) => this.handleReaderScroll(yOffset, layoutChange),
-                onScrollProgress: (progress: number) => this.readerScrollProgress = progress,
+                onScrollProgress: (progress: number) => this.handleReaderProgress(progress),
                 onTopDividerPosition: (yOffset: number) => {
                   this.topDividerOffset = yOffset;
                   this.onScrollStateChange(yOffset > 0 && this.readerScrollOffset >= yOffset - 0.5);
@@ -550,9 +561,6 @@ export struct QaPage {
                   }.height(42).padding(3).backgroundColor($r('app.color.surface_soft'))
                   .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(6).clip(true)
                   Blank()
-                  if (this.data.sending && this.data.statusText) {
-                    Text(this.data.statusText).fontSize(11).fontColor($r('app.color.muted')).maxLines(1)
-                  }
                   Button({ type: ButtonType.Normal }) {
                     if (this.data.sending) Rect().width(13).height(13).fill(Color.White).radius(2)
                     else Image($r('app.media.send')).width(17).height(17).objectFit(ImageFit.Contain)

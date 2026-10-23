@@ -240,7 +240,7 @@ export class QaSessionController {
         saveError: task?.state === 'succeeded' && ['error', 'conflict'].includes(task.saveState) ? task.saveError || '回答已保留，尚未写入会话' : '',
         canSave: task?.state === 'succeeded' && task.saveState === 'error',
         canDiscard: task?.state === 'succeeded' && ['error', 'conflict'].includes(task.saveState),
-        canRetry: !!task && task.id === latestTask(tasks, this.sessionId)?.id && ['failed', 'cancelled', 'interrupted'].includes(task.state) && !this.taskBlocked,
+        canRetry: !!task && task.id === latestTask(tasks, this.sessionId)?.id && ['failed', 'cancelled', 'interrupted'].includes(task.state) && !this.sessionLoading && !this.taskSaving && !this.sending && !this.blockTaskSubmission(false),
         canRegenerate: index === saved.length - 2 && answer.id === selected.id && !this.question.trim() && !this.sending && !this.taskSaving && !this.taskBlocked && !this.taskSaveError };
       const origin = tasks.find((task: QaTask) => `${task.id}:user` === question.id && !task.replaceLast);
       const renderedQuestion: QaAnswerMessage = { id: question.id, role: question.role, content: question.content,
@@ -369,6 +369,7 @@ export class QaSessionController {
     this.errorMessage = '';
     this.sourceCitations = [];
     if (this.taskClient) {
+      this.taskClient.viewSession(''); this.taskError = this.taskClient.error;
       this.selectedTask = undefined; this.taskSaveError = '';
       this.taskCanRetry = false; this.sending = false; this.taskFingerprint = ''; this.taskBlocked = !this.taskClient.ready;
       this.canonicalReadFailed = false;
@@ -641,7 +642,8 @@ export class QaSessionController {
   private applyTasks(): void {
     const client = this.taskClient;
     if (!client || this.pageDisposed) return;
-    this.taskReady = client.ready; this.taskError = client.error;
+    client.viewSession(this.sessionId);
+    this.taskReady = client.ready; this.taskError = client.error || client.connectionError;
     const navigation = JSON.stringify([client.tasks.map((task: QaTask) => [task.id, task.state, task.saveState, task.applicable]), client.pending]);
     if (navigation !== this.navigationFingerprint) { this.navigationFingerprint = navigation; this.publishTaskSessions(); this.loadSessions(); }
     const latest = latestTask(client.tasks, this.sessionId);
@@ -670,7 +672,7 @@ export class QaSessionController {
         { id: `${pending.submissionId}:assistant`, role: 'assistant', content: '', status: 'streaming' }];
       this.statusText = pending.cancelRequested ? '正在确认停止…' : '正在确认问答任务…';
     } else if (task) {
-      this.statusText = task.state === 'queued' ? '正在等待前一项问答完成…' : taskActive(task) ? task.stage : task.saveState === 'pending' ? '正在保存回答…' : '';
+      this.statusText = task.state === 'queued' ? '正在等待执行…' : taskActive(task) ? task.stage : task.saveState === 'pending' ? '正在保存回答…' : '';
       this.answerMode = task.mode; this.errorMessage = task.state === 'failed' || task.state === 'interrupted' ? task.error : '';
       this.messages = taskMessages(task, this.canonical.get(this.sessionId), task.id !== latest?.id);
       if (task.editMessageId && !taskActive(task) && task.state !== 'succeeded') {
@@ -698,15 +700,17 @@ export class QaSessionController {
     this.reportPending();
   }
 
-  private blockTaskSubmission(): boolean {
+  private blockTaskSubmission(requireCompleteAnswer: boolean = true): boolean {
     const client = this.taskClient, task = this.selectedTask;
-    const selected = this.answerMessages().find((item: QaAnswerMessage) => item.questionId ===
-      this.canonical.get(this.sessionId)?.messages.slice(-2)[0]?.id);
-    return !client?.ready || this.deletedSessions.has(this.sessionId) || this.canonicalReadFailed ||
-      !!selected && (selected.status === 'streaming' || selected.status === 'error' || selected.status === 'stopped' || !selected.content.trim()) ||
+    if (!client?.ready || this.deletedSessions.has(this.sessionId) || this.canonicalReadFailed ||
       !!task && task.state === 'succeeded' && task.saveState === 'pending' ||
       !!client?.pending.some((input: QaTaskSubmission) => input.sessionId === this.sessionId) ||
-      !!client?.tasks.some((item: QaTask) => item.sessionId === this.sessionId && taskActive(item) && item.id !== task?.id);
+      !!client?.tasks.some((item: QaTask) => item.sessionId === this.sessionId && taskActive(item) && item.id !== task?.id)) return true;
+    // A retry addresses the failed execution, not the answer currently previewed as conversation history.
+    if (!requireCompleteAnswer) return false;
+    const selected = this.answerMessages().find((item: QaAnswerMessage) => item.questionId ===
+      this.canonical.get(this.sessionId)?.messages.slice(-2)[0]?.id);
+    return !!selected && (selected.status === 'streaming' || selected.status === 'error' || selected.status === 'stopped' || !selected.content.trim());
   }
 
   private async readTaskSession(id: string, revision: number): Promise<void> {
@@ -819,11 +823,11 @@ export class QaSessionController {
 
   private async sendTask(replaceLast: boolean = false, retryTaskId: string = ''): Promise<void> {
     const client = this.taskClient, question = this.question.trim();
-    if (!client || this.questionEdit() || !question || question.length > 2000 || this.sending || this.sessionLoading || this.taskSaving || this.taskBlocked || this.taskSaveError) return;
+    if (!client || this.questionEdit() || !question || question.length > 2000 || this.sending || this.sessionLoading || this.taskSaving || (retryTaskId ? this.blockTaskSubmission(false) : this.taskBlocked) || this.taskSaveError) return;
     if (!client.ready) { this.errorMessage = '任务协议尚未就绪，请重试检查'; return; }
     const originSessionId = this.sessionId;
     this.sending = true;
-    if (!await this.commitAnswerSelection()) {
+    if (!retryTaskId && !await this.commitAnswerSelection()) {
       if (this.sessionId === originSessionId) this.sending = false;
       else { this.taskFingerprint = ''; this.applyTasks(); }
       return;
@@ -843,7 +847,7 @@ export class QaSessionController {
   }
 
   async retryTask(): Promise<void> {
-    if (!this.selectedTask || !this.taskCanRetry || this.taskBlocked) return;
+    if (!this.selectedTask || !this.taskCanRetry || this.blockTaskSubmission(false)) return;
     const original = this.selectedTask;
     this.question = original.question; await this.sendTask(original.replaceLast, original.id);
   }

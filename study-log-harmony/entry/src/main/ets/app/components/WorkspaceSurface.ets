@@ -335,47 +335,49 @@ export struct WorkspaceSurface {
           onSetTheme: (value: string) => this.navigationCommands.theme(value),
           onClose: () => this.desktopThemeOpen = false })
       }
-      DelayedLoadingHint({ loading: this.selectedModule === 0 && this.logLoadingHint.loading,
-        text: '正在加载日志…' })
-        .width(this.logLoadingHint.width).height(this.logLoadingHint.height)
-        .position({ x: this.logLoadingHint.x - this.reading.workspaceOriginX,
-          y: this.logLoadingHint.y - this.reading.workspaceOriginY })
-        .zIndex(20).hitTestBehavior(HitTestMode.None)
-      DelayedLoadingHint({ loading: this.selectedModule === 3 && this.modules.qaLoadingHint.loading,
-        text: '正在读取会话…' })
-        .width(this.modules.qaLoadingHint.width).height(this.modules.qaLoadingHint.height)
-        .position({ x: this.modules.qaLoadingHint.x - this.reading.workspaceOriginX,
-          y: this.modules.qaLoadingHint.y - this.reading.workspaceOriginY })
-        .zIndex(20).hitTestBehavior(HitTestMode.None)
-      DelayedLoadingHint({ loading: this.selectedModule === 1 && this.modules.notesLoadingHint.loading,
-        text: '正在加载随记…' })
-        .width(this.modules.notesLoadingHint.width).height(this.modules.notesLoadingHint.height)
-        .position({ x: this.modules.notesLoadingHint.x - this.reading.workspaceOriginX,
-          y: this.modules.notesLoadingHint.y - this.reading.workspaceOriginY })
-        .zIndex(20).hitTestBehavior(HitTestMode.None)
-      DelayedLoadingHint({ loading: this.selectedModule === 2 && this.modules.favoritesLoadingHint.loading,
-        text: '正在加载收藏…' })
-        .width(this.modules.favoritesLoadingHint.width).height(this.modules.favoritesLoadingHint.height)
-        .position({ x: this.modules.favoritesLoadingHint.x - this.reading.workspaceOriginX,
-          y: this.modules.favoritesLoadingHint.y - this.reading.workspaceOriginY })
-        .zIndex(20).hitTestBehavior(HitTestMode.None)
-      if (this.selectedModule === 4 && !this.modules.taxonomyOpen) {
-        DelayedLoadingHint({ loading: this.modules.statsLoadingHint.loading,
-          text: '正在加载统计…' })
-          .width(this.modules.statsLoadingHint.width).height(this.modules.statsLoadingHint.height)
-          .position({ x: this.modules.statsLoadingHint.x - this.reading.workspaceOriginX,
-            y: this.modules.statsLoadingHint.y - this.reading.workspaceOriginY })
+      if (!this.sidebar.navigationOpen && !this.searchOpen && !this.modules.taxonomyOpen) {
+        DelayedLoadingHint({ loading: this.selectedModule === 0 && this.logLoadingHint.loading,
+          text: '正在加载日志…' })
+          .width(this.logLoadingHint.width).height(this.logLoadingHint.height)
+          .position({ x: this.logLoadingHint.x - this.reading.workspaceOriginX,
+            y: this.logLoadingHint.y - this.reading.workspaceOriginY })
           .zIndex(20).hitTestBehavior(HitTestMode.None)
+        DelayedLoadingHint({ loading: this.selectedModule === 3 && this.modules.qaLoadingHint.loading,
+          text: '正在读取会话…' })
+          .width(this.modules.qaLoadingHint.width).height(this.modules.qaLoadingHint.height)
+          .position({ x: this.modules.qaLoadingHint.x - this.reading.workspaceOriginX,
+            y: this.modules.qaLoadingHint.y - this.reading.workspaceOriginY })
+          .zIndex(20).hitTestBehavior(HitTestMode.None)
+        DelayedLoadingHint({ loading: this.selectedModule === 1 && this.modules.notesLoadingHint.loading,
+          text: '正在加载随记…' })
+          .width(this.modules.notesLoadingHint.width).height(this.modules.notesLoadingHint.height)
+          .position({ x: this.modules.notesLoadingHint.x - this.reading.workspaceOriginX,
+            y: this.modules.notesLoadingHint.y - this.reading.workspaceOriginY })
+          .zIndex(20).hitTestBehavior(HitTestMode.None)
+        DelayedLoadingHint({ loading: this.selectedModule === 2 && this.modules.favoritesLoadingHint.loading,
+          text: '正在加载收藏…' })
+          .width(this.modules.favoritesLoadingHint.width).height(this.modules.favoritesLoadingHint.height)
+          .position({ x: this.modules.favoritesLoadingHint.x - this.reading.workspaceOriginX,
+            y: this.modules.favoritesLoadingHint.y - this.reading.workspaceOriginY })
+          .zIndex(20).hitTestBehavior(HitTestMode.None)
+        if (this.selectedModule === 4 && !this.modules.taxonomyOpen) {
+          DelayedLoadingHint({ loading: this.modules.statsLoadingHint.loading,
+            text: '正在加载统计…' })
+            .width(this.modules.statsLoadingHint.width).height(this.modules.statsLoadingHint.height)
+            .position({ x: this.modules.statsLoadingHint.x - this.reading.workspaceOriginX,
+              y: this.modules.statsLoadingHint.y - this.reading.workspaceOriginY })
+            .zIndex(20).hitTestBehavior(HitTestMode.None)
+        }
+        DelayedLoadingHint({ loading: (this.workspaceTransition.waitingKind === 'mode' ||
+          this.workspaceTransition.waitingKind === 'module') &&
+          !this.preparationHint().loading && this.preparationHint().width > 0,
+          text: '正在准备页面…' })
+          .width(this.preparationHint().width).height(this.preparationHint().height)
+          .position({ x: this.preparationHint().x - this.reading.workspaceOriginX,
+            y: this.preparationHint().y - this.reading.workspaceOriginY })
+          .zIndex(20).hitTestBehavior(HitTestMode.None)
+          .transition(floatingSurfaceTransition())
       }
-      DelayedLoadingHint({ loading: (this.workspaceTransition.waitingKind === 'mode' ||
-        this.workspaceTransition.waitingKind === 'module') &&
-        !this.preparationHint().loading && this.preparationHint().width > 0,
-        text: '正在准备页面…' })
-        .width(this.preparationHint().width).height(this.preparationHint().height)
-        .position({ x: this.preparationHint().x - this.reading.workspaceOriginX,
-          y: this.preparationHint().y - this.reading.workspaceOriginY })
-        .zIndex(20).hitTestBehavior(HitTestMode.None)
-        .transition(floatingSurfaceTransition())
       if (this.readingTransition.snapshot) {
         Stack({ alignContent: Alignment.TopStart }) {
           Image(this.readingTransition.snapshot).width(this.reading.readingImageWidth).height(this.reading.readingImageHeight)

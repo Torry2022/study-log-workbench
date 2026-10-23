@@ -290,7 +290,7 @@ export struct StatsPage {
     if (day === 0) {
       Row().height(40)
     } else {
-      Row({ space: 2 }) {
+      Stack({ alignContent: Alignment.Center }) {
         Text(day.toString())
           .fontSize(12)
           .fontColor(this.topicCount(day) > 0 ? $r('app.color.ink') : $r('app.color.muted_soft'))
@@ -298,13 +298,11 @@ export struct StatsPage {
           Text(this.topicCount(day).toString())
             .fontSize(8)
             .fontColor($r('app.color.primary_active'))
-            .translate({ y: -3 })
+            .position({ top: 4, right: 4 })
         }
       }
       .height(40)
       .width('100%')
-      .justifyContent(FlexAlign.Center)
-      .alignItems(VerticalAlign.Center)
       .backgroundColor(this.drilldownKind === 'day' && this.drilldownValue === this.dayDate(day) ?
         $r('app.color.primary_tint_strong') : (this.topicCount(day) > 2 ? $r('app.color.primary_tint_strong') :
           (this.topicCount(day) > 0 ? $r('app.color.primary_tint') : Color.Transparent)))

@@ -573,3 +573,6 @@
 
 .stats-workspace-v2:has(> .workspace-state-module) { padding-top: 28px; }
 @media (max-width: 1023px) { .stats-workspace-v2:has(> .workspace-state-module) { padding-top: 0; } }
+
+.stats-month-years { display: grid; gap: 16px; }
+.stats-month-year-label { margin: 0 10px 6px; color: var(--muted); font-size: 12px; font-weight: 400; }

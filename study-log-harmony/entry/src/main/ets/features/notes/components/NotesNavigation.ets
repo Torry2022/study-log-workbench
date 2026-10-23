@@ -46,7 +46,7 @@ export struct NotesNavigation {
         Row() {
           Row({ space: 7 }) {
             SymbolGlyph($r('sys.symbol.calendar')).fontSize(15).fontColor([$r('app.color.primary_active')])
-            Text('随记年份').attributeModifier(new NavigationSectionStyle())
+            Text('年份').attributeModifier(new NavigationSectionStyle())
           }.layoutWeight(1)
         }.width('100%').height(30).alignItems(VerticalAlign.Center)
       }
@@ -87,7 +87,7 @@ export struct NotesNavigation {
       ListItem() {
         Row({ space: 7 }) {
           Image($r('app.media.sidebar_tag')).width(15).height(15).objectFit(ImageFit.Contain)
-          Text('随记标签').attributeModifier(new NavigationSectionStyle())
+          Text('标签').attributeModifier(new NavigationSectionStyle())
         }.width('100%')
       }
       ListItem() {

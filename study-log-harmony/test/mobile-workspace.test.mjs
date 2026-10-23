@@ -199,3 +199,17 @@ test('a preview arriving after Back cannot reopen the history detail', async () 
   assert.equal(h.selected == null, true); assert.equal(h.preview == null, true);
   assert.equal(h.previewLoading, false);
 });
+
+
+test('statistics groups retain labels, sort years and months, and leave the input intact', async () => {
+  const Host = await methods('features/stats/components/StatsNavigation.ets', ['monthYears', 'monthsForYear']);
+  const months = [{ id: '2024-12', label: '2024-12' }, { id: '2026-01', label: '2026-01' },
+    { id: '2025-03', label: '2025-03' }, { id: '2026-10', label: '2026-10' }];
+  const original = JSON.stringify(months);
+  const h = Object.assign(new Host(), { statsMonths: months });
+  assert.deepEqual(h.monthYears(), ['2026', '2025', '2024']);
+  assert.deepEqual(h.monthsForYear('2026').map(month => month.label), ['2026-10', '2026-01']);
+  assert.equal(JSON.stringify(months), original);
+  h.statsMonths = [];
+  assert.deepEqual(h.monthYears(), []);
+});

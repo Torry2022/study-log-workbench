@@ -22,6 +22,16 @@ export struct StatsNavigation {
       this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE;
   }
 
+  private monthYears(): string[] {
+    return Array.from(new Set(this.statsMonths.map((month: MonthSummary) => month.id.slice(0, 4))))
+      .sort((a: string, b: string) => b.localeCompare(a));
+  }
+
+  private monthsForYear(year: string): MonthSummary[] {
+    return this.statsMonths.filter((month: MonthSummary) => month.id.startsWith(`${year}-`))
+      .sort((a: MonthSummary, b: MonthSummary) => b.id.localeCompare(a.id));
+  }
+
   build() {
     List({ space: 12 }) {
       if (!this.monthsOnly) {
@@ -40,7 +50,7 @@ export struct StatsNavigation {
       ListItem() {
         Row({ space: 7 }) {
           SymbolGlyph($r('sys.symbol.calendar')).fontSize(15).fontColor([$r('app.color.primary_active')])
-          Text('统计月份').attributeModifier(new NavigationSectionStyle()).layoutWeight(1)
+          Text('月份').attributeModifier(new NavigationSectionStyle()).layoutWeight(1)
           Text(`${this.statsMonths.length} 个月`).fontSize(11).fontColor($r('app.color.muted_soft'))
         }.width('100%')
       }
@@ -62,9 +72,13 @@ export struct StatsNavigation {
             .width('100%').height(52).textAlign(TextAlign.Center)
         }
       } else {
+        ForEach(this.monthYears(), (year: string) => {
         ListItem() {
+          Column({ space: 6 }) {
+          Text(`${year}年`).fontSize(12).fontWeight(FontWeight.Regular).fontColor($r('app.color.muted'))
+            .width('100%').padding({ left: 10 })
           Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.SpaceBetween }) {
-            ForEach(this.statsMonths, (month: MonthSummary) => {
+            ForEach(this.monthsForYear(year), (month: MonthSummary) => {
               Button({ type: ButtonType.Normal }) {
                 Row() {
                   Text(month.label).fontSize(this.isLargeWorkspace() ? 14 : 12).fontWeight(FontWeight.Medium)
@@ -88,7 +102,9 @@ export struct StatsNavigation {
               .id(`stats_month_${month.id}`).accessibilitySelected(this.statsMonth === month.id)
             }, (month: MonthSummary) => month.id)
           }.width('100%')
+          }.width('100%')
         }
+        }, (year: string) => year)
       }
     }
     .layoutWeight(1).width('100%').padding({ left: 14, right: 14, top: 14, bottom: 28 })

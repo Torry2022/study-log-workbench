@@ -38,8 +38,8 @@ for (const [file, log] of [['logs/components/LogNavigation.ets', true], ['favori
     if (log) {
       assert.ok(source.includes('this.visibleMonths().length /'));
       assert.equal(source.split('this.dateActions()').length - 1, 1);
-      assert.ok(source.indexOf("Text('日志月份')") < source.indexOf("Text('日志日期')"));
-      assert.ok(source.indexOf("Text('日志日期')") < source.indexOf('this.dateActions()'));
+      assert.ok(source.indexOf("Text('月份')") < source.indexOf("Text('日期')"));
+      assert.ok(source.indexOf("Text('日期')") < source.indexOf('this.dateActions()'));
       assert.ok(source.indexOf('this.dateActions()') < source.indexOf('SearchField({'));
     }
   });

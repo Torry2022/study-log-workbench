@@ -62,7 +62,7 @@ export struct LogNavigation {
       ListItem() {
         Row({ space: 7 }) {
           SymbolGlyph($r('sys.symbol.calendar')).fontSize(15).fontColor([$r('app.color.primary_active')])
-          Text('日志月份').attributeModifier(new NavigationSectionStyle())
+          Text('月份').attributeModifier(new NavigationSectionStyle())
         }.width('100%')
       }
       ListItem() {
@@ -113,7 +113,7 @@ export struct LogNavigation {
       ListItem() {
         Row({ space: 7 }) {
           SymbolGlyph($r('sys.symbol.doc_text')).fontSize(15).fontColor([$r('app.color.primary_active')])
-          Text('日志日期').attributeModifier(new NavigationSectionStyle()).layoutWeight(1)
+          Text('日期').attributeModifier(new NavigationSectionStyle()).layoutWeight(1)
           this.jumpDatePicker()
         }.width('100%')
       }

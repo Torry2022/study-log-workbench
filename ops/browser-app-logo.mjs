@@ -27,7 +27,7 @@ try {
         return { width: rect.width, height: rect.height, radius: style.borderRadius, border: style.boxShadow, background: style.backgroundColor,
           images: [...element.querySelectorAll('img')].map(image => ({ src: image.getAttribute('src'), opacity: getComputedStyle(image).opacity, width: image.naturalWidth })) };
       });
-      assert.equal(geometry.background, theme === 'light' ? 'rgb(250, 249, 245)' : 'rgb(28, 26, 23)');
+      assert.equal(geometry.background, theme === 'light' ? 'rgb(245, 240, 232)' : 'rgb(28, 26, 23)');
       assert.equal(geometry.width, expectedSize); assert.equal(geometry.height, expectedSize);
       assert.equal(geometry.radius, stage === 'login' ? '11px' : '6px');
       assert.match(geometry.border, /inset/);

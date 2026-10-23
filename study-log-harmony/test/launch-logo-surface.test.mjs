@@ -10,7 +10,7 @@ test('animated launch logo uses the shared light and dark logo surface', async (
   const frame = source.slice(start, end);
   assert.match(frame, /\.width\(84\)[\s\S]*\.height\(84\)[\s\S]*\.borderRadius\(17\)[\s\S]*\.backgroundColor\(\$r\('app.color.logo_surface'\)\)/);
   assert.ok(!frame.includes('app.color.surface_soft'));
-  for (const [mode, expected] of [['base', '#FAF9F5'], ['dark', '#1C1A17']]) {
+  for (const [mode, expected] of [['base', '#F5F0E8'], ['dark', '#1C1A17']]) {
     const colors = JSON.parse(await readFile(new URL(`resources/${mode}/element/color.json`, root), 'utf8'));
     assert.equal(colors.color.find(item => item.name === 'logo_surface').value.toUpperCase(), expected);
   }

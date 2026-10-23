@@ -8,7 +8,7 @@
 node study-log-web/scripts/generate-app-logo.mjs
 ```
 
-生成脚本使用现有 Playwright Chromium，输出：
+生成脚本使用现有 Sharp 渲染兼容 PNG，输出：
 
 - 网页深色前景 `public/app-logo-dark.svg`。
 - 浅色 favicon `app/icon.svg`、深色 favicon `public/icon-dark.svg`；页面 metadata 按系统浅深色选择。浅色 PNG `app/icon.png` 作为兼容资源。
@@ -17,7 +17,7 @@ node study-log-web/scripts/generate-app-logo.mjs
 启动聚拢动画的 `launch_nodes/top/arrow/bottom.svg` 也由同一前景自动分层，保留 1024×1024 viewBox、描边和浅深色派生；不要手改分层或另写坐标。
 仅更新这些动画资源时执行 `node study-log-web/scripts/generate-app-logo.mjs --harmony-launch-only`，不会生成 PNG、启动浏览器或重写其他平台图标；前景元素结构变化时先复核四层角色及合成一致性。
 
-SVG 使用 1024×1024 坐标，兼容 PNG 为 512×512。网页登录页和工作台、桌面本机管理和连接窗口、鸿蒙 `AppLogo` 的浅色底为 `#FAF9F5`，深色底为 `#1C1A17`。组件的尺寸、圆角和边框沿用现有样式。完整 favicon 的外框按参考版本派生；Windows 打包脚本继续从同一透明图形源生成图标，保留现有 256px 尺寸和 48px 圆角，仅统一底色。
+SVG 使用 1024×1024 坐标，主体在唯一图形源内以中心 (512, 512) 等比放大 12%，派生资源不再叠加缩放；兼容 PNG 为 512×512。网页登录页和工作台、桌面本机管理和连接窗口、鸿蒙 `AppLogo` 的浅色底为 `#F5F0E8`，深色底为 `#1C1A17`。页面 canvas 和启动窗口背景仍为 `#FAF9F5`，只更改 Logo 自身底色。组件的尺寸、圆角和边框沿用现有样式。完整 favicon 的外框按参考版本派生；Windows 打包脚本继续从同一透明图形源生成图标，保留现有 256px 尺寸和 48px 圆角，仅统一底色。
 
 鸿蒙应用及 Ability 仍引用既有 `app_icon_layered`，其背景和前景改由脚本派生。启动窗口的 `transparent_start_window_icon.png` 仍保持透明，启动窗口底色保持既有浅深色配置；不改变启动行为。通用版没有个人版官网和开发历程资源，也没有 AppScope 中的兼容 PNG，因此不新增这些无引用的副本。
 

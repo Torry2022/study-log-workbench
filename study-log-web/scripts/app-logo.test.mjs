@@ -10,9 +10,11 @@ const web = path.resolve(import.meta.dirname, '..');
 const read = async file => (await fs.readFile(path.resolve(web, file), 'utf8')).replace(/\r\n/g, '\n');
 test('Logo foregrounds and compatibility icons derive from the same drawing', async () => {
   const light = await read('public/app-logo-light.svg');
+  assert.equal((light.match(/transform=/g) || []).length, 1);
+  assert.match(light, /transform="translate\(512 512\) scale\(1\.12\) translate\(-512 -512\)"/);
   const dark = light.replaceAll('#D07A5F', '#d4876a').replaceAll('#171614', '#f5f0e8');
   assert.equal(await read('public/app-logo-dark.svg'), dark);
-  for (const [theme, foreground, background, border] of [['base', light, '#FAF9F5', '#e6dfd8'], ['dark', dark, '#1C1A17', '#353028']]) {
+  for (const [theme, foreground, background, border] of [['base', light, '#F5F0E8', '#e6dfd8'], ['dark', dark, '#1C1A17', '#353028']]) {
     const media = `../study-log-harmony/entry/src/main/resources/${theme}/media`;
     assert.equal(await read(`${media}/app_icon_foreground.svg`), foreground);
     assert.match(await read(`${media}/app_icon_background.svg`), new RegExp(`fill="${background}"`));
@@ -59,4 +61,17 @@ test('launch-only generation needs no browser dependency and leaves other platfo
     assert.ok(fixture.startsWith(path.join(os.tmpdir(), 'study-logo-launch-')));
     await fs.rm(fixture, { recursive: true, force: true });
   }
+});
+
+
+test('Logo surfaces share warm white while page and launch-window canvases stay unchanged', async () => {
+  for (const file of ['app/login.css', 'app/workspace.css', '../ops/electron/connection.css', '../ops/desktop/ui.css']) {
+    const css = await read(file);
+    assert.equal(css.match(/\.theme-logo\s*\{[^}]*background:\s*(#[a-f0-9]+)/i)?.[1].toLowerCase(), '#f5f0e8', file);
+    assert.match(css, /\.theme-logo\s*\{[^}]*background:\s*#1c1a17/i, `${file}: dark Logo surface`);
+  }
+  const palette = JSON.parse(await read('../study-log-harmony/entry/src/main/resources/base/element/color.json'));
+  for (const name of ['canvas', 'start_window_background']) assert.equal(palette.color.find(item => item.name === name).value, '#FAF9F5');
+  const windows = await read('../ops/electron/package.mjs');
+  assert.match(windows, /<rect width="256" height="256" rx="48" fill="#F5F0E8"\/>/);
 });

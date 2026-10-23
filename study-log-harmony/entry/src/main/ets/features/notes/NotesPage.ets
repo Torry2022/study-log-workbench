@@ -563,7 +563,7 @@ export struct NotesPage {
         Stack({ alignContent: Alignment.BottomEnd }) {
           Stack() {
             Row() {
-              ContentRefresh({ refreshEnabled: !this.isLargeWorkspace() && !this.noteEditor.editing && !this.extracting,
+              ContentRefresh({ refreshSupported: !this.isLargeWorkspace(), refreshEnabled: !this.noteEditor.editing && !this.extracting,
                 refreshId: 'notes_content_refresh', onRefresh: () => this.load(), content: () => { this.list() } })
                 .width('100%').constraintSize({ maxWidth: READING_MAX_WIDTH }).height('100%')
             }.width('100%').height('100%').justifyContent(FlexAlign.Center)

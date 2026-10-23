@@ -50,7 +50,7 @@ export struct WorkspaceFrame {
           this.content()
         }.width('100%').height('100%')
           .onAreaChange((_old: Area, area: Area) => this.onContentArea(area))
-        if (this.coordinator.snapshot && this.coordinator.kind === 'module') {
+        if (this.coordinator.snapshot && (this.coordinator.kind === 'module' || !this.wide && this.coordinator.kind === 'document')) {
           Image(this.coordinator.snapshot).width('100%').height('100%')
             .objectFit(ImageFit.Fill).syncLoad(true).opacity(this.coordinator.opacity).zIndex(10)
             .onComplete(() => this.coordinator.rendered())

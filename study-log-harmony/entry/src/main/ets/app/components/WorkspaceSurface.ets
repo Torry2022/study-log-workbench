@@ -390,7 +390,8 @@ export struct WorkspaceSurface {
           .backgroundColor($r('app.color.canvas')).clip(true).zIndex(5)
           .hitTestBehavior(HitTestMode.None)
       }
-      if (this.workspaceTransition.snapshot && this.workspaceTransition.kind !== 'module') {
+      if (this.workspaceTransition.snapshot && this.workspaceTransition.kind !== 'module' &&
+        (this.wide || this.workspaceTransition.kind !== 'document')) {
         Image(this.workspaceTransition.snapshot).width('100%').height('100%')
           .objectFit(ImageFit.Fill).syncLoad(true).opacity(this.workspaceTransition.opacity).zIndex(10)
           .onComplete(() => this.workspaceTransition.rendered())

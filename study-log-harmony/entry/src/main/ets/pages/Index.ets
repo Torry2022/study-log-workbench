@@ -109,16 +109,20 @@ struct Index {
   private workspaceNavigationView?: WorkspaceNavigationView;
   @State private workspaceTransition: WorkspaceTransitionCoordinator = new WorkspaceTransitionCoordinator({
     tab: () => this.selectedModule,
-    canCapture: (kind: string) => this.connected && this.isWide() &&
-      (kind === 'module' || (kind === 'detail:3' && this.selectedModule === 3) ||
-        ((kind === 'document' || kind === 'mode') && this.selectedModule === 0 &&
-        !!this.workspaceNavigationView?.hasLog())),
+    canCapture: (kind: string) => this.canCaptureWorkspaceTransition(kind),
     capture: (kind: string) => this.getUIContext().getComponentSnapshot().get(
-      kind === 'module' ? 'module_frame' : 'workspace_frame', { waitUntilRenderFinished: true }),
+      kind === 'module' || !this.isWide() && kind === 'document' ? 'module_frame' : 'workspace_frame', { waitUntilRenderFinished: true }),
     fade: (update: () => void, finished: () => void) => {
       this.getUIContext().animateTo({ duration: 160, curve: Curve.EaseOut, onFinish: finished }, update);
     }
   });
+
+  private canCaptureWorkspaceTransition(kind: string): boolean {
+    return this.connected && ((kind === 'document' && this.selectedModule === 0 &&
+      !!this.workspaceNavigationView?.hasLog()) || this.isWide() &&
+      (kind === 'module' || kind === 'detail:3' && this.selectedModule === 3 ||
+        kind === 'mode' && this.selectedModule === 0 && !!this.workspaceNavigationView?.hasLog()));
+  }
 
   private isWide(): boolean {
     return this.workspaceBreakpoint === WorkspaceBreakpoint.LARGE || this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE;

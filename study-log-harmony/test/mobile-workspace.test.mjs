@@ -23,7 +23,7 @@ test('content refresh coalesces pulls, settles failure and permits an explicit r
     appFeedback: { show: (...args) => feedback.push(args), dismissScope() {} }
   });
   let reject, calls = 0;
-  const h = Object.assign(new Host(), { alive: true, refreshEnabled: true, inFlight: false,
+  const h = Object.assign(new Host(), { alive: true, refreshSupported: true, refreshEnabled: true, inFlight: false,
     refreshing: false, feedbackScope: 'content-refresh', failureText: 'offline',
     onRefresh: () => { calls++; return new Promise((_, fail) => reject = fail); } });
   const first = h.refresh();
@@ -45,7 +45,7 @@ test('disabled editor content never starts refresh; a removed surface receives n
   const Host = await methods('common/ui/ContentRefresh.ets', ['refresh'], {
     appFeedback: { show: (...args) => feedback.push(args), dismissScope: () => feedback.push('dismiss') }
   });
-  const h = Object.assign(new Host(), { alive: true, refreshEnabled: false, inFlight: false,
+  const h = Object.assign(new Host(), { alive: true, refreshSupported: true, refreshEnabled: false, inFlight: false,
     refreshing: false, onRefresh: () => { calls++; return new Promise((_, fail) => reject = fail); } });
   await h.refresh(); assert.equal(calls, 0);
   h.refreshEnabled = true;
@@ -200,6 +200,38 @@ test('a preview arriving after Back cannot reopen the history detail', async () 
   assert.equal(h.previewLoading, false);
 });
 
+
+test('unsupported refresh settles native state without requesting and bounds supported pulls', async () => {
+  const Host = await methods('common/ui/ContentRefresh.ets', ['refresh'], { appFeedback: {} });
+  let calls = 0;
+  const h = Object.assign(new Host(), { alive: true, refreshSupported: false, refreshEnabled: true,
+    inFlight: false, refreshing: true, onRefresh: async () => calls++ });
+  await h.refresh();
+  assert.equal(calls, 0);
+  assert.equal(h.refreshing, false);
+  const source = await readFile(new URL('common/ui/ContentRefresh.ets', base), 'utf8');
+  assert.match(source, /if \(this.refreshSupported\) \{[\s\S]*Refresh\(/);
+  assert.match(source, /maxPullDownDistance\(this.refreshEnabled \|\| this.refreshing \? 96 : 0\)/);
+  assert.match(source, /else \{\s*this.content\(\)/);
+});
+
+test('compact saved documents share capture readiness without enabling unrelated transitions', async () => {
+  const Host = await methods('pages/Index.ets', ['canCaptureWorkspaceTransition']);
+  const h = Object.assign(new Host(), { connected: true, selectedModule: 0,
+    isWide: () => false, workspaceNavigationView: { hasLog: () => true } });
+  assert.equal(h.canCaptureWorkspaceTransition('document'), true);
+  for (const kind of ['module', 'mode', 'detail:3']) assert.equal(h.canCaptureWorkspaceTransition(kind), false);
+  h.workspaceNavigationView.hasLog = () => false;
+  assert.equal(h.canCaptureWorkspaceTransition('document'), false);
+  h.isWide = () => true;
+  assert.equal(h.canCaptureWorkspaceTransition('module'), true);
+  h.connected = false;
+  assert.equal(h.canCaptureWorkspaceTransition('module'), false);
+  const frame = await readFile(new URL('app/components/WorkspaceFrame.ets', base), 'utf8');
+  const surface = await readFile(new URL('app/components/WorkspaceSurface.ets', base), 'utf8');
+  assert.match(frame, /!this.wide && this.coordinator.kind === 'document'/);
+  assert.match(surface, /this.wide \|\| this.workspaceTransition.kind !== 'document'/);
+});
 
 test('statistics groups retain labels, sort years and months, and leave the input intact', async () => {
   const Host = await methods('features/stats/components/StatsNavigation.ets', ['monthYears', 'monthsForYear']);

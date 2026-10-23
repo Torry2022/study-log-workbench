@@ -2535,7 +2535,7 @@ export struct LogsReaderPage {
                 color: $r('app.color.hairline') })
             Row() {
               Stack({ alignContent: Alignment.TopEnd }) {
-              ContentRefresh({ refreshEnabled: !this.isWide() && !this.sourceMode && !this.session.isDirty() &&
+              ContentRefresh({ refreshSupported: !this.isWide(), refreshEnabled: !this.sourceMode && !this.session.isDirty() &&
                 !this.documents.dayRequestLoading && !this.documents.saving, refreshId: 'logs_content_refresh',
                 onRefresh: () => this.refreshCurrentDay(this.session.selectedDate), content: () => {
                 this.previewReader()

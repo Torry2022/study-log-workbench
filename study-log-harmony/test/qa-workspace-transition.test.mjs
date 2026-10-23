@@ -29,10 +29,10 @@ test('detail capture eligibility preserves compact layouts and other module boun
   const initializer = rootSource.match(/new WorkspaceTransitionCoordinator\(([\s\S]*?)\n  \}\);/);
   assert.ok(initializer);
   const module = { exports: {} };
-  const code = ts.transpileModule(`export function view() { return ${initializer[1]}\n}; }`,
+  const code = ts.transpileModule(`export function view() { return ${initializer[1]}\n}; } export class Root { ${method('canCaptureWorkspaceTransition')} }`,
     { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   runInNewContext(code, { module, exports: module.exports });
-  const root = { connected: true, selectedModule: 3, isWide: () => true };
+  const root = Object.assign(new module.exports.Root(), { connected: true, selectedModule: 3, isWide: () => true });
   const view = module.exports.view.call(root);
   assert.equal(view.canCapture('detail:3'), true);
   root.selectedModule = 1;

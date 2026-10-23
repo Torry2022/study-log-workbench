@@ -522,6 +522,7 @@ export struct StatsPage {
           }).width('100%').height(38).enabled(this.data.months.length > 0)
         }.width(this.isLargeWorkspace() ? 280 : '100%').padding({ left: 16, right: 16, top: 8, bottom: 8 })
 
+        if (this.isLargeWorkspace()) {
         Row({ space: 8 }) {
           Button({ type: ButtonType.Normal }) {
             Row({ space: 6 }) {
@@ -534,7 +535,8 @@ export struct StatsPage {
           .enabled(!this.data.loading).onClick(() => this.refreshStats())
           .id('stats_refresh')
         }.width(this.isLargeWorkspace() ? 112 : '100%')
-          .padding({ left: 16, right: 16, bottom: this.isLargeWorkspace() ? 8 : 12, top: this.isLargeWorkspace() ? 8 : 0 })
+          .padding({ left: 16, right: 16, bottom: 8, top: 8 })
+        }
         }
         .width('100%')
         .border({ width: { bottom: 1 }, color: $r('app.color.hairline') })
@@ -690,7 +692,7 @@ export struct StatsPage {
           headerId: 'desktop_page_stats', onOpenLog: this.onOpenLog })
       }
       Row() {
-        ContentRefresh({ refreshEnabled: !this.isLargeWorkspace(), refreshId: 'stats_content_refresh',
+        ContentRefresh({ refreshSupported: !this.isLargeWorkspace(), refreshId: 'stats_content_refresh',
           onRefresh: () => this.refreshStats(), content: () => { this.pageBody() } })
       }.width('100%').layoutWeight(1).justifyContent(FlexAlign.Center)
     }.width('100%').height('100%')

@@ -2,6 +2,7 @@ import { appFeedback } from './AppFeedback';
 
 @Component
 export struct ContentRefresh {
+  @Prop refreshSupported: boolean = true;
   @Prop refreshEnabled: boolean = true;
   @Prop feedbackScope: string = 'content-refresh';
   @Prop failureText: string = '刷新失败，已保留原内容，请下拉重试';
@@ -17,7 +18,11 @@ export struct ContentRefresh {
   aboutToDisappear(): void { this.alive = false; }
 
   private async refresh(): Promise<void> {
-    if (this.inFlight || !this.refreshEnabled) return;
+    if (this.inFlight) return;
+    if (!this.refreshSupported || !this.refreshEnabled) {
+      this.refreshing = false;
+      return;
+    }
     this.inFlight = true;
     this.refreshing = true;
     try {
@@ -45,13 +50,18 @@ export struct ContentRefresh {
   }
 
   build() {
-    Refresh({ refreshing: $$this.refreshing, builder: this.indicator }) {
+    if (this.refreshSupported) {
+      Refresh({ refreshing: $$this.refreshing, builder: this.indicator }) {
+        this.content()
+      }
+      .id(this.refreshId).width('100%').layoutWeight(1)
+      .pullToRefresh(this.refreshEnabled).pullDownRatio(this.refreshEnabled || this.refreshing ? 0.5 : 0)
+      .refreshOffset(64)
+      .maxPullDownDistance(this.refreshEnabled || this.refreshing ? 96 : 0)
+      .onStateChange((status: RefreshStatus) => this.status = status)
+      .onRefreshing(() => this.refresh())
+    } else {
       this.content()
     }
-    .id(this.refreshId).width('100%').layoutWeight(1)
-    .pullToRefresh(this.refreshEnabled).pullDownRatio(0.5)
-    .refreshOffset(64)
-    .onStateChange((status: RefreshStatus) => this.status = status)
-    .onRefreshing(() => this.refresh())
   }
 }

@@ -552,7 +552,7 @@ export struct FavoritesPage {
           })
       }
       Row() {
-        ContentRefresh({ refreshEnabled: !this.isLargeWorkspace(), refreshId: 'favorites_content_refresh',
+        ContentRefresh({ refreshSupported: !this.isLargeWorkspace(), refreshId: 'favorites_content_refresh',
           onRefresh: () => this.load(), content: () => { this.pageBody() } })
       }.width('100%').layoutWeight(1).justifyContent(FlexAlign.Center)
     }.width('100%').height('100%')

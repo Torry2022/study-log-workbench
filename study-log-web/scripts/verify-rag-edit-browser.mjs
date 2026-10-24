@@ -152,7 +152,7 @@ try {
     assert.equal(sql.prepare('PRAGMA user_version').get().user_version, 3); sql.close();
     const time = workspace.locator('.rag-time-separator time'); await expect(time).toHaveCount(1);
     const originalTask = (await getTasks()).find(task => `${task.id}:user` === edited.messages[0].id);
-    assert.equal(await time.getAttribute('datetime'), new Date(originalTask.createdAt).toISOString());
+    await expect(time).toHaveAttribute('datetime', new Date(originalTask.createdAt).toISOString());
     record(`${engine}: provider failure keeps the old branch; successful early edit atomically replaces it with a new question identity and real timestamp`);
 
     await input.fill(''); await page.reload(); await expect(workspace.locator('.rag-message')).toHaveCount(2); await expect(workspace.locator('.rag-message-user p')).toHaveText(revised);

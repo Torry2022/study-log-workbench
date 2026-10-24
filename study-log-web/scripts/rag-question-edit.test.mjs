@@ -12,21 +12,22 @@ import * as times from '../lib/rag-message-time.ts';
 const source = await fs.readFile(new URL('../hooks/use-rag.ts', import.meta.url), 'utf8');
 
 // Run the actual retained-view hook. Layout/focus remain browser acceptance gates.
-function fixture() {
-  const id = randomUUID(), instanceId = randomUUID(), requests = [], removed = [], clients = [], slots = [], effects = [];
-  let cursor = 0, readError, readGate;
+function fixture({ newSession = false, taskSupported = true } = {}) {
+  const id = randomUUID(), requests = [], removed = [], clients = [], routes = [], allocatedIds = [], legacyRequests = [], slots = [], effects = new Map();
+  let instanceId = randomUUID();
+  let cursor = 0, readError, readGate, capabilityGate;
   const saved = { id, title: '合成会话', version: 'a'.repeat(64), answerMode: 'logs_only',
     createdAt: '2026-10-22T01:00:00Z', updatedAt: '2026-10-22T01:00:00Z',
     messages: [{ id: 'question', role: 'user', content: '原问题\n[S1]' }, { id: 'answer', role: 'assistant', content: '原回答' }] };
   const clone = value => JSON.parse(JSON.stringify(value));
   const storage = () => { const values = new Map(); return { getItem: key => values.get(key) ?? null,
     setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) }; };
-  const options = { active: true, visible: true, routeSessionId: id, routeToken: 1,
-    onConfirm: async () => true, onRoute: value => { options.routeSessionId = value; } };
+  const options = { active: true, visible: true, routeSessionId: newSession ? '' : id, routeToken: 1,
+    onConfirm: async () => true, onRoute: value => { routes.push(value); options.routeSessionId = value; } };
   const memo = (run, deps, effect) => {
     const index = cursor++, old = slots[index];
     if (old && deps?.every((value, i) => Object.is(value, old.deps[i]))) return old.value;
-    if (effect) effects.push(() => { old?.cleanup?.(); slots[index] = { deps, cleanup: run() }; });
+    if (effect) effects.set(index, () => { old?.cleanup?.(); slots[index] = { deps, cleanup: run() }; });
     else return (slots[index] = { deps, value: run() }).value;
   };
   const react = {
@@ -38,14 +39,18 @@ function fixture() {
   };
   class ApiRequestError extends Error { constructor(message, status) { super(message); this.status = status; } }
   class Client {
-    constructor(_instance, _storage, callbacks) { this.callbacks = callbacks; clients.push(this); }
-    start() {} stop() {} track() {} viewSession() {} async readSession() {} async refresh() {}
+    constructor(_instance, _storage, callbacks) { this.instanceId = _instance; this.callbacks = callbacks; clients.push(this); }
+    start() { this.started = true; } stop() { this.stopped = true; } track() {} viewSession() {} async readSession() {} async refresh() {}
     async remove(id) { removed.push(id); }
     async submit(input) { requests.push(clone(input)); this.callbacks.pending(input); }
   }
   const requestJson = async path => {
-    if (path === '/api/capabilities') return { instanceId, features: { ragTasks: { supported: true, configured: true,
-      questionEditing: true, protocolVersion: 1 }, rag: { supported: true, configured: true } } };
+    if (path === '/api/capabilities') {
+      const gate = capabilityGate; capabilityGate = undefined;
+      if (gate) { gate.start(); await gate.wait; }
+      return { instanceId, features: { ragTasks: { supported: taskSupported, configured: true,
+      questionEditing: taskSupported, protocolVersion: 1 }, rag: { supported: true, configured: true } } };
+    }
     if (path.startsWith('/api/rag/sessions?q=')) return { sessions: [clone(saved)] };
     if (path === `/api/rag/sessions/${id}`) {
       if (readError) throw readError;
@@ -56,7 +61,7 @@ function fixture() {
     throw Error('Unexpected request: ' + path);
   };
   const dependencies = { react, '@/lib/client-http': { ApiRequestError, requestJson },
-    '@/lib/rag-client': { clientUuid: randomUUID, requestRagStream() { assert.fail('legacy generation'); } },
+    '@/lib/rag-client': { clientUuid: () => { const value = randomUUID(); allocatedIds.push(value); return value; }, async requestRagStream(input) { assert.equal(taskSupported, false, 'task-capable servers must not use legacy generation'); legacyRequests.push(clone(input)); } },
     '@/lib/rag-task-client': { ...taskHelpers, RagTaskClient: Client }, '@/lib/rag-answer-versions': versions,
     '@/lib/rag-task-types': taskTypes, '@/lib/rag-message-time': times };
   const module = { exports: {} };
@@ -65,13 +70,16 @@ function fixture() {
       window: { localStorage: storage(), sessionStorage: storage(), addEventListener() {}, removeEventListener() {} },
       AbortController, setTimeout, clearTimeout, console });
   let ui;
-  const render = () => { cursor = 0; ui = module.exports.useRag(options); for (const effect of effects.splice(0)) effect(); return ui; };
-  const settle = async () => { for (let i = 0; i < 7; i++) { render(); await new Promise(resolve => setTimeout(resolve, 1)); } return render(); };
+  const flushEffects = () => { const pending = [...effects.values()]; effects.clear(); for (const effect of pending) effect(); };
+  const render = (flush = true) => { cursor = 0; ui = module.exports.useRag(options); if (flush) flushEffects(); return ui; };
+  const settle = async (flush = true) => { for (let i = 0; i < 7; i++) { render(flush); await new Promise(resolve => setTimeout(resolve, 1)); } return render(flush); };
   const task = values => ({ id: randomUUID(), submissionId: randomUUID(), sessionId: id,
     createdAt: '2026-10-22T02:00:00Z', updatedAt: '2026-10-22T02:00:00Z', revision: 1,
     question: '修改问题', editMessageId: 'question', questionMessageId: undefined, replaceLast: false,
     mode: 'logs_only', state: 'failed', saveState: 'pending', partial: '', stage: '', error: '合成失败', saveError: '', result: null, ...values });
-  return { saved, requests, removed, options, clients, task, render, settle, ApiRequestError, failRead(error) { readError = error; }, get ui() { return ui; },
+  return { saved, requests, removed, options, clients, routes, allocatedIds, legacyRequests, setInstance(value) { instanceId = value; }, task, render, settle, flushEffects, ApiRequestError, failRead(error) { readError = error; }, get ui() { return ui; },
+    holdCapabilities() { let release, start; const started = new Promise(resolve => start = resolve), wait = new Promise(resolve => release = resolve);
+      capabilityGate = { start, wait }; return { started, release }; },
     holdRead() { let release, start; const started = new Promise(resolve => start = resolve), wait = new Promise(resolve => release = resolve);
       readGate = { start, wait }; return { started, release }; },
     feed: value => clients.at(-1).callbacks.task(value), dispose() { for (const slot of slots) slot?.cleanup?.(); } };
@@ -299,4 +307,102 @@ test('queued task means awaiting execution without inventing an older blocked an
   const f = fixture(); t.after(() => f.dispose()); await f.settle();
   await f.feed(f.task({ editMessageId: undefined, state: 'queued', error: '', partial: '', stage: '' })); f.render();
   assert.equal(f.ui.generating, true); assert.doesNotMatch(f.ui.stage, /前一|上一/);
+});
+
+
+for (const newSession of [false, true]) test(`client initialization blocks ${newSession ? 'a new session' : 'canonical recovery'} before IDs or routing change`, async t => {
+  const f = fixture({ newSession }); t.after(() => f.dispose());
+  const capabilities = f.holdCapabilities(); f.render(); await capabilities.started; await f.settle();
+  assert.equal(f.ui.initializing, false); assert.equal(f.ui.configured, false); assert.equal(f.clients.length, 0);
+  capabilities.release(); await f.settle(false);
+  f.ui.setQuestion('合成恢复后的下一问'); f.render(false);
+  assert.equal(f.ui.configured, true, 'server configuration remains independent of client readiness');
+  assert.equal(f.ui.submissionBlocked, true); assert.equal(f.clients.length, 0);
+  const id = f.ui.activeSessionId, route = f.options.routeSessionId;
+  await f.ui.submit();
+  assert.equal(f.requests.length, 0); assert.equal(f.allocatedIds.length, 0); assert.equal(f.routes.length, 0);
+  assert.equal(f.ui.activeSessionId, id); assert.equal(f.options.routeSessionId, route);
+  assert.equal(f.ui.question, '合成恢复后的下一问');
+  f.flushEffects(); f.render(); assert.equal(f.clients.length, 1); assert.equal(f.ui.submissionBlocked, false);
+  await f.ui.submit();
+  assert.equal(f.requests.length, 1); assert.equal(f.requests[0].question, '合成恢复后的下一问');
+  assert.equal(f.routes.length, newSession ? 1 : 0);
+});
+
+test('capabilities and task client arriving before canonical recovery submit once after recovery', async t => {
+  const f = fixture(); t.after(() => f.dispose());
+  const canonical = f.holdRead(); f.render(); await canonical.started; await f.settle();
+  assert.equal(f.ui.configured, true); assert.equal(f.ui.initializing, true); assert.equal(f.clients.length, 1);
+  assert.equal(f.ui.submissionBlocked, true);
+  f.ui.setQuestion('正文恢复前不可提交'); f.render(); await f.ui.submit();
+  assert.equal(f.requests.length, 0); assert.equal(f.allocatedIds.length, 0); assert.equal(f.routes.length, 0);
+  assert.equal(f.ui.question, '正文恢复前不可提交');
+  canonical.release(); await f.settle();
+  assert.equal(f.ui.initializing, false); assert.equal(f.ui.session.id, f.saved.id);
+  assert.equal(f.ui.submissionBlocked, false);
+  f.ui.setQuestion('合成先恢复客户端的下一问'); f.render();
+  await f.ui.submit(); assert.equal(f.requests.length, 1);
+});
+
+test('closing the workspace retires the client and blocks stale submit handlers', async t => {
+  const f = fixture({ newSession: true }); t.after(() => f.dispose()); await f.settle();
+  f.ui.setQuestion('关闭时保留的草稿'); f.render(); const submit = f.ui.submit, client = f.clients[0];
+  f.options.active = false; f.render(); f.render();
+  assert.equal(client.stopped, true); assert.equal(f.ui.configured, true); assert.equal(f.ui.submissionBlocked, true);
+  await submit(); assert.equal(f.requests.length, 0); assert.equal(f.allocatedIds.length, 0); assert.equal(f.routes.length, 0);
+  assert.equal(f.ui.question, '关闭时保留的草稿');
+  f.options.active = true; await f.settle(); assert.equal(f.ui.submissionBlocked, false);
+  assert.equal(f.clients.length, 2); assert.equal(f.ui.question, '关闭时保留的草稿');
+  await f.ui.submit(); assert.equal(f.requests.length, 1);
+});
+
+test('an instance change blocks the old client before its cleanup and waits for the new client', async t => {
+  const f = fixture({ newSession: true }); t.after(() => f.dispose()); await f.settle();
+  const previous = f.clients[0], nextInstance = randomUUID();
+  f.setInstance(nextInstance); await f.ui.refreshConfiguration(); f.render(false);
+  assert.equal(f.ui.configured, true); assert.equal(f.ui.submissionBlocked, true);
+  f.ui.setQuestion('切换期间不可提交'); f.render(false); await f.ui.submit();
+  assert.equal(f.requests.length, 0); assert.equal(f.allocatedIds.length, 0); assert.equal(f.routes.length, 0);
+  f.flushEffects(); await f.settle();
+  assert.equal(previous.stopped, true); assert.equal(f.clients.length, 2);
+  assert.equal(f.clients[1].instanceId, nextInstance); assert.equal(f.ui.submissionBlocked, false);
+  assert.equal(f.ui.question, '', 'an instance change keeps the existing isolation and reset behavior');
+  f.ui.setQuestion('新实例的下一问'); f.render(); await f.ui.submit(); assert.equal(f.requests.length, 1);
+});
+
+
+test('legacy servers remain available without a task client', async t => {
+  const f = fixture({ newSession: true, taskSupported: false }); t.after(() => f.dispose()); await f.settle();
+  assert.equal(f.ui.configured, true); assert.equal(f.ui.submissionBlocked, false); assert.equal(f.clients.length, 0);
+  f.ui.setQuestion('旧服务的合成问题'); f.render(); await f.ui.submit();
+  assert.equal(f.requests.length, 0); assert.equal(f.legacyRequests.length, 1);
+  assert.equal(f.legacyRequests[0].question, '旧服务的合成问题'); assert.equal(f.routes.length, 1);
+});
+
+test('hiding a module keeps its background client and continues receiving its task', async t => {
+  const f = fixture(); t.after(() => f.dispose()); await f.settle(); const client = f.clients[0];
+  const running = f.task({ editMessageId: undefined, state: 'running', partial: '后台首段' });
+  await f.feed(running); f.render();
+  f.options.visible = false; f.render(); f.render();
+  assert.equal(f.clients.length, 1); assert.notEqual(client.stopped, true); assert.equal(f.ui.generating, true);
+  await f.feed({ ...running, revision: 2, partial: '后台继续接收的正文' }); f.render();
+  assert.ok(f.ui.messages.some(message => message.content.includes('后台继续接收的正文')));
+  f.options.visible = true; await f.settle();
+  assert.equal(f.clients.length, 1); assert.equal(f.clients[0], client); assert.notEqual(client.stopped, true);
+});
+
+
+test('question editing shares the readiness gate and rejects a handler captured for the previous instance', async t => {
+  const f = fixture(); t.after(() => f.dispose()); await f.settle();
+  f.ui.beginQuestionEdit('question'); f.render(); f.ui.changeQuestionEdit('旧实例修改稿'); f.render();
+  const staleEditSubmit = f.ui.sendQuestionEdit, previous = f.clients[0];
+  f.setInstance(randomUUID()); await f.ui.refreshConfiguration(); f.render(false);
+  assert.equal(f.ui.submissionBlocked, true); await f.ui.sendQuestionEdit();
+  assert.equal(f.requests.length, 0); assert.equal(f.allocatedIds.length, 0);
+  assert.equal(f.ui.questionEdit.body, '旧实例修改稿');
+  f.flushEffects(); await f.settle(); assert.equal(previous.stopped, true);
+  f.options.routeSessionId = f.saved.id; await f.settle();
+  f.ui.beginQuestionEdit('question'); f.render(); f.ui.changeQuestionEdit('新实例修改稿'); f.render();
+  await staleEditSubmit(); assert.equal(f.requests.length, 0); assert.equal(f.allocatedIds.length, 0);
+  await f.ui.sendQuestionEdit(); assert.equal(f.requests.length, 1); assert.equal(f.requests[0].question, '新实例修改稿');
 });

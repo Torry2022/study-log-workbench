@@ -63,6 +63,8 @@ export function useRag(options: Options) {
   const [configurationError, setConfigurationError] = useState("");
   const [taskCapability, setTaskCapability] = useState<{ instanceId: string; supported: boolean; ready: boolean; questionEditing: boolean } | null>(null);
   const taskClient = useRef<RagTaskClient | null>(null);
+  const [taskClientInstance, setTaskClientInstance] = useState<string | null>(null);
+  const taskClientReady = !taskCapability?.supported || taskClientInstance === taskCapability.instanceId && Boolean(taskClient.current);
   const taskScope = useRef("");
   const taskSnapshots = useRef(new Map<string, RagTask>());
   const answerViews = useRef(new Map<string, Map<string, string>>());
@@ -241,10 +243,14 @@ export function useRag(options: Options) {
       });
       for (const task of taskSnapshots.current.values()) client.track(task);
       taskClient.current = client; client.start();
+      setTaskClientInstance(taskCapability.instanceId);
       client.viewSession(live.current.visible ? selectedId.current : "");
       if (selectedId.current) void client.readSession(selectedId.current).catch(failure => { if (current()) setTaskConnectionError(failure.message); });
     } catch (failure) { setTaskConnectionError(failure instanceof Error ? failure.message : "任务恢复不可用"); }
-    return () => { client?.stop(); if (taskClient.current === client) taskClient.current = null; };
+    return () => {
+      client?.stop();
+      if (taskClient.current === client) { taskClient.current = null; if (mounted.current) setTaskClientInstance(null); }
+    };
   }, [options.active, taskCapability?.instanceId, taskCapability?.supported, taskCapability?.ready, install, notify, refreshList]);
   useEffect(() => { taskClient.current?.viewSession(options.active && options.visible ? state.id : ""); }, [options.active, options.visible, state.id]);
   useEffect(() => {
@@ -497,7 +503,7 @@ export function useRag(options: Options) {
   }
   async function sendQuestionEdit() {
     const owner = states.current.get(selectedId.current)!, id = owner.editingId, draft = owner.edits.get(id);
-    if (!draft || !taskCapability?.questionEditing || !taskClient.current || !live.current.active || !live.current.visible || !configured ||
+    if (!draft || !taskCapability?.questionEditing || !taskClientReady || taskScope.current !== taskCapability.instanceId || !taskClient.current || !live.current.active || !live.current.visible || !configured ||
       owner.generating || owner.saving || owner.pendingTask || owner.pendingSave || owner.awaitingSession || initializing || answerProjection(owner).historical) return;
     const text = draft.body.trim();
     if (!text || text.length > 2000) return;
@@ -509,14 +515,15 @@ export function useRag(options: Options) {
     catch (failure) { if (owned(owner)) { draft.error = failure instanceof Error ? failure.message : "修改尚未提交，原对话未改动。"; notify(); } }
   }
   async function submit(regenerate = false) {
-    const state = states.current.get(selectedId.current)!;
-    if (!live.current.active || !live.current.visible || !configured || state.generating || initializing || state.saving || state.pendingSave || state.awaitingSession || state.editingId) return;
+    const state = states.current.get(selectedId.current)!, client = taskClient.current;
+    if (!live.current.active || !live.current.visible || !configured || !taskClientReady || state.generating || initializing || state.saving || state.pendingSave || state.awaitingSession || state.editingId) return;
     if (state.task && state.task.id !== newestRagTask(taskSnapshots.current.values(), state.id)?.id || [...taskSnapshots.current.values()].some(task => task.applicable !== false && task.sessionId === state.id && ragTaskActive(task) && task.id !== state.task?.id)) return;
     if (regenerate && (answerProjection(state).historical || state.question.trim())) return;
     const text = regenerate ? state.messages.at(-2)?.content || "" : state.question.trim();
     if (!text || text.length > 2000) return;
     if (!regenerate && !(await commitAnswerSelection(state))) return;
-    if (!owned(state) || selectedId.current !== state.id || !live.current.active || !live.current.visible) return;
+    if (!owned(state) || selectedId.current !== state.id || !live.current.active || !live.current.visible ||
+      taskCapability?.supported && (!client || client !== taskClient.current || state.pendingTask || taskScope.current !== taskCapability.instanceId)) return;
     if (!regenerate && state.question.trim() !== text) return;
     const history = regenerate ? state.messages.slice(0, -2) : state.messages;
     if (history.length >= 198) { setError("当前会话已达到消息上限，请新建会话。"); return; }
@@ -525,15 +532,14 @@ export function useRag(options: Options) {
       states.current.set("", sessionState("")); selectedId.current = state.id; loadedRoute.current = state.id;
       live.current.onRoute(state.id);
     }
-    if (taskCapability?.supported) {
-      if (!taskClient.current || state.pendingTask) return;
+    if (taskCapability?.supported && client) {
       const retryingTask = regenerate && state.task && !state.task.editMessageId && state.task.state !== "succeeded";
       const input: PendingRagTask = { submissionId: clientUuid(), sessionId: state.id, baseVersion: state.session?.version || null,
         question: text, mode: state.answerMode, createdAt: new Date().toISOString(),
         ...(retryingTask ? { retryTaskId: state.task!.id } : {}),
         ...(regenerate && (!retryingTask || state.task?.replaceLast) ? { replaceLast: true } : {}) };
       state.question = ""; state.error = "";
-      try { setAnswerStartToken(value => value + 1); await taskClient.current.submit(input); }
+      try { setAnswerStartToken(value => value + 1); await client.submit(input); }
       catch (failure) { if (owned(state)) { state.question = text; state.error = failure instanceof Error ? failure.message : "无法保存提交身份，尚未发起问答"; notify(); } }
       return;
     }
@@ -657,7 +663,7 @@ export function useRag(options: Options) {
       orphaned: editOrphaned } : null,
     beginQuestionEdit, changeQuestionEdit, cancelQuestionEdit, sendQuestionEdit, reloadQuestionEdit,
     messageTimes: originalRagMessageTimes([...taskSnapshots.current.values()].filter(task => task.sessionId === state.id)),
-    initializing, generating, saving, stage, error: navigationError || error || editRecoveryError, saveError, serverTask: Boolean(state.task), savingSelection: Boolean(state.selectionSave), submissionBlocked: state.awaitingSession || historicalTask || otherActive, canRetrySave: Boolean(state.pendingSave) || state.task?.saveState !== "conflict", configured, configurationError, focusToken, navigationToken, answerStartToken, dirty,
+    initializing, generating, saving, stage, error: navigationError || error || editRecoveryError, saveError, serverTask: Boolean(state.task), savingSelection: Boolean(state.selectionSave), submissionBlocked: initializing || !taskClientReady || state.awaitingSession || historicalTask || otherActive, canRetrySave: Boolean(state.pendingSave) || state.task?.saveState !== "conflict", configured, configurationError, focusToken, navigationToken, answerStartToken, dirty,
     viewingPreviousAnswer: Boolean(selectedParent && selectedParent.id !== state.session?.messages.at(-1)?.id), selectAnswerVersion, saveAnswer, discardAnswer,
     beforeLeave, confirmExit, refreshConfiguration, refreshList, reloadSession, submit: () => submit(), regenerate: (answerId?: string) => { if (answerId) { const answer = answerProjection(states.current.get(selectedId.current)!).messages.find(message => message.id === answerId); if (!answer?.canRegenerate && !answer?.canRetry) return; } return submit(true); }, stop: () => {
       const owner = states.current.get(selectedId.current)!;

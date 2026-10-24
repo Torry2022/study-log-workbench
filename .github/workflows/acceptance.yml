@@ -102,11 +102,7 @@ jobs:
         if: failure()
         with:
           name: containers-failure-${{ github.run_id }}
-          path: |
-            ${{ runner.temp }}/ci-evidence/
-            .local/**/report.json
-            .local/**/*.png
-          include-hidden-files: true
+          path: ${{ runner.temp }}/ci-evidence/
           retention-days: 3
           if-no-files-found: warn
 

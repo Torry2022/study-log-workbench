@@ -75,11 +75,11 @@ try {
     const getSession = async () => { const id = new URL(page.url()).searchParams.get('session'); return (await (await page.request.get(`${base}/api/rag/sessions/${id}`)).json()).session; };
     const getTasks = async () => (await (await page.request.get(`${base}/api/rag/tasks`)).json()).tasks;
     const retryEdit = workspace.locator('.editor-navigation-status').getByRole('button', { name: '重试', exact: true });
-    const rejectStaleEdit = async () => {
+    const rejectStaleEdit = async (status = 409) => {
       const before = streams;
       const rejected = page.waitForResponse(response => response.url().endsWith('/api/rag/tasks') && response.request().method() === 'POST');
       await page.locator('.rag-question-editor').getByRole('button', { name: '发送', exact: true }).click();
-      assert.ok([404, 409].includes((await rejected).status()));
+      assert.equal((await rejected).status(), status);
       await expect(retryEdit).toBeVisible(); assert.equal(streams, before);
     };
     const start = async text => { const n = streams + 1; await input.fill(text); await page.getByRole('button', { name: '发送问题', exact: true }).click(); await until(() => streams, value => value === n); return n; };
@@ -250,7 +250,7 @@ try {
     await expect(page.getByRole('textbox', { name: '保留的修改稿', exact: true })).toHaveCount(0);
     await workspace.getByRole('button', { name: '编辑此问题', exact: true }).first().click(); await editor.fill('会话删除后仍需保留的草稿');
     const beforeDelete = await getSession(); const deleted = await page.request.delete(`${base}/api/rag/sessions/${beforeDelete.id}`, { data: { mutationId: randomUUID(), baseVersion: beforeDelete.version } }); assert.equal(deleted.status(), 200);
-    await rejectStaleEdit(); await retryEdit.click();
+    await rejectStaleEdit(410); await retryEdit.click();
     await expect(page.getByRole('textbox', { name: '保留的修改稿', exact: true })).toHaveValue('会话删除后仍需保留的草稿');
     await page.getByRole('button', { name: '取消编辑', exact: true }).click();
     record(`${engine}: removed targets and deleted sessions retain visible recoverable drafts until explicit cancellation`);

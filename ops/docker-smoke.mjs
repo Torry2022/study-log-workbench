@@ -91,6 +91,7 @@ try {
 
   const mcpToken = crypto.randomBytes(24).toString("base64url");
   await fs.writeFile(path.join(instance, ".env.mcp"), `MCP_HTTP_TOKEN=${mcpToken}\n`, { mode: 0o600 });
+  if (process.platform !== "win32" && process.getuid?.() === 0) await fs.chown(path.join(instance, ".env.mcp"), 1000, 1000);
   await fs.appendFile(path.join(instance, ".env"), `STUDY_LOG_MCP_URL=http://study-log-mcp:3020/mcp\nSTUDY_LOG_MCP_TOKEN=${mcpToken}\n`);
   await compose(["--profile", "retrieval", "up", "-d", "--no-build"]); await waitWeb();
   const mcpId = await compose(["ps", "-q", "study-log-mcp"]);

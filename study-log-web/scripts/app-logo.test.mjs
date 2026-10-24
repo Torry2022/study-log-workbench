@@ -19,7 +19,7 @@ test('Logo foregrounds and compatibility icons derive from the same drawing', as
     assert.equal(await read(`${media}/app_icon_foreground.svg`), foreground);
     assert.match(await read(`${media}/app_icon_background.svg`), new RegExp(`fill="${background}"`));
     const colors = JSON.parse(await read(`../study-log-harmony/entry/src/main/resources/${theme}/element/color.json`));
-    assert.equal(colors.color.find(item => item.name === 'logo_surface').value, background);
+    assert.equal(colors.color.find(item => item.name === 'logo_surface').value, theme === 'base' ? '#FFFFFF' : background);
     const icon = await read(theme === 'base' ? 'app/icon.svg' : 'public/icon-dark.svg');
     assert.equal(icon, foreground.replace('<g ', `<rect x="16" y="16" width="992" height="992" rx="208" fill="${background}" stroke="${border}" stroke-width="32"/>\n  <g `));
     if (theme === 'dark') assert.equal(await read(`${media}/app_icon.svg`), icon);
@@ -64,10 +64,10 @@ test('launch-only generation needs no browser dependency and leaves other platfo
 });
 
 
-test('Logo surfaces share warm white while page and launch-window canvases stay unchanged', async () => {
+test('page Logos use white while application icons and page canvases retain their surfaces', async () => {
   for (const file of ['app/login.css', 'app/workspace.css', '../ops/electron/connection.css', '../ops/desktop/ui.css']) {
     const css = await read(file);
-    assert.equal(css.match(/\.theme-logo\s*\{[^}]*background:\s*(#[a-f0-9]+)/i)?.[1].toLowerCase(), '#f5f0e8', file);
+    assert.equal(css.match(/\.theme-logo\s*\{[^}]*background:\s*(#[a-f0-9]+)/i)?.[1].toLowerCase(), '#ffffff', file);
     assert.match(css, /\.theme-logo\s*\{[^}]*background:\s*#1c1a17/i, `${file}: dark Logo surface`);
   }
   const palette = JSON.parse(await read('../study-log-harmony/entry/src/main/resources/base/element/color.json'));

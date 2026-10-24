@@ -44,12 +44,16 @@ jobs:
       - run: npm ci --prefix study-log-web 2>&1 | tee "$RUNNER_TEMP/ci-evidence/web-install.log"
       - run: npm ci --prefix study-log-mcp 2>&1 | tee "$RUNNER_TEMP/ci-evidence/mcp-install.log"
       - run: cd study-log-web && npx --no-install playwright install --with-deps chromium webkit
-      - run: npm --prefix study-log-web run build 2>&1 | tee "$RUNNER_TEMP/ci-evidence/web-build.log"
+      - id: browser-build
+        run: npm --prefix study-log-web run build 2>&1 | tee "$RUNNER_TEMP/ci-evidence/web-build.log"
       - name: Question editing
+        if: ${{ !cancelled() && steps.browser-build.outcome == 'success' }}
         run: node study-log-web/scripts/verify-rag-edit-browser.mjs 2>&1 | tee "$RUNNER_TEMP/ci-evidence/question-edit.log"
       - name: Reading and streaming scroll ownership
+        if: ${{ !cancelled() && steps.browser-build.outcome == 'success' }}
         run: node study-log-web/scripts/verify-rag-live-follow.mjs 2>&1 | tee "$RUNNER_TEMP/ci-evidence/live-follow.log"
       - name: Reading anchors
+        if: ${{ !cancelled() && steps.browser-build.outcome == 'success' }}
         run: node study-log-web/scripts/verify-rag-reading-anchor.mjs 2>&1 | tee "$RUNNER_TEMP/ci-evidence/reading-anchor.log"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()

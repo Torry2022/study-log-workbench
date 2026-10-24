@@ -123,6 +123,19 @@ try {
     await page.getByRole('button', { name: '问答', exact: true }).click();
     const workspace = page.locator('.rag-workspace').filter({ visible: true });
     const input = page.getByRole('textbox', { name: '输入知识库问题', exact: true });
+    const updateDraftWithoutFocus = async value => {
+      assert.equal(await input.evaluate(element => element === document.activeElement), false);
+      await input.evaluate((element, text) => {
+        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(element, text);
+        element.dispatchEvent(new Event('input', { bubbles: true }));
+      }, value);
+      await expect(input).toHaveValue(value);
+    };
+    const composerGeometry = () => input.evaluate(element => {
+      const rect = element.getBoundingClientRect();
+      return { y: scrollY, height: document.documentElement.scrollHeight, viewport: innerHeight,
+        top: rect.top, bottom: rect.bottom, focused: document.activeElement === element, calls: window.followCalls };
+    });
     await expect(input).toBeEnabled();
     const fresh = async () => {
       if (mobile && !await page.locator('.sidebar.mobile-open').count()) await page.getByRole('button', { name: '打开问答历史', exact: true }).click();
@@ -171,18 +184,30 @@ try {
     holdTitles = true; finish(n);
     await expect(page.getByRole('button', { name: '停止生成', exact: true })).toHaveCount(0);
     (report.completionGeometry ||= []).push({ label, phase: 'before-draft', beforeDone, y: await page.evaluate(() => scrollY), calls: await page.evaluate(() => window.followCalls) });
-    await run('completion and later draft/title rerenders never reclaim user scrolling', async () => {
-      await input.fill('保留的合成草稿'); await pause(1400);
+    await run('completion and non-focused draft/title rerenders preserve reader scrolling', async () => {
+      await updateDraftWithoutFocus('保留的合成草稿'); await pause(1400);
       (report.completionGeometry ||= []).push({ label, phase: 'after-draft', y: await page.evaluate(() => scrollY), calls: await page.evaluate(() => window.followCalls) });
       const after = await page.evaluate(() => scrollY); assert.ok(Math.abs(after - beforeDone) < 3, JSON.stringify({ beforeDone, after }));
       await until(() => heldTitles.length, count => count > 0);
       holdTitles = false; for (const respond of heldTitles.splice(0)) respond(); await pause(300);
       assert.ok(Math.abs(await page.evaluate(() => scrollY) - beforeDone) < 3);
-      await input.fill('');
+      await expect(input).toHaveValue('保留的合成草稿');
+      await updateDraftWithoutFocus('');
       await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight)); await pause(150);
       await gesture(-80); await pause(100); const y = await page.evaluate(() => scrollY);
-      await input.fill('再次合成草稿'); await pause(1200);
+      await updateDraftWithoutFocus('再次合成草稿'); await pause(1200);
       assert.ok(Math.abs(await page.evaluate(() => scrollY) - y) < 3);
+      await updateDraftWithoutFocus('');
+    });
+    await run('intentional composer focus reveals the input and keeps typed text visible', async () => {
+      const before = await composerGeometry();
+      await input.focus(); await expect(input).toBeFocused();
+      const focused = await composerGeometry();
+      await input.fill('主动聚焦后的合成草稿');
+      const typed = await composerGeometry();
+      (report.focusGeometry ||= []).push({ label, phase: 'intentional-focus', before, focused, typed });
+      assert.ok(typed.top >= 0 && typed.bottom <= typed.viewport, JSON.stringify({ before, focused, typed }));
+      await expect(input).toHaveValue('主动聚焦后的合成草稿');
       await input.fill('');
     });
     holdTitles = false; for (const respond of heldTitles.splice(0)) respond();

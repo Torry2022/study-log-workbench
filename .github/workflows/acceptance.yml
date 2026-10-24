@@ -59,6 +59,7 @@ jobs:
             ${{ runner.temp }}/ci-evidence/
             .local/**/report.json
             .local/**/*.png
+          include-hidden-files: true
           retention-days: 3
           if-no-files-found: warn
 
@@ -94,7 +95,9 @@ jobs:
           WEB_IMAGE: study-log-ci-web:${{ github.sha }}
           MCP_IMAGE: study-log-ci-mcp:${{ github.sha }}
           TOOLS_IMAGE: study-log-ci-tools:${{ github.sha }}
-        run: node ops/docker-smoke.mjs 2>&1 | tee "$RUNNER_TEMP/ci-evidence/container-smoke.log"
+        # The smoke script assigns its fresh bind mount to container UID 1000.
+        # Provision only that synthetic directory as root; containers remain unprivileged.
+        run: sudo --preserve-env=WEB_IMAGE,MCP_IMAGE,TOOLS_IMAGE "$(command -v node)" ops/docker-smoke.mjs 2>&1 | tee "$RUNNER_TEMP/ci-evidence/container-smoke.log"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
@@ -103,6 +106,7 @@ jobs:
             ${{ runner.temp }}/ci-evidence/
             .local/**/report.json
             .local/**/*.png
+          include-hidden-files: true
           retention-days: 3
           if-no-files-found: warn
 
@@ -153,5 +157,6 @@ jobs:
             ${{ runner.temp }}/ci-evidence/
             .local/**/report.json
             .local/**/*.png
+          include-hidden-files: true
           retention-days: 3
           if-no-files-found: warn

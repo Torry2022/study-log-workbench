@@ -74,6 +74,14 @@ try {
     const editor = page.getByRole('textbox', { name: '编辑问题', exact: true });
     const getSession = async () => { const id = new URL(page.url()).searchParams.get('session'); return (await (await page.request.get(`${base}/api/rag/sessions/${id}`)).json()).session; };
     const getTasks = async () => (await (await page.request.get(`${base}/api/rag/tasks`)).json()).tasks;
+    const retryEdit = workspace.locator('.editor-navigation-status').getByRole('button', { name: '重试', exact: true });
+    const rejectStaleEdit = async () => {
+      const before = streams;
+      const rejected = page.waitForResponse(response => response.url().endsWith('/api/rag/tasks') && response.request().method() === 'POST');
+      await page.locator('.rag-question-editor').getByRole('button', { name: '发送', exact: true }).click();
+      assert.ok([404, 409].includes((await rejected).status()));
+      await expect(retryEdit).toBeVisible(); assert.equal(streams, before);
+    };
     const start = async text => { const n = streams + 1; await input.fill(text); await page.getByRole('button', { name: '发送问题', exact: true }).click(); await until(() => streams, value => value === n); return n; };
     const settle = async n => { finish(n); await until(getSession, value => value?.messages.at(-1)?.content.includes(answer(n))); await expect(page.getByRole('button', { name: '停止生成', exact: true })).toHaveCount(0); await expect(workspace.getByRole('button', { name: '编辑此问题', exact: true }).last()).toBeEnabled(); };
     await expect(input).toBeEnabled(); await page.getByRole('button', { name: '新建问答', exact: true }).filter({ visible: true }).click();
@@ -167,7 +175,7 @@ try {
     await workspace.getByRole('button', { name: '放弃此结果', exact: true }).click();
     await page.getByRole('alertdialog').getByRole('button', { name: '放弃', exact: true }).click();
     await expect(editor).toHaveValue('合成保存：并发冲突时保留的编辑文字');
-    await page.locator('.rag-question-editor').getByRole('button', { name: '重新读取并核对', exact: true }).click();
+    await rejectStaleEdit(); await retryEdit.click();
     await expect(editor).toHaveValue('合成保存：并发冲突时保留的编辑文字');
     await page.locator('.rag-question-editor').getByRole('button', { name: '取消', exact: true }).click();
     record(`${engine}: save conflict preserves the other client and recovers the inline draft after explicit reload`);
@@ -230,19 +238,19 @@ try {
     await page.locator('.rag-question-editor').getByRole('button', { name: '发送', exact: true }).click();
     assert.equal((await submitted).postDataJSON().baseVersion, editBase.version);
     await expect(workspace).toContainText('会话已变化'); assert.equal(streams, backgroundNumber);
-    await page.locator('.rag-question-editor').getByRole('button', { name: '重新读取并核对', exact: true }).click();
+    await retryEdit.click();
     await expect(editor).toHaveValue('合成保存：后台重读不得更换原基线');
     record(`${engine}: real background task refresh cannot silently rebase an open draft; stale send is rejected before generation`);
     const latest = await getSession();
     const removedTarget = await page.request.put(`${base}/api/rag/sessions/${latest.id}`, { data: { mutationId: randomUUID(), baseVersion: latest.version, answerMode: latest.answerMode, messages: latest.messages.slice(0, 2) } }); assert.equal(removedTarget.status(), 200);
-    await page.locator('.rag-question-editor').getByRole('button', { name: '重新读取并核对', exact: true }).click();
+    await rejectStaleEdit(); await retryEdit.click();
     await expect(page.getByRole('textbox', { name: '保留的修改稿', exact: true })).toHaveValue('合成保存：后台重读不得更换原基线');
     await page.getByRole('button', { name: '复制修改稿', exact: true }).click(); assert.equal(await page.evaluate(() => window.s36Copied), '合成保存：后台重读不得更换原基线');
     await page.getByRole('button', { name: '取消编辑', exact: true }).click();
     await expect(page.getByRole('textbox', { name: '保留的修改稿', exact: true })).toHaveCount(0);
     await workspace.getByRole('button', { name: '编辑此问题', exact: true }).first().click(); await editor.fill('会话删除后仍需保留的草稿');
     const beforeDelete = await getSession(); const deleted = await page.request.delete(`${base}/api/rag/sessions/${beforeDelete.id}`, { data: { mutationId: randomUUID(), baseVersion: beforeDelete.version } }); assert.equal(deleted.status(), 200);
-    await page.locator('.rag-question-editor').getByRole('button', { name: '重新读取并核对', exact: true }).click();
+    await rejectStaleEdit(); await retryEdit.click();
     await expect(page.getByRole('textbox', { name: '保留的修改稿', exact: true })).toHaveValue('会话删除后仍需保留的草稿');
     await page.getByRole('button', { name: '取消编辑', exact: true }).click();
     record(`${engine}: removed targets and deleted sessions retain visible recoverable drafts until explicit cancellation`);

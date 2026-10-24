@@ -1,0 +1,155 @@
+name: Manual acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      check:
+        description: Acceptance suite (synthetic data and model substitutes only)
+        type: choice
+        required: true
+        default: browser
+        options: [browser, containers, windows, all]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: acceptance-${{ github.ref }}-${{ inputs.check }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  NEXT_TELEMETRY_DISABLED: '1'
+
+jobs:
+  browser:
+    if: inputs.check == 'browser' || inputs.check == 'all'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22.23.3'
+          cache: npm
+          cache-dependency-path: |
+            study-log-web/package-lock.json
+            study-log-mcp/package-lock.json
+      - run: mkdir -p "$RUNNER_TEMP/ci-evidence"
+      - run: npm ci --prefix study-log-web 2>&1 | tee "$RUNNER_TEMP/ci-evidence/web-install.log"
+      - run: npm ci --prefix study-log-mcp 2>&1 | tee "$RUNNER_TEMP/ci-evidence/mcp-install.log"
+      - run: cd study-log-web && npx --no-install playwright install --with-deps chromium webkit
+      - run: npm --prefix study-log-web run build 2>&1 | tee "$RUNNER_TEMP/ci-evidence/web-build.log"
+      - name: Question editing
+        run: node study-log-web/scripts/verify-rag-edit-browser.mjs 2>&1 | tee "$RUNNER_TEMP/ci-evidence/question-edit.log"
+      - name: Reading and streaming scroll ownership
+        run: node study-log-web/scripts/verify-rag-live-follow.mjs 2>&1 | tee "$RUNNER_TEMP/ci-evidence/live-follow.log"
+      - name: Reading anchors
+        run: node study-log-web/scripts/verify-rag-reading-anchor.mjs 2>&1 | tee "$RUNNER_TEMP/ci-evidence/reading-anchor.log"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: browser-failure-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/ci-evidence/
+            .local/**/report.json
+            .local/**/*.png
+          retention-days: 3
+          if-no-files-found: warn
+
+  containers:
+    if: inputs.check == 'containers' || inputs.check == 'all'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22.23.3'
+          cache: npm
+          cache-dependency-path: |
+            study-log-web/package-lock.json
+            study-log-mcp/package-lock.json
+      - run: mkdir -p "$RUNNER_TEMP/ci-evidence"
+      - name: Build isolated Linux images
+        env:
+          WEB_IMAGE: study-log-ci-web:${{ github.sha }}
+          MCP_IMAGE: study-log-ci-mcp:${{ github.sha }}
+          TOOLS_IMAGE: study-log-ci-tools:${{ github.sha }}
+        run: |
+          docker build --platform linux/amd64 -t "$TOOLS_IMAGE" -f ops/tools.Dockerfile . 2>&1 | tee "$RUNNER_TEMP/ci-evidence/tools-build.log"
+          docker build --platform linux/amd64 -t "$MCP_IMAGE" -f study-log-mcp/Dockerfile study-log-mcp 2>&1 | tee "$RUNNER_TEMP/ci-evidence/mcp-build.log"
+          docker build --platform linux/amd64 -t "$WEB_IMAGE" -f ops/web.Dockerfile . 2>&1 | tee "$RUNNER_TEMP/ci-evidence/web-build.log"
+      - name: Synthetic deployment and archive acceptance
+        env:
+          WEB_IMAGE: study-log-ci-web:${{ github.sha }}
+          MCP_IMAGE: study-log-ci-mcp:${{ github.sha }}
+          TOOLS_IMAGE: study-log-ci-tools:${{ github.sha }}
+        run: node ops/docker-smoke.mjs 2>&1 | tee "$RUNNER_TEMP/ci-evidence/container-smoke.log"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: containers-failure-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/ci-evidence/
+            .local/**/report.json
+            .local/**/*.png
+          retention-days: 3
+          if-no-files-found: warn
+
+  windows:
+    if: inputs.check == 'windows' || inputs.check == 'all'
+    runs-on: windows-2025
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22.23.3'
+          cache: npm
+          cache-dependency-path: |
+            study-log-web/package-lock.json
+            study-log-mcp/package-lock.json
+            ops/electron/package-lock.json
+      - name: Install and build from clean checkout
+        shell: pwsh
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          New-Item -ItemType Directory -Path "$env:RUNNER_TEMP/ci-evidence" -Force | Out-Null
+          npm ci --prefix study-log-web *> "$env:RUNNER_TEMP/ci-evidence/web-install.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm ci --prefix study-log-mcp *> "$env:RUNNER_TEMP/ci-evidence/mcp-install.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm ci --prefix ops/electron *> "$env:RUNNER_TEMP/ci-evidence/electron-install.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm --prefix study-log-web run build *> "$env:RUNNER_TEMP/ci-evidence/web-build.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node ops/electron/package.mjs "$env:RUNNER_TEMP/windows-candidate" *> "$env:RUNNER_TEMP/ci-evidence/windows-package.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Start and close the actual packaged application
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem "$env:RUNNER_TEMP/windows-candidate/desktop/win-unpacked" -Filter '*.exe' | Select-Object -First 1
+          if (-not $exe) { throw 'Packaged executable missing' }
+          node ops/electron/smoke.mjs $exe.FullName *> "$env:RUNNER_TEMP/ci-evidence/windows-smoke.log"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: windows-failure-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/ci-evidence/
+            .local/**/report.json
+            .local/**/*.png
+          retention-days: 3
+          if-no-files-found: warn

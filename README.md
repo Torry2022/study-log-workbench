@@ -94,6 +94,12 @@ node ops/run-web.mjs start "D:\workbench-instance" 3560
 
 源码按 `study-log-web/`、`study-log-mcp/`、`study-log-harmony/` 和 `ops/` 组织。参考[架构](docs/architecture.md)、[接口契约](docs/api-contract.md)、[配套发布流程](docs/releasing.md)和[设计规范](DESIGN.md)；许可证见 [LICENSE](LICENSE)，依赖声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
+## 自动检查与手动验收
+
+[CI](.github/workflows/ci.yml) 在 main 推送和 PR 时按改动路径执行 Web 类型检查、替身单测及生产构建、MCP 测试、鸿蒙 Node 协议测试，以及维护工具和 Windows 可跨平台逻辑测试。使用 Node 22.23.3 与锁文件安装依赖；鸿蒙协议测试不代表 SDK 构建或真机验收，Linux 作业会保留既有 Windows ACL 测试跳过标记。
+
+问答滚动与编辑的双浏览器检查、Docker 部署及归档验收、Windows 打包启动检查，分别在 [Manual acceptance](.github/workflows/acceptance.yml) 中按需运行。工作流仅使用托管 runner、合成资料和模型替身，不使用生产配置或签名，也不会发布、部署或安装到设备。失败日志与截图保留 3 天。
+
 ## 当前边界
 
 - Windows 安装、同版本覆盖安装、保留学习记录及归档恢复已有维护者测试；安装包未签名，跨版本数据迁移未完成验证。

@@ -18,3 +18,4 @@ playwright-report/
 *.p12
 *.p7b
 *.hap
+__pycache__/

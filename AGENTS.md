@@ -19,3 +19,9 @@
 - Refactor when responsibilities or state are demonstrably tangled. Preserving behavior does not require preserving the existing structure; remove paths made obsolete by the change rather than stacking compatibility branches without actual consumers. Do not expand a local repair into an unsupported rewrite.
 - Review previous experiments and why they failed before proposing another. Distinguish observed defects from hypotheses. Regression tests establish behavior and compatibility, not design quality or model-answer accuracy; define the relevant benefit and cost checks separately.
 - Journal Q&A should help users find, recall, organize and understand their own learning records, including project progress. General knowledge may support understanding; a general expert assistant is not the evaluation target. A small test run or completed refactor is not completion of the overall Q&A improvement goal. Report implemented, experimental and unfinished work separately.
+
+## Commit subjects
+
+- Use `type(scope): description` for one component (`web`, `harmony`, `windows`, `mcp`, `skill`, `ops`, `release`); omit the scope for changes across components or the whole repository. Use one scope, not a list.
+- Types: `feat`, `fix`, `perf`, `refactor`, `test`, `docs`, `build`, `ci`, `chore`, `style`, `revert`, `merge`. Reserve `merge` for actual multi-parent merges. Use `chore(ops)` for operational preparation and `chore(release)` for release preparation.
+- `style` may cover visual/layout/icon changes or code formatting that does not change behavior. Use `fix` for an identified defect and `feat` for a new capability. Keep the English description concise and start with a verb.

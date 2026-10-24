@@ -1,0 +1,168 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  NEXT_TELEMETRY_DISABLED: '1'
+
+jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      web: ${{ steps.paths.outputs.web }}
+      mcp: ${{ steps.paths.outputs.mcp }}
+      harmony: ${{ steps.paths.outputs.harmony }}
+      ops: ${{ steps.paths.outputs.ops }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check path selection
+        run: python3 -m unittest discover -s .github/scripts -p 'test_*.py'
+      - id: paths
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: python3 .github/scripts/changed-paths.py
+
+  web:
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22.23.3'
+          cache: npm
+          cache-dependency-path: |
+            study-log-web/package-lock.json
+            study-log-mcp/package-lock.json
+      - run: mkdir -p "$RUNNER_TEMP/ci-evidence"
+      - name: Install study-log-web
+        run: npm ci --prefix study-log-web 2>&1 | tee "$RUNNER_TEMP/ci-evidence/install-study-log-web.log"
+      - name: Install study-log-mcp
+        run: npm ci --prefix study-log-mcp 2>&1 | tee "$RUNNER_TEMP/ci-evidence/install-study-log-mcp.log"
+      - name: Typecheck
+        run: npm --prefix study-log-web run typecheck 2>&1 | tee "$RUNNER_TEMP/ci-evidence/web-typecheck.log"
+      - name: Unit tests
+        run: node --experimental-strip-types --test --test-concurrency=2 study-log-web/scripts/*.test.mjs 2>&1 | tee "$RUNNER_TEMP/ci-evidence/web-unit-tests.log"
+      - name: Production build
+        run: npm --prefix study-log-web run build 2>&1 | tee "$RUNNER_TEMP/ci-evidence/web-production-build.log"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: web-failure-${{ github.run_id }}
+          path: ${{ runner.temp }}/ci-evidence/
+          retention-days: 3
+          if-no-files-found: warn
+
+  mcp:
+    needs: changes
+    if: needs.changes.outputs.mcp == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22.23.3'
+          cache: npm
+          cache-dependency-path: |
+            study-log-mcp/package-lock.json
+      - run: mkdir -p "$RUNNER_TEMP/ci-evidence"
+      - name: Install study-log-mcp
+        run: npm ci --prefix study-log-mcp 2>&1 | tee "$RUNNER_TEMP/ci-evidence/install-study-log-mcp.log"
+      - name: Retrieval and protocol tests
+        run: npm --prefix study-log-mcp test 2>&1 | tee "$RUNNER_TEMP/ci-evidence/mcp-retrieval-and-protocol-tests.log"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: mcp-failure-${{ github.run_id }}
+          path: ${{ runner.temp }}/ci-evidence/
+          retention-days: 3
+          if-no-files-found: warn
+
+  harmony:
+    needs: changes
+    if: needs.changes.outputs.harmony == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22.23.3'
+          cache: npm
+          cache-dependency-path: |
+            study-log-harmony/package-lock.json
+            study-log-web/package-lock.json
+      - run: mkdir -p "$RUNNER_TEMP/ci-evidence"
+      - name: Install study-log-harmony
+        run: npm ci --prefix study-log-harmony 2>&1 | tee "$RUNNER_TEMP/ci-evidence/install-study-log-harmony.log"
+      - name: Install study-log-web
+        run: npm ci --prefix study-log-web 2>&1 | tee "$RUNNER_TEMP/ci-evidence/install-study-log-web.log"
+      - name: Node protocol tests
+        run: node --experimental-strip-types --test --test-concurrency=2 study-log-harmony/test/*.test.mjs 2>&1 | tee "$RUNNER_TEMP/ci-evidence/harmony-node-protocol-tests.log"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: harmony-failure-${{ github.run_id }}
+          path: ${{ runner.temp }}/ci-evidence/
+          retention-days: 3
+          if-no-files-found: warn
+
+  ops:
+    needs: changes
+    if: needs.changes.outputs.ops == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22.23.3'
+          cache: npm
+          cache-dependency-path: |
+            study-log-web/package-lock.json
+            study-log-mcp/package-lock.json
+      - run: mkdir -p "$RUNNER_TEMP/ci-evidence"
+      - name: Install study-log-web
+        run: npm ci --prefix study-log-web 2>&1 | tee "$RUNNER_TEMP/ci-evidence/install-study-log-web.log"
+      - name: Install study-log-mcp
+        run: npm ci --prefix study-log-mcp 2>&1 | tee "$RUNNER_TEMP/ci-evidence/install-study-log-mcp.log"
+      - name: Operations and Windows logic
+        run: node --experimental-strip-types --test --test-concurrency=2 ops/*.test.mjs ops/desktop/*.test.mjs ops/electron/updates.test.mjs 2>&1 | tee "$RUNNER_TEMP/ci-evidence/ops-operations-and-windows-logic.log"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: ops-failure-${{ github.run_id }}
+          path: ${{ runner.temp }}/ci-evidence/
+          retention-days: 3
+          if-no-files-found: warn

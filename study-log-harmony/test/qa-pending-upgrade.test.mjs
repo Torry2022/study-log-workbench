@@ -24,10 +24,10 @@ test('an unaccepted edit is invisible to the actual old app pending reader and s
  await client.connect();const input={...submission(),baseVersion:'a'.repeat(64),editMessageId:'old-user'};
  await client.submit(input);assert.equal(posts,1);assert.equal(f.tasks.size,0);client.stop();
  assert.equal(JSON.parse(values.get('rag-pending-v2:synthetic'))[0].editMessageId,'old-user');
- const oldStoreSource=execFileSync('git',['show','3a7fb36:study-log-harmony/entry/src/main/ets/common/storage/InstanceStore.ets'],{encoding:'utf8'});
+ const oldStoreSource=execFileSync('git',['show','b3c2152d538f10542aaa93f1b1abad30decf167f:study-log-harmony/entry/src/main/ets/common/storage/InstanceStore.ets'],{encoding:'utf8'});
  const oldSettings=new (load(oldStoreSource,deps).InstanceStore)();await oldSettings.initialize({});
  assert.equal(await oldSettings.readQaPending('synthetic'),'[]');
- const oldSource=execFileSync('git',['show','3a7fb36:study-log-harmony/entry/src/main/ets/features/qa/QaTaskClient.ets'],{encoding:'utf8'});
+ const oldSource=execFileSync('git',['show','b3c2152d538f10542aaa93f1b1abad30decf167f:study-log-harmony/entry/src/main/ets/features/qa/QaTaskClient.ets'],{encoding:'utf8'});
  const legacy=new (load(oldSource,{'../../common/network/ApiClient':{ApiError:f.ApiError},'./QaTaskModels':f}).QaTaskClient)(f.transport,
   {read:()=>oldSettings.readQaPending('synthetic'),write:raw=>oldSettings.writeQaPending('synthetic',raw)},f.instanceId);t.after(()=>legacy.stop());
  await legacy.connect();assert.equal(posts,1,'old app must not turn the edit into an append');assert.equal(legacy.pending.length,0);

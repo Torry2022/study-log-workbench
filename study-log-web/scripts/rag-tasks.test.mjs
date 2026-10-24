@@ -141,7 +141,7 @@ test('the first edit and SQLite 3 fence commit atomically; old writers reject wi
   } finally { sql.close(); }
   const reopened = new RagTaskStore(process.env.LOG_ROOT); stores.push(reopened);
   const before = await fs.readFile(file);
-  const oldSource = execFileSync('git', ['show', '3a7fb36:study-log-web/lib/rag-task-store.ts'], { encoding: 'utf8' });
+  const oldSource = execFileSync('git', ['show', 'b3c2152d538f10542aaa93f1b1abad30decf167f:study-log-web/lib/rag-task-store.ts'], { encoding: 'utf8' });
   const legacy = path.join(fixture, 'old-task-store.ts'); await fs.writeFile(legacy, oldSource);
   const script = `import {RagTaskStore} from ${JSON.stringify(pathToFileURL(legacy).href)};try{new RagTaskStore(process.argv[1]);process.exit(2);}catch(e){if(!e.message.includes('newer application'))throw e;}`;
   execFileSync(process.execPath, ['--experimental-strip-types', '--input-type=module', '-e', script, process.env.LOG_ROOT], { stdio: 'pipe' });

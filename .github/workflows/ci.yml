@@ -50,6 +50,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -66,7 +67,8 @@ jobs:
       - name: Typecheck
         run: npm --prefix study-log-web run typecheck 2>&1 | tee "$RUNNER_TEMP/ci-evidence/web-typecheck.log"
       - name: Unit tests
-        run: node --experimental-strip-types --test --test-concurrency=2 study-log-web/scripts/*.test.mjs 2>&1 | tee "$RUNNER_TEMP/ci-evidence/web-unit-tests.log"
+        working-directory: study-log-web
+        run: node --experimental-strip-types --test --test-concurrency=2 scripts/*.test.mjs 2>&1 | tee "$RUNNER_TEMP/ci-evidence/web-unit-tests.log"
       - name: Production build
         run: npm --prefix study-log-web run build 2>&1 | tee "$RUNNER_TEMP/ci-evidence/web-production-build.log"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -113,6 +115,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:

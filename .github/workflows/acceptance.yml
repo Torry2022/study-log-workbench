@@ -78,6 +78,8 @@ jobs:
             study-log-web/package-lock.json
             study-log-mcp/package-lock.json
       - run: mkdir -p "$RUNNER_TEMP/ci-evidence"
+      - name: Install synthetic fixture dependencies
+        run: npm ci --prefix study-log-web 2>&1 | tee "$RUNNER_TEMP/ci-evidence/fixture-install.log"
       - name: Build isolated Linux images
         env:
           WEB_IMAGE: study-log-ci-web:${{ github.sha }}

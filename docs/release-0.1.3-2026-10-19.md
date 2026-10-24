@@ -42,4 +42,4 @@ Windows 安装器尚未签名；鸿蒙附件需要使用者自己的身份与证
 
 本机冻结记录为 .local/release-0.1.3-20261019/，含源码、Web 构建、Windows 安装内容、三镜像及附件指纹。Windows 最终实际入口自验报告位于 .local/rag-windows-tasks-1792380889503/，独验报告位于 .local/rag-windows-tasks-1792380650555/；容器自验为 .local/public-f08-tasks-1792379390677/，独验报告由四端统筹 Session 保存。原私密路径和设备截图不进入 Git。
 
-发布入口为 [v0.1.3](https://github.com/Torry2022/study-log-workbench-public/releases/tag/v0.1.3)。本次不操作个人版或 ECS，不迁移真实资料，不公开维护者调试签名。
+发布入口为 [v0.1.3](https://github.com/Torry2022/study-log-workbench/releases/tag/v0.1.3)。本次不操作个人版或 ECS，不迁移真实资料，不公开维护者调试签名。

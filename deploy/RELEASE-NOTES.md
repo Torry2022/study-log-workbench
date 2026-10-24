@@ -32,4 +32,4 @@
 - 更新前停止服务并创建完整备份。服务器请同时升级 Web 与 tools，使用配套的 `0.1.6` 部署文件和镜像。
 - 首次受理编辑问题的任务时，任务库会升级到版本 3，旧版 Web 和 tools 将拒绝读取。需要降级时，应恢复升级前的完整备份，不能只换回旧程序。
 
-**完整更新**：[v0.1.5 → v0.1.6](https://github.com/Torry2022/study-log-workbench-public/compare/v0.1.5...v0.1.6)。
+**完整更新**：[v0.1.5 → v0.1.6](https://github.com/Torry2022/study-log-workbench/compare/v0.1.5...v0.1.6)。

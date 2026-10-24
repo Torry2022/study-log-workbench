@@ -4,7 +4,7 @@
 
 ## 交付状态
 
-Windows 安装包、Linux amd64 Web 镜像和鸿蒙未签名 HAP 已完成对应源码、打包内容及独立验收，并在 [v0.1.6 发布页](https://github.com/Torry2022/study-log-workbench-public/releases/tag/v0.1.6) 提供。各端实际入口与独立验收均使用隔离合成资料，未调用付费模型。
+Windows 安装包、Linux amd64 Web 镜像和鸿蒙未签名 HAP 已完成对应源码、打包内容及独立验收，并在 [v0.1.6 发布页](https://github.com/Torry2022/study-log-workbench/releases/tag/v0.1.6) 提供。各端实际入口与独立验收均使用隔离合成资料，未调用付费模型。
 
 Linux Web 使用 Node 22.23.4，补验了原生 SQLite 事务、完整性检查、版本 3 任务库及问答任务/会话读取接口。
 

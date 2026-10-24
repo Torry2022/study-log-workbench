@@ -44,4 +44,4 @@ Windows 安装器尚未签名。服务器 ZIP 四个文件逐项与 `deploy/` �
 
 本机覆盖安装前已确认桌面及其本地服务退出，并备份校验 15 个原资料和配置文件，备份限制访问。安装到原目录 `D:\Software\study-log-desktop`，安装器退出码 0，15 个受保护文件哈希不变，5233 个安装文件与候选一致。实际启动后工作区可见，桌面和本地服务均为 0.1.2，capabilities 返回 200，随后正常退出。报告为产物目录内的 `install-report.json` 与 `real-start-report.json`。
 
-发布页为 [v0.1.2](https://github.com/Torry2022/study-log-workbench-public/releases/tag/v0.1.2)，附件包括上表三项及 SHA256SUMS。源码、标签和附件以该发布页为准；本轮没有操作个人版或生产服务器，也没有在真实实例里发起模型请求。
+发布页为 [v0.1.2](https://github.com/Torry2022/study-log-workbench/releases/tag/v0.1.2)，附件包括上表三项及 SHA256SUMS。源码、标签和附件以该发布页为准；本轮没有操作个人版或生产服务器，也没有在真实实例里发起模型请求。

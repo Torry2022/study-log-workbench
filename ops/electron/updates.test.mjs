@@ -23,7 +23,7 @@ test('stable channel ignores prereleases, drafts and server-only releases', asyn
 });
 test('prerelease channel selects highest applicable version and fixes the destination', async () => {
   const result = await checkForUpdate('0.1.0-rc.4', response([release('v0.1.0-rc.9'), release('v0.1.0-rc.10', { html_url: 'https://other.test' })]));
-  assert.equal(result.url, 'https://github.com/Torry2022/study-log-workbench-public/releases/tag/v0.1.0-rc.10');
+  assert.equal(result.url, 'https://github.com/Torry2022/study-log-workbench/releases/tag/v0.1.0-rc.10');
   assert.equal(result.version, '0.1.0-rc.10');
   assert.equal(await checkForUpdate('0.1.0-rc.10', response([release('v0.1.0-rc.9')])), null);
 });

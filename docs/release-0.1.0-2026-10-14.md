@@ -21,7 +21,7 @@
 
 ## 发布与安装结果
 
-- 最终代码已推送至 `d690fbe`，正式标签为 `v0.1.0`，公开发布页为 <https://github.com/Torry2022/study-log-workbench-public/releases/tag/v0.1.0>。
+- 最终代码已推送至 `d690fbe`，正式标签为 `v0.1.0`，公开发布页为 <https://github.com/Torry2022/study-log-workbench/releases/tag/v0.1.0>。
 - Windows 安装包 SHA-256：`3f75cb43f80263a6ea9104113860091ca5b6bfcad35f5148cc225432e70348c1`。
 - 服务器部署包 SHA-256：`7a9756927b9b9b89da33e3c858a0e8a86a3a69b1af05db31f97958ccb3cb1086`。
 - 鸿蒙未签名 HAP SHA-256：`c3f4970f8d7774e72967c5145f4a585e8249d91966e5b8ec42f73905cb1e58fb`。

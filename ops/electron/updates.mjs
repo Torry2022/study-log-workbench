@@ -1,5 +1,5 @@
-export const releasesUrl = 'https://api.github.com/repos/Torry2022/study-log-workbench-public/releases?per_page=100';
-const releasePage = 'https://github.com/Torry2022/study-log-workbench-public/releases/tag/';
+export const releasesUrl = 'https://api.github.com/repos/Torry2022/study-log-workbench/releases?per_page=100';
+const releasePage = 'https://github.com/Torry2022/study-log-workbench/releases/tag/';
 
 export function parseVersion(value) {
   if (typeof value !== 'string' || value.length > 100) return null;

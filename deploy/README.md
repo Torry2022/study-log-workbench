@@ -8,7 +8,7 @@
 
 ## 获取部署文件
 
-下载 [0.1.6 服务器部署附件](https://github.com/Torry2022/study-log-workbench-public/releases/download/v0.1.6/study-log-server-0.1.6.zip)，在[正式发布页面](https://github.com/Torry2022/study-log-workbench-public/releases/tag/v0.1.6)取得 SHA-256 校验文件；也可从源码仓同版本 `deploy/` 目录取得上述四个文件。附件与同版本 ACR 镜像配套。无需下载 Windows 安装包、鸿蒙调试包或源码依赖，也无需创建自己的 ACR 仓库。
+下载 [0.1.6 服务器部署附件](https://github.com/Torry2022/study-log-workbench/releases/download/v0.1.6/study-log-server-0.1.6.zip)，在[正式发布页面](https://github.com/Torry2022/study-log-workbench/releases/tag/v0.1.6)取得 SHA-256 校验文件；也可从源码仓同版本 `deploy/` 目录取得上述四个文件。附件与同版本 ACR 镜像配套。无需下载 Windows 安装包、鸿蒙调试包或源码依赖，也无需创建自己的 ACR 仓库。
 
 本文命令在你自己的 Linux 服务器上执行。准备 Docker Engine、Docker Compose 2.24 或以上及一个专用保存文件夹；使用已有服务器即可，无需为本项目另买服务器。先完成下面的本机检查，再配置公网访问，不接管其他网站或服务。
 

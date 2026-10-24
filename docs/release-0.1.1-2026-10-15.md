@@ -47,7 +47,7 @@ Windows 仍未签名；本次不新增鸿蒙构建，不代表个人版兼容验
 
 ## 已完成的发布和安装
 
-源码及 `v0.1.1` 标签已推送，标签指向 `77707a0`。[GitHub Release](https://github.com/Torry2022/study-log-workbench-public/releases/tag/v0.1.1)已公开，Windows、服务器 ZIP 和 SHA256SUMS 均已上传；GitHub 附件 digest 与本机哈希一致，重新下载的服务器 ZIP 也一致。v0.1.0 标签和原附件保留。
+源码及 `v0.1.1` 标签已推送，标签指向 `77707a0`。[GitHub Release](https://github.com/Torry2022/study-log-workbench/releases/tag/v0.1.1)已公开，Windows、服务器 ZIP 和 SHA256SUMS 均已上传；GitHub 附件 digest 与本机哈希一致，重新下载的服务器 ZIP 也一致。v0.1.0 标签和原附件保留。
 
 已在 `D:\Software\study-log-desktop` 覆盖安装，安装器退出码 0；15 个原资料文件未变，5233 个候选文件与安装目录一致，网页构建 ID 为 `MEiOW-sSDclOvUjfqN0QP`。从实际安装目录启动，桌面和本地服务版本均为 0.1.1，工作区正常出现、capabilities 返回 200；随后正常退出。没有编辑真实记录或调用模型。
 

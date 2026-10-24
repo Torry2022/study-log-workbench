@@ -40,4 +40,4 @@ Windows构建ID为UhUSAhrE9Gc1Np9BU3y_h；Web镜像构建ID为2LwLz2IgekPZlvG6SU
 
 校验文件SHA-256为73a2f72ee15c06334da5a3a43e6f1787b75c8ea9f787ef5f29a6485f4e1383e6。旧下载需重新获取；服务器重新拉取同名Web镜像并重建容器。
 
-通用版验证使用合成资料，未写真实日志、未调用付费模型。构建、文件及镜像身份与完整验收证据保存在本机发布交接目录，公开发布入口为[v0.1.4](https://github.com/Torry2022/study-log-workbench-public/releases/tag/v0.1.4)。
+通用版验证使用合成资料，未写真实日志、未调用付费模型。构建、文件及镜像身份与完整验收证据保存在本机发布交接目录，公开发布入口为[v0.1.4](https://github.com/Torry2022/study-log-workbench/releases/tag/v0.1.4)。

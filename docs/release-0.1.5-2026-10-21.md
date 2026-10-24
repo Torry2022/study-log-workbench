@@ -36,7 +36,7 @@ Windows 安装器未签名；鸿蒙 HAP 需自行签名。版本说明见 [部�
 - mcp：`sha256:41272879bc908f8c79e4c570a811b77d54948dbbe0f93bc9d0979da05c25cd9f`
 - tools：`sha256:e5cb5ba0d18ddd1338c1053ece1d9423fabee1539ba7f0dff42a0eeb810fa41f`
 
-完整本机证据位于维护者 0.1.5-20261021 发布目录，公开附件以 [v0.1.5 发布页](https://github.com/Torry2022/study-log-workbench-public/releases/tag/v0.1.5) 与 SHA256SUMS.txt 为准。
+完整本机证据位于维护者 0.1.5-20261021 发布目录，公开附件以 [v0.1.5 发布页](https://github.com/Torry2022/study-log-workbench/releases/tag/v0.1.5) 与 SHA256SUMS.txt 为准。
 
 ## 2026-10-22 鸿蒙更新
 

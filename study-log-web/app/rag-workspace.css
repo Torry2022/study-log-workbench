@@ -45,6 +45,16 @@
   padding-top: 0;
 }
 
+.rag-workspace:not(.has-messages) {
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.rag-workspace:not(.has-messages) .rag-conversation {
+  contain: size;
+  overflow-y: auto;
+}
+
 .rag-conversation,
 .rag-composer-slot {
   width: min(100%, var(--workspace-reading-width));
@@ -57,8 +67,8 @@
   min-height: 0;
 }
 
-.rag-empty {
-  min-height: clamp(340px, 48vh, 540px);
+.rag-workspace .rag-conversation .rag-empty {
+  min-height: 100%;
 }
 
 .rag-example-question {

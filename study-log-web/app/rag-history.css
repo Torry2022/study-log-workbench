@@ -288,9 +288,10 @@
   position: sticky;
   top: 0;
   z-index: 25;
-  height: 100svh;
+  height: auto;
   max-height: 100svh;
-  align-self: start;
+  align-self: stretch;
+  contain: size;
   overflow: hidden;
 }
 

@@ -132,9 +132,30 @@ try {
       await expect(input).toHaveValue(value);
     };
     const composerGeometry = () => input.evaluate(element => {
-      const rect = element.getBoundingClientRect();
+      const rect = element.getBoundingClientRect(), style = getComputedStyle(element);
+      // A textarea has no text nodes for Range geometry. Mirror its actual text
+      // layout without focusing it or adding anything to the document flow.
+      const mirror = document.createElement('div');
+      for (const property of ['box-sizing', 'font-family', 'font-size', 'font-weight', 'font-style',
+        'font-variant', 'line-height', 'letter-spacing', 'text-align', 'text-indent', 'text-transform',
+        'white-space', 'word-break', 'overflow-wrap', 'tab-size', 'direction',
+        'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
+        'border-top-width', 'border-right-width', 'border-bottom-width', 'border-left-width', 'border-style']) {
+        mirror.style.setProperty(property, style.getPropertyValue(property));
+      }
+      Object.assign(mirror.style, { position: 'fixed', visibility: 'hidden', pointerEvents: 'none',
+        left: `${rect.left}px`, top: `${rect.top}px`, margin: '0', height: 'auto',
+        width: `${element.clientWidth + parseFloat(style.borderLeftWidth) + parseFloat(style.borderRightWidth)}px` });
+      const text = document.createTextNode(element.value || '\u200b'); mirror.append(text); document.body.append(mirror);
+      let textLines;
+      try {
+        const range = document.createRange(); range.selectNodeContents(text);
+        textLines = Array.from(range.getClientRects()).filter(line => line.height > 0)
+          .map(line => ({ top: line.top - element.scrollTop, bottom: line.bottom - element.scrollTop }));
+      } finally { mirror.remove(); }
       return { y: scrollY, height: document.documentElement.scrollHeight, viewport: innerHeight,
-        top: rect.top, bottom: rect.bottom, focused: document.activeElement === element, calls: window.followCalls };
+        top: rect.top, bottom: rect.bottom, textLines,
+        focused: document.activeElement === element, calls: window.followCalls };
     });
     await expect(input).toBeEnabled();
     const fresh = async () => {
@@ -206,7 +227,8 @@ try {
       await input.fill('主动聚焦后的合成草稿');
       const typed = await composerGeometry();
       (report.focusGeometry ||= []).push({ label, phase: 'intentional-focus', before, focused, typed });
-      assert.ok(typed.top >= 0 && typed.bottom <= typed.viewport, JSON.stringify({ before, focused, typed }));
+      assert.ok(typed.focused && typed.textLines.length > 0 && typed.textLines[0].top >= 0 &&
+        typed.textLines.at(-1).bottom <= typed.viewport, JSON.stringify({ before, focused, typed }));
       await expect(input).toHaveValue('主动聚焦后的合成草稿');
       await input.fill('');
     });

@@ -3,18 +3,18 @@ const assets = query.get('assets');
 if (assets) for (const image of document.querySelectorAll('.mark img')) {
   image.src = new URL(`${image.dataset.theme}/media/launch_${image.dataset.part}.svg`, assets).href;
 }
-for (let index = 0; index < 28; index++) {
-  const angle = index * 2.399963, reach = 84 + index % 5 * 18;
+for (let index = 0; index < 12; index++) {
+  const angle = index * 2.399963, reach = 62 + index % 4 * 9;
   const x = Math.cos(angle) * reach;
   const fragment = document.createElement('span');
   fragment.className = 'fragment';
   for (const [name, value] of Object.entries({
     sx: Math.cos(angle) * 18 + 'px', sy: Math.sin(angle) * 9 + 'px',
-    mx: x + 'px', peak: -32 - index * 17 % 36 + 'px',
-    dx: x * 1.15 + 'px', dy: 90 + index * 13 % 46 + 'px',
-    turn: (index % 2 ? -1 : 1) * 160 + 'deg', rotation: (index % 2 ? -1 : 1) * (400 + index * 23) + 'deg',
-    flip: 460 + index * 47 + 'deg', width: 4 + index % 3 + 'px', height: 7 + index % 4 + 'px',
-    delay: index % 4 * 12 + 'ms', duration: 980 + index % 4 * 70 + 'ms'
+    mx: x + 'px', peak: -24 - index * 11 % 18 + 'px',
+    dx: x * 1.05 + 'px', dy: 28 + index * 7 % 24 + 'px',
+    turn: (index % 2 ? -1 : 1) * 110 + 'deg', rotation: (index % 2 ? -1 : 1) * (240 + index * 13) + 'deg',
+    flip: 300 + index * 29 + 'deg', width: 3 + index % 2 + 'px', height: 4 + index % 3 + 'px',
+    delay: index % 3 * 10 + 'ms', duration: 520 + index % 3 * 50 + 'ms'
   })) {
     fragment.style.setProperty('--' + name, value);
   }

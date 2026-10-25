@@ -110,7 +110,8 @@ try {
       assert.ok(intro.samples.some(sample => sample.layers[0].x > 0), 'gathering must retain its spring overshoot');
       assert.ok(intro.samples.some(sample => sample.scale < .99), 'contact must include a short compression');
       assert.ok(intro.samples.some(sample => sample.fragmentOpacity > .1), 'fragments must appear briefly at contact');
-      assert.ok(intro.samples.some(sample => sample.fragmentSpread > 60), 'confetti must spread clearly beyond the logo');
+      assert.ok(intro.samples.some(sample => sample.fragmentSpread > 40), 'confetti must remain visible beyond the logo');
+      assert.ok(intro.samples.every(sample => sample.fragmentSpread < 100), 'confetti must stay close to the logo');
       assert.ok(intro.samples.at(-1).layers.every(layer => Math.abs(layer.x) < .01 && Math.abs(layer.y) < .01));
       await fs.writeFile(path.join(output, 'intro-motion.json'), JSON.stringify(intro, null, 2));
       for (const scheme of ['light', 'dark']) {
@@ -123,7 +124,7 @@ try {
       }
       await startup.emulateMedia({ reducedMotion: 'reduce' });
       assert.equal(await startup.locator('.spinner').evaluate(el => getComputedStyle(el).animationName), 'none');
-      assert.equal(await startup.locator('.fragment').count(), 28);
+      assert.equal(await startup.locator('.fragment').count(), 12);
       assert.equal(await startup.locator('.fragment').first().evaluate(el => getComputedStyle(el).animationName), 'none');
     }
     const page = await workspace(), entries = await marks();

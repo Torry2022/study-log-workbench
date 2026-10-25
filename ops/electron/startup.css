@@ -3,17 +3,17 @@ html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background:
 body { border: 1px solid var(--hairline, #e6dfd8); -webkit-app-region: drag; }
 main { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 28px; }
 h1 { margin: 18px 0 12px; font-size: 18px; line-height: 1.4; font-weight: 500; }
-.mark { position: relative; width: 72px; height: 72px; --confetti-primary: #d07a5f; --confetti-ink: #171614; }
+.mark { position: relative; width: 72px; height: 72px; --fragment-primary: #d07a5f; --fragment-ink: #171614; }
 .mark-frame, .mark img { position: absolute; inset: 0; width: 100%; height: 100%; }
 .mark-frame { background: #fff; border: 1px solid var(--hairline, #e6dfd8); border-radius: 14px; opacity: 0; transform: scale(.76); }
 .mark img { transform: translate(var(--x), var(--y)); }
-.intro-playing .mark { animation: impact 220ms ease-out 520ms both; }
+.mark.contacted { animation: impact 220ms ease-out both; }
 .intro-playing .mark img { animation: gather 400ms linear 300ms both; }
 .intro-playing .mark-frame { animation: frame-in 360ms cubic-bezier(.2, .9, .2, 1.18) 410ms both; }
-.fragment { position: absolute; left: 50%; top: 50%; width: var(--width); height: var(--height); border-radius: 1px; background: var(--confetti-primary); opacity: 0; pointer-events: none; }
-.fragment:nth-of-type(even) { background: var(--confetti-ink); }
-.fragment:nth-of-type(4n) { height: var(--width); border-radius: 50%; }
-.intro-playing .fragment { animation: scatter var(--duration) cubic-bezier(.16, .75, .3, 1) calc(520ms + var(--delay)) both; }
+.fragment { position: absolute; left: 50%; top: 50%; width: 3px; height: 5px; border-radius: .5px; background: var(--fragment-primary); opacity: 0; pointer-events: none; }
+.fragment.ink { background: var(--fragment-ink); }
+.fragment:nth-of-type(3n) { height: 4px; clip-path: polygon(0 0, 100% 25%, 65% 100%, 10% 75%); }
+.fragment.hit { animation: chip-out 260ms cubic-bezier(.16, .75, .3, 1) both; }
 .mark .nodes { --x: calc(-50vw - 48px); --y: 0px; }
 .mark .top { --x: 0px; --y: calc(-50vh - 48px); }
 .mark .arrow { --x: calc(50vw + 48px); --y: 0px; }
@@ -21,7 +21,7 @@ h1 { margin: 18px 0 12px; font-size: 18px; line-height: 1.4; font-weight: 500; }
 .mark .dark { display: none; }
 [data-theme="dark"] .mark .light { display: none; }
 [data-theme="dark"] .mark .dark { display: block; }
-[data-theme="dark"] .mark { --confetti-primary: #d4876a; --confetti-ink: #f5f0e8; }
+[data-theme="dark"] .mark { --fragment-primary: #d4876a; --fragment-ink: #f5f0e8; }
 [data-theme="dark"] .mark-frame { background: #1c1a17; }
 .status { display: flex; align-items: center; gap: 8px; color: var(--muted, #6c6a64); font-size: 13px; line-height: 20px; }
 .spinner { width: 14px; height: 14px; border: 2px solid var(--hairline, #e6dfd8); border-top-color: var(--primary, #cc785c); border-radius: 50%; animation: spin 900ms linear infinite; }
@@ -36,13 +36,11 @@ h1 { margin: 18px 0 12px; font-size: 18px; line-height: 1.4; font-weight: 500; }
   100% { transform: translate(0, 0); }
 }
 @keyframes impact { 0%, 100% { transform: scale(1); } 16% { transform: scale(.94); } 48% { transform: scale(1.035); } }
-@keyframes scatter {
-  0% { opacity: 0; transform: translate(var(--sx), var(--sy)) rotate(0deg) rotateY(0deg); }
-  10% { opacity: .85; }
-  32% { transform: translate(var(--mx), var(--peak)) rotate(var(--turn)) rotateY(200deg); animation-timing-function: cubic-bezier(.4, 0, .8, .4); }
-  65% { opacity: .85; }
-  100% { opacity: 0; transform: translate(var(--dx), var(--dy)) rotate(var(--rotation)) rotateY(var(--flip)); }
+@keyframes chip-out {
+  0%, 25% { opacity: .9; }
+  0% { transform: translate(var(--sx), var(--sy)) rotate(var(--angle)); }
+  100% { opacity: 0; transform: translate(var(--dx), var(--dy)) rotate(var(--rotation)) scale(.5); }
 }
 @keyframes frame-in { from { opacity: 0; transform: scale(.76); } to { opacity: 1; transform: scale(1); } }
 @keyframes spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .intro-playing .mark, .intro-playing .fragment, .intro-playing .mark-frame, .intro-playing .mark img, .spinner { animation: none; } .mark-frame { opacity: 1; transform: none; } .mark img { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .mark.contacted, .fragment.hit, .intro-playing .mark-frame, .intro-playing .mark img, .spinner { animation: none; } .mark-frame { opacity: 1; transform: none; } .mark img { transform: none; } }

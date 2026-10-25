@@ -102,7 +102,10 @@ try {
         }) });
         while (animation.playState !== 'finished') { record(); await new Promise(requestAnimationFrame); }
         record();
-        return { duration: animation.effect.getTiming().duration, delay: animation.effect.getTiming().delay, samples };
+        const origins = [...document.querySelectorAll('.fragment')].map(fragment => ({
+          x: parseFloat(fragment.style.getPropertyValue('--sx')), y: parseFloat(fragment.style.getPropertyValue('--sy'))
+        }));
+        return { duration: animation.effect.getTiming().duration, delay: animation.effect.getTiming().delay, samples, origins };
       });
       assert.equal(intro.delay, 300);
       assert.equal(intro.samples[0].layers.length, 4);
@@ -110,8 +113,11 @@ try {
       assert.ok(intro.samples.some(sample => sample.layers[0].x > 0), 'gathering must retain its spring overshoot');
       assert.ok(intro.samples.some(sample => sample.scale < .99), 'contact must include a short compression');
       assert.ok(intro.samples.some(sample => sample.fragmentOpacity > .1), 'fragments must appear briefly at contact');
-      assert.ok(intro.samples.some(sample => sample.fragmentSpread > 40), 'confetti must remain visible beyond the logo');
-      assert.ok(intro.samples.every(sample => sample.fragmentSpread < 100), 'confetti must stay close to the logo');
+      assert.ok(intro.samples.every(sample => sample.fragmentSpread < 50), 'chips must remain a small contact accent');
+      assert.equal(new Set(intro.origins.map(origin => `${origin.x},${origin.y}`)).size, 2, 'chips must emerge from two contact edges');
+      assert.ok(intro.origins.every(origin => origin.x < 0 && Math.abs(origin.x) < 15));
+      assert.ok(intro.origins.some(origin => origin.y < -6) && intro.origins.some(origin => origin.y > 6));
+      assert.ok(intro.samples.every(sample => sample.fragmentOpacity < .01 || sample.time >= 520), 'chips must follow contact rather than precede it');
       assert.ok(intro.samples.at(-1).layers.every(layer => Math.abs(layer.x) < .01 && Math.abs(layer.y) < .01));
       await fs.writeFile(path.join(output, 'intro-motion.json'), JSON.stringify(intro, null, 2));
       for (const scheme of ['light', 'dark']) {
@@ -124,7 +130,7 @@ try {
       }
       await startup.emulateMedia({ reducedMotion: 'reduce' });
       assert.equal(await startup.locator('.spinner').evaluate(el => getComputedStyle(el).animationName), 'none');
-      assert.equal(await startup.locator('.fragment').count(), 12);
+      assert.equal(await startup.locator('.fragment').count(), 6);
       assert.equal(await startup.locator('.fragment').first().evaluate(el => getComputedStyle(el).animationName), 'none');
     }
     const page = await workspace(), entries = await marks();

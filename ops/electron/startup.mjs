@@ -3,27 +3,58 @@ const assets = query.get('assets');
 if (assets) for (const image of document.querySelectorAll('.mark img')) {
   image.src = new URL(`${image.dataset.theme}/media/launch_${image.dataset.part}.svg`, assets).href;
 }
-for (let index = 0; index < 12; index++) {
-  const angle = index * 2.399963, reach = 62 + index % 4 * 9;
-  const x = Math.cos(angle) * reach;
-  const fragment = document.createElement('span');
-  fragment.className = 'fragment';
-  for (const [name, value] of Object.entries({
-    sx: Math.cos(angle) * 18 + 'px', sy: Math.sin(angle) * 9 + 'px',
-    mx: x + 'px', peak: -24 - index * 11 % 18 + 'px',
-    dx: x * 1.05 + 'px', dy: 28 + index * 7 % 24 + 'px',
-    turn: (index % 2 ? -1 : 1) * 110 + 'deg', rotation: (index % 2 ? -1 : 1) * (240 + index * 13) + 'deg',
-    flip: 300 + index * 29 + 'deg', width: 3 + index % 2 + 'px', height: 4 + index % 3 + 'px',
-    delay: index % 3 * 10 + 'ms', duration: 520 + index % 3 * 50 + 'ms'
-  })) {
-    fragment.style.setProperty('--' + name, value);
-  }
-  document.querySelector('.mark').append(fragment);
+const mark = document.querySelector('.mark');
+const contacts = [{ part: 'top', y: 322, side: -1 }, { part: 'bottom', y: 702, side: 1 }].map(contact => ({
+  ...contact, hit: false, fragments: Array.from({ length: 3 }, (_unused, index) => {
+    const fragment = document.createElement('span');
+    fragment.className = index === 1 ? 'fragment ink' : 'fragment';
+    mark.append(fragment);
+    return fragment;
+  })
+}));
+
+function watchContact() {
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  if (reducedMotion.matches) return;
+  const theme = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'base';
+  const image = part => mark.querySelector(`img.${part}[data-theme="${theme}"]`);
+  const nodes = image('nodes'), animation = nodes.getAnimations()[0];
+  // Landmarks are the node circles and rounded bar starts in the shared SVGs:
+  // 1024 viewBox, centered 1.12 scale, node x=338/r=58, bar x=478/r=29.
+  const size = mark.clientWidth, unit = size * 1.12 / 1024;
+  const coordinate = value => size / 2 + (value - 512) * unit;
+  const trace = () => {
+    if (reducedMotion.matches) return;
+    const nodeShift = new DOMMatrixReadOnly(getComputedStyle(nodes).transform);
+    for (const contact of contacts) {
+      if (contact.hit) continue;
+      const barShift = new DOMMatrixReadOnly(getComputedStyle(image(contact.part)).transform);
+      const nodeX = coordinate(338) + nodeShift.m41, nodeY = coordinate(contact.y) + nodeShift.m42;
+      const x = coordinate(478) + barShift.m41 - nodeX, y = coordinate(contact.y) + barShift.m42 - nodeY;
+      const distance = Math.hypot(x, y);
+      if (distance > 87 * unit) continue;
+      contact.hit = true; mark.classList.add('contacted');
+      const nx = x / distance, ny = y / distance, tx = -ny * contact.side, ty = nx * contact.side;
+      const sx = nodeX + nx * 58 * unit - size / 2, sy = nodeY + ny * 58 * unit - size / 2;
+      for (const [index, fragment] of contact.fragments.entries()) {
+        const tangent = [26, 18, -14][index], normal = [0, -12, 8][index];
+        const dx = tx * tangent + nx * normal, dy = ty * tangent + ny * normal;
+        const angle = Math.atan2(dy, dx) * 180 / Math.PI - 90;
+        for (const [name, value] of Object.entries({ sx: sx + 'px', sy: sy + 'px', dx: sx + dx + 'px', dy: sy + dy + 'px', angle: angle + 'deg', rotation: angle + contact.side * (40 + index * 30) + 'deg' })) {
+          fragment.style.setProperty('--' + name, value);
+        }
+        fragment.classList.add('hit');
+      }
+    }
+    if (contacts.some(contact => !contact.hit) && animation.playState !== 'finished') requestAnimationFrame(trace);
+  };
+  requestAnimationFrame(trace);
 }
 const message = document.getElementById('message');
 message.textContent = query.get('message') || '正在准备工作台…';
 window.startup.onMessage(text => { message.textContent = text; });
 window.startup.onShow(() => requestAnimationFrame(() => {
   document.body.classList.add('intro-playing');
+  watchContact();
 }));
 document.querySelector('.close').addEventListener('click', () => window.startup.close());

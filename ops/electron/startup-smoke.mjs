@@ -94,6 +94,7 @@ try {
         const animation = images[0].getAnimations()[0], samples = [];
         const record = () => samples.push({ time: document.timeline.currentTime - animation.startTime,
           scale: new DOMMatrixReadOnly(getComputedStyle(document.querySelector('.mark')).transform).m11,
+          neckOpacity: Math.max(...[...document.querySelectorAll('.droplet')].map(droplet => Number(getComputedStyle(droplet, '::after').opacity))),
           dropletOpacity: Math.max(...[...document.querySelectorAll('.droplet')].map(droplet => Number(getComputedStyle(droplet).opacity))),
           dropletSpread: Math.max(...[...document.querySelectorAll('.droplet')].map(droplet => Math.abs(parseFloat(getComputedStyle(droplet).translate) || 0))),
           dropletScales: [...document.querySelectorAll('.droplet')].filter(droplet => Number(getComputedStyle(droplet).opacity) > .1).map(droplet => {
@@ -108,7 +109,8 @@ try {
         record();
         const origins = [...document.querySelectorAll('.droplet')].map(droplet => ({
           x: parseFloat(droplet.style.getPropertyValue('--sx')), y: parseFloat(droplet.style.getPropertyValue('--sy')),
-          dx: parseFloat(droplet.style.getPropertyValue('--dx')), dy: parseFloat(droplet.style.getPropertyValue('--dy'))
+          dx: parseFloat(droplet.style.getPropertyValue('--dx')), dy: parseFloat(droplet.style.getPropertyValue('--dy')),
+          size: parseFloat(getComputedStyle(droplet).width), duration: parseFloat(droplet.style.getPropertyValue('--duration'))
         }));
         return { duration: animation.effect.getTiming().duration, delay: animation.effect.getTiming().delay, samples, origins };
       });
@@ -118,6 +120,14 @@ try {
       assert.ok(intro.samples.some(sample => sample.layers[0].x > 0), 'gathering must retain its spring overshoot');
       assert.ok(intro.samples.some(sample => sample.scale < .99), 'contact must include a short compression');
       assert.ok(intro.samples.some(sample => sample.dropletOpacity > .1), 'droplets must appear briefly at contact');
+      assert.ok(intro.samples.some(sample => sample.neckOpacity > .4), 'droplets must briefly stretch a liquid neck before separating');
+      assert.equal(intro.samples.at(-1).neckOpacity, 0, 'liquid necks must disappear after separation');
+      for (let index = 0; index < intro.origins.length; index += 2) {
+        const [large, small] = intro.origins.slice(index, index + 2);
+        assert.ok(large.size > small.size && large.duration > small.duration, 'each contact must eject a larger slower drop and a smaller faster drop');
+        const a = Math.atan2(large.dy - large.y, large.dx - large.x), b = Math.atan2(small.dy - small.y, small.dx - small.x);
+        assert.ok(Math.abs(a - b) > .3, 'the paired drops must fan out rather than form a dotted line');
+      }
       assert.ok(intro.samples.some(sample => sample.dropletScales.some(scale => scale.x > 1.1 && scale.y < .9)), 'droplets must visibly squash');
       assert.ok(intro.samples.some(sample => sample.dropletScales.some(scale => scale.x < .9 && scale.y > 1.1)), 'droplets must visibly stretch');
       assert.ok(intro.samples.every(sample => sample.dropletSpread < 50), 'droplets must remain a small contact accent');
@@ -145,7 +155,7 @@ try {
       }
       await startup.emulateMedia({ reducedMotion: 'reduce' });
       assert.equal(await startup.locator('.spinner').evaluate(el => getComputedStyle(el).animationName), 'none');
-      assert.equal(await startup.locator('.droplet').count(), 6);
+      assert.equal(await startup.locator('.droplet').count(), 4);
       assert.equal(await startup.locator('.droplet').first().evaluate(el => getComputedStyle(el).animationName), 'none');
     }
     const page = await workspace(), entries = await marks();

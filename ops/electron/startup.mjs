@@ -5,7 +5,7 @@ if (assets) for (const image of document.querySelectorAll('.mark img')) {
 }
 const mark = document.querySelector('.mark');
 const contacts = [{ part: 'top', y: 322, side: -1 }, { part: 'bottom', y: 702, side: 1 }].map(contact => ({
-  ...contact, hit: false, droplets: Array.from({ length: 3 }, (_unused, index) => {
+  ...contact, hit: false, droplets: Array.from({ length: 2 }, (_unused, index) => {
     const droplet = document.createElement('span');
     droplet.className = index === 1 ? 'droplet ink' : 'droplet';
     mark.append(droplet);
@@ -37,10 +37,11 @@ function watchContact() {
       const nx = x / distance, ny = y / distance, tx = -ny * contact.side, ty = nx * contact.side;
       const sx = nodeX + nx * 58 * unit - size / 2, sy = nodeY + ny * 58 * unit - size / 2;
       for (const [index, droplet] of contact.droplets.entries()) {
-        const tangent = [28, 20, 14][index], normal = [-10, 3, 12][index];
+        const tangent = (contact.side < 0 ? [26, 16] : [23, 19])[index];
+        const normal = (contact.side < 0 ? [-9, 12] : [4, -12])[index];
         const dx = tx * tangent + nx * normal, dy = ty * tangent + ny * normal;
         const angle = Math.atan2(dy, dx) * 180 / Math.PI - 90;
-        for (const [name, value] of Object.entries({ sx: sx + 'px', sy: sy + 'px', dx: sx + dx + 'px', dy: sy + dy + 'px', angle: angle + 'deg' })) {
+        for (const [name, value] of Object.entries({ sx: sx + 'px', sy: sy + 'px', dx: sx + dx + 'px', dy: sy + dy + 'px', angle: angle + 'deg', duration: (index ? (contact.side < 0 ? 340 : 360) : (contact.side < 0 ? 460 : 420)) + 'ms', delay: (index ? (contact.side < 0 ? 22 : 0) : (contact.side < 0 ? 0 : 12)) + 'ms' })) {
           droplet.style.setProperty('--' + name, value);
         }
         droplet.classList.add('hit');

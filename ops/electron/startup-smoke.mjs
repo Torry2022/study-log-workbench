@@ -88,6 +88,29 @@ try {
     await application.evaluate(({ app }) => app.emit('second-instance'));
     assert.equal(await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter(w => w.isVisible()).length), 1);
     if (run === 'first') {
+      await expect(startup.locator('body')).toHaveClass(/intro-playing/);
+      const intro = await startup.evaluate(async () => {
+        const images = [...document.querySelectorAll('.mark img')].filter(image => getComputedStyle(image).display !== 'none');
+        const animation = images[0].getAnimations()[0], samples = [];
+        const record = () => samples.push({ time: animation.currentTime,
+          scale: new DOMMatrixReadOnly(getComputedStyle(document.querySelector('.mark')).transform).m11,
+          fragmentOpacity: Math.max(...[...document.querySelectorAll('.fragment')].map(fragment => Number(getComputedStyle(fragment).opacity))),
+          layers: images.map(image => {
+          const matrix = new DOMMatrixReadOnly(getComputedStyle(image).transform);
+          return { x: matrix.m41, y: matrix.m42 };
+        }) });
+        while (animation.playState !== 'finished') { record(); await new Promise(requestAnimationFrame); }
+        record();
+        return { duration: animation.effect.getTiming().duration, delay: animation.effect.getTiming().delay, samples };
+      });
+      assert.equal(intro.delay, 300);
+      assert.equal(intro.samples[0].layers.length, 4);
+      assert.ok(intro.samples.some(sample => Math.abs(sample.layers[0].x) > 50), 'gathering must visibly travel from outside the logo');
+      assert.ok(intro.samples.some(sample => sample.layers[0].x > 0), 'gathering must retain its spring overshoot');
+      assert.ok(intro.samples.some(sample => sample.scale < .99), 'contact must include a short compression');
+      assert.ok(intro.samples.some(sample => sample.fragmentOpacity > .1), 'fragments must appear briefly at contact');
+      assert.ok(intro.samples.at(-1).layers.every(layer => Math.abs(layer.x) < .01 && Math.abs(layer.y) < .01));
+      await fs.writeFile(path.join(output, 'intro-motion.json'), JSON.stringify(intro, null, 2));
       for (const scheme of ['light', 'dark']) {
         await startup.emulateMedia({ colorScheme: scheme });
         await expect(startup.locator('.mark-frame')).toHaveCSS('background-color', scheme === 'light' ? 'rgb(255, 255, 255)' : 'rgb(28, 26, 23)');
@@ -96,6 +119,8 @@ try {
       }
       await startup.emulateMedia({ reducedMotion: 'reduce' });
       assert.equal(await startup.locator('.spinner').evaluate(el => getComputedStyle(el).animationName), 'none');
+      assert.equal(await startup.locator('.fragment').count(), 6);
+      assert.equal(await startup.locator('.fragment').first().evaluate(el => getComputedStyle(el).animationName), 'none');
     }
     const page = await workspace(), entries = await marks();
     assert.deepEqual([...new Set(observedMessages.get(startup))], ['正在准备工作台…', '正在读取学习记录…', '正在载入界面…']);

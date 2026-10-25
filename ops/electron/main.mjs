@@ -94,7 +94,10 @@ async function showStartup(remote = false) {
     await loadDesktopPage(current, 'startup.html', { query: { assets: pathToFileURL(assets + path.sep).href,
       message: remote ? '正在连接服务器…' : '正在准备工作台…' } });
     setStartupMessage(remote ? '正在连接服务器…' : '正在准备工作台…');
-    if (!startupCancelled && !current.isDestroyed()) { current.show(); performance.mark('desktop:feedback'); }
+    if (!startupCancelled && !current.isDestroyed()) {
+      current.show(); performance.mark('desktop:feedback');
+      current.webContents.send('startup:show');
+    }
   } catch (error) { hideStartup(); throw error; }
 }
 function hideStartup() {

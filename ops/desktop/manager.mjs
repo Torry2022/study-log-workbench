@@ -160,7 +160,7 @@ export class DesktopManager {
     } finally { await release(); }
     return this.configuration();
   }
-  async start() {
+  async start(onProgress = () => {}) {
     if (this.state === "running") return this.status();
     if (this.state !== "stopped") throw new Error(this.issue || "工作台正在操作中");
     const env = await this.readEnvironment();
@@ -173,10 +173,12 @@ export class DesktopManager {
     // Credentials are fresh for this run and travel only through inherited env/IPC.
     const token = crypto.randomBytes(32).toString("base64url");
     try {
+      onProgress("records");
       await upgradeDefaultPrompts(path.join(this.root, "data"));
       const mcp = launch("mcp", this.mcpRoot, { ...common, MCP_HTTP_PORT: String(mcpPort), MCP_HTTP_TOKEN: token }, this.workerOptions);
       this.processes.push(mcp);
       await registerDesktopWorker(data, mcp.child.pid); mcp.child.send({ type: "start" }); await mcp.ready;
+      onProgress("interface");
       const web = launch("web", this.webRoot, { ...common, PORT: String(webPort), HOSTNAME: "127.0.0.1", STUDY_LOG_MCP_URL: `http://127.0.0.1:${mcpPort}/mcp`, STUDY_LOG_MCP_TOKEN: token }, this.workerOptions);
       this.processes.push(web);
       await registerDesktopWorker(data, web.child.pid); web.child.send({ type: "start" }); await web.ready;

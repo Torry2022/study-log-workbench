@@ -79,7 +79,11 @@ test("IPC stop drains an actual in-flight write before releasing lock; restart a
   const { manager, root, base } = await fixture(t);
   await manager.select({ root, create: true, password: "synthetic-password" });
   await fs.writeFile(path.join(root, "data", "2026-10_学习日志.md"), "## 2026-10-06\n\n### 1. 合成资料\n\n事务先完成再退出。\n");
-  await manager.start(); assert.equal(manager.state, "running");
+  const stages = [];
+  await manager.start(stage => stages.push(stage)); assert.equal(manager.state, "running");
+  assert.deepEqual(stages, ["records", "interface"]);
+  await manager.start(stage => stages.push(stage));
+  assert.deepEqual(stages, ["records", "interface"]);
   const request = fetch(new URL("/slow", manager.url)).then(r => r.text());
   await new Promise(resolve => setTimeout(resolve, 60));
   const stopping = manager.stop();

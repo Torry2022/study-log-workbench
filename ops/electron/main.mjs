@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { normalizeOrigin, checkCapabilities, connectServer } from './server-connection.mjs';
 import { checkForUpdate, parseVersion } from './updates.mjs';
 
+performance.mark('desktop:main-entry');
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repository = path.resolve(here, '../..');
 const uiAssets = app.isPackaged ? path.join(process.resourcesPath, 'ui') : path.join(repository, 'study-log-web/public/ui');
@@ -46,20 +47,73 @@ const manager = new DesktopManager({ packageRoot: payload,
   }) });
 const preferences = path.join(app.getPath('userData'), 'desktop.json');
 let workspaceView, titleMenu, connectionWindow, nextConnection, connectionLocal;
+let startupWindow, startupCancelled = false, preferencesLoaded = false;
 let closeAfterTransition = false, reopenAfterExit = false;
-let savedPreferences = {}, active = { mode: 'local' };
+let savedPreferences = {}, persistedPreferences, active = { mode: 'local' };
 const workspaceUrl = () => active.mode === 'remote' ? active.origin + '/study-log' : manager.url;
 const remotePartition = target => 'persist:remote-' + crypto.createHash('sha256').update(target.origin + ':' + target.instanceId).digest('hex').slice(0, 24);
-async function savePreferences() { await atomicPrivateFile(preferences, JSON.stringify(savedPreferences, null, 2)); }
+async function savePreferences() {
+  const contents = JSON.stringify(savedPreferences, null, 2);
+  if (contents === persistedPreferences) return;
+  await atomicPrivateFile(preferences, contents); persistedPreferences = contents;
+}
 let win, quitting = false, finishing = false, nextRoot = null, pendingAction = null, settingsWindow = null, sessionEnding = false;
+function setStartupMessage(message) {
+  if (!startupWindow || startupWindow.isDestroyed() || startupCancelled) return;
+  startupWindow.webContents.send('startup:message', message);
+  performance.mark('desktop:stage', { detail: message });
+}
+async function showStartup(remote = false) {
+  if (startupCancelled) return;
+  if (startupWindow) {
+    if (remote) setStartupMessage('正在连接服务器…');
+    return;
+  }
+  const dark = nativeTheme.shouldUseDarkColors;
+  const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  const width = Math.min(420, area.width - 40), height = Math.min(256, area.height - 40);
+  const current = new BrowserWindow({ title: '学习日志工作台', width, height, useContentSize: true,
+    x: area.x + Math.round((area.width - width) / 2), y: area.y + Math.round((area.height - height) / 2),
+    show: false, frame: false, resizable: false, minimizable: false, maximizable: false,
+    ...(app.isPackaged ? { icon: path.join(process.resourcesPath, 'icon.png') } : {}),
+    backgroundColor: dark ? '#151412' : '#faf9f5',
+    webPreferences: { preload: path.join(here, 'startup-preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true } });
+  startupWindow = current;
+  const updateBackground = () => current.setBackgroundColor(nativeTheme.shouldUseDarkColors ? '#151412' : '#faf9f5');
+  nativeTheme.on('updated', updateBackground);
+  current.once('closed', () => nativeTheme.removeListener('updated', updateBackground));
+  current.webContents.on('will-navigate', event => event.preventDefault());
+  current.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  current.on('close', event => {
+    if (!quitting) { event.preventDefault(); startupCancelled = true; current.hide(); app.quit(); }
+  });
+  current.once('closed', () => { if (startupWindow === current) startupWindow = null; });
+  const assets = app.isPackaged ? path.join(process.resourcesPath, 'launch-logo')
+    : path.join(repository, 'study-log-harmony/entry/src/main/resources');
+  try {
+    await loadDesktopPage(current, 'startup.html', { query: { assets: pathToFileURL(assets + path.sep).href,
+      message: remote ? '正在连接服务器…' : '正在准备工作台…' } });
+    setStartupMessage(remote ? '正在连接服务器…' : '正在准备工作台…');
+    if (!startupCancelled && !current.isDestroyed()) { current.show(); performance.mark('desktop:feedback'); }
+  } catch (error) { hideStartup(); throw error; }
+}
+function hideStartup() {
+  const current = startupWindow; startupWindow = null;
+  if (current && !current.isDestroyed()) current.destroy();
+}
+ipcMain.on('startup:close', event => {
+  if (startupWindow && event.sender === startupWindow.webContents && event.senderFrame === startupWindow.webContents.mainFrame
+      && event.senderFrame.url.split('?')[0] === pathToFileURL(path.join(here, 'startup.html')).href) startupWindow.close();
+});
 // Windows does not guarantee before-quit/close on shutdown or log-off.
 // Start draining as soon as the OS announces session end; startup recovery covers
 // the case where Windows terminates us before the asynchronous drain finishes.
 app.on('browser-window-created', (_event, window) => {
   const endSession = () => {
     if (sessionEnding) return;
+    if (startupWindow) startupCancelled = true;
     sessionEnding = true; nextConnection = null; nextRoot = null; pendingAction = null; reopenAfterExit = false;
-    void (finishing ? Promise.resolve() : savePreferences().catch(() => {})).then(() => manager.operation(() => manager.shutdown())).finally(() => {
+    void (finishing || !preferencesLoaded ? Promise.resolve() : savePreferences().catch(() => {})).then(() => manager.operation(() => manager.shutdown())).finally(() => {
       quitting = true; app.exit(0);
     });
   };
@@ -175,6 +229,7 @@ ipcMain.handle('connection:select', async (event, value) => {
   } catch (error) { return { error: error.message }; }
 });
 async function connection(message = '') {
+  if (startupCancelled || quitting) return;
   if (connectionWindow) { connectionWindow.focus(); return; }
   connectionLocal = { root: savedPreferences.root || path.join(app.getPath('userData'), 'instance'), create: !savedPreferences.root };
   connectionWindow = new BrowserWindow({ ...(win ? { parent: win, modal: true } : {}), title: '使用方式', useContentSize: true, width: 640, height: Math.min(520, screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea.height - 80), minWidth: 420, minHeight: 320, show: false,
@@ -187,10 +242,12 @@ async function connection(message = '') {
   current.webContents.on('will-navigate', e => e.preventDefault()); current.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   current.on('closed', () => { connectionWindow = null; if (!current.submitted && !win) { quitting = true; app.quit(); } });
   await loadDesktopPage(current, 'connection.html');
-  current.show();
+  current.show(); hideStartup();
   if (message) current.webContents.send('connection:notice', message);
 }
 async function openConnection(target) {
+  await showStartup(target?.mode === 'remote');
+  if (startupCancelled) return;
   if (target?.mode === 'remote') {
     const origin = normalizeOrigin(target.origin, target.localHttp);
     const remote = { ...target, origin };
@@ -322,8 +379,11 @@ async function settings(kind = 'model') {
   current.show();
 }
 
-const reportError = error => sessionEnding ? Promise.resolve() : dialog.showMessageBox(win && !win.isDestroyed() ? win : undefined,
-  { type: 'error', title: '学习日志工作台', message: '操作未完成', detail: error.message, buttons: ['知道了'] });
+const reportError = error => {
+  hideStartup();
+  return sessionEnding || startupCancelled ? Promise.resolve() : dialog.showMessageBox(win && !win.isDestroyed() ? win : undefined,
+    { type: 'error', title: '学习日志工作台', message: '操作未完成', detail: error.message, buttons: ['知道了'] });
+};
 async function about() {
   const owner = win, view = workspaceView;
   const mode = active.mode;
@@ -385,7 +445,7 @@ async function finishWindow() {
   if (sessionEnding) return;
   if (finishing) { closeAfterTransition = true; return; }
   finishing = true;
-  await savePreferences().catch(reportError);
+  if (preferencesLoaded) await savePreferences().catch(reportError);
   await manager.operation(() => manager.shutdown());
   win = null;
   const target = nextConnection; nextConnection = null;
@@ -412,16 +472,22 @@ async function finishWindow() {
 }
 
 async function openWorkspace(root, createDefault = false, remote = null) {
+  await showStartup(Boolean(remote));
+  if (startupCancelled) return;
   active = remote || { mode: 'local' };
   if (!remote) await manager.operation(async () => {
-    const inspected = await manager.inspect(root);
+    const inspected = await manager.inspect(root); performance.mark('desktop:instance-inspected');
     if (inspected.kind === 'new' && !createDefault) throw Error('没有找到上次使用的学习记录，请检查文件夹是否被移动或删除。');
     await manager.select({ root, create: createDefault && inspected.kind === 'new', password: crypto.randomBytes(24).toString('base64url') });
-    await manager.start();
+    performance.mark('desktop:instance-selected');
+    await manager.start(stage => setStartupMessage(stage === 'records' ? '正在读取学习记录…' : '正在载入界面…'));
+    performance.mark('desktop:services');
     manager.ports.web = Number(new URL(manager.url).port);
     savedPreferences = { ...savedPreferences, mode: 'local', root: manager.root, webPort: manager.ports.web };
     await savePreferences();
   });
+  if (startupCancelled) return;
+  setStartupMessage('正在载入界面…');
   const dark = nativeTheme.shouldUseDarkColors;
   const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
   const savedSize = savedPreferences.windowSize;
@@ -491,6 +557,8 @@ async function openWorkspace(root, createDefault = false, remote = null) {
   current.on('closed', () => { if (win === current) win = null; void finishWindow(); });
 
   if (!remote) await authenticate(content.session);
+  performance.mark('desktop:authenticated');
+  if (startupCancelled || current.isDestroyed()) return;
   // Renew only the current local session, without reloading or losing editor state.
   const renewal = remote ? null : setInterval(() => { void authenticate(content.session).catch(reportError); }, 24 * 60 * 60 * 1000);
   current.once('closed', () => clearInterval(renewal));
@@ -499,34 +567,54 @@ async function openWorkspace(root, createDefault = false, remote = null) {
   });
   menu();
   await loadDesktopPage(current, 'titlebar.html', { query: { icon: pathToFileURL(app.isPackaged ? path.join(process.resourcesPath, 'icon.png') : path.join(repository, '.local/electron-icon.png')).href } });
+  if (startupCancelled || current.isDestroyed()) return;
   await content.loadURL(workspaceUrl());
+  performance.mark('desktop:page-loaded');
+  if (startupCancelled || current.isDestroyed()) return;
   if (remote) { savedPreferences = { ...savedPreferences, mode: 'remote', remote }; await savePreferences(); }
   if (savedSize?.maximized === true) current.maximize();
   reopenAfterExit = false;
-  current.show(); content.focus();
+  current.show(); content.focus(); performance.mark('desktop:visible');
+  hideStartup();
 }
 
 app.on('before-quit', event => {
-  if (!quitting) { event.preventDefault(); if (win && !win.isDestroyed()) win.close(); else if (!finishing) void finishWindow(); }
+  if (!quitting) {
+    event.preventDefault();
+    if (startupWindow) startupCancelled = true;
+    if (win && !win.isDestroyed()) win.close();
+    else if (!finishing) void finishWindow();
+    else closeAfterTransition = true;
+  }
 });
 app.on('window-all-closed', () => {});
 if (!app.requestSingleInstanceLock()) { quitting = true; app.quit(); }
 else {
   app.on('second-instance', () => {
     if (finishing || quitting) { reopenAfterExit = true; return; }
-    if (win && !win.isDestroyed()) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); }
+    if (startupWindow && !startupWindow.isDestroyed()) { startupWindow.show(); startupWindow.focus(); }
+    else if (win && !win.isDestroyed()) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); }
     else if (connectionWindow && !connectionWindow.isDestroyed()) connectionWindow.focus();
   });
   void app.whenReady().then(async () => { try {
+    performance.mark('desktop:ready');
+    await showStartup();
+    if (startupCancelled) return;
     await privateDirectory(app.getPath('userData'));
-    try { savedPreferences = JSON.parse(await fs.readFile(preferences, 'utf8')); }
+    try {
+      savedPreferences = JSON.parse(await fs.readFile(preferences, 'utf8'));
+      persistedPreferences = JSON.stringify(savedPreferences, null, 2);
+    }
     catch (error) { if (error.code !== 'ENOENT') throw Error('无法读取上次使用的保存位置，请检查本地配置。'); }
+    preferencesLoaded = true;
+    if (startupCancelled) return;
     if (savedPreferences.usageConfirmed !== true || (!savedPreferences.root && !savedPreferences.remote)) { await connection(); return; }
     if (savedPreferences.mode === 'remote') {
       try { await openConnection(savedPreferences.remote); }
       catch { await connection('请重新连接服务器。原有本地学习记录仍保留。'); }
     } else await openConnection({ mode: 'local' });
   } catch (error) {
+    if (startupCancelled) return;
     await reportError(error); await manager.shutdown(); quitting = true; app.quit();
   } });
 }

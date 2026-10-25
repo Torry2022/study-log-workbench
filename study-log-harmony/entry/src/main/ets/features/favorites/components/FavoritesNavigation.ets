@@ -1,3 +1,4 @@
+import { MonthNavigationGroups, NavigationMonthOption } from '../../../common/ui/MonthNavigationGroups';
 import { currentShanghaiYear } from '../../../common/ui/MonthNavigation';
 import { FormKeyboardContext } from '../../../common/ui/FormKeyboardContext';
 import { NavigationLabelStyle, NavigationCountStyle, NavigationSectionStyle } from '../../../common/ui/NavigationRowStyle';
@@ -273,16 +274,13 @@ export struct FavoritesNavigation {
           wide: this.wide, rowId: 'favorite_month_all', label: '全部月份', count: this.groupFavorites().length,
           selected: this.data.selectedMonth === 'all', onAction: () => this.data.selectMonth('all')
         })
-        ForEach(this.visibleMonths(), (month: string) => {
-          FavoriteFilterRow({
-            wide: this.wide, rowId: `favorite_month_${month}`, label: month,
-            count: this.groupFavorites().filter((item: FavoriteHeading) => item.month === month).length,
-            selected: this.data.selectedMonth === month, onAction: () => this.data.selectMonth(month)
-          })
-        }, (month: string) => month)
+        MonthNavigationGroups({ months: this.visibleMonths().map((month: string): NavigationMonthOption => ({ id: month, label: month,
+          count: this.groupFavorites().filter((item: FavoriteHeading) => item.month === month).length })),
+          selectedMonth: this.data.selectedMonth, wide: this.wide, rowPrefix: 'favorite_month',
+          onMonth: (month: string) => this.data.selectMonth(month) })
         if (this.hiddenMonthCount() > 0) {
           Text(this.monthsExpanded ? '收起月份' : `展开剩余 ${this.hiddenMonthCount()} 个月份`)
-            .width('100%').height(30).padding({ left: 10 }).fontSize(12).fontColor($r('app.color.muted'))
+            .height(this.wide ? 28 : 44).padding({ left: 10, right: 10 }).fontSize(12).fontColor($r('app.color.muted'))
             .onClick(() => expandSection(this.getUIContext(), () => this.monthsExpanded = !this.monthsExpanded))
         }
       }.width('100%').padding({ left: this.wide ? 14 : 12, right: this.wide ? 14 : 12, top: this.wide ? 14 : 12, bottom: 24 })

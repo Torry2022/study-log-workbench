@@ -1,8 +1,8 @@
+import { MonthNavigationGroups, NavigationMonthOption } from '../../../common/ui/MonthNavigationGroups';
 import { WorkspaceBreakpoint } from '../../../common/AppConfig';
 import { MonthSummary } from '../../logs/LogModels';
 import { InlineStatus } from '../../../common/ui/FeedbackStates';
-import { InteractiveSurface, animateHover } from '../../../common/ui/InteractiveSurface';
-import { NavigationRowStyle, NavigationLabelStyle, NavigationCountStyle, NavigationSectionStyle } from '../../../common/ui/NavigationRowStyle';
+import { NavigationSectionStyle } from '../../../common/ui/NavigationRowStyle';
 
 @Component
 export struct StatsNavigation {
@@ -12,7 +12,6 @@ export struct StatsNavigation {
   @Prop statsMonth: string = '';
   @Prop statsMonthsLoading: boolean = false;
   @Prop statsMonthsError: string = '';
-  @State private hoveredNavigation: string = '';
   onTaxonomy: () => void = () => {};
   onRetry: () => void = () => {};
   onMonth: (month: string) => void = () => {};
@@ -20,16 +19,6 @@ export struct StatsNavigation {
   private isLargeWorkspace(): boolean {
     return this.workspaceBreakpoint === WorkspaceBreakpoint.LARGE ||
       this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE;
-  }
-
-  private monthYears(): string[] {
-    return Array.from(new Set(this.statsMonths.map((month: MonthSummary) => month.id.slice(0, 4))))
-      .sort((a: string, b: string) => b.localeCompare(a));
-  }
-
-  private monthsForYear(year: string): MonthSummary[] {
-    return this.statsMonths.filter((month: MonthSummary) => month.id.startsWith(`${year}-`))
-      .sort((a: MonthSummary, b: MonthSummary) => b.id.localeCompare(a.id));
   }
 
   build() {
@@ -72,39 +61,12 @@ export struct StatsNavigation {
             .width('100%').height(52).textAlign(TextAlign.Center)
         }
       } else {
-        ForEach(this.monthYears(), (year: string) => {
         ListItem() {
-          Column({ space: 6 }) {
-          Text(`${year}年`).fontSize(12).fontWeight(FontWeight.Regular).fontColor($r('app.color.muted'))
-            .width('100%').padding({ left: 10 })
-          Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.SpaceBetween }) {
-            ForEach(this.monthsForYear(year), (month: MonthSummary) => {
-              Button({ type: ButtonType.Normal }) {
-                Row() {
-                  Text(month.label).fontSize(this.isLargeWorkspace() ? 14 : 12).fontWeight(FontWeight.Medium)
-                    .attributeModifier(new NavigationLabelStyle(this.statsMonth === month.id))
-                    .fontColor(this.statsMonth === month.id ? $r('app.color.ink') : $r('app.color.body'))
-                    .layoutWeight(1)
-                  Text(month.dayCount.toString()).fontSize(this.isLargeWorkspace() ? 12 : 11).fontColor($r('app.color.muted_soft'))
-                    .attributeModifier(new NavigationCountStyle())
-                }.width('100%')
-              }
-              .width(this.isLargeWorkspace() ? '100%' : '48.5%').height(44)
-              .padding({ left: 10, right: 10 }).margin({ bottom: this.isLargeWorkspace() ? 4 : 7 })
-              .attributeModifier(new InteractiveSurface(this.isLargeWorkspace() ?
-                (this.statsMonth === month.id ? $r('app.color.surface_card') : Color.Transparent) :
-                (this.statsMonth === month.id ? $r('app.color.primary_tint') : $r('app.color.surface_card')), this.hoveredNavigation === `stats-${month.id}`, this.statsMonth === month.id))
-              .onHover((hover: boolean) => animateHover(this.getUIContext(), () => this.hoveredNavigation = hover ? `stats-${month.id}` : ''))
-              .border({ width: this.isLargeWorkspace() ? 0 : 1, color: this.statsMonth === month.id ? $r('app.color.primary') : $r('app.color.hairline') })
-              .borderRadius(8).clip(true)
-              .onClick(() => this.onMonth(month.id))
-              .attributeModifier(new NavigationRowStyle(this.isLargeWorkspace()))
-              .id(`stats_month_${month.id}`).accessibilitySelected(this.statsMonth === month.id)
-            }, (month: MonthSummary) => month.id)
-          }.width('100%')
-          }.width('100%')
+          MonthNavigationGroups({ months: this.statsMonths.map((month: MonthSummary): NavigationMonthOption => ({
+            id: month.id, label: month.label, count: month.dayCount })),
+            selectedMonth: this.statsMonth, wide: this.isLargeWorkspace(), rowPrefix: 'stats_month',
+            onMonth: this.onMonth })
         }
-        }, (year: string) => year)
       }
     }
     .layoutWeight(1).width('100%').padding({ left: 14, right: 14, top: 14, bottom: 28 })

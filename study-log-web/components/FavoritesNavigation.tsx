@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { CalendarDays, Edit3, Folders, MoreHorizontal, Plus, Trash2 } from "lucide-react";
+import { SidebarMonthGroups } from "./SidebarMonthGroups";
 import { todayInShanghai } from "@/lib/study-date";
 import type { FavoritesController } from "@/hooks/use-favorites";
 import "@/app/favorites.css";
@@ -57,7 +58,7 @@ export function FavoritesNavigation({ favorites, active = true }: { favorites: F
     </div>
     <div className="sidebar-section"><div className="section-title inline"><CalendarDays size={15} />日志月份</div><div className="month-list">
       <button className={`nav-item${favorites.filters.month === "all" ? " active" : ""}`} type="button" onClick={() => favorites.filter({ month: "all" })}><span>全部月份</span><small>{inGroup.length}</small></button>
-      {shownMonths.map(month => <button className={`nav-item${favorites.filters.month === month ? " active" : ""}`} type="button" key={month} onClick={() => favorites.filter({ month })}><span>{month}</span><small>{inGroup.filter(item => item.month === month).length}</small></button>)}
+      <SidebarMonthGroups months={shownMonths.map(month => ({ id: month, label: month, count: inGroup.filter(item => item.month === month).length }))} selectedMonth={favorites.filters.month} onMonthChange={month => favorites.filter({ month })} />
     </div>{hiddenMonthCount > 0 && <button className="sidebar-months-toggle" type="button" aria-expanded={monthsExpanded} onClick={() => setMonthsExpanded(value => !value)}>{monthsExpanded ? "收起月份" : `展开剩余 ${hiddenMonthCount} 个月份`}</button>}</div>
   </div>;
 }

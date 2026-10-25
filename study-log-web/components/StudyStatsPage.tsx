@@ -1,6 +1,7 @@
 "use client";
 
 import { BarChart3, CalendarDays, FileText, Tags } from "lucide-react";
+import { SidebarMonthGroups } from "./SidebarMonthGroups";
 import { StatsOverview } from "./stats/StatsOverview";
 import { TaxonomyManager } from "./stats/TaxonomyManager";
 import { WorkspaceState } from "./WorkspaceState";
@@ -17,15 +18,10 @@ interface Props {
 
 export function StatsNavigation({ stats, onNavigate, filtersOnly = false }: { stats: StatsController; onNavigate?: () => void; filtersOnly?: boolean }) {
   const showLoading = useDelayedBusy(stats.initialLoading && !stats.months.length);
-  const years = [...new Set(stats.months.map(month => month.id.slice(0, 4)))].sort((a, b) => b.localeCompare(a));
   return <div className="stats-sidebar-content">
     {!filtersOnly && <button className="button secondary full" type="button" onClick={() => { stats.showManager(); onNavigate?.(); }}><Tags size={15} />分类管理</button>}
     <div className="section-title inline"><CalendarDays size={15} />月份</div>
-    <div className="stats-month-years">{years.map(year => <div className="stats-month-year" role="group" aria-label={`${year}年`} key={year}>
-      <div className="stats-month-year-label">{year}年</div>
-      <div className="month-list">{stats.months.filter(month => month.id.startsWith(`${year}-`)).sort((a, b) => b.id.localeCompare(a.id)).map(month => <button type="button" key={month.id}
-      className={stats.selectedMonth === month.id ? "nav-item active" : "nav-item"}
-      onClick={async () => { if (await stats.changeMonth(month.id)) onNavigate?.(); }}><span>{month.label}</span><small>{month.dayCount}</small></button>)}</div></div>)}</div>
+    <SidebarMonthGroups months={stats.months.map(month => ({ id: month.id, label: month.label, count: month.dayCount }))} selectedMonth={stats.selectedMonth} onMonthChange={async month => { if (await stats.changeMonth(month)) onNavigate?.(); }} />
     {showLoading && <WorkspaceState kind="loading" title="正在加载月份" layout="compact" />}
     {stats.taxonomyError && !stats.months.length && <WorkspaceState kind="error" title="月份加载失败" description={stats.taxonomyError} layout="compact" actions={<button className="button secondary" type="button" onClick={() => void stats.reloadTaxonomy()}>重试</button>} />}
     {!stats.initialLoading && !stats.loading && !stats.statsError && !stats.taxonomyError && !stats.months.length && <WorkspaceState kind="empty" title="暂无月份记录" layout="compact" />}

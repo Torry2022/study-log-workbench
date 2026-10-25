@@ -1,9 +1,10 @@
+import { MonthNavigationGroups, NavigationMonthOption } from '../../../common/ui/MonthNavigationGroups';
 import { currentShanghaiYear } from '../../../common/ui/MonthNavigation';
 import { LengthMetrics } from '@kit.ArkUI';
 import { DaySummary, MonthSummary } from '../LogModels';
 import { WorkspaceBreakpoint } from '../../../common/AppConfig';
 import { InteractiveSurface, animateHover } from '../../../common/ui/InteractiveSurface';
-import { NavigationRowStyle, NavigationLabelStyle, NavigationCountStyle, NavigationSectionStyle } from '../../../common/ui/NavigationRowStyle';
+import { NavigationRowStyle, NavigationSectionStyle } from '../../../common/ui/NavigationRowStyle';
 import { InlineStatus } from '../../../common/ui/FeedbackStates';
 import { SearchField } from '../../../common/ui/FormControls';
 
@@ -66,49 +67,20 @@ export struct LogNavigation {
         }.width('100%')
       }
       ListItem() {
-        Flex({ wrap: FlexWrap.Wrap,
-          justifyContent: this.isLargeWorkspace() ? FlexAlign.Start : FlexAlign.SpaceBetween }) {
-          ForEach(this.visibleMonths(), (month: MonthSummary) => {
-            Button({ type: ButtonType.Normal }) {
-              Row() {
-                Text(month.label).fontSize(this.isLargeWorkspace() ? 14 : 12).fontWeight(FontWeight.Medium)
-                  .attributeModifier(new NavigationLabelStyle(this.navigationMonth === month.id))
-                  .fontColor(this.navigationMonth === month.id ? $r('app.color.ink') : $r('app.color.body'))
-                  .layoutWeight(1)
-                Text(month.dayCount.toString()).fontSize(11).fontColor($r('app.color.muted_soft'))
-                  .attributeModifier(new NavigationCountStyle())
-              }.width('100%')
-            }
-            .width(this.isLargeWorkspace() ? '100%' : '48.5%')
-            .height(this.isLargeWorkspace() ? 36 : 44)
-            .padding({ left: 10, right: 10 }).margin({ bottom: this.isLargeWorkspace() ? 4 : 7 })
-            .attributeModifier(new InteractiveSurface(this.navigationMonth === month.id ? $r('app.color.surface_card') :
-              $r('app.color.surface_soft'), this.hoveredNavigation === `log-month-${month.id}`, this.navigationMonth === month.id))
-            .onHover((hover: boolean) => animateHover(this.getUIContext(), () => this.hoveredNavigation = hover ? `log-month-${month.id}` : ''))
-            .border({ width: 0 })
-            .borderRadius(this.isLargeWorkspace() ? 6 : 8).clip(true)
-            .attributeModifier(new NavigationRowStyle(this.isLargeWorkspace()))
-            .onClick(() => {
-              this.onMonth(month.id);
-            })
-          }, (month: MonthSummary) => `${month.id}:${month.dayCount}`)
+        Column({ space: 4 }) {
+          MonthNavigationGroups({ months: this.visibleMonths().map((month: MonthSummary): NavigationMonthOption => ({
+            id: month.id, label: month.label, count: month.dayCount })),
+            selectedMonth: this.navigationMonth, wide: this.isLargeWorkspace(), rowPrefix: 'navigation_month',
+            onMonth: this.onMonth })
           if (this.hiddenMonthCount() > 0) {
             Button({ type: ButtonType.Normal }) {
               Text(this.navigationMonthsExpanded ? '收起月份' : `展开剩余 ${this.hiddenMonthCount()} 个月份`)
-                .width('100%').textAlign(TextAlign.Start)
                 .fontSize(12).fontColor($r('app.color.muted'))
-            }
-              .id('navigation_months_toggle').width('100%').height(this.isLargeWorkspace() ? 28 : 40)
-              .padding({ left: 10, right: 10 })
-              .backgroundColor(Color.Transparent)
-              .borderRadius(6).onClick(() => this.onToggleMonths())
+            }.id('navigation_months_toggle').height(this.isLargeWorkspace() ? 28 : 44)
+              .padding({ left: 10, right: 10 }).backgroundColor(Color.Transparent).borderRadius(6)
+              .onClick(() => this.onToggleMonths())
           }
-        }.width('100%')
-          .height((this.isLargeWorkspace() ? 42 : 51) * Math.ceil(
-            this.visibleMonths().length /
-            (this.isLargeWorkspace() ? 1 : 2)) +
-            (this.hiddenMonthCount() > 0 ? (this.isLargeWorkspace() ? 28 : 40) : 0))
-          .clip(true)
+        }.width('100%').alignItems(HorizontalAlign.Start)
       }
       ListItem() {
         Row({ space: 7 }) {

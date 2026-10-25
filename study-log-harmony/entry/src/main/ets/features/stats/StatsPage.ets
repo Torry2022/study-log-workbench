@@ -1,3 +1,4 @@
+import { StatsDonut } from './components/StatsDonut';
 import { ContentRefresh } from '../../common/ui/ContentRefresh';
 import { AppSheetFrame } from '../../common/ui/AppSheetFrame';
 import { appFeedback } from '../../common/ui/AppFeedback';
@@ -8,7 +9,7 @@ import { AppDropdown } from '../../common/ui/FormControls';
 import { BackToTopControl } from '../../common/ui/BackToTopControl';
 import { EmptyState, InlineStatus, LoadFailure } from '../../common/ui/FeedbackStates';
 import { apiClient } from '../../common/network/ApiClient';
-import { WorkspaceBreakpoint, COLLECTION_MAX_WIDTH } from '../../common/AppConfig';
+import { WorkspaceBreakpoint } from '../../common/AppConfig';
 import { ResultChangeGate } from '../../common/ui/WorkspaceMotion';
 import { ResultSurfaceController, ResultSurfaceCover } from '../../common/ui/ResultSurface';
 import { ContentLoadingState } from '../../common/ui/ContentLoadingState';
@@ -279,12 +280,6 @@ export struct StatsPage {
     return [];
   }
 
-  private domainColor(index: number): Resource {
-    if (index % 3 === 1) return $r('app.color.accent_teal');
-    if (index % 3 === 2) return $r('app.color.accent_amber');
-    return $r('app.color.primary');
-  }
-
   @Builder
   private calendarCell(day: number) {
     if (day === 0) {
@@ -369,18 +364,59 @@ export struct StatsPage {
   }
 
   @Builder
-  private domainRow(domain: DomainCount, index: number) {
-    Column({ space: 7 }) {
-      Row() {
-        Text(domain.domain).fontSize(14).fontColor($r('app.color.body')).layoutWeight(1)
-        Text(`${domain.percentage.toFixed(1)}%`).fontSize(13).fontColor($r('app.color.muted'))
-      }.width('100%')
-      Stack({ alignContent: Alignment.Start }) {
-        Row().width('100%').height(6).backgroundColor($r('app.color.surface_card')).borderRadius(3)
-        Row().width(`${Math.max(2, domain.percentage)}%`).height(6)
-          .backgroundColor(this.domainColor(index)).borderRadius(3)
-      }.width('100%').height(6)
-    }.width('100%').onClick(() => this.openDrilldown('domain', domain.domain))
+  private domainSection() {
+    Column({ space: 12 }) {
+      SectionHeading({ title: '领域占比', description: '按日志小节数量计算，点击扇区查看明细。' })
+      if (this.data.stats!.stats.classificationReady === false) {
+        Text('尚未整理学习领域。配置模型后可在分类管理中让 AI 整理，其他统计无需分类即可查看。')
+          .fontSize(12).fontColor($r('app.color.muted'))
+      } else {
+      if (this.data.stats!.stats.topicCount > 0) {
+        StatsDonut({ domains: this.data.stats!.stats.domainCounts, total: this.data.stats!.stats.topicCount,
+          chartSize: Math.min(300, Math.max(220, this.viewportWidth - 88)),
+          onDomain: (domain: string) => this.openDrilldown('domain', domain) })
+      } else {
+        Text('这个月份还没有可统计的日志小节').fontSize(12).fontColor($r('app.color.muted'))
+      }
+      }
+    }.width(this.viewportWidth >= 960 ? '66%' : '100%').padding(20)
+      .alignItems(HorizontalAlign.Start).alignSelf(ItemAlign.Stretch)
+      .backgroundColor($r('app.color.surface_soft'))
+      .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(10)
+  }
+
+  @Builder
+  private tagSection() {
+    Column({ space: 12 }) {
+      SectionHeading({ title: '高频标签', description: '按三级标题统计主题频次，保留括号中的内容。' })
+      ForEach(this.data.stats!.stats.topTags, (tag: TagCount, index: number) => {
+        Button({ type: ButtonType.Normal }) {
+          Row({ space: 10 }) {
+            Text((index + 1).toString().padStart(2, '0')).width(22).fontSize(10).fontColor($r('app.color.muted_soft'))
+            Column({ space: 4 }) {
+              Text(tag.tag).fontSize(13).fontWeight(FontWeight.Medium).fontColor($r('app.color.body_strong'))
+                .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
+              Text(`${tag.domain} · ${tag.activeDays} 天`).fontSize(11).fontColor($r('app.color.muted'))
+              Stack({ alignContent: Alignment.Start }) {
+                Row().width('100%').height(4).backgroundColor($r('app.color.surface_card'))
+                Row().width(`${Math.max(4, tag.count / Math.max(1, ...this.data.stats!.stats.topTags.map((item: TagCount) => item.count)) * 100)}%`)
+                  .height(4).backgroundColor($r('app.color.primary'))
+              }.width('100%').height(4).borderRadius(2).clip(true)
+            }.layoutWeight(1).alignItems(HorizontalAlign.Start)
+            Column({ space: 3 }) {
+              Text(tag.count.toString()).fontSize(12).fontWeight(FontWeight.Medium).fontColor($r('app.color.ink'))
+              Text(this.deltaDescription(tag.delta)).fontSize(10).fontColor($r('app.color.muted'))
+            }.alignItems(HorizontalAlign.End)
+          }.width('100%')
+        }.width('100%').constraintSize({ minHeight: 60 }).padding({ left: 8, right: 8, top: 8, bottom: 8 })
+          .backgroundColor(this.drilldownKind === 'tag' && this.drilldownValue === tag.tag ?
+            $r('app.color.surface_card') : Color.Transparent).borderRadius(6)
+          .onClick(() => this.openDrilldown('tag', tag.tag))
+      }, (tag: TagCount) => tag.tag)
+    }.width(this.viewportWidth >= 960 ? '32%' : '100%').padding(20).margin({ top: this.viewportWidth >= 960 ? 0 : 18 })
+      .alignItems(HorizontalAlign.Start).alignSelf(ItemAlign.Stretch)
+      .backgroundColor($r('app.color.surface_soft'))
+      .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(10)
   }
 
   @Builder
@@ -505,43 +541,36 @@ export struct StatsPage {
     Row() {
     Scroll(this.pageScroller) {
       Column() {
-        Flex({ direction: this.isLargeWorkspace() ? FlexDirection.Row : FlexDirection.Column,
+        Flex({ direction: this.viewportWidth >= 600 ? FlexDirection.Row : FlexDirection.Column,
           alignItems: ItemAlign.Center, justifyContent: FlexAlign.SpaceBetween }) {
-        Row() {
-          AppDropdown({
-            options: this.monthOptions(),
-            selectedIndex: this.selectedMonthIndex(),
-            value: this.selectedMonthValue(),
-            icon: $r('app.media.calendar_days'),
-            accessibilityLabel: '选择统计月份',
-            onSelect: (index: number) => {
-              if (index >= 0 && index < this.data.months.length) this.loadStats(this.data.months[index].id);
+          Text(this.data.selectedMonth || '月度复盘')
+            .fontFamily(workspaceLatinSerifFamily(this.workspaceBreakpoint)).fontSize(36)
+            .fontWeight(FontWeight.Regular).fontColor($r('app.color.ink'))
+          Row({ space: 8 }) {
+            AppDropdown({ options: this.monthOptions(), selectedIndex: this.selectedMonthIndex(),
+              value: this.selectedMonthValue(), icon: $r('app.media.calendar_days'), accessibilityLabel: '选择统计月份',
+              onSelect: (index: number) => {
+                if (index >= 0 && index < this.data.months.length) this.loadStats(this.data.months[index].id);
+              } }).layoutWeight(1).height(38).enabled(this.data.months.length > 0)
+            if (this.isLargeWorkspace()) {
+              Button({ type: ButtonType.Normal }) {
+                Row({ space: 6 }) {
+                  if (this.data.loading) LoadingProgress().width(15).height(15).color($r('app.color.ink'))
+                  else Image($r('app.media.refresh_cw')).width(15).height(15).objectFit(ImageFit.Contain)
+                  Text(this.data.loading ? '刷新中' : '刷新').fontSize(14).fontWeight(FontWeight.Medium)
+                }
+              }.width(82).height(38).padding(0).fontColor($r('app.color.ink')).backgroundColor($r('app.color.canvas'))
+                .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8).clip(true)
+                .enabled(!this.data.loading).onClick(() => this.refreshStats()).id('stats_refresh')
             }
-          }).width('100%').height(38).enabled(this.data.months.length > 0)
-        }.width(this.isLargeWorkspace() ? 280 : '100%').padding({ left: 16, right: 16, top: 8, bottom: 8 })
-
-        if (this.isLargeWorkspace()) {
-        Row({ space: 8 }) {
-          Button({ type: ButtonType.Normal }) {
-            Row({ space: 6 }) {
-              if (this.data.loading) LoadingProgress().width(15).height(15).color($r('app.color.ink'))
-              else Image($r('app.media.refresh_cw')).width(15).height(15).objectFit(ImageFit.Contain)
-              Text(this.data.loading ? '刷新中' : '刷新').fontSize(14).fontWeight(FontWeight.Medium)
-            }
-          }.layoutWeight(1).height(38).fontColor($r('app.color.ink')).backgroundColor($r('app.color.canvas'))
-          .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8).clip(true)
-          .enabled(!this.data.loading).onClick(() => this.refreshStats())
-          .id('stats_refresh')
-        }.width(this.isLargeWorkspace() ? 112 : '100%')
-          .padding({ left: 16, right: 16, bottom: 8, top: 8 })
-        }
-        }
-        .width('100%')
-        .border({ width: { bottom: 1 }, color: $r('app.color.hairline') })
-        .onAreaChange((_oldValue, newValue) => {
-          this.topToolsHeight = Number(newValue.height);
-          this.onScrollStateChange(this.scrollOffset >= this.topToolsHeight - 0.5);
-        })
+          }.width(this.viewportWidth >= 600 ? 340 : '100%')
+        }.width('100%').padding({ left: this.isLargeWorkspace() ? 28 : 14,
+          right: this.isLargeWorkspace() ? 28 : 14, top: 14, bottom: 10 })
+          .border({ width: { bottom: 1 }, color: $r('app.color.hairline_soft') })
+          .onAreaChange((_oldValue, newValue) => {
+            this.topToolsHeight = Number(newValue.height);
+            this.onScrollStateChange(this.scrollOffset >= this.topToolsHeight - 0.5);
+          })
 
         InlineStatus({ text: this.data.stats ? this.data.errorMessage : '', error: true,
           retry: !this.data.loading, onRetry: () => this.refreshStats() })
@@ -576,7 +605,7 @@ export struct StatsPage {
                 Column({ space: 2 }) {
                   Text('学习日历').fontFamily(workspaceSansFamily(this.workspaceBreakpoint)).fontSize(17)
                     .fontWeight(FontWeight.Medium).fontColor($r('app.color.body_strong'))
-                  Text('颜色深浅表示当日日志小节数量').fontSize(11).fontColor($r('app.color.muted'))
+                  Text('颜色深浅表示当日日志小节数量；点击日期查看小节。').fontSize(11).fontColor($r('app.color.muted'))
                 }.alignItems(HorizontalAlign.Start).layoutWeight(1)
                 Text(`含小节 ${this.data.stats!.stats.technicalDayCount} 天`).fontSize(11).fontColor($r('app.color.muted')).maxLines(2)
               }.width('100%')
@@ -594,45 +623,13 @@ export struct StatsPage {
             .width('100%').padding(14).alignItems(HorizontalAlign.Start)
             .backgroundColor($r('app.color.surface_soft'))
             .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(10)
-            Column({ space: 14 }) {
-              SectionHeading({ title: '领域占比', description: '按日志小节数量计算，而非按正文长度计算' })
-              if (this.data.stats!.stats.classificationReady === false) {
-                Text('尚未整理学习领域。配置模型后可在分类管理中让 AI 整理，其他统计无需分类即可查看。')
-                  .fontSize(12).fontColor($r('app.color.muted'))
-              } else {
-              ForEach(this.data.stats!.stats.domainCounts, (domain: DomainCount, index: number) => {
-                this.domainRow(domain, index)
-              }, (domain: DomainCount) => domain.domain)
-              }
-            }
-            .width('100%').padding(14).alignItems(HorizontalAlign.Start)
-            .backgroundColor($r('app.color.surface_soft'))
-            .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(10)
-            if (this.drilldownKind === 'domain') {
-              this.drilldownList()
-            }
-
-            Column({ space: 12 }) {
-              SectionHeading({ title: '高频标签', description: '本月重复出现较多的三级标题标签' })
-              Flex({ wrap: FlexWrap.Wrap }) {
-                ForEach(this.data.stats!.stats.topTags, (tag: TagCount) => {
-                  Row({ space: 6 }) {
-                    Text(tag.tag).fontSize(13).fontColor($r('app.color.body'))
-                    Text(tag.count.toString()).fontSize(12).fontColor($r('app.color.muted'))
-                  }.padding({ left: 10, right: 10, top: 6, bottom: 6 })
-                  .margin({ right: 8, bottom: 8 })
-                  .backgroundColor($r('app.color.surface_card')).borderRadius(15)
-                  .onClick(() => this.openDrilldown('tag', tag.tag))
-                }, (tag: TagCount) => tag.tag)
-              }.width('100%')
-            }
-            .width('100%').padding(14).alignItems(HorizontalAlign.Start)
-            .backgroundColor($r('app.color.surface_soft'))
-            .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(10)
-            if (this.drilldownKind === 'tag') {
-              this.drilldownList()
-            }
-          }.width('100%').padding({ left: 16, right: 16, top: 16, bottom: 40 })
+            Flex({ direction: this.viewportWidth >= 960 ? FlexDirection.Row : FlexDirection.Column,
+              justifyContent: FlexAlign.SpaceBetween, alignItems: ItemAlign.Stretch }) {
+              this.domainSection()
+              this.tagSection()
+            }.width('100%')
+            if (this.drilldownKind === 'domain' || this.drilldownKind === 'tag') this.drilldownList()
+          }.width('100%').padding({ left: this.isLargeWorkspace() ? 28 : 14, right: this.isLargeWorkspace() ? 28 : 14, top: 18, bottom: 40 })
         } else if (this.data.errorMessage) {
           Column() {
             LoadFailure({ title: '统计读取失败', message: this.data.errorMessage, onRetry: () => this.refreshStats() })
@@ -643,7 +640,7 @@ export struct StatsPage {
           }.width('100%').height(360)
         }
       }.width('100%')
-    }.width('100%').constraintSize({ maxWidth: COLLECTION_MAX_WIDTH }).height('100%').align(Alignment.TopStart)
+    }.width('100%').height('100%').align(Alignment.TopStart)
     .scrollBar(BarState.Off).edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
     .backgroundColor($r('app.color.canvas'))
     .onAreaChange((_oldValue, newValue) => {

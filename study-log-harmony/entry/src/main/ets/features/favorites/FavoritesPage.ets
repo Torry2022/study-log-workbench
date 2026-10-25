@@ -12,7 +12,7 @@ import { ActionPanelHeader, ModulePageTitle, ModuleLogButton } from '../../commo
 import { AppDropdown, SearchField } from '../../common/ui/FormControls';
 import { BackToTopControl } from '../../common/ui/BackToTopControl';
 import { EmptyState, InlineStatus, LoadFailure } from '../../common/ui/FeedbackStates';
-import { WorkspaceBreakpoint, COLLECTION_MAX_WIDTH } from '../../common/AppConfig';
+import { WorkspaceBreakpoint } from '../../common/AppConfig';
 import { workspaceLatinSerifFamily, workspaceSansFamily } from '../../common/ui/Typography';
 import { ToolbarAction } from '../../common/ui/ToolbarAction';
 import { InteractiveSurface, animateHover } from '../../common/ui/InteractiveSurface';
@@ -479,7 +479,7 @@ export struct FavoritesPage {
                 this.favoriteItem(item)
               }.width(this.gridItemWidth()).margin({ bottom: 8 })
             }, (item: FavoriteHeading) => item.id)
-          }.width('100%').padding({ left: 12, right: 12, top: 12, bottom: 32 })
+          }.width('100%').padding({ left: this.isLargeWorkspace() ? 28 : 12, right: this.isLargeWorkspace() ? 28 : 12, top: 12, bottom: 32 })
         } else {
           Column({ space: 8 }) {
           ForEach(this.visible, (item: FavoriteHeading, index: number) => {
@@ -498,10 +498,10 @@ export struct FavoritesPage {
               this.favoriteItem(item)
             }
           }, (item: FavoriteHeading) => item.id)
-          }.width('100%').padding({ left: 12, right: 12, top: 12, bottom: 32 })
+          }.width('100%').padding({ left: this.isLargeWorkspace() ? 28 : 12, right: this.isLargeWorkspace() ? 28 : 12, top: 12, bottom: 32 })
         }
       }.width('100%')
-    }.width('100%').constraintSize({ maxWidth: COLLECTION_MAX_WIDTH }).height('100%').align(Alignment.TopStart)
+    }.width('100%').height('100%').align(Alignment.TopStart)
     .scrollBar(BarState.Off).edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
     .backgroundColor($r('app.color.canvas'))
     .onAreaChange((_oldValue, newValue) => {

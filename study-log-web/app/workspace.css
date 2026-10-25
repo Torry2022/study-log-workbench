@@ -350,14 +350,14 @@
 
 /* Secondary month navigation keeps a full hit area without a bordered button. */
 .sidebar-months-toggle {
-  width: 100%; min-height: 32px; padding: 4px 10px; border: 0;
+  width: auto; min-height: 28px; padding: 4px 10px; border: 0;
   border-radius: var(--radius-md); background: transparent; color: var(--muted);
   text-align: left; font-size: 12px; cursor: pointer; -webkit-tap-highlight-color: transparent;
 }
 @media (hover: hover) {
-  .sidebar-months-toggle:hover { background: var(--surface-card); color: var(--body); }
+  .sidebar-months-toggle:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
 }
-@media (pointer: coarse), (max-width: 1023px) {
+@media (pointer: coarse) {
   .sidebar-months-toggle { min-height: 44px; }
 }
 
@@ -446,7 +446,7 @@
   color: var(--body);
   font-family: inherit;
   font-size: var(--sidebar-detail-size);
-  font-weight: 400;
+  font-weight: 500;
   line-height: 1.25;
   overflow-wrap: anywhere;
   text-align: left;
@@ -1133,4 +1133,28 @@
 
 .compact-day-list {
   max-height: calc(100svh - 136px);
+}
+
+.sidebar-month-years {
+  display: grid;
+  gap: 14px;
+}
+
+.sidebar-year-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 10px 6px;
+  color: var(--muted-soft);
+  font-size: var(--sidebar-meta-size);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  line-height: 20px;
+}
+
+.sidebar-year-heading::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: var(--hairline-soft);
 }

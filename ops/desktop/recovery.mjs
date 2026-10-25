@@ -1,18 +1,14 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
-import { execFile, spawn } from "node:child_process";
-import { promisify } from "node:util";
+import { spawn } from "node:child_process";
 import { assertNoLinks } from "../instance.mjs";
 import { atomicPrivateFile, privateDirectory } from "./security.mjs";
+import { windowsSystem } from "./windows-system.mjs";
 
-const execute = promisify(execFile);
 let identity;
 async function machineIdentity() {
-  return identity ??= execute("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
-    "$ErrorActionPreference='Stop'; @{machine=(Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Cryptography').MachineGuid; user=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value; boot=(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('o'); processStarted=(Get-Process -Id $env:STUDY_LOG_OWNER_PID).StartTime.ToUniversalTime().ToString('o')} | ConvertTo-Json -Compress"
-  ], { windowsHide: true, timeout: 15000, env: { ...process.env, STUDY_LOG_OWNER_PID: String(process.pid) } }).then(({ stdout }) => {
-    const value = JSON.parse(stdout);
+  return identity ??= windowsSystem("identity", process.pid).then(value => {
     if (!value.machine || !value.user || !Number.isFinite(Date.parse(value.boot))) throw Error("无法确认本机运行状态，请重试。");
     return { host: crypto.createHash("sha256").update(value.machine + value.user).digest("hex"), boot: value.boot, processStarted: value.processStarted };
   }).catch(error => { identity = undefined; throw error; });
@@ -24,10 +20,7 @@ export async function desktopOwnership(data) {
   const root = (await fs.realpath(data)).toLowerCase();
   // Recovery is local to this machine/account and this exact data directory.
   if (!/^[a-z]:\\/.test(root)) return undefined;
-  const { stdout } = await execute("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
-    "[int]([IO.DriveInfo]::new($env:STUDY_LOG_RECOVERY_DRIVE + '\\').DriveType)"
-  ], { windowsHide: true, timeout: 15000, env: { ...process.env, STUDY_LOG_RECOVERY_DRIVE: path.parse(root).root.slice(0, 2) } });
-  if (stdout.trim() !== "3") return undefined;
+  if (await windowsSystem("drive", path.parse(root).root) !== 3) return undefined;
   const instance = JSON.parse(await fs.readFile(path.join(data, ".instance.json"), "utf8"));
   return { schema: 1, ...await machineIdentity(), root, instance: instance.id, workers: [] };
 }
@@ -44,10 +37,7 @@ export async function registerDesktopWorker(data, pid) {
 }
 
 async function processStamps(pids) {
-  const { stdout } = await execute("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
-    "$ErrorActionPreference='Stop'; $ids=@($env:STUDY_LOG_RECOVERY_PIDS.Split(',') | ForEach-Object { [int]$_ }); $items=@(foreach($id in $ids) { try { $item=[Diagnostics.Process]::GetProcessById($id) } catch [ArgumentException] { continue }; try { @{pid=$item.Id; started=$item.StartTime.ToUniversalTime().ToString('o')} } finally { $item.Dispose() } }); ConvertTo-Json -InputObject $items -Compress"
-  ], { windowsHide: true, timeout: 15000, env: { ...process.env, STUDY_LOG_RECOVERY_PIDS: pids.join(",") } });
-  return JSON.parse(stdout);
+  return windowsSystem("processes", pids);
 }
 
 // A kernel-held file handle serializes recovery attempts and disappears on crash.

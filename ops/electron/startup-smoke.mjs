@@ -20,6 +20,7 @@ const manager = new DesktopManager({ packageRoot: payload });
 await manager.select({ root: fixture, create: true, password: crypto.randomUUID() });
 const report = { packaged: Boolean(packaged), passed: [], runs: [], installedOnUserMachine: false };
 let application;
+const observedMessages = new WeakMap();
 const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE;
 async function profile(name, remote) {
   const base = path.join(output, name), instance = path.join(base, 'instance'), profile = path.join(base, 'profile');
@@ -35,6 +36,13 @@ async function start(f) {
     env: { ...env, STUDY_LOG_DESKTOP_PROFILE: f.profile }, timeout: 60000 });
   await expect.poll(() => application.context().pages().some(p => p.url().includes('startup.html'))).toBe(true);
   const page = application.context().pages().find(p => p.url().includes('startup.html'));
+  const messages = []; observedMessages.set(page, messages);
+  await page.exposeFunction('recordStartupMessage', text => messages.push(text));
+  await page.evaluate(() => {
+    const message = document.getElementById('message');
+    window.recordStartupMessage(message.textContent);
+    new MutationObserver(() => window.recordStartupMessage(message.textContent)).observe(message, { childList: true });
+  });
   await expect.poll(() => application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()
     .some(w => w.webContents.getURL().includes('startup.html') && w.isVisible()))).toBe(true);
   await expect.poll(() => page.locator('.mark img').evaluateAll(images => images.length === 8 && images.every(image => image.complete && image.naturalWidth > 0))).toBe(true);
@@ -89,9 +97,8 @@ try {
       await startup.emulateMedia({ reducedMotion: 'reduce' });
       assert.equal(await startup.locator('.spinner').evaluate(el => getComputedStyle(el).animationName), 'none');
     }
-    await expect(startup.locator('#message')).toHaveText('正在读取学习记录…', { timeout: 60000 });
-    await expect(startup.locator('#message')).toHaveText('正在载入界面…', { timeout: 60000 });
     const page = await workspace(), entries = await marks();
+    assert.deepEqual([...new Set(observedMessages.get(startup))], ['正在准备工作台…', '正在读取学习记录…', '正在载入界面…']);
     const stages = entries.filter(m => m.name === 'desktop:stage').map(m => m.detail);
     assert.deepEqual([...new Set(stages)], ['正在准备工作台…', '正在读取学习记录…', '正在载入界面…']);
     const time = name => entries.find(m => m.name === 'desktop:' + name)?.ms;

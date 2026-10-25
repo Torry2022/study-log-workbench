@@ -96,11 +96,15 @@ try {
           scale: new DOMMatrixReadOnly(getComputedStyle(document.querySelector('.mark')).transform).m11,
           fragmentOpacity: Math.max(...[...document.querySelectorAll('.fragment')].map(fragment => Number(getComputedStyle(fragment).opacity))),
           fragmentSpread: Math.max(...[...document.querySelectorAll('.fragment')].map(fragment => Math.abs(new DOMMatrixReadOnly(getComputedStyle(fragment).transform).m41))),
+          fragmentScales: [...document.querySelectorAll('.fragment')].filter(fragment => Number(getComputedStyle(fragment).opacity) > .1).map(fragment => {
+            const matrix = new DOMMatrixReadOnly(getComputedStyle(fragment).transform);
+            return { x: Math.hypot(matrix.m11, matrix.m12), y: Math.hypot(matrix.m21, matrix.m22) };
+          }),
           layers: images.map(image => {
           const matrix = new DOMMatrixReadOnly(getComputedStyle(image).transform);
           return { x: matrix.m41, y: matrix.m42 };
         }) });
-        while (animation.playState !== 'finished') { record(); await new Promise(requestAnimationFrame); }
+        while (document.querySelector('.mark').getAnimations({ subtree: true }).some(item => item.playState !== 'finished')) { record(); await new Promise(requestAnimationFrame); }
         record();
         const origins = [...document.querySelectorAll('.fragment')].map(fragment => ({
           x: parseFloat(fragment.style.getPropertyValue('--sx')), y: parseFloat(fragment.style.getPropertyValue('--sy'))
@@ -113,6 +117,8 @@ try {
       assert.ok(intro.samples.some(sample => sample.layers[0].x > 0), 'gathering must retain its spring overshoot');
       assert.ok(intro.samples.some(sample => sample.scale < .99), 'contact must include a short compression');
       assert.ok(intro.samples.some(sample => sample.fragmentOpacity > .1), 'fragments must appear briefly at contact');
+      assert.ok(intro.samples.some(sample => sample.fragmentScales.some(scale => scale.x > 1.1 && scale.y < .9)), 'ejected pieces must visibly squash');
+      assert.ok(intro.samples.some(sample => sample.fragmentScales.some(scale => scale.x < .9 && scale.y > 1.1)), 'ejected pieces must visibly stretch');
       assert.ok(intro.samples.every(sample => sample.fragmentSpread < 50), 'chips must remain a small contact accent');
       assert.equal(new Set(intro.origins.map(origin => `${origin.x},${origin.y}`)).size, 2, 'chips must emerge from two contact edges');
       assert.ok(intro.origins.every(origin => origin.x < 0 && Math.abs(origin.x) < 15));

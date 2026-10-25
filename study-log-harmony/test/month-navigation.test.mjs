@@ -36,7 +36,8 @@ for (const [file, log] of [['logs/components/LogNavigation.ets', true], ['favori
     assert.ok(source.includes('if (this.hiddenMonthCount() > 0)'));
     assert.ok(source.includes('展开剩余 ${this.hiddenMonthCount()} 个月份'));
     if (log) {
-      assert.ok(source.includes('this.visibleMonths().length /'));
+      assert.ok(source.includes('MonthNavigationGroups({ months: this.visibleMonths()'));
+      assert.ok(source.includes('wide: this.isLargeWorkspace()'));
       assert.equal(source.split('this.dateActions()').length - 1, 1);
       assert.ok(source.indexOf("Text('月份')") < source.indexOf("Text('日期')"));
       assert.ok(source.indexOf("Text('日期')") < source.indexOf('this.dateActions()'));

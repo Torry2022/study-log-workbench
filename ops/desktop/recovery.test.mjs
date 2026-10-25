@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import { spawn } from "node:child_process";
+import { spawn, execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { once } from "node:events";
 import { initialize, acquireInstanceLock } from "../instance.mjs";
 import { desktopOwnership, registerDesktopWorker, recoverDesktopLock } from "./recovery.mjs";
@@ -69,6 +70,12 @@ test("orphan worker still draining blocks recovery until it has exited", windows
   f.owner.pid = process.pid; await f.save();
   await registerDesktopWorker(f.data, child.pid);
   f.owner.desktop = JSON.parse(await fs.readFile(f.file)).desktop;
+  // Already-installed versions record worker creation through CIM. Both readers must identify the same live process.
+  const { stdout } = await promisify(execFile)("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
+    "(Get-CimInstance Win32_Process -Filter ('ProcessId = ' + [int]$env:STUDY_LOG_TEST_WORKER_PID)).CreationDate.ToUniversalTime().ToString('o')"
+  ], { windowsHide: true, env: { ...process.env, STUDY_LOG_TEST_WORKER_PID: String(child.pid) } });
+  assert.equal(Date.parse(f.owner.desktop.workers[0].started), Date.parse(stdout.trim()));
+  f.owner.desktop.workers[0].started = stdout.trim();
   f.owner.pid = deadPid; await f.save();
   await assert.rejects(recoverDesktopLock(f.data), /正在使用/);
   const ended = once(child, "exit"); child.stdin.end(); await ended;

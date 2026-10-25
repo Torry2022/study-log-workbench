@@ -25,7 +25,7 @@ export async function desktopOwnership(data) {
   // Recovery is local to this machine/account and this exact data directory.
   if (!/^[a-z]:\\/.test(root)) return undefined;
   const { stdout } = await execute("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
-    "(Get-CimInstance Win32_LogicalDisk | Where-Object { $_.DeviceID -eq $env:STUDY_LOG_RECOVERY_DRIVE }).DriveType"
+    "[int]([IO.DriveInfo]::new($env:STUDY_LOG_RECOVERY_DRIVE + '\\').DriveType)"
   ], { windowsHide: true, timeout: 15000, env: { ...process.env, STUDY_LOG_RECOVERY_DRIVE: path.parse(root).root.slice(0, 2) } });
   if (stdout.trim() !== "3") return undefined;
   const instance = JSON.parse(await fs.readFile(path.join(data, ".instance.json"), "utf8"));
@@ -45,7 +45,7 @@ export async function registerDesktopWorker(data, pid) {
 
 async function processStamps(pids) {
   const { stdout } = await execute("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
-    "$ErrorActionPreference='Stop'; $ids=@($env:STUDY_LOG_RECOVERY_PIDS.Split(',') | ForEach-Object { [int]$_ }); $items=@(Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -in $ids } | ForEach-Object { @{pid=[int]$_.ProcessId; started=$_.CreationDate.ToUniversalTime().ToString('o')} }); ConvertTo-Json -InputObject $items -Compress"
+    "$ErrorActionPreference='Stop'; $ids=@($env:STUDY_LOG_RECOVERY_PIDS.Split(',') | ForEach-Object { [int]$_ }); $items=@(foreach($id in $ids) { try { $item=[Diagnostics.Process]::GetProcessById($id) } catch [ArgumentException] { continue }; try { @{pid=$item.Id; started=$item.StartTime.ToUniversalTime().ToString('o')} } finally { $item.Dispose() } }); ConvertTo-Json -InputObject $items -Compress"
   ], { windowsHide: true, timeout: 15000, env: { ...process.env, STUDY_LOG_RECOVERY_PIDS: pids.join(",") } });
   return JSON.parse(stdout);
 }

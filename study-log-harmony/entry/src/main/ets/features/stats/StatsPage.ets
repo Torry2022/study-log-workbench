@@ -51,6 +51,7 @@ export struct StatsPage {
   @State private scrollProgress: number = 0;
   @State private viewportHeight: number = 0;
   @State private viewportWidth: number = 0;
+  @State private domainWidth: number = 0;
   private pageScroller: Scroller = new Scroller();
   private resultChanges: ResultChangeGate = new ResultChangeGate();
   private topToolsHeight: number = 0;
@@ -251,9 +252,9 @@ export struct StatsPage {
 
   private calendarPanelHeight(): number {
     if (this.isLargeWorkspace()) {
-      return 104 + Math.min(4, this.drilldownEntries().length) * 66;
+      return 104 + Math.min(4, this.drilldownEntries().length) * 80;
     }
-    return Math.min(500, 126 + Math.max(1, this.drilldownEntries().length) * 66);
+    return Math.min(500, 126 + Math.max(1, this.drilldownEntries().length) * 80);
   }
 
   @Builder
@@ -373,13 +374,15 @@ export struct StatsPage {
       } else {
       if (this.data.stats!.stats.topicCount > 0) {
         StatsDonut({ domains: this.data.stats!.stats.domainCounts, total: this.data.stats!.stats.topicCount,
-          chartSize: Math.min(300, Math.max(220, this.viewportWidth - 88)),
-          onDomain: (domain: string) => this.openDrilldown('domain', domain) })
+          chartSize: Math.min(360, Math.max(160, this.domainWidth > 0 ? this.domainWidth - 40 : this.viewportWidth - 88)),
+          onDomain: (domain: string) => this.openDrilldown('domain', domain) }).width('100%').alignSelf(ItemAlign.Center)
       } else {
         Text('这个月份还没有可统计的日志小节').fontSize(12).fontColor($r('app.color.muted'))
       }
       }
     }.width(this.viewportWidth >= 960 ? '66%' : '100%').padding(20)
+      .onAreaChange((_old: Area, area: Area) => this.domainWidth = Number(area.width))
+      .justifyContent(FlexAlign.SpaceBetween)
       .alignItems(HorizontalAlign.Start).alignSelf(ItemAlign.Stretch)
       .backgroundColor($r('app.color.surface_soft'))
       .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(10)
@@ -420,6 +423,23 @@ export struct StatsPage {
   }
 
   @Builder
+  private statsEntry(entry: StatsEntry, showDate: boolean) {
+    Button({ type: ButtonType.Normal }) {
+      Row({ space: 12 }) {
+        if (showDate) Text(entry.date).fontSize(11).fontColor($r('app.color.muted')).width(84)
+        Column({ space: 2 }) {
+          Text(entry.headingText).fontSize(13).lineHeight(18).fontWeight(FontWeight.Medium)
+            .fontColor($r('app.color.body_strong')).maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
+          Text(entry.domain).fontSize(11).lineHeight(14).fontColor($r('app.color.muted'))
+        }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+        SymbolGlyph($r('sys.symbol.chevron_forward')).fontSize(14).fontColor([$r('app.color.muted_soft')])
+      }.width('100%')
+    }.width('100%').height(72).padding({ left: 12, right: 12, top: 10, bottom: 10 })
+      .backgroundColor($r('app.color.canvas')).border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8)
+      .onClick(() => { if (!showDate) this.closeCalendarDetails(); this.onOpenEntry(entry); })
+  }
+
+  @Builder
   private drilldownList() {
     Column({ space: 8 }) {
       Row() {
@@ -435,20 +455,7 @@ export struct StatsPage {
         .onClick(() => { this.drilldownKind = ''; this.drilldownValue = ''; })
       }.width('100%')
       ForEach(this.drilldownEntries(), (entry: StatsEntry) => {
-        Button({ type: ButtonType.Normal }) {
-          Row({ space: 10 }) {
-            Text(entry.date).fontSize(11).fontColor($r('app.color.muted')).width(70)
-            Column({ space: 2 }) {
-              Text(entry.headingText).fontSize(13).fontWeight(FontWeight.Medium).fontColor($r('app.color.body_strong'))
-                .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
-              Text(entry.domain).fontSize(10).fontColor($r('app.color.muted'))
-            }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-          }.width('100%')
-        }
-        .width('100%').height(58).padding({ left: 10, right: 10 })
-        .backgroundColor($r('app.color.canvas')).fontColor($r('app.color.ink'))
-        .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8).clip(true)
-        .onClick(() => this.onOpenEntry(entry))
+        this.statsEntry(entry, true)
       }, (entry: StatsEntry) => `${entry.date}-${entry.headingIndex}-${entry.rawHeading}`)
     }
     .width('100%').padding(14).alignItems(HorizontalAlign.Start)
@@ -488,38 +495,7 @@ export struct StatsPage {
       List({ space: 8 }) {
         ForEach(this.drilldownEntries(), (entry: StatsEntry) => {
           ListItem() {
-            Button({ type: ButtonType.Normal }) {
-              Row({ space: 10 }) {
-                Column({ space: 3 }) {
-                  Text(entry.headingText)
-                    .fontSize(14)
-                    .fontWeight(FontWeight.Medium)
-                    .fontColor($r('app.color.body_strong'))
-                    .maxLines(2)
-                    .textOverflow({ overflow: TextOverflow.Ellipsis })
-                  Text(entry.domain)
-                    .fontSize(11)
-                    .fontColor($r('app.color.muted'))
-                }
-                .alignItems(HorizontalAlign.Start)
-                .layoutWeight(1)
-                SymbolGlyph($r('sys.symbol.chevron_forward'))
-                  .fontSize(14)
-                  .fontColor([$r('app.color.muted_soft')])
-              }
-              .width('100%')
-            }
-            .width('100%')
-            .height(58)
-            .padding({ left: 12, right: 12 })
-            .backgroundColor($r('app.color.canvas'))
-            .border({ width: 1, color: $r('app.color.hairline') })
-            .borderRadius(8)
-            .clip(true)
-            .onClick(() => {
-              this.closeCalendarDetails();
-              this.onOpenEntry(entry);
-            })
+            this.statsEntry(entry, false)
           }
         }, (entry: StatsEntry) => `${entry.date}-${entry.headingIndex}-${entry.rawHeading}`)
       }

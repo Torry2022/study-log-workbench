@@ -36,9 +36,12 @@ try {
   await expect(page.locator(".stats-review-toolbar h2")).toHaveText("2026-08");
   await expect(page.locator(".stats-metric-strip > div").nth(0).locator("strong")).toHaveText("2");
   await expect(page.locator(".stats-metric-strip > div").nth(1).locator("strong")).toHaveText("3");
+  const analysisBefore = await page.locator(".stats-analysis-grid").boundingBox();
   await page.getByTitle("2026-08-05：2 个日志小节", { exact: true }).click();
-  await expect(page.locator(".stats-calendar-drilldown .stats-drilldown-list > button")).toHaveCount(2);
-  await page.locator(".stats-calendar-drilldown .stats-drilldown-list > button").filter({ hasText: beta }).click();
+  await expect(page.locator(".stats-day-dialog .stats-drilldown-list > button")).toHaveCount(2);
+  const analysisAfter = await page.locator(".stats-analysis-grid").boundingBox();
+  assert.ok(analysisBefore && analysisAfter && Math.abs(analysisBefore.y - analysisAfter.y) < 2);
+  await page.locator(".stats-day-dialog .stats-drilldown-list > button").filter({ hasText: beta }).click();
   await expect.poll(() => new URL(page.url()).searchParams.get("view")).toBe("log");
   assert.equal(new URL(page.url()).searchParams.get("date"), "2026-08-05");
   await page.goBack();
@@ -148,8 +151,9 @@ try {
   await expect(phone.locator(".stats-review-toolbar h2")).toHaveText("2026-08");
   assert.ok(await phone.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
   await phone.getByTitle("2026-08-05：2 个日志小节", { exact: true }).click();
-  await expect(phone.locator(".stats-calendar-drilldown .stats-drilldown-list > button")).toHaveCount(2);
+  await expect(phone.locator(".stats-day-dialog .stats-drilldown-list > button")).toHaveCount(2);
   await phone.screenshot({ path: path.join(artifacts, "stats-mobile.png"), fullPage: true });
+  await phone.getByRole("button", { name: "关闭日期明细", exact: true }).click();
   await phone.locator(".stats-review-actions").getByRole("button", { name: "分类管理", exact: true }).click();
   await expect(phone.getByLabel(`领域 ${alpha}`, { exact: true })).toBeVisible();
   assert.ok(await phone.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));

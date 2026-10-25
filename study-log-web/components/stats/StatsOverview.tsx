@@ -2,6 +2,7 @@
 
 import { CalendarDays, ChevronDown, RefreshCw, TrendingDown, TrendingUp } from "lucide-react";
 import { useMemo, useState } from "react";
+import { StatsDayDetails, StatsEntryList } from "./StatsDayDetails";
 import { WorkspaceState } from "../WorkspaceState";
 import type { DomainCount, MonthlyStats, StatsEntry, TagCount } from "@/lib/stats-types";
 
@@ -92,6 +93,8 @@ export function StatsOverview({
 }: StatsOverviewProps) {
   const [activeDomain, setActiveDomain] = useState<string | null>(null);
   const [drilldown, setDrilldown] = useState<Drilldown>(null);
+  const [dayAnchor, setDayAnchor] = useState<HTMLButtonElement | null>(null);
+  const [dayMonth, setDayMonth] = useState("");
   const segments = useMemo(() => {
     let cursor = 0;
     return (stats?.domainCounts || []).map((item, index) => {
@@ -137,14 +140,8 @@ export function StatsOverview({
         <div><h3>{drillTitle}</h3><p>{drillEntries.length} 个日志小节，点击查看原文。</p></div>
         <button className="button secondary compact" onClick={() => setDrilldown(null)}>关闭</button>
       </div>
-      <div className="stats-drilldown-list">
-        {drillEntries.map((entry) => (
-          <button key={`${entry.date}-${entry.headingIndex}-${entry.rawHeading}`} type="button" onClick={() => onOpenEntry(entry)}>
-            <time>{entry.date}</time><strong>{entry.headingText}</strong><span>{entry.domain}</span>
-          </button>
-        ))}
-        {!drillEntries.length && <WorkspaceState kind="empty" title="当天暂无可统计的小节" layout="compact" className="stats-empty compact" />}
-      </div>
+      <StatsEntryList entries={drillEntries} onOpenEntry={onOpenEntry} />
+
     </>
   ) : null;
 
@@ -195,7 +192,8 @@ export function StatsOverview({
               data-recorded={item.activity ? "true" : "false"}
               data-level={item.activity ? Math.max(1, Math.ceil((item.activity.topicCount / maxDayTopics) * 4)) : 0}
               title={`${item.date}${item.activity ? `：${item.activity.topicCount} 个日志小节` : "：无日志"}`}
-              onClick={() => item.activity && setDrilldown({ kind: "day", value: item.date })}
+              aria-haspopup="dialog"
+              onClick={event => { if (item.activity) { setDayAnchor(event.currentTarget); setDayMonth(selectedMonth); setDrilldown({ kind: "day", value: item.date }); } }}
               disabled={!item.activity}
             >
               <span>{item.day}</span>
@@ -204,11 +202,7 @@ export function StatsOverview({
           ) : <span className="stats-calendar-spacer" key={`space-${index}`} />)}
         </div>
         </div>
-        {drilldown?.kind === "day" && (
-          <div className="stats-calendar-drilldown">
-            {drilldownContent}
-          </div>
-        )}
+
       </section>
 
       <div className="stats-analysis-grid">
@@ -217,7 +211,7 @@ export function StatsOverview({
           {!classificationReady ? <WorkspaceState kind="empty" title="尚未整理学习领域" description="配置模型后，可在分类管理中让 AI 整理领域；其他统计无需分类即可查看。" layout="compact" className="stats-empty compact" /> : stats?.topicCount ? (
             <div className="stats-donut-layout">
               <figure className="stats-donut" onMouseLeave={() => setActiveDomain(null)}>
-                <svg viewBox="0 0 120 120" role="group" aria-label={`${selectedMonth} 领域占比`}>
+                <svg viewBox="8 8 104 104" role="group" aria-label={`${selectedMonth} 领域占比`}>
                   <circle className="stats-donut-track" cx="60" cy="60" r="40" />
                   {segments.map((item) => item.end - item.start >= 99.99 ? (
                     <circle key={item.domain} className="stats-donut-segment" cx="60" cy="60" r="40" stroke={item.color} role="button" tabIndex={0} aria-label={`${item.domain}：${item.count}个，${item.percentage}%`} onFocus={() => setActiveDomain(item.domain)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); chooseDomain(item); } }} onMouseEnter={() => setActiveDomain(item.domain)} onClick={() => chooseDomain(item)} />
@@ -228,6 +222,12 @@ export function StatsOverview({
                 <div className="stats-donut-center"><strong>{stats.topicCount}</strong><span>日志小节</span></div>
                 {activeSegment && <div className="stats-donut-tooltip"><i style={{ background: activeSegment.color }} /><strong>{activeSegment.domain}</strong><dl><div><dt>日志小节</dt><dd>{activeSegment.count}</dd></div><div><dt>占比</dt><dd>{activeSegment.percentage}%</dd></div><div><dt>记录天数</dt><dd>{activeSegment.activeDays}</dd></div></dl></div>}
               </figure>
+              <div className="stats-donut-legend" aria-label="领域图例">
+                {segments.map(item => <button key={item.domain} type="button" onClick={() => chooseDomain(item)}
+                  aria-label={`${item.domain}，${item.count} 个小节，${item.percentage}%`}>
+                  <i style={{ background: item.color }} />{item.domain}
+                </button>)}
+              </div>
             </div>
           ) : <WorkspaceState kind="empty" title="本月暂无可统计的小节" description={stats?.dayCount ? "普通段落会计入记录天数，三级标题会计入小节数量。" : undefined} layout="compact" className="stats-empty compact" />}
         </section>
@@ -246,6 +246,10 @@ export function StatsOverview({
           </div>
         </section>
       </div>
+
+      {drilldown?.kind === "day" && dayAnchor && dayMonth === selectedMonth && <StatsDayDetails key={`${selectedMonth}-${drilldown.value}`}
+        date={drilldown.value} entries={drillEntries} anchor={dayAnchor}
+        onClose={() => setDrilldown(null)} onOpenEntry={onOpenEntry} />}
 
       {drilldown && drilldown.kind !== "day" && (
         <section className="stats-section stats-drilldown">

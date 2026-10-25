@@ -15,7 +15,7 @@ export struct StatsDonut {
   @StorageProp('systemTheme') @Watch('redraw') private systemTheme: string = 'light';
   @Prop @Watch('redraw') domains: DomainCount[] = [];
   @Prop total: number = 0;
-  @Prop @Watch('redraw') chartSize: number = 264;
+  @Prop @Watch('redraw') chartSize: number = 360;
   @State private activeIndex: number = -1;
   private canvas: CanvasRenderingContext2D = new CanvasRenderingContext2D(new RenderingContextSettings(true));
   private canvasReady: boolean = false;
@@ -41,9 +41,9 @@ export struct StatsDonut {
     if (!this.canvasReady) return;
     const colors = this.getUIContext().getHostContext()!.resourceManager;
     const center = this.chartSize / 2;
-    const radius = this.chartSize / 3;
+    const radius = this.chartSize * 40 / 104;
     this.canvas.clearRect(0, 0, this.chartSize, this.chartSize);
-    this.canvas.lineWidth = this.chartSize / 6;
+    this.canvas.lineWidth = this.chartSize * 20 / 104;
     this.canvas.lineCap = 'butt';
     this.canvas.strokeStyle = colors.getColorSync($r('app.color.surface_card').id);
     this.canvas.beginPath();
@@ -60,7 +60,7 @@ export struct StatsDonut {
   }
 
   private segmentAt(x: number, y: number): number {
-    const dx = x * 120 / this.chartSize - 60, dy = y * 120 / this.chartSize - 60;
+    const dx = x * 104 / this.chartSize - 52, dy = y * 104 / this.chartSize - 52;
     const radius = Math.sqrt(dx * dx + dy * dy);
     if (radius < 30 || radius > 50) return -1;
     const fraction = ((Math.atan2(dy, dx) / Math.PI * 180 + 450) % 360) / 360;
@@ -99,7 +99,7 @@ export struct StatsDonut {
           Text(this.total.toString()).fontFamily(workspaceLatinSerifFamily(this.workspaceBreakpoint))
             .fontSize(38).fontColor($r('app.color.ink'))
           Text('日志小节').fontSize(12).fontColor($r('app.color.muted'))
-        }.width('100%').height('100%').justifyContent(FlexAlign.Center).hitTestBehavior(HitTestMode.None)
+        }.width(this.chartSize).height(this.chartSize).justifyContent(FlexAlign.Center).hitTestBehavior(HitTestMode.None)
       }.width(this.chartSize).height(this.chartSize).id('stats_domain_chart')
         .onMouse((event: MouseEvent) => this.activeIndex = this.segmentAt(event.x, event.y))
         .onHover((hover: boolean) => { if (!hover) this.activeIndex = -1; })

@@ -95,6 +95,7 @@ try {
         const record = () => samples.push({ time: animation.currentTime,
           scale: new DOMMatrixReadOnly(getComputedStyle(document.querySelector('.mark')).transform).m11,
           fragmentOpacity: Math.max(...[...document.querySelectorAll('.fragment')].map(fragment => Number(getComputedStyle(fragment).opacity))),
+          fragmentSpread: Math.max(...[...document.querySelectorAll('.fragment')].map(fragment => Math.abs(new DOMMatrixReadOnly(getComputedStyle(fragment).transform).m41))),
           layers: images.map(image => {
           const matrix = new DOMMatrixReadOnly(getComputedStyle(image).transform);
           return { x: matrix.m41, y: matrix.m42 };
@@ -109,17 +110,20 @@ try {
       assert.ok(intro.samples.some(sample => sample.layers[0].x > 0), 'gathering must retain its spring overshoot');
       assert.ok(intro.samples.some(sample => sample.scale < .99), 'contact must include a short compression');
       assert.ok(intro.samples.some(sample => sample.fragmentOpacity > .1), 'fragments must appear briefly at contact');
+      assert.ok(intro.samples.some(sample => sample.fragmentSpread > 60), 'confetti must spread clearly beyond the logo');
       assert.ok(intro.samples.at(-1).layers.every(layer => Math.abs(layer.x) < .01 && Math.abs(layer.y) < .01));
       await fs.writeFile(path.join(output, 'intro-motion.json'), JSON.stringify(intro, null, 2));
       for (const scheme of ['light', 'dark']) {
         await startup.emulateMedia({ colorScheme: scheme });
         await expect(startup.locator('.mark-frame')).toHaveCSS('background-color', scheme === 'light' ? 'rgb(255, 255, 255)' : 'rgb(28, 26, 23)');
         await startup.evaluate(() => Promise.all(document.querySelector('.mark').getAnimations({ subtree: true }).map(animation => animation.finished)) );
+        assert.deepEqual((await startup.locator('.fragment').evaluateAll(fragments => [...new Set(fragments.map(fragment => getComputedStyle(fragment).backgroundColor))])).sort(),
+          (scheme === 'light' ? ['rgb(208, 122, 95)', 'rgb(23, 22, 20)'] : ['rgb(212, 135, 106)', 'rgb(245, 240, 232)']).sort());
         await startup.screenshot({ path: path.join(output, 'startup-' + scheme + '.png') });
       }
       await startup.emulateMedia({ reducedMotion: 'reduce' });
       assert.equal(await startup.locator('.spinner').evaluate(el => getComputedStyle(el).animationName), 'none');
-      assert.equal(await startup.locator('.fragment').count(), 6);
+      assert.equal(await startup.locator('.fragment').count(), 28);
       assert.equal(await startup.locator('.fragment').first().evaluate(el => getComputedStyle(el).animationName), 'none');
     }
     const page = await workspace(), entries = await marks();

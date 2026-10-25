@@ -33,7 +33,7 @@ import { HighlightPanel } from "./HighlightPanel";
 import { HighlightReviewDialog } from "./HighlightReviewDialog";
 import { useNoteCandidates } from "@/hooks/use-note-candidates";
 import { NoteCandidateExtractor } from "./NoteCandidateExtractor";
-import { AppFeedback } from "./AppFeedback";
+import { AppFeedback, type FeedbackMessage } from "./AppFeedback";
 import { useRag } from "@/hooks/use-rag";
 import { RagWorkspace } from "./RagWorkspace";
 import { RagHistorySidebar } from "./RagHistorySidebar";
@@ -93,6 +93,20 @@ export function Workspace() {
   }, [logs.selection.date]);
   const [navigationError, setNavigationError] = useState("");
   const [returnNoteId, setReturnNoteId] = useState("");
+  const [returnStats, setReturnStats] = useState<{ scroll: number } | null>(null);
+  const pendingStatsLocation = useRef<{ date: string; heading: string } | null>(null);
+  const [navigationFeedback, setNavigationFeedback] = useState<FeedbackMessage | null>(null);
+  useEffect(() => {
+    if (!navigationFeedback) return;
+    const timer = setTimeout(() => setNavigationFeedback(null), 3600);
+    return () => clearTimeout(timer);
+  }, [navigationFeedback]);
+  const statsHeadingLocated = useCallback((date: string, heading: string, found: boolean) => {
+    const target = pendingStatsLocation.current;
+    if (!target || target.date !== date || target.heading !== heading) return;
+    pendingStatsLocation.current = null;
+    if (found) setNavigationFeedback({ message: "已定位到统计小节", tone: "success" });
+  }, []);
   const [returnRag, setReturnRag] = useState<{ scroll: number } | null>(null);
   const [inspectorTab, setInspectorTab] = useState<"writing" | "highlighting">("writing");
   const writing = useWriting({ active, visible: logView, date: logs.selection.date, onConfirm: confirm, onApply: async (date, content) => {
@@ -186,6 +200,7 @@ export function Workspace() {
     finally { setDeleting(false); }
   };
   const openStatsEntry = async (entry: StatsEntry) => {
+    const scroll = window.scrollY;
     const attempt = ++sourceNavigation.current;
     const revision = navigationState.current.revision;
     setNavigationError("");
@@ -194,7 +209,9 @@ export function Workspace() {
       if (attempt !== sourceNavigation.current || !navigationState.current.active || navigationState.current.revision !== revision) return false;
       const heading = buildMarkdownOutline(toEditableDayBody(day.date, day.content)).filter(item => item.level === 3)[entry.headingIndex];
       const found = heading?.text === entry.rawHeading;
-      if (!(await selectDate(entry.date, found ? heading.id : ""))) return false;
+      pendingStatsLocation.current = found ? { date: entry.date, heading: heading.id } : null;
+      if (!(await selectDate(entry.date, found ? heading.id : ""))) { pendingStatsLocation.current = null; return false; }
+      setReturnStats({ scroll }); setReturnRag(null);
       setMode("preview"); setReading(false);
       if (!found) setNavigationError("统计来源已变化，已打开所属日期，请刷新统计。");
       return true;
@@ -231,7 +248,7 @@ export function Workspace() {
       const heading = citation.headingIndex === null ? null : headings[citation.headingIndex];
       const found = citation.headingIndex === null || heading?.text === citation.heading;
       if (!(await selectDate(citation.date, found ? heading?.id || "" : ""))) return;
-      setReturnRag({ scroll }); setMode("preview"); setReading(false);
+      setReturnRag({ scroll }); setReturnStats(null); pendingStatsLocation.current = null; setMode("preview"); setReading(false);
       if (!found) setNavigationError("引用标题已变化，已打开所属日期；请对照回答中的原始片段。");
     } catch (failure) {
       if (attempt === sourceNavigation.current && navigationState.current.active && navigationState.current.revision === revision) setNavigationError(failure instanceof Error ? failure.message : "读取引用失败");
@@ -260,7 +277,7 @@ export function Workspace() {
     onSearchChange={clearSearch} onSearchSelect={async result => { if (!(await selectDate(result.date))) return false; setMode("preview"); setReading(false); setSearchSelection(result); return true; }}
     onNewQuestion={async () => { if (!(await logs.selectView("qa"))) return false; clearSearch(); setReading(false); return rag.newSession(); }}
     onNewDate={date => { if (logs.loading || logs.error) return; void logs.selectDate(date).then(accepted => { if (accepted) setMode("source"); }); }} onLogout={() => void exit()}>
-    <AppFeedback feedback={navigationError ? { message: navigationError, tone: "error" } : null} onDismiss={() => setNavigationError("")} />
+    <AppFeedback feedback={navigationError ? { message: navigationError, tone: "error" } : navigationFeedback} onDismiss={() => setNavigationError("")} />
     <AppFeedback feedback={exporting.status || exporting.error || exporting.busy ? { message: exporting.error || exporting.status || "正在准备导出…", tone: exporting.error ? "error" : exporting.status ? "warning" : "info", action: exporting.busy ? { label: "取消导出", onClick: exporting.cancel } : undefined } : null} onDismiss={exporting.dismiss} />
     <div className="workspace-view" hidden={logs.selection.view !== "qa"}>
       <RagWorkspace noLogs={!logs.navigationLoading && !logs.navigationError && !logs.months.length} onOpenLog={openLog} active={active} visible={logs.selection.view === "qa"} disabled={!rag.configured || rag.saving || rag.submissionBlocked || Boolean(rag.saveError)} answerActionBusy={rag.saving} messages={rag.messages} initializing={rag.initializing}
@@ -276,12 +293,13 @@ export function Workspace() {
         question={rag.question} stage={rag.stage} generating={rag.generating} themeMode={theme} answerMode={rag.answerMode} focusRequestToken={rag.focusToken} sessionNavigationToken={rag.navigationToken} answerStartToken={rag.answerStartToken}
         onQuestionChange={rag.setQuestion} onAnswerModeChange={rag.setAnswerMode} onSubmit={() => void rag.submit()} onStop={rag.stop} viewingPreviousAnswer={rag.viewingPreviousAnswer} onAnswerVersion={rag.selectAnswerVersion} onSaveAnswer={id => void rag.saveAnswer(id)} onDiscardAnswer={id => void rag.discardAnswer(id)} onRegenerate={id => void rag.regenerate(id)} onCitation={citation => void openRagCitation(citation)} />
     </div>
-    <div className="workspace-view" hidden={!logView}><LogReader onPositionReady={completeTransition} onCancelTransition={cancelTransition} hasLogs={logs.months.length > 0} active={active && logView} favorites={favorites} exporting={exporting} day={logs.day} date={logs.selection.date} heading={logs.selection.heading}
+    <div className="workspace-view" hidden={!logView}><LogReader onHeadingLocated={statsHeadingLocated} onPositionReady={completeTransition} onCancelTransition={cancelTransition} hasLogs={logs.months.length > 0} active={active && logView} favorites={favorites} exporting={exporting} day={logs.day} date={logs.selection.date} heading={logs.selection.heading}
       reloadContext={logs.reloadContext} reloadNavigation={{ months: logs.months, days: logs.days }}
       onOpenAi={() => setOpenAiRequest(value => value + 1)}
       onOpenFavorites={() => { void logs.selectView("favorites").then(accepted => { if (accepted) { clearSearch(); setReading(false); void favorites.reload(); } }); }}
       navigation={{ previousDate: dayIndex > 0 ? visibleDays[dayIndex - 1].date : null, nextDate: dayIndex >= 0 ? visibleDays[dayIndex + 1]?.date || null : null, showAdjacent: true,
         onReturnNotes: returnNoteId ? async () => { if (await logs.selectNote(returnNoteId)) { setReturnNoteId(""); setReading(false); } } : undefined,
+        onReturnStats: returnStats ? async () => { const target = returnStats; if (await logs.selectView("stats")) { setReturnStats(null); pendingStatsLocation.current = null; requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo({ top: target.scroll, behavior: "auto" }))); } } : undefined,
         onReturnRag: returnRag ? async () => { const target = returnRag; if (await logs.selectView("qa")) { setReturnRag(null); requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo({ top: target.scroll, behavior: "auto" }))); } } : undefined }}
       scrollTarget={logs.scrollTarget} navigationRevision={logs.navigationRevision} loading={logs.loading} error={logs.error} theme={theme}
       reading={reading} onReading={value => { if (value) setMode("preview"); setReading(value); }} onRetry={logs.retry} onNavigate={selectDate}

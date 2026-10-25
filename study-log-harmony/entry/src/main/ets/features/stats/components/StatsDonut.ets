@@ -67,9 +67,26 @@ export struct StatsDonut {
     return this.segments().findIndex((segment: DomainSegment) => fraction >= segment.start && fraction < segment.end);
   }
 
-  private activeDescription(): string {
-    const domain = this.domains[this.activeIndex];
-    return domain ? `${domain.domain} · ${domain.count} 个 · ${domain.percentage.toFixed(1)}% · ${domain.activeDays} 天` : '';
+  @Builder
+  private domainDetails() {
+    Column({ space: 8 }) {
+      Row({ space: 8 }) {
+        Circle().width(9).height(9).fill(this.color(this.activeIndex))
+        Text(this.domains[this.activeIndex]?.domain || '').fontSize(13).fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.body_strong')).layoutWeight(1)
+      }.width('100%')
+      this.detailRow('日志小节', (this.domains[this.activeIndex]?.count || 0).toString())
+      this.detailRow('占比', `${(this.domains[this.activeIndex]?.percentage || 0).toFixed(1)}%`)
+      this.detailRow('记录天数', (this.domains[this.activeIndex]?.activeDays || 0).toString())
+    }.width('100%').padding(12).id('stats_domain_details')
+  }
+
+  @Builder
+  private detailRow(label: string, value: string) {
+    Row() {
+      Text(label).fontSize(11).fontColor($r('app.color.muted')).layoutWeight(1)
+      Text(value).fontSize(11).fontColor($r('app.color.body')).fontFeature('"tnum" 1')
+    }.width('100%')
   }
 
   build() {
@@ -90,8 +107,13 @@ export struct StatsDonut {
           const index = this.segmentAt(event.x, event.y);
           if (index >= 0) { this.activeIndex = index; this.onDomain(this.domains[index].domain); }
         })
-      Text(this.activeDescription()).height(20).fontSize(12).fontColor($r('app.color.muted'))
-        .maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
+        .bindPopup(this.activeIndex >= 0 && this.activeIndex < this.domains.length, {
+          builder: this.domainDetails(), placement: Placement.Top, width: 200,
+          mask: false, enableArrow: false, autoCancel: true, targetSpace: 4,
+          popupColor: $r('app.color.canvas'), radius: 8, backgroundBlurStyle: BlurStyle.NONE,
+          shadow: { radius: 12, color: $r('app.color.popover_shadow'), offsetY: 4 },
+          onStateChange: (event) => { if (!event.isVisible) this.activeIndex = -1; }
+        })
       Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.Center }) {
         ForEach(this.domains, (domain: DomainCount, index: number) => {
           Button({ type: ButtonType.Normal }) {

@@ -18,6 +18,7 @@ export struct CompactLogHeader {
   @Prop backupRestoring: boolean = false;
   @Link backupOpen: boolean;
   @Link moreOpen: boolean;
+  @BuilderParam returnButton: () => void = this.emptyContent;
   @BuilderParam backupSheet: (registerBack: (back: () => void) => void) => void = this.emptyContent;
   private backupBack: () => void = () => {};
   @BuilderParam moreActionsPanel: () => void = this.emptyContent;
@@ -40,6 +41,7 @@ export struct CompactLogHeader {
 
   build() {
     Row({ space: 6 }) {
+      this.returnButton()
           Text(this.selectedDate)
             .id('log_document_date')
             .fontFamily(workspaceDateFamily(this.workspaceBreakpoint))

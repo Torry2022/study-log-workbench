@@ -505,8 +505,14 @@ struct Index {
   }
 
   private openStatsEntry(entry: StatsEntry): void {
-    this.openLogSource({ date: entry.date, heading: entry.rawHeading, headingIndex: entry.headingIndex,
-      headingId: '', kind: 'stats' });
+    const view = this.workspaceNavigationView;
+    if (!view) return;
+    this.requestModule(0, false, false, () => {
+      if (this.workspaceNavigationView !== view) return;
+      this.modules.statsReturnAvailable = true;
+      view.openLogSource({ date: entry.date, heading: entry.rawHeading, headingIndex: entry.headingIndex,
+        headingId: '', kind: 'stats' });
+    }, entry.date);
   }
 
   private openQaCitation(date: string, heading: string, headingIndex: number): void {
@@ -584,11 +590,13 @@ struct Index {
     if (discardQa) { this.modules.qaDirty = false; this.modules.qaPending = false; this.modules.qaDiscardRevision++; }
     if (index !== 0) { this.resetReadingMode(); view.leaveLog(); }
     this.resetSidebarMotion();
+    const returningToStats = index === 4 && this.modules.statsReturnAvailable;
+    if (index !== 0) this.modules.statsReturnAvailable = false;
     this.selectedModule = index;
     this.modules.moduleRequestedTab = -1;
     view.changed(index);
     if (index === 3) this.qaNavigation.loadQaNavigation();
-    if (index === 4) this.modules.statsVisitRevision += 1;
+    if (index === 4 && !returningToStats) this.modules.statsVisitRevision += 1;
     if (index === 0) this.refreshNavigationLists().catch(() => {
       if (this.selectedModule === 0 && this.workspaceNavigationView === view) {
         appFeedback.show('导航刷新失败，已保留原列表，请下拉重试', 'error', 3600, 'navigation-refresh');
@@ -1087,6 +1095,7 @@ struct Index {
   @Builder
   private logContent() {
         LogsReaderPage({ session: this.logSession, logLoadingHint: $logLoadingHint,
+          statsReturnAvailable: this.modules.statsReturnAvailable, onReturnStats: () => this.requestModule(4),
           onWorkspaceKey: (event: KeyEvent) => this.handleWorkspaceKey(event),
           newLogDate: $newLogDate, calendarMode: $calendarMode, calendarOpen: $calendarOpen,
           logNavigationScroller: this.logNavigationScroller, railPopover: $railPopover, searchFocusRevision: $searchFocusRevision, topMoreOpen: $topMoreOpen, desktopThemeOpen: $desktopThemeOpen, desktopKeyboardFocus: $desktopKeyboardFocus, compactSettingsOpen: $compactSettingsOpen,

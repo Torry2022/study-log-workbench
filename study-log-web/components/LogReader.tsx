@@ -49,6 +49,7 @@ interface Editing {
   onDelete: () => void; onBackups: () => void;
 }
 interface Props {
+  onHeadingLocated?: (date: string, heading: string, found: boolean) => void;
   onPositionReady: () => void;
   onCancelTransition: () => void;
   reloadContext: LogReloadContext | null;
@@ -58,7 +59,7 @@ interface Props {
   onOpenFavorites?: () => void;
   navigation?: {
     previousDate: string | null; nextDate: string | null; showAdjacent: boolean;
-    onReturnNotes?: () => void; onReturnRag?: () => void;
+    onReturnNotes?: () => void; onReturnRag?: () => void; onReturnStats?: () => void;
   };
   editing: Editing;
   search: SearchSelection | null;
@@ -72,7 +73,7 @@ interface Props {
   onNavigate: (date: string, heading?: string) => Promise<boolean>;
 }
 
-export function LogReader({ onPositionReady, onCancelTransition, reloadContext, reloadNavigation, hasLogs, onOpenAi, onOpenFavorites, navigation, editing, search, favorites, exporting, active, navigationRevision, day, date, heading, scrollTarget, loading, error, theme, reading, onReading, onRetry, onNavigate }: Props) {
+export function LogReader({ onHeadingLocated, onPositionReady, onCancelTransition, reloadContext, reloadNavigation, hasLogs, onOpenAi, onOpenFavorites, navigation, editing, search, favorites, exporting, active, navigationRevision, day, date, heading, scrollTarget, loading, error, theme, reading, onReading, onRetry, onNavigate }: Props) {
   useEffect(() => {
     if (!active || editing.mode !== "preview" || editing.busy || loading) return;
     const keydown = (event: KeyboardEvent) => {
@@ -430,7 +431,7 @@ export function LogReader({ onPositionReady, onCancelTransition, reloadContext, 
     return () => { observer.disconnect(); window.removeEventListener("resize", update); };
     // These inputs can swap equal-width actions without triggering ResizeObserver.
   }, [active, reading, mode, ready, inlineOutlineVisible, headings.length, editing.busy,
-    navigation?.showAdjacent, Boolean(navigation?.onReturnRag), Boolean(navigation?.onReturnNotes), returnPoint]);
+    navigation?.showAdjacent, Boolean(navigation?.onReturnRag), Boolean(navigation?.onReturnStats), Boolean(navigation?.onReturnNotes), returnPoint]);
   useEffect(() => {
     if (!active || !ready || !editorReady) return;
     if (reloadRoute.current === navigationRevision) return;
@@ -440,9 +441,10 @@ export function LogReader({ onPositionReady, onCancelTransition, reloadContext, 
       const element = target ? document.getElementById(target.id) : null;
       if (element) window.scrollTo({ top: Math.max(0, window.scrollY + element.getBoundingClientRect().top - headingLandingLine() - 12), behavior: "instant" });
       else window.scrollTo({ top: 0, behavior: "instant" });
+      if (heading) onHeadingLocated?.(date, heading, Boolean(element));
     });
     return () => cancelAnimationFrame(frame);
-  }, [active, ready, editorReady, date, heading, scrollTarget, navigationRevision]);
+  }, [active, ready, editorReady, date, heading, scrollTarget, navigationRevision, onHeadingLocated]);
   useEffect(() => {
     if (!active || !returning.current || !returnPoint || date !== returnPoint.date || loading || !editorReady) return;
     let frame = 0, attempts = 0;
@@ -481,9 +483,10 @@ export function LogReader({ onPositionReady, onCancelTransition, reloadContext, 
   const modeIndex = mode === "preview" ? 0 : mode === "source" ? 1 : 2;
   const modeButtons = (mobile = false) => <div className={`${mobile ? "mobile-mode-switch" : "view-mode-switch"} motion-segmented`} data-selected-index={mobile ? Math.min(modeIndex, 1) : modeIndex} style={{ "--segment-count": mobile ? 2 : 3 } as CSSProperties} role="group" aria-label="工作区模式">{modes.filter(([value]) => !mobile || value !== "split").map(([value, label, Icon]) => <button key={value} type="button" className={`${mobile ? "" : "view-mode-button"}${(mode === value || (mobile && mode === "split" && value === "source")) ? " active" : ""}`} title={label} aria-label={label} disabled={!date} aria-pressed={mode === value || (mobile && mode === "split" && value === "source")} onClick={() => changeMode(value)}><Icon size={mobile ? 16 : 15} />{label}</button>)}</div>;
   const saveButton = (mobile = false) => <button className={mobile ? "mobile-toolbar-icon primary" : "button primary toolbar-save-button"} type="button" title={editing.busy ? "保存中" : "保存"} aria-label={editing.busy ? "保存中" : "保存"} disabled={!editorReady || !active || editing.busy || (!editing.dirty && Boolean(day?.exists))} onClick={editing.onSave}>{mobile && editing.busy ? <RefreshCw className="mobile-spinner" size={17} /> : <Save size={mobile ? 17 : 15} />}{!mobile && (editing.busy ? "保存中" : "保存")}</button>;
-  const dayNavigator = () => (returnPoint || navigation?.onReturnRag || navigation?.showAdjacent) && <div className="day-navigator" aria-label="日志浏览导航">
+  const dayNavigator = () => (returnPoint || navigation?.onReturnRag || navigation?.onReturnStats || navigation?.showAdjacent) && <div className="day-navigator" aria-label="日志浏览导航">
     {returnPoint && <button className="day-nav-button" type="button" disabled={editing.busy} title="返回内部链接跳转前的位置" aria-label="返回链接前位置" onClick={() => void returnFromLink()}><CornerUpLeft size={14} />返回</button>}
     {navigation?.onReturnRag && <button className="day-nav-button" type="button" disabled={editing.busy} title="返回知识问答" aria-label="返回问答" onClick={navigation.onReturnRag}><CornerUpLeft size={14} />返回问答</button>}
+    {navigation?.onReturnStats && <button className="day-nav-button" type="button" disabled={editing.busy} title="返回学习统计" aria-label="返回统计" onClick={navigation.onReturnStats}><CornerUpLeft size={14} />返回统计</button>}
     {navigation?.showAdjacent && <>
       <button className="day-nav-button" type="button" disabled={!navigation.previousDate || editing.busy} title="上一篇" aria-label="上一篇" onClick={() => navigation.previousDate && void onNavigate(navigation.previousDate)}><ChevronLeft size={14} />上一篇</button>
       <button className="day-nav-button" type="button" disabled={!navigation.nextDate || editing.busy} title="下一篇" aria-label="下一篇" onClick={() => navigation.nextDate && void onNavigate(navigation.nextDate)}>下一篇<ChevronRight size={14} /></button>
@@ -581,6 +584,7 @@ export function LogReader({ onPositionReady, onCancelTransition, reloadContext, 
       <div className="mobile-sheet-grid">
         {returnPoint && <button type="button" aria-label="返回链接前位置" disabled={editing.busy} onClick={() => { setActionsOpen(false); void returnFromLink(); }}><CornerUpLeft size={18} />返回</button>}
         {navigation?.onReturnRag && <button type="button" disabled={editing.busy} onClick={() => { setActionsOpen(false); navigation.onReturnRag?.(); }}><CornerUpLeft size={18} />返回问答</button>}
+        {navigation?.onReturnStats && <button type="button" disabled={editing.busy} onClick={() => { setActionsOpen(false); navigation.onReturnStats?.(); }}><CornerUpLeft size={18} />返回统计</button>}
         {navigation?.onReturnNotes && <button type="button" disabled={editing.busy} onClick={() => { setActionsOpen(false); navigation.onReturnNotes?.(); }}><CornerUpLeft size={18} />返回随记</button>}
         <button type="button" disabled={!navigation?.previousDate || editing.busy} onClick={() => { setActionsOpen(false); if (navigation?.previousDate) void onNavigate(navigation.previousDate); }}><ChevronLeft size={18} />上一篇</button>
         <button type="button" disabled={!navigation?.nextDate || editing.busy} onClick={() => { setActionsOpen(false); if (navigation?.nextDate) void onNavigate(navigation.nextDate); }}><ChevronRight size={18} />下一篇</button>

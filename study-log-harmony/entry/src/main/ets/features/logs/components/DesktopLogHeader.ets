@@ -8,6 +8,7 @@ export struct DesktopLogHeader {
   @Prop workspaceBreakpoint: WorkspaceBreakpoint = WorkspaceBreakpoint.LARGE;
   @Prop toolbarWidth: number = 0;
   @Prop dateWidth: number = 0;
+  @BuilderParam returnButton: () => void = this.emptyContent;
   @BuilderParam previousButton: () => void = this.emptyContent;
   @BuilderParam nextButton: () => void = this.emptyContent;
   @BuilderParam actions: () => void = this.emptyContent;
@@ -33,6 +34,7 @@ export struct DesktopLogHeader {
         }.alignItems(HorizontalAlign.Start)
           .margin({ right: 8 })
           Row({ space: 8 }) {
+            this.returnButton()
             this.previousButton()
             this.nextButton()
           }

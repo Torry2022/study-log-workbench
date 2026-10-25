@@ -226,7 +226,7 @@ export function StatsOverview({
                   ))}
                 </svg>
                 <div className="stats-donut-center"><strong>{stats.topicCount}</strong><span>日志小节</span></div>
-                {activeSegment && <div className="stats-donut-tooltip"><i style={{ background: activeSegment.color }} /><strong>{activeSegment.domain}</strong><span>{activeSegment.count} 个 · {activeSegment.percentage}% · {activeSegment.activeDays} 天</span></div>}
+                {activeSegment && <div className="stats-donut-tooltip"><i style={{ background: activeSegment.color }} /><strong>{activeSegment.domain}</strong><dl><div><dt>日志小节</dt><dd>{activeSegment.count}</dd></div><div><dt>占比</dt><dd>{activeSegment.percentage}%</dd></div><div><dt>记录天数</dt><dd>{activeSegment.activeDays}</dd></div></dl></div>}
               </figure>
             </div>
           ) : <WorkspaceState kind="empty" title="本月暂无可统计的小节" description={stats?.dayCount ? "普通段落会计入记录天数，三级标题会计入小节数量。" : undefined} layout="compact" className="stats-empty compact" />}

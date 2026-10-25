@@ -66,6 +66,8 @@ interface AddFavoriteRequest { date: string; headingText: string; headingId: str
 export struct LogsReaderPage {
   @Link selectedModule: number;
   @Prop desktopWindowChrome: boolean = false;
+  @Prop @Watch('statsReturnChanged') statsReturnAvailable: boolean = false;
+  onReturnStats: () => void = () => {};
   @ObjectLink modules: WorkspaceModuleState;
   @Consume('workspaceBreakpoint') @Watch('workspaceBreakpointChanged')
   private workspaceBreakpoint: WorkspaceBreakpoint;
@@ -631,6 +633,7 @@ export struct LogsReaderPage {
     const gap = width < 440 ? 4 : 8;
     const navigation = stage < 8 ? toolbarActionWidth('上一篇') - 4 : 32;
     let required = 2 * (width < 440 ? 8 : 16) + this.headerDateWidth + 2 * navigation + 24 + 3 * gap;
+    if (this.statsReturnAvailable) required += (stage < 8 ? toolbarActionWidth('返回统计') : 32) + gap;
     required += stage >= 14 ? 40 : 3 * (stage < 7 ? toolbarActionWidth('浏览') : 40) + 6;
     required += (stage < 6 ? toolbarActionWidth('保存中') : 40) + 40;
     let count = 3;
@@ -1986,12 +1989,23 @@ export struct LogsReaderPage {
     }.width('100%').height('100%').id('backup_dialog_viewport')
   }
 
+  private statsReturnChanged(): void { this.updateToolbarWidth(this.headerWidth); }
+
+  @Builder
+  private statsReturnButton() {
+    if (this.statsReturnAvailable) {
+      ToolbarAction({ label: '返回统计', useSymbol: true, symbol: $r('sys.symbol.chevron_left'),
+        showLabel: this.isWide() && this.toolbarStage < 8, controlHeight: 32, iconWidth: 32,
+        onAction: this.onReturnStats }).id('log_return_stats')
+    }
+  }
+
   @Builder
   private heading() {
     if (this.isWide()) {
       Stack({ alignContent: Alignment.Top }) {
         Column() {
-          DesktopLogHeader({ fileName: this.session.day?.fileName || '', selectedDate: this.session.selectedDate,
+          DesktopLogHeader({ returnButton: (): void => this.statsReturnButton(), fileName: this.session.day?.fileName || '', selectedDate: this.session.selectedDate,
             workspaceBreakpoint: this.workspaceBreakpoint,
             toolbarWidth: this.headerWidth, dateWidth: this.headerDateWidth,
             previousButton: (): void => this.desktopAdjacentButton('上一篇', 1),
@@ -2015,7 +2029,7 @@ export struct LogsReaderPage {
           .hitTestBehavior(this.reading.logsReadingMode ? HitTestMode.None : HitTestMode.Default)
           .accessibilityLevel(this.reading.logsReadingMode ? 'no-hide-descendants' : 'auto')
         Column() {
-          ReadingLogHeader({ selectedDate: this.session.selectedDate, workspaceBreakpoint: this.workspaceBreakpoint,
+          ReadingLogHeader({ hasReturn: this.statsReturnAvailable, returnButton: (): void => this.statsReturnButton(), selectedDate: this.session.selectedDate, workspaceBreakpoint: this.workspaceBreakpoint,
             hasOutline: this.outlineHeadings().length > 0,
             previousButton: (): void => this.desktopAdjacentButton('上一篇', 1),
             nextButton: (): void => this.desktopAdjacentButton('下一篇', -1),
@@ -2029,7 +2043,7 @@ export struct LogsReaderPage {
           .accessibilityLevel(this.reading.logsReadingMode ? 'auto' : 'no-hide-descendants')
       }.width('100%').height(64).clip(true).id('log_reader_header')
     } else {
-      CompactLogHeader({ selectedDate: this.session.selectedDate, workspaceBreakpoint: this.workspaceBreakpoint,
+      CompactLogHeader({ returnButton: (): void => this.statsReturnButton(), selectedDate: this.session.selectedDate, workspaceBreakpoint: this.workspaceBreakpoint,
         desktopWindowChrome: this.desktopWindowChrome,
         backupRestoring: this.backupBusy, backupOpen: $backupOpen, backupSheet: (registerBack: (back: () => void) => void): void => this.backupSheet(registerBack),
         sourceMode: this.sourceMode, saving: this.documents.saving, dirty: this.editorReady && this.session.isDirty(),

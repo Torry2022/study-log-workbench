@@ -6,9 +6,11 @@ import { ToolbarAction } from '../../../common/ui/ToolbarAction';
 @Component
 export struct ReadingLogHeader {
   @Prop selectedDate: string = '';
+  @Prop hasReturn: boolean = false;
   @Prop workspaceBreakpoint: WorkspaceBreakpoint = WorkspaceBreakpoint.LARGE;
   @Prop hasOutline: boolean = false;
   @State private showLabels: boolean = false;
+  @BuilderParam returnButton: () => void = this.emptyContent;
   @BuilderParam previousButton: () => void = this.emptyContent;
   @BuilderParam nextButton: () => void = this.emptyContent;
   onOutline: () => void = () => {};
@@ -24,6 +26,7 @@ export struct ReadingLogHeader {
         Text(this.selectedDate).fontFamily(workspaceDateFamily(this.workspaceBreakpoint)).fontSize(24).fontWeight(600)
           .fontFeature('"tnum" 1').fontColor($r('app.color.ink'))
       }.layoutWeight(1)
+      this.returnButton()
       this.previousButton()
       this.nextButton()
       ToolbarAction({
@@ -37,7 +40,8 @@ export struct ReadingLogHeader {
     }
     .width('100%').height(64).padding({ left: 20, right: 16 })
     .onAreaChange((_oldArea, area) => {
-      const required = 196 + toolbarActionsWidth(['上一篇', '下一篇', '大纲', '退出阅读模式']);
+      const required = 196 + toolbarActionsWidth(['上一篇', '下一篇', '大纲', '退出阅读模式']) +
+        (this.hasReturn ? toolbarActionsWidth(['返回统计']) + 8 : 0);
       this.showLabels = Number(area.width) >= required + (this.showLabels ? 0 : 12);
     })
     .alignItems(VerticalAlign.Center)

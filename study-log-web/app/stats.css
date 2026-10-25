@@ -357,7 +357,10 @@
 
 .stats-donut-track { stroke: var(--surface-strong); }
 .stats-donut-segment { cursor: pointer; transition: opacity 120ms ease, stroke-width 120ms ease; }
+.stats-donut-segment:focus { outline: none; }
+.stats-donut:has(.stats-donut-segment:focus-visible) .stats-donut-segment:not(:focus-visible) { opacity: 0.42; }
 .stats-donut-segment:hover { stroke-width: 21; }
+.stats-donut-segment:focus-visible { stroke-width: 24; }
 .stats-donut:has(.stats-donut-segment:hover) .stats-donut-segment:not(:hover) { opacity: 0.42; }
 
 .stats-donut-center {
@@ -396,7 +399,13 @@
 
 .stats-donut-tooltip i { grid-row: 1 / span 2; width: 9px; height: 9px; margin-top: 4px; border-radius: 50%; }
 .stats-donut-tooltip strong { color: var(--body-strong); font-size: 13px; }
-.stats-donut-tooltip span { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.stats-donut-tooltip dl { grid-column: 2; display: grid; gap: 3px; margin: 2px 0 0; font-size: 11px; }
+.stats-donut-tooltip dl div { display: flex; justify-content: space-between; gap: 16px; }
+.stats-donut-tooltip dt { color: var(--muted); }
+.stats-donut-tooltip dd { margin: 0; color: var(--body); font-variant-numeric: tabular-nums; }
+@media (max-width: 760px) {
+  .stats-donut-tooltip { left: auto; right: 0; top: 0; min-width: 180px; max-width: 100%; }
+}
 
 .stats-topic-ranking {
   display: grid;
@@ -437,7 +446,7 @@
 
 .stats-drilldown-list > button {
   display: grid;
-  grid-template-columns: 96px minmax(0, 1fr) minmax(130px, 0.28fr);
+  grid-template-columns: 96px minmax(0, 1fr) minmax(0, max-content);
   gap: 12px;
   align-items: center;
   padding: 10px 12px;
@@ -452,7 +461,7 @@
 
 .stats-drilldown-list > button:hover { border-color: var(--primary); }
 .stats-drilldown-list time,
-.stats-drilldown-list span { color: var(--muted); font-size: 11px; }
+.stats-drilldown-list span { color: var(--muted); font-size: 11px; justify-self: end; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stats-drilldown-list strong { overflow: hidden; color: var(--body-strong); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
 .taxonomy-manager-header > .button { flex: none; }
 .taxonomy-domain-band {

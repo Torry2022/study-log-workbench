@@ -33,6 +33,7 @@ export class WorkspaceModuleState {
   favoritesScrolled: boolean = false;
   favoritesRefreshRevision: number = 0;
   statsScrolled: boolean = false;
+  statsReturnAvailable: boolean = false;
   noteYears: StudyNoteFacet[] = [];
   noteTags: StudyNoteFacet[] = [];
   noteCount: number = 0;

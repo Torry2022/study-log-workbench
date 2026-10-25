@@ -1,6 +1,12 @@
 # 0.1.6 发布记录
 
-本版新增问题编辑和任务库版本 3，并统一应用图标、月份导航与日历显示。2026-10-24 交付的产品源码与 `v0.1.6` 标签均指向 `2f8e072`。根工程、Web、MCP、Windows 及鸿蒙保持 0.1.6，鸿蒙版本码为 10600；0.1.5 的标签、镜像和附件保留。
+本版新增问题编辑和任务库版本 3，并统一应用图标、月份导航与日历显示。2026-10-25 更新同版发布；本次产品改动与测试补充见 `v0.1.6` 标签。根工程、Web、MCP、Windows 及鸿蒙保持 0.1.6，鸿蒙版本码为 10600；0.1.5 的标签、镜像和附件保留。
+
+## 本次修正
+
+月份导航统一按年份分组；鸿蒙统计使用环图和标签排行，宽屏内容区使用可用宽度。统计明细跳转提供“返回统计”，并统一小节定位提示。修复网页环图点击黑框、浮层溢出和明细末列间距。
+
+Windows 最终安装包内的应用已用隔离资料检查启动、环图浮层、定位提示和返回统计；Linux 镜像通过 Chromium/WebKit 宽窄窗口检查。鸿蒙正式包已在 MateBook Pro S 更新；本批未操作手机和平板。
 
 ## 交付状态
 
@@ -14,15 +20,15 @@ MCP、tools 和服务器部署 ZIP 的内容未变，继续使用此前的 0.1.6
 
 | 文件 | SHA-256 |
 | --- | --- |
-| `study-log-desktop-0.1.6-x64-setup.exe` | `4dc482c92734bf0eca21d48ac76144d807c61bf01eb5b9dae0a491b1d4d64a33` |
-| `study-log-harmony-0.1.6-unsigned.hap` | `ea657ef4a30e64ddcd9c80e8707b166e3ddebd838861fe096bf05634b9015c04` |
-| `study-log-server-0.1.6.zip` | `cddb3e9a7c19be3aeb649b4225f8b9729da0337f7dbd8fad8016ad5341f64c8a` |
+| `study-log-desktop-0.1.6-x64-setup.exe` | `5ec3d1af45a38b3fe2757a876b10243d8a3126df653e263e2789cc673c35bbe1` |
+| `study-log-harmony-0.1.6-unsigned.hap` | `41bcf0dda767088cc92e87dcc0f74c1af98538f56ef46f9dac1fd0d677f11ec0` |
+| `study-log-server-0.1.6.zip` | `2ff7b889c2c51806b204add9a425ef89bf4b092c4298630a1fdd456b664eb8ef` |
 
 配套镜像前缀见[部署配置](../deploy/.env.example)，以下为公开 Registry 的 manifest digest：
 
 | 镜像 | Digest |
 | --- | --- |
-| `web:0.1.6` | `sha256:d3909421b9799b9e067ddfc7511e6dd434491c348938e1b2fb89a952253bd96f` |
+| `web:0.1.6` | 发布页和 Registry 中的当前摘要为准 |
 | `mcp:0.1.6` | `sha256:e3627307f8d9f99c9b324882f80debb6deaf4d000c7d9934664c1201df3a7026` |
 | `tools:0.1.6` | `sha256:caf68f81c92acaa362890ca2c6aca4397bc09829e4d39f38116b44db6215ab5b` |
 

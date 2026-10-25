@@ -92,12 +92,12 @@ try {
       const intro = await startup.evaluate(async () => {
         const images = [...document.querySelectorAll('.mark img')].filter(image => getComputedStyle(image).display !== 'none');
         const animation = images[0].getAnimations()[0], samples = [];
-        const record = () => samples.push({ time: animation.currentTime,
+        const record = () => samples.push({ time: document.timeline.currentTime - animation.startTime,
           scale: new DOMMatrixReadOnly(getComputedStyle(document.querySelector('.mark')).transform).m11,
-          fragmentOpacity: Math.max(...[...document.querySelectorAll('.fragment')].map(fragment => Number(getComputedStyle(fragment).opacity))),
-          fragmentSpread: Math.max(...[...document.querySelectorAll('.fragment')].map(fragment => Math.abs(new DOMMatrixReadOnly(getComputedStyle(fragment).transform).m41))),
-          fragmentScales: [...document.querySelectorAll('.fragment')].filter(fragment => Number(getComputedStyle(fragment).opacity) > .1).map(fragment => {
-            const matrix = new DOMMatrixReadOnly(getComputedStyle(fragment).transform);
+          dropletOpacity: Math.max(...[...document.querySelectorAll('.droplet')].map(droplet => Number(getComputedStyle(droplet).opacity))),
+          dropletSpread: Math.max(...[...document.querySelectorAll('.droplet')].map(droplet => Math.abs(parseFloat(getComputedStyle(droplet).translate) || 0))),
+          dropletScales: [...document.querySelectorAll('.droplet')].filter(droplet => Number(getComputedStyle(droplet).opacity) > .1).map(droplet => {
+            const matrix = new DOMMatrixReadOnly(getComputedStyle(droplet).transform);
             return { x: Math.hypot(matrix.m11, matrix.m12), y: Math.hypot(matrix.m21, matrix.m22) };
           }),
           layers: images.map(image => {
@@ -106,8 +106,9 @@ try {
         }) });
         while (document.querySelector('.mark').getAnimations({ subtree: true }).some(item => item.playState !== 'finished')) { record(); await new Promise(requestAnimationFrame); }
         record();
-        const origins = [...document.querySelectorAll('.fragment')].map(fragment => ({
-          x: parseFloat(fragment.style.getPropertyValue('--sx')), y: parseFloat(fragment.style.getPropertyValue('--sy'))
+        const origins = [...document.querySelectorAll('.droplet')].map(droplet => ({
+          x: parseFloat(droplet.style.getPropertyValue('--sx')), y: parseFloat(droplet.style.getPropertyValue('--sy')),
+          dx: parseFloat(droplet.style.getPropertyValue('--dx')), dy: parseFloat(droplet.style.getPropertyValue('--dy'))
         }));
         return { duration: animation.effect.getTiming().duration, delay: animation.effect.getTiming().delay, samples, origins };
       });
@@ -116,28 +117,36 @@ try {
       assert.ok(intro.samples.some(sample => Math.abs(sample.layers[0].x) > 50), 'gathering must visibly travel from outside the logo');
       assert.ok(intro.samples.some(sample => sample.layers[0].x > 0), 'gathering must retain its spring overshoot');
       assert.ok(intro.samples.some(sample => sample.scale < .99), 'contact must include a short compression');
-      assert.ok(intro.samples.some(sample => sample.fragmentOpacity > .1), 'fragments must appear briefly at contact');
-      assert.ok(intro.samples.some(sample => sample.fragmentScales.some(scale => scale.x > 1.1 && scale.y < .9)), 'ejected pieces must visibly squash');
-      assert.ok(intro.samples.some(sample => sample.fragmentScales.some(scale => scale.x < .9 && scale.y > 1.1)), 'ejected pieces must visibly stretch');
-      assert.ok(intro.samples.every(sample => sample.fragmentSpread < 50), 'chips must remain a small contact accent');
-      assert.equal(new Set(intro.origins.map(origin => `${origin.x},${origin.y}`)).size, 2, 'chips must emerge from two contact edges');
+      assert.ok(intro.samples.some(sample => sample.dropletOpacity > .1), 'droplets must appear briefly at contact');
+      assert.ok(intro.samples.some(sample => sample.dropletScales.some(scale => scale.x > 1.1 && scale.y < .9)), 'droplets must visibly squash');
+      assert.ok(intro.samples.some(sample => sample.dropletScales.some(scale => scale.x < .9 && scale.y > 1.1)), 'droplets must visibly stretch');
+      assert.ok(intro.samples.every(sample => sample.dropletSpread < 50), 'droplets must remain a small contact accent');
+      assert.equal(new Set(intro.origins.map(origin => `${origin.x},${origin.y}`)).size, 2, 'droplets must emerge from two contact edges');
+      assert.ok((await startup.locator('.droplet').evaluateAll(droplets => droplets.map(droplet => {
+        const style = getComputedStyle(droplet);
+        return style.clipPath === 'none' && style.borderTopLeftRadius === '50%' && style.width === style.height;
+      }))).every(Boolean), 'settled droplets must be round without polygon clipping');
       assert.ok(intro.origins.every(origin => origin.x < 0 && Math.abs(origin.x) < 15));
       assert.ok(intro.origins.some(origin => origin.y < -6) && intro.origins.some(origin => origin.y > 6));
-      assert.ok(intro.samples.every(sample => sample.fragmentOpacity < .01 || sample.time >= 520), 'chips must follow contact rather than precede it');
+      assert.ok(intro.origins.every(origin => (origin.dy - origin.y) * origin.y > 0), 'each droplet must travel outward from its upper or lower contact');
+      assert.ok(intro.samples.at(-1).dropletOpacity < .01, 'droplets must finish fully evaporated');
+      const fading = intro.samples.filter(sample => sample.time >= 800);
+      assert.ok(fading.length > 3 && fading.every((sample, index) => !index || sample.dropletOpacity <= fading[index - 1].dropletOpacity + .001), 'evaporation must fade continuously');
+      assert.ok(intro.samples.every(sample => sample.dropletOpacity < .01 || sample.time >= 520), 'droplets must follow contact rather than precede it');
       assert.ok(intro.samples.at(-1).layers.every(layer => Math.abs(layer.x) < .01 && Math.abs(layer.y) < .01));
       await fs.writeFile(path.join(output, 'intro-motion.json'), JSON.stringify(intro, null, 2));
       for (const scheme of ['light', 'dark']) {
         await startup.emulateMedia({ colorScheme: scheme });
         await expect(startup.locator('.mark-frame')).toHaveCSS('background-color', scheme === 'light' ? 'rgb(255, 255, 255)' : 'rgb(28, 26, 23)');
         await startup.evaluate(() => Promise.all(document.querySelector('.mark').getAnimations({ subtree: true }).map(animation => animation.finished)) );
-        assert.deepEqual((await startup.locator('.fragment').evaluateAll(fragments => [...new Set(fragments.map(fragment => getComputedStyle(fragment).backgroundColor))])).sort(),
+        assert.deepEqual((await startup.locator('.droplet').evaluateAll(droplets => [...new Set(droplets.map(droplet => getComputedStyle(droplet).backgroundColor))])).sort(),
           (scheme === 'light' ? ['rgb(208, 122, 95)', 'rgb(23, 22, 20)'] : ['rgb(212, 135, 106)', 'rgb(245, 240, 232)']).sort());
         await startup.screenshot({ path: path.join(output, 'startup-' + scheme + '.png') });
       }
       await startup.emulateMedia({ reducedMotion: 'reduce' });
       assert.equal(await startup.locator('.spinner').evaluate(el => getComputedStyle(el).animationName), 'none');
-      assert.equal(await startup.locator('.fragment').count(), 6);
-      assert.equal(await startup.locator('.fragment').first().evaluate(el => getComputedStyle(el).animationName), 'none');
+      assert.equal(await startup.locator('.droplet').count(), 6);
+      assert.equal(await startup.locator('.droplet').first().evaluate(el => getComputedStyle(el).animationName), 'none');
     }
     const page = await workspace(), entries = await marks();
     assert.deepEqual([...new Set(observedMessages.get(startup))], ['正在准备工作台…', '正在读取学习记录…', '正在载入界面…']);

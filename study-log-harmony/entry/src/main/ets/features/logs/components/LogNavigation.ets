@@ -132,7 +132,7 @@ export struct LogNavigation {
                       .backgroundColor($r('app.color.surface_card')).borderRadius(12)
                   } else {
                     ForEach(day.headings, (heading: string, headingIndex: number) => {
-                      Text(heading.replace(/^\d+\.\s*/, '')).fontSize(13).fontWeight(FontWeight.Regular).fontColor($r('app.color.body'))
+                      Text(heading.replace(/^\d+\.\s*/, '')).fontSize(13).fontWeight(FontWeight.Medium).fontColor($r('app.color.body'))
                         .padding({ left: 8, right: 8, top: 4, bottom: 4 })
                         .backgroundColor(this.requestedDate === day.date ?
                           $r('app.color.primary_tint_strong') : $r('app.color.primary_tint')).borderRadius(12)

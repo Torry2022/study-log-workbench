@@ -233,15 +233,15 @@ test('compact saved documents share capture readiness without enabling unrelated
   assert.match(surface, /this.wide \|\| this.workspaceTransition.kind !== 'document'/);
 });
 
-test('statistics groups retain labels, sort years and months, and leave the input intact', async () => {
-  const Host = await methods('common/ui/MonthNavigationGroups.ets', ['years', 'monthsForYear']);
-  const months = [{ id: '2024-12', label: '2024-12' }, { id: '2026-01', label: '2026-01' },
-    { id: '2025-03', label: '2025-03' }, { id: '2026-10', label: '2026-10' }];
-  const original = JSON.stringify(months);
-  const h = Object.assign(new Host(), { months });
-  assert.deepEqual(h.years(), ['2026', '2025', '2024']);
-  assert.deepEqual(h.monthsForYear('2026').map(month => month.label), ['2026-10', '2026-01']);
-  assert.equal(JSON.stringify(months), original);
-  h.months = [];
-  assert.deepEqual(h.years(), []);
+test('shared month list retains labels and source order while filling cross-year rows', async () => {
+  const Host = await methods('common/ui/MonthNavigationGroups.ets', ['sortedMonths', 'gridHeight']);
+  const months = ['2024-12', '2026-01', '2025-03', '2026-10', '2025-12'].map((id, count) => ({ id, label: id, count }));
+  const original = structuredClone(months);
+  const h = Object.assign(new Host(), { months, wide: false });
+  assert.deepEqual(h.sortedMonths().map(month => month.label), ['2026-10', '2026-01', '2025-12', '2025-03', '2024-12']);
+  assert.deepEqual(h.sortedMonths().map(month => month.count), [3, 1, 4, 2, 0]);
+  assert.deepEqual(months, original);
+  assert.equal(h.gridHeight(), 144);
+  h.wide = true; assert.equal(h.gridHeight(), 214);
+  h.months = []; assert.deepEqual(h.sortedMonths(), []); assert.equal(h.gridHeight(), 0);
 });

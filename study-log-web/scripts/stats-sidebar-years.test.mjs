@@ -16,10 +16,9 @@ function walk(node) {
 }
 const months = ['2024-12', '2026-02', '2025-12', '2026-10', '2025-03'].map((id, index) => ({ id, label: id, count: index + 1 }));
 
-test('actual shared month navigation sorts without mutating input and shows numeric year headings', () => {
+test('actual shared month navigation lists months continuously in descending order without mutating input', () => {
   const before = structuredClone(months), nodes = walk(render(months, '2025-03'));
-  assert.deepEqual(nodes.filter(node => node.props.role === 'group').map(node => node.props['aria-label']), ['2026年', '2025年', '2024年']);
-  assert.deepEqual(nodes.filter(node => node.props.className === 'sidebar-year-heading').map(node => node.props.children.props.children), ['2026', '2025', '2024']);
+  assert.equal(nodes.filter(node => node.props.role === 'group' || node.props.className === 'sidebar-year-heading').length, 0);
   const buttons = nodes.filter(node => node.type === 'button');
   assert.deepEqual(buttons.map(node => node.props.children[0].props.children), ['2026-10', '2026-02', '2025-12', '2025-03', '2024-12']);
   assert.equal(buttons.filter(node => node.props['aria-current'] === 'true').length, 1);

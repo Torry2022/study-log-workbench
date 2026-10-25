@@ -362,7 +362,9 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, module
           {!compact && <div className="sidebar-heading"><div className="section-title inline"><FileText size={15} /><span>日志导航</span></div><button className="sidebar-collapse-button" onClick={() => changeCollapsed(true)} aria-label="折叠日志导航" title="折叠日志导航"><ChevronLeft size={16} /></button></div>}
           <div className="sidebar-section" data-log-section="months">
             <div className="section-title inline" ref={monthHeading} tabIndex={-1}><CalendarDays size={15} /><span>月份</span></div>
-            <SidebarMonthGroups months={shownMonths.map(month => ({ id: month.id, label: month.label, count: month.dayCount }))} selectedMonth={selectedMonth} onMonthChange={month => { setQuery(""); onMonth(month); }} />
+            <div className="month-list">
+              <SidebarMonthGroups months={shownMonths.map(month => ({ id: month.id, label: month.label, count: month.dayCount }))} selectedMonth={selectedMonth} onMonthChange={month => { setQuery(""); onMonth(month); }} />
+            </div>
             {monthsError ? <WorkspaceState kind="error" title="月份加载失败" description={monthsError} layout="compact" actions={<button className="button secondary" type="button" onClick={onRetry}>重试</button>} /> : showMonthsLoading ? <WorkspaceState kind="loading" title="正在加载月份" layout="compact" /> : !monthsLoading && !months.length && <WorkspaceState kind="empty" title="暂无月份记录" layout="compact" />}
             {hiddenMonthCount > 0 && <button className="sidebar-months-toggle" type="button" aria-expanded={monthsExpanded} onClick={() => setMonthsExpanded(value => !value)}>{monthsExpanded ? "收起月份" : `展开剩余 ${hiddenMonthCount} 个月份`}</button>}
           </div>

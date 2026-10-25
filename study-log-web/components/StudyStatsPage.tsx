@@ -21,7 +21,9 @@ export function StatsNavigation({ stats, onNavigate, filtersOnly = false }: { st
   return <div className="stats-sidebar-content">
     {!filtersOnly && <button className="button secondary full" type="button" onClick={() => { stats.showManager(); onNavigate?.(); }}><Tags size={15} />分类管理</button>}
     <div className="section-title inline"><CalendarDays size={15} />月份</div>
-    <SidebarMonthGroups months={stats.months.map(month => ({ id: month.id, label: month.label, count: month.dayCount }))} selectedMonth={stats.selectedMonth} onMonthChange={async month => { if (await stats.changeMonth(month)) onNavigate?.(); }} />
+    <div className="month-list">
+      <SidebarMonthGroups months={stats.months.map(month => ({ id: month.id, label: month.label, count: month.dayCount }))} selectedMonth={stats.selectedMonth} onMonthChange={async month => { if (await stats.changeMonth(month)) onNavigate?.(); }} />
+    </div>
     {showLoading && <WorkspaceState kind="loading" title="正在加载月份" layout="compact" />}
     {stats.taxonomyError && !stats.months.length && <WorkspaceState kind="error" title="月份加载失败" description={stats.taxonomyError} layout="compact" actions={<button className="button secondary" type="button" onClick={() => void stats.reloadTaxonomy()}>重试</button>} />}
     {!stats.initialLoading && !stats.loading && !stats.statsError && !stats.taxonomyError && !stats.months.length && <WorkspaceState kind="empty" title="暂无月份记录" layout="compact" />}

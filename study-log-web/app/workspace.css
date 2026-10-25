@@ -1134,27 +1134,3 @@
 .compact-day-list {
   max-height: calc(100svh - 136px);
 }
-
-.sidebar-month-years {
-  display: grid;
-  gap: 14px;
-}
-
-.sidebar-year-heading {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0 10px 6px;
-  color: var(--muted-soft);
-  font-size: var(--sidebar-meta-size);
-  font-weight: 400;
-  font-variant-numeric: tabular-nums;
-  line-height: 20px;
-}
-
-.sidebar-year-heading::after {
-  content: "";
-  height: 1px;
-  flex: 1;
-  background: var(--hairline-soft);
-}

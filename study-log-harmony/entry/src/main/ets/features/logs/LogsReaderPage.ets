@@ -1528,19 +1528,19 @@ export struct LogsReaderPage {
       appFeedback.show(found ? '已定位到小节' : '未找到大纲小节',
         found ? 'success' : 'warning', 3600, 'navigation');
     } else if (kind === 'internal') {
-      appFeedback.show(found ? '已定位到内部链接' : '已打开目标日志，但未找到标题',
+      appFeedback.show(found ? '已定位到小节' : '已打开目标日志，但未找到标题',
         found ? 'success' : 'warning', 3600, 'navigation');
     } else if (kind === 'search') {
       appFeedback.show(found ? '已定位到搜索关键词' : '已打开日志，但未在预览中定位到关键词',
         found ? 'success' : 'warning', 3600, 'navigation');
     } else if (kind === 'favorite') {
-      appFeedback.show(found ? '已定位到收藏小节' : '已打开收藏日志，但未找到标题',
+      appFeedback.show(found ? '已定位到小节' : '已打开收藏日志，但未找到标题',
         found ? 'success' : 'warning');
     } else if (kind === 'citation') {
-      appFeedback.show(found ? '已定位到引用小节' : '已打开来源日志，但未找到引用小节',
+      appFeedback.show(found ? '已定位到小节' : '已打开来源日志，但未找到引用小节',
         found ? 'success' : 'warning');
     } else if (kind === 'stats') {
-      appFeedback.show(found ? '已定位到统计小节' : '已打开日志，但未找到统计小节',
+      appFeedback.show(found ? '已定位到小节' : '已打开日志，但未找到统计小节',
         found ? 'success' : 'warning');
     }
   }

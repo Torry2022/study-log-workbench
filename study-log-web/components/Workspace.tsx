@@ -105,7 +105,7 @@ export function Workspace() {
     const target = pendingStatsLocation.current;
     if (!target || target.date !== date || target.heading !== heading) return;
     pendingStatsLocation.current = null;
-    if (found) setNavigationFeedback({ message: "已定位到统计小节", tone: "success" });
+    if (found) setNavigationFeedback({ message: "已定位到小节", tone: "success" });
   }, []);
   const [returnRag, setReturnRag] = useState<{ scroll: number } | null>(null);
   const [inspectorTab, setInspectorTab] = useState<"writing" | "highlighting">("writing");

@@ -12,10 +12,13 @@ interface DomainSegment {
 @Component
 export struct StatsDonut {
   @Consume('workspaceBreakpoint') private workspaceBreakpoint: WorkspaceBreakpoint;
-  @Prop domains: DomainCount[] = [];
+  @StorageProp('systemTheme') @Watch('redraw') private systemTheme: string = 'light';
+  @Prop @Watch('redraw') domains: DomainCount[] = [];
   @Prop total: number = 0;
-  @Prop chartSize: number = 264;
+  @Prop @Watch('redraw') chartSize: number = 264;
   @State private activeIndex: number = -1;
+  private canvas: CanvasRenderingContext2D = new CanvasRenderingContext2D(new RenderingContextSettings(true));
+  private canvasReady: boolean = false;
   onDomain: (domain: string) => void = () => {};
 
   private segments(): DomainSegment[] {
@@ -34,12 +37,26 @@ export struct StatsDonut {
     return $r('app.color.primary');
   }
 
-  private arc(start: number, end: number): string {
-    const a = (start * 360 - 90) * Math.PI / 180;
-    const b = (end * 360 - 90) * Math.PI / 180;
-    const x = 60 + 40 * Math.cos(a), y = 60 + 40 * Math.sin(a);
-    if (end - start >= 0.999999) return 'M 60 20 A 40 40 0 1 1 60 100 A 40 40 0 1 1 60 20';
-    return `M ${x} ${y} A 40 40 0 ${end - start > 0.5 ? 1 : 0} 1 ${60 + 40 * Math.cos(b)} ${60 + 40 * Math.sin(b)}`;
+  private redraw(): void {
+    if (!this.canvasReady) return;
+    const colors = this.getUIContext().getHostContext()!.resourceManager;
+    const center = this.chartSize / 2;
+    const radius = this.chartSize / 3;
+    this.canvas.clearRect(0, 0, this.chartSize, this.chartSize);
+    this.canvas.lineWidth = this.chartSize / 6;
+    this.canvas.lineCap = 'butt';
+    this.canvas.strokeStyle = colors.getColorSync($r('app.color.surface_card').id);
+    this.canvas.beginPath();
+    this.canvas.arc(center, center, radius, 0, Math.PI * 2);
+    this.canvas.stroke();
+    this.segments().forEach((segment: DomainSegment) => {
+      if (segment.end <= segment.start) return;
+      this.canvas.strokeStyle = colors.getColorSync(this.color(segment.index).id);
+      this.canvas.beginPath();
+      this.canvas.arc(center, center, radius, segment.start * Math.PI * 2 - Math.PI / 2,
+        segment.end * Math.PI * 2 - Math.PI / 2);
+      this.canvas.stroke();
+    });
   }
 
   private segmentAt(x: number, y: number): number {
@@ -58,20 +75,14 @@ export struct StatsDonut {
   build() {
     Column({ space: 8 }) {
       Stack({ alignContent: Alignment.Center }) {
-        Shape() {
-          Path().commands('M 60 20 A 40 40 0 1 1 60 100 A 40 40 0 1 1 60 20')
-            .stroke($r('app.color.surface_card')).strokeWidth(20).fill(Color.Transparent)
-          ForEach(this.segments(), (segment: DomainSegment) => {
-            Path().commands(this.arc(segment.start, segment.end))
-              .stroke(this.color(segment.index)).strokeWidth(20).fill(Color.Transparent)
-          }, (segment: DomainSegment) => segment.domain.domain)
-        }.viewPort({ x: 0, y: 0, width: 120, height: 120 }).width(this.chartSize).height(this.chartSize)
-          .hitTestBehavior(HitTestMode.None)
+        Canvas(this.canvas).width(this.chartSize).height(this.chartSize)
+          .onReady(() => { this.canvasReady = true; this.redraw(); })
+          .onAreaChange(() => this.redraw()).hitTestBehavior(HitTestMode.None)
         Column({ space: 2 }) {
           Text(this.total.toString()).fontFamily(workspaceLatinSerifFamily(this.workspaceBreakpoint))
             .fontSize(38).fontColor($r('app.color.ink'))
           Text('日志小节').fontSize(12).fontColor($r('app.color.muted'))
-        }.hitTestBehavior(HitTestMode.None)
+        }.width('100%').height('100%').justifyContent(FlexAlign.Center).hitTestBehavior(HitTestMode.None)
       }.width(this.chartSize).height(this.chartSize).id('stats_domain_chart')
         .onMouse((event: MouseEvent) => this.activeIndex = this.segmentAt(event.x, event.y))
         .onHover((hover: boolean) => { if (!hover) this.activeIndex = -1; })

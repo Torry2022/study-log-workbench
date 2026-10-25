@@ -405,7 +405,7 @@ export struct StatsPage {
             }.layoutWeight(1).alignItems(HorizontalAlign.Start)
             Column({ space: 3 }) {
               Text(tag.count.toString()).fontSize(12).fontWeight(FontWeight.Medium).fontColor($r('app.color.ink'))
-              Text(this.deltaDescription(tag.delta)).fontSize(10).fontColor($r('app.color.muted'))
+              Text(tag.delta === 0 ? '—' : this.deltaDescription(tag.delta)).fontSize(10).fontColor($r('app.color.muted'))
             }.alignItems(HorizontalAlign.End)
           }.width('100%')
         }.width('100%').constraintSize({ minHeight: 60 }).padding({ left: 8, right: 8, top: 8, bottom: 8 })
@@ -543,9 +543,11 @@ export struct StatsPage {
       Column() {
         Flex({ direction: this.viewportWidth >= 600 ? FlexDirection.Row : FlexDirection.Column,
           alignItems: ItemAlign.Center, justifyContent: FlexAlign.SpaceBetween }) {
+          if (this.viewportWidth >= 600) {
           Text(this.data.selectedMonth || '月度复盘')
             .fontFamily(workspaceLatinSerifFamily(this.workspaceBreakpoint)).fontSize(36)
             .fontWeight(FontWeight.Regular).fontColor($r('app.color.ink'))
+          }
           Row({ space: 8 }) {
             AppDropdown({ options: this.monthOptions(), selectedIndex: this.selectedMonthIndex(),
               value: this.selectedMonthValue(), icon: $r('app.media.calendar_days'), accessibilityLabel: '选择统计月份',

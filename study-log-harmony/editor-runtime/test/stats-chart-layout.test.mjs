@@ -12,11 +12,11 @@ async function actualMethods(file, names) {
     return source.slice(start, end + 4);
   }).join('\n');
   const { code } = await transform(`class View { ${methods} }`, { loader: 'ts' });
-  return new (new Function(`${code}; return View;`)())();
+  return new (new Function('$r', `${code}; return View;`)(() => ({ id: 0 })))();
 }
 
 test('actual donut geometry keeps every domain and maps only the ring to its original domain', async () => {
-  const chart = await actualMethods('features/stats/components/StatsDonut.ets', ['segments', 'arc', 'segmentAt']);
+  const chart = await actualMethods('features/stats/components/StatsDonut.ets', ['segments', 'segmentAt', 'redraw']);
   chart.chartSize = 240;
   chart.domains = [{ domain: 'A', count: 3 }, { domain: 'B', count: 1 }];
   const segments = chart.segments();
@@ -27,7 +27,18 @@ test('actual donut geometry keeps every domain and maps only the ring to its ori
   assert.equal(chart.segmentAt(0, 0), -1);
   chart.domains = Array.from({ length: 12 }, (_, index) => ({ domain: `domain-${index}`, count: 1 }));
   assert.equal(chart.segments().length, 12, 'the native chart must not inherit DataPanel nine-segment truncation');
-  assert.match(chart.arc(0, 1), /A 40 40[^]*A 40 40/);
+  const arcs = [];
+  chart.canvasReady = true;
+  chart.canvas = { clearRect() {}, beginPath() {}, arc(...args) { arcs.push(args); }, stroke() {} };
+  chart.getUIContext = () => ({ getHostContext: () => ({ resourceManager: { getColorSync: () => 0xffcc8866 } }) });
+  chart.color = () => ({ id: 0 });
+  chart.domains = [{ domain: 'single', count: 2 }];
+  chart.redraw();
+  assert.equal(arcs.length, 2, 'one track and one complete colored ring');
+  assert.deepEqual(arcs[1].slice(0, 3), [120, 120, 80]);
+  assert.equal(arcs[1][4] - arcs[1][3], Math.PI * 2);
+  assert.equal(chart.canvas.lineWidth, 40);
+  assert.ok(80 + chart.canvas.lineWidth / 2 < 120, 'the whole stroke stays inside its canvas');
   chart.domains = [];
   assert.deepEqual(chart.segments(), []);
   assert.equal(chart.segmentAt(200, 120), -1);

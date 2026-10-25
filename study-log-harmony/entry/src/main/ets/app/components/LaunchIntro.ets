@@ -1,5 +1,7 @@
 import curves from '@ohos.curves';
 import display from '@ohos.display';
+import { AnimatorResult } from '@kit.ArkUI';
+import { LaunchMotion } from './LaunchMotion';
 
 let hasPlayedLaunchIntro: boolean = false;
 const introDisplay = display.getDefaultDisplaySync();
@@ -11,10 +13,18 @@ export struct LaunchIntro {
   @Prop @Watch('readyChanged') ready: boolean = false;
   onDismissed: () => void = () => {};
   @State private visible: boolean = !hasPlayedLaunchIntro;
-  @State private nodesGathered: boolean = false;
-  @State private topGathered: boolean = false;
-  @State private middleGathered: boolean = false;
-  @State private bottomGathered: boolean = false;
+  @State private gatherX: number = introHorizontalTravel;
+  @State private gatherY: number = introVerticalTravel;
+  @State private logoScale: number = 1;
+  private motion: LaunchMotion = new LaunchMotion(introHorizontalTravel, introVerticalTravel);
+  private animator: AnimatorResult | undefined = undefined;
+  private canvas: CanvasRenderingContext2D = new CanvasRenderingContext2D(new RenderingContextSettings(true));
+  private canvasReady: boolean = false;
+  private active: boolean = true;
+  private logoCompleted: boolean = false;
+  private timers: number[] = [];
+  private coral: string = '#d07a5f';
+  private ink: string = '#171614';
   @State private frameVisible: boolean = false;
   @State private sloganVisible: boolean = false;
   @State private loadingVisible: boolean = false;
@@ -39,6 +49,7 @@ export struct LaunchIntro {
   }
 
   private animationCompleted(): void {
+    if (!this.active) return;
     this.completedAnimations += 1;
     if (this.completedAnimations < 3) return;
     this.loadingVisible = !this.ready;
@@ -55,68 +66,124 @@ export struct LaunchIntro {
     if (!this.visible) return;
     hasPlayedLaunchIntro = true;
 
-    setTimeout(() => {
-      this.getUIContext().animateTo({ curve: curves.springMotion(0.24, 0.68, 0),
-        onFinish: () => this.animationCompleted() }, () => {
-        this.nodesGathered = true;
-        this.topGathered = true;
-        this.middleGathered = true;
-        this.bottomGathered = true;
-      });
-    }, 300);
-    setTimeout(() => {
+    const resources = this.getUIContext().getHostContext()?.resourceManager;
+    if (resources) {
+      this.coral = '#' + (resources.getColorSync($r('app.color.launch_coral').id) & 0xffffff).toString(16).padStart(6, '0');
+      this.ink = '#' + (resources.getColorSync($r('app.color.launch_ink').id) & 0xffffff).toString(16).padStart(6, '0');
+    }
+    this.animator = this.getUIContext().createAnimator({ duration: 1100, easing: 'linear', delay: 0,
+      fill: 'forwards', direction: 'normal', iterations: 1, begin: 0, end: 1100 });
+    this.animator.onFrame = (time: number) => {
+      if (!this.active) return;
+      this.motion.advance(time);
+      this.gatherX = this.motion.x;
+      this.gatherY = this.motion.y;
+      this.logoScale = this.motion.scale;
+      this.drawDrops(time);
+      if (time >= 700 && !this.logoCompleted) {
+        this.logoCompleted = true;
+        this.animationCompleted();
+      }
+    };
+    this.animator.play();
+    this.timers.push(setTimeout(() => {
       this.getUIContext().animateTo({ curve: curves.springMotion(0.28, 0.62, 0),
         onFinish: () => this.animationCompleted() }, () => {
         this.frameVisible = true;
       });
-    }, 410);
-    setTimeout(() => {
+    }, 410));
+    this.timers.push(setTimeout(() => {
       this.getUIContext().animateTo({ duration: 180, curve: Curve.EaseOut,
         onFinish: () => this.animationCompleted() }, () => {
         this.sloganVisible = true;
       });
-    }, 470);
-    setTimeout(() => {
+    }, 470));
+    this.timers.push(setTimeout(() => {
       this.tryDismiss(true);
-    }, 8000);
+    }, 8000));
+  }
+
+  private drawDrops(time: number): void {
+    if (!this.canvasReady) return;
+    const context = this.canvas;
+    context.clearRect(0, 0, 160, 160);
+    for (const source of this.motion.drops) {
+      const drop = this.motion.frame(source, time);
+      if (drop.opacity <= 0) continue;
+      context.save();
+      context.translate(80 + drop.x, 80 + drop.y);
+      context.rotate(drop.angle);
+      context.scale(drop.scaleX, drop.scaleY);
+      context.fillStyle = drop.ink ? this.ink : this.coral;
+      context.globalAlpha = drop.opacity;
+      context.beginPath();
+      context.ellipse(0, 0, drop.size / 2, drop.size / 2, 0, 0, Math.PI * 2);
+      context.fill();
+      const width = 2.4 * 84 / 72 * drop.neckX, height = 7 * 84 / 72 * drop.neckY;
+      context.globalAlpha = drop.opacity * drop.neckOpacity;
+      context.beginPath();
+      context.moveTo(-width / 2, 0);
+      context.bezierCurveTo(-width / 2, height, width / 2, height, width / 2, 0);
+      context.closePath();
+      context.fill();
+      context.restore();
+    }
+  }
+
+  aboutToDisappear(): void {
+    this.active = false;
+    this.timers.forEach((timer: number) => clearTimeout(timer));
+    this.timers = [];
+    if (this.animator) {
+      this.animator.onFrame = () => {};
+      this.animator.finish();
+      this.animator = undefined;
+    }
   }
 
   @Builder
   private introContent() {
     Column() {
       Stack({ alignContent: Alignment.Center }) {
-        Row() {}
+        Stack({ alignContent: Alignment.Center }) {
+          Row() {}
+            .width(84)
+            .height(84)
+            .borderRadius(17)
+            .backgroundColor($r('app.color.logo_surface'))
+            .border({ width: 2, color: $r('app.color.hairline') })
+            .scale({ x: this.frameVisible ? 1 : 0.76, y: this.frameVisible ? 1 : 0.76 })
+            .opacity(this.frameVisible ? 1 : 0)
+
+          Image($r('app.media.launch_nodes'))
           .width(84)
           .height(84)
-          .borderRadius(17)
-          .backgroundColor($r('app.color.logo_surface'))
-          .border({ width: 2, color: $r('app.color.hairline') })
-          .scale({ x: this.frameVisible ? 1 : 0.76, y: this.frameVisible ? 1 : 0.76 })
-          .opacity(this.frameVisible ? 1 : 0)
+          .objectFit(ImageFit.Contain)
+          .translate({ x: -this.gatherX })
 
-        Image($r('app.media.launch_nodes'))
-        .width(84)
-        .height(84)
-        .objectFit(ImageFit.Contain)
-        .translate({ x: this.nodesGathered ? 0 : -introHorizontalTravel })
+          Image($r('app.media.launch_top'))
+          .width(84)
+          .height(84)
+          .objectFit(ImageFit.Contain)
+          .translate({ y: -this.gatherY })
 
-        Image($r('app.media.launch_top'))
-        .width(84)
-        .height(84)
-        .objectFit(ImageFit.Contain)
-        .translate({ y: this.topGathered ? 0 : -introVerticalTravel })
+          Image($r('app.media.launch_arrow'))
+          .width(84)
+          .height(84)
+          .objectFit(ImageFit.Contain)
+          .translate({ x: this.gatherX })
 
-        Image($r('app.media.launch_arrow'))
-        .width(84)
-        .height(84)
-        .objectFit(ImageFit.Contain)
-        .translate({ x: this.middleGathered ? 0 : introHorizontalTravel })
+          Image($r('app.media.launch_bottom'))
+          .width(84)
+          .height(84)
+          .objectFit(ImageFit.Contain)
+          .translate({ y: this.gatherY })
 
-        Image($r('app.media.launch_bottom'))
-        .width(84)
-        .height(84)
-        .objectFit(ImageFit.Contain)
-        .translate({ y: this.bottomGathered ? 0 : introVerticalTravel })
+          Canvas(this.canvas).width(160).height(160)
+            .onReady(() => this.canvasReady = true)
+        }
+        .width(84).height(84)
+        .scale({ x: this.logoScale, y: this.logoScale })
 
         Text('记录所学，连接所思')
           .width('100%')
@@ -162,9 +229,9 @@ export struct LaunchIntro {
 
   aboutToAppear(): void {
     if (!this.visible) {
-      setTimeout(() => this.notifyDismissed(), 0);
+      this.timers.push(setTimeout(() => this.notifyDismissed(), 0));
       return;
     }
-    setTimeout(() => this.startAnimation(), 32);
+    this.timers.push(setTimeout(() => this.startAnimation(), 32));
   }
 }

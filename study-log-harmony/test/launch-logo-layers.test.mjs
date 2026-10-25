@@ -27,11 +27,13 @@ test('four launch layers exactly partition the official foreground in both theme
     assert.deepEqual(combined, official.shapes, `${theme}: no changed, duplicated or omitted geometry/paint`);
   }
   const source = (await readFile(new URL('ets/app/components/LaunchIntro.ets', main), 'utf8')).replace(/\r\n/g, '\n');
-  for (const [name, state, axis, travel] of [['nodes', 'nodesGathered', 'x', '-introHorizontalTravel'],
-    ['top', 'topGathered', 'y', '-introVerticalTravel'], ['arrow', 'middleGathered', 'x', 'introHorizontalTravel'],
-    ['bottom', 'bottomGathered', 'y', 'introVerticalTravel']]) {
-    assert.ok(source.includes(`Image($r('app.media.launch_${name}'))\n        .width(84)\n        .height(84)\n        .objectFit(ImageFit.Contain)\n        .translate({ ${axis}: this.${state} ? 0 : ${travel} })`));
+  for (const [name, axis, travel] of [['nodes', 'x', '-this.gatherX'],
+    ['top', 'y', '-this.gatherY'], ['arrow', 'x', 'this.gatherX'], ['bottom', 'y', 'this.gatherY']]) {
+    const image = source.slice(source.indexOf(`Image($r('app.media.launch_${name}'))`));
+    assert.ok(image.startsWith(`Image($r('app.media.launch_${name}'))`));
+    assert.ok(image.slice(0, image.indexOf('.translate') + 120).includes(`.translate({ ${axis}: ${travel} })`));
   }
-  assert.doesNotMatch(source, /\.position\(|Circle\(/, 'launch no longer maintains a hand-drawn coordinate copy');
-  for (const delay of [300, 410, 470, 8000]) assert.ok(source.includes(`}, ${delay});`));
+  assert.doesNotMatch(source, /\.position\(|Circle\(/, 'the official foreground stays in SVG layers');
+  assert.match(source, /this\.motion\.advance\(time\)/);
+  for (const delay of [410, 470, 8000]) assert.ok(source.includes(`}, ${delay}));`));
 });

@@ -110,7 +110,7 @@ try {
         const origins = [...document.querySelectorAll('.droplet')].map(droplet => ({
           x: parseFloat(droplet.style.getPropertyValue('--sx')), y: parseFloat(droplet.style.getPropertyValue('--sy')),
           dx: parseFloat(droplet.style.getPropertyValue('--dx')), dy: parseFloat(droplet.style.getPropertyValue('--dy')),
-          size: parseFloat(getComputedStyle(droplet).width), duration: parseFloat(droplet.style.getPropertyValue('--duration'))
+          angle: parseFloat(getComputedStyle(droplet).rotate), size: parseFloat(getComputedStyle(droplet).width), duration: parseFloat(droplet.style.getPropertyValue('--duration'))
         }));
         return { duration: animation.effect.getTiming().duration, delay: animation.effect.getTiming().delay, samples, origins };
       });
@@ -122,6 +122,10 @@ try {
       assert.ok(intro.samples.some(sample => sample.dropletOpacity > .1), 'droplets must appear briefly at contact');
       assert.ok(intro.samples.some(sample => sample.neckOpacity > .4), 'droplets must briefly stretch a liquid neck before separating');
       assert.equal(intro.samples.at(-1).neckOpacity, 0, 'liquid necks must disappear after separation');
+      assert.ok(intro.origins.every(origin => {
+        const angle = origin.angle * Math.PI / 180, dx = origin.dx - origin.x, dy = origin.dy - origin.y;
+        return Math.sin(angle) * dx - Math.cos(angle) * dy > .99 * Math.hypot(dx, dy);
+      }), 'the rounded head must lead while its liquid neck trails toward the contact');
       for (let index = 0; index < intro.origins.length; index += 2) {
         const [large, small] = intro.origins.slice(index, index + 2);
         assert.ok(large.size > small.size && large.duration > small.duration, 'each contact must eject a larger slower drop and a smaller faster drop');
@@ -130,6 +134,7 @@ try {
       }
       assert.ok(intro.samples.some(sample => sample.dropletScales.some(scale => scale.x > 1.1 && scale.y < .9)), 'droplets must visibly squash');
       assert.ok(intro.samples.some(sample => sample.dropletScales.some(scale => scale.x < .9 && scale.y > 1.1)), 'droplets must visibly stretch');
+      assert.ok(intro.samples.some(sample => sample.dropletScales.some(scale => scale.x < .75 && scale.y > 2.05)), 'contact must produce a pronounced liquid stretch before separation');
       assert.ok(intro.samples.every(sample => sample.dropletSpread < 50), 'droplets must remain a small contact accent');
       assert.equal(new Set(intro.origins.map(origin => `${origin.x},${origin.y}`)).size, 2, 'droplets must emerge from two contact edges');
       assert.ok((await startup.locator('.droplet').evaluateAll(droplets => droplets.map(droplet => {

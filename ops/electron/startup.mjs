@@ -40,7 +40,7 @@ function watchContact() {
         const tangent = (contact.side < 0 ? [26, 16] : [23, 19])[index];
         const normal = (contact.side < 0 ? [-9, 12] : [4, -12])[index];
         const dx = tx * tangent + nx * normal, dy = ty * tangent + ny * normal;
-        const angle = Math.atan2(dy, dx) * 180 / Math.PI - 90;
+        const angle = Math.atan2(dy, dx) * 180 / Math.PI + 90;
         for (const [name, value] of Object.entries({ sx: sx + 'px', sy: sy + 'px', dx: sx + dx + 'px', dy: sy + dy + 'px', angle: angle + 'deg', duration: (index ? (contact.side < 0 ? 340 : 360) : (contact.side < 0 ? 460 : 420)) + 'ms', delay: (index ? (contact.side < 0 ? 22 : 0) : (contact.side < 0 ? 0 : 12)) + 'ms' })) {
           droplet.style.setProperty('--' + name, value);
         }

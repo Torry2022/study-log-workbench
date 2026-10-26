@@ -31,7 +31,7 @@ export function FavoritesNavigation({ favorites, active = true }: { favorites: F
   const inGroup = favorites.favorites.filter(item => favorites.filters.group === "all" || (favorites.filters.group === "ungrouped" ? !item.groupIds.length : item.groupIds.includes(favorites.filters.group)));
   const months = [...new Set(inGroup.map(item => item.month))].sort((a, b) => b.localeCompare(a));
   const currentYear = todayInShanghai().slice(0, 4);
-  const collapsedMonths = months.filter(month => month.startsWith(`${currentYear}-`) || month === favorites.filters.month);
+  const collapsedMonths = months.length <= 12 ? months : months.filter(month => month.startsWith(`${currentYear}-`) || month === favorites.filters.month);
   const shownMonths = monthsExpanded ? months : collapsedMonths;
   const hiddenMonthCount = months.length - collapsedMonths.length;
   const managedGroup = favorites.groups.find(group => group.id === control?.id);

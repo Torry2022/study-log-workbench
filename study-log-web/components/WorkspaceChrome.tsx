@@ -107,7 +107,7 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, module
   const shortcutActive = useRef(active); shortcutActive.current = active;
   const [monthsExpanded, setMonthsExpanded] = useState(false);
   const currentYear = todayInShanghai().slice(0, 4);
-  const collapsedMonths = months.filter(month => month.id.startsWith(`${currentYear}-`) || month.id === selectedMonth);
+  const collapsedMonths = months.length <= 12 ? months : months.filter(month => month.id.startsWith(`${currentYear}-`) || month.id === selectedMonth);
   const shownMonths = monthsExpanded ? months : collapsedMonths;
   const hiddenMonthCount = months.length - collapsedMonths.length;
   const [customDate, setCustomDate] = useState(todayInShanghai());

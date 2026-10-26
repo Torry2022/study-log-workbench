@@ -39,6 +39,7 @@ export struct LogNavigation {
   }
 
   private collapsedMonths(): MonthSummary[] {
+    if (this.navigationMonths.length <= 12) return this.navigationMonths;
     return this.navigationMonths.filter((month: MonthSummary) => month.id.startsWith(`${currentShanghaiYear()}-`) || month.id === this.navigationMonth);
   }
 

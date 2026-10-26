@@ -105,6 +105,7 @@ export struct FavoritesNavigation {
   private months(): string[] { return this.data.months(); }
 
   private collapsedMonths(): string[] {
+    if (this.months().length <= 12) return this.months();
     return this.months().filter((month: string) => month.startsWith(`${currentShanghaiYear()}-`) || month === this.data.selectedMonth);
   }
 

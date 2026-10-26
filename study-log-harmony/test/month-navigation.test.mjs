@@ -23,16 +23,16 @@ for (const [file, log] of [['logs/components/LogNavigation.ets', true], ['favori
   test(`${file}: current year and selected older month survive expand and collapse`, () => {
     const current = Array.from({ length: 12 }, (_, index) => `2026-${String(12 - index).padStart(2, '0')}`);
     const old = ['2025-12', '2025-08', '2024-01'];
-    for (const months of [[], current.slice(0, 7), [...current, ...old], old, ['2027-01', ...current, ...old]]) {
+    for (const months of [[], current.slice(0, 7), [...current.slice(0, 9), ...old], [...current.slice(0, 10), ...old], [...current, ...old], old, ['2027-01', ...current, ...old]]) {
       for (const selected of ['all', 'missing', current[0], ...old]) {
-        const expected = months.filter(month => month.startsWith('2026-') || month === selected);
+        const expected = months.length <= 12 ? months : months.filter(month => month.startsWith('2026-') || month === selected);
         assert.deepEqual(read(months, selected), { shown: expected, hidden: months.length - expected.length });
         assert.deepEqual(read(months, selected, true), { shown: months, hidden: months.length - expected.length });
         assert.deepEqual(read(months, selected).shown, expected);
       }
     }
     assert.deepEqual(read(current, 'all').shown, current);
-    assert.deepEqual(read(old, 'all'), { shown: [], hidden: 3 });
+    assert.deepEqual(read(old, 'all'), { shown: old, hidden: 0 });
     assert.ok(source.includes('if (this.hiddenMonthCount() > 0)'));
     assert.ok(source.includes('展开剩余 ${this.hiddenMonthCount()} 个月份'));
     if (log) {

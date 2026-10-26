@@ -10,5 +10,6 @@ test('navigation refresh keeps existing current-month rows; an unread month stil
   h.navigationMonth='2026-07';assert.equal(placeholder.call(h),true);
   h.navigationDays=[];assert.equal(placeholder.call(h),true);
   h.navigationLoading=false;assert.equal(placeholder.call(h),false);
+  assert.match(source,/filteredNavigationDays\(\).length === 0 && !this.navigationError/,'failed reads must not claim the month is empty');
   assert.ok(source.indexOf('if (this.navigationError)')<source.indexOf('if (this.navigationLoading &&'),'an error is rendered independently of the existing rows');
 });

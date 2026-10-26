@@ -115,7 +115,7 @@ export struct LogNavigation {
             Text('正在读取').fontSize(12).fontColor($r('app.color.muted'))
           }.width('100%').height(52).justifyContent(FlexAlign.Center)
         }
-      } else if (this.filteredNavigationDays().length === 0) {
+      } else if (this.filteredNavigationDays().length === 0 && !this.navigationError) {
         ListItem() {
           Text(this.navigationDayQuery ? '未找到匹配标题' : '这个月还没有日志')
             .fontSize(12).fontColor($r('app.color.muted')).width('100%').padding(10)

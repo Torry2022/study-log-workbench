@@ -102,17 +102,18 @@ export struct LogNavigation {
           onChange: (value: string) => this.onQuery(value)
         })
       }
-      if (this.navigationLoading) {
+      if (this.navigationError) {
+        ListItem() {
+          InlineStatus({ text: this.navigationError, error: true, retry: true,
+            onRetry: () => this.onRetry() })
+        }
+      }
+      if (this.navigationLoading && !this.navigationDays.some((day: DaySummary) => day.date.startsWith(`${this.navigationMonth}-`))) {
         ListItem() {
           Row({ space: 8 }) {
             LoadingProgress().width(18).height(18).color($r('app.color.primary'))
             Text('正在读取').fontSize(12).fontColor($r('app.color.muted'))
           }.width('100%').height(52).justifyContent(FlexAlign.Center)
-        }
-      } else if (this.navigationError) {
-        ListItem() {
-          InlineStatus({ text: this.navigationError, error: true, retry: true,
-            onRetry: () => this.onRetry() })
         }
       } else if (this.filteredNavigationDays().length === 0) {
         ListItem() {

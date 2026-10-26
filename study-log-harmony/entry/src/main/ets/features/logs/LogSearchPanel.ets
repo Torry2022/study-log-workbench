@@ -104,7 +104,9 @@ export struct LogSearchPanel {
                 .borderRadius(8).clip(true).onClick(() => this.onSelect(result))
             }
           }, (result: LogSearchResult) => result.date)
-        }.layoutWeight(1).width('100%').padding({ left: 14, right: 14, top: 4, bottom: 20 })
+        }.layoutWeight(1).width('100%').padding({ left: 14, right: 14, top: 4 })
+        .contentEndOffset(20).clipContent(ContentClipMode.SAFE_AREA)
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
           .scrollBar(BarState.Off).edgeEffect(EdgeEffect.None)
       }
     }.width('100%').height('100%').backgroundColor($r('app.color.canvas'))

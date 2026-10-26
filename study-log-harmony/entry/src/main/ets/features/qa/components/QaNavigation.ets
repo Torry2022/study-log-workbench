@@ -219,9 +219,11 @@ export struct QaNavigation {
         }
       }
       .id('qa_history_list').layoutWeight(1).width('100%')
+      .contentEndOffset(28).clipContent(ContentClipMode.SAFE_AREA)
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
       .scrollBar(BarState.Auto).edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
     }
-    .layoutWeight(1).width('100%').padding({ left: 14, right: 14, top: 14, bottom: 28 })
+    .layoutWeight(1).width('100%').padding({ left: 14, right: 14, top: 14 })
   }
 
   @Builder

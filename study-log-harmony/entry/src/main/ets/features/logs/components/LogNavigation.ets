@@ -157,7 +157,8 @@ export struct LogNavigation {
       }
     }
     .layoutWeight(1).width('100%').padding({ left: 14, right: 14, top: 14 })
-    .contentEndOffset(28)
+    .contentEndOffset(28).clipContent(ContentClipMode.SAFE_AREA)
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
     .scrollBar(BarState.Off).edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
   }
 

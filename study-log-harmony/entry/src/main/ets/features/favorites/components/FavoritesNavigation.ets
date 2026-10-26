@@ -287,6 +287,8 @@ export struct FavoritesNavigation {
       }.width('100%').padding({ left: this.wide ? 14 : 12, right: this.wide ? 14 : 12, top: this.wide ? 14 : 12, bottom: 24 })
         .alignItems(HorizontalAlign.Start)
     }.id('favorites_navigation').width('100%').layoutWeight(1).align(Alignment.TopStart)
+      .clipContent(ContentClipMode.SAFE_AREA)
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
       .onAreaChange(() => this.formKeyboard.reveal(this.getUIContext()))
       .scrollBar(BarState.Auto).edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
   }

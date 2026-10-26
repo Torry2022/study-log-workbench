@@ -201,7 +201,8 @@ export struct LogAiPanel {
             Text(this.message).fontSize(12).lineHeight(19).fontColor($r('app.color.muted')).width('100%')
           }
         }.width('100%').padding(16).alignItems(HorizontalAlign.Start)
-      }.width('100%').layoutWeight(1).scrollBar(BarState.Auto).align(Alignment.TopStart).id('log_ai_scroll').onAreaChange(() => this.formKeyboard.reveal(this.getUIContext()))
+      }.width('100%').layoutWeight(1).scrollBar(BarState.Auto).align(Alignment.TopStart).id('log_ai_scroll').clipContent(ContentClipMode.SAFE_AREA).onAreaChange(() => this.formKeyboard.reveal(this.getUIContext()))
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
       if (this.mode === 'generate') {
         Column() {
           Button({ type: ButtonType.Normal }) {

@@ -3,6 +3,7 @@ import { appFeedback } from './AppFeedback';
 @Component
 export struct ContentRefresh {
   @Prop refreshSupported: boolean = true;
+  @Prop extendBottomSafeArea: boolean = false;
   @Prop refreshEnabled: boolean = true;
   @Prop feedbackScope: string = 'content-refresh';
   @Prop failureText: string = '刷新失败，已保留原内容，请下拉重试';
@@ -55,6 +56,7 @@ export struct ContentRefresh {
         this.content()
       }
       .id(this.refreshId).width('100%').layoutWeight(1)
+      .expandSafeArea([SafeAreaType.SYSTEM], this.extendBottomSafeArea ? [SafeAreaEdge.BOTTOM] : [])
       .pullToRefresh(this.refreshEnabled).pullDownRatio(this.refreshEnabled || this.refreshing ? 0.5 : 0)
       .refreshOffset(64)
       .maxPullDownDistance(this.refreshEnabled || this.refreshing ? 96 : 0)

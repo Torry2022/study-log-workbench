@@ -2227,7 +2227,9 @@ export struct LogsReaderPage {
           }
         }, (heading: LogOutlineHeading) => heading.id)
       }.width('100%').layoutWeight(1)
-        .padding({ left: 14, right: 14, top: 14, bottom: 28 })
+        .padding({ left: 14, right: 14, top: 14 })
+      .contentEndOffset(28).clipContent(ContentClipMode.SAFE_AREA)
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
         .scrollBar(BarState.Off)
         .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
     }.width(this.isWide() ? 320 : '82%').height('100%')

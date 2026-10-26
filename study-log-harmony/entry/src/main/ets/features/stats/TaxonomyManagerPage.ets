@@ -414,6 +414,8 @@ export struct TaxonomyManagerPage {
         .enabled(!this.data.busy).width('100%').padding({ left: 14, right: 14, top: 12, bottom: 40 }).alignItems(HorizontalAlign.Start)
       }
       .layoutWeight(1).width('100%').align(Alignment.TopStart)
+      .clipContent(ContentClipMode.SAFE_AREA)
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
       .scrollBar(BarState.Off).edgeEffect(EdgeEffect.Spring)
     }
     .width('100%').height('100%').backgroundColor($r('app.color.canvas'))

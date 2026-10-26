@@ -232,8 +232,9 @@ export struct StatsPage {
   }
 
   private openDrilldown(kind: string, value: string): void {
-    this.drilldownKind = kind;
-    this.drilldownValue = value;
+    const deselect = kind === 'domain' && this.drilldownKind === kind && this.drilldownValue === value;
+    this.drilldownKind = deselect ? '' : kind;
+    this.drilldownValue = deselect ? '' : value;
     this.calendarDetailsOpen = kind === 'day' && !this.isLargeWorkspace();
     this.calendarPopoverDate = kind === 'day' && this.isLargeWorkspace() ? value : '';
   }
@@ -373,7 +374,7 @@ export struct StatsPage {
           .fontSize(12).fontColor($r('app.color.muted'))
       } else {
       if (this.data.stats!.stats.topicCount > 0) {
-        StatsDonut({ domains: this.data.stats!.stats.domainCounts, total: this.data.stats!.stats.topicCount,
+        StatsDonut({ selectedDomain: this.drilldownKind === 'domain' ? this.drilldownValue : '', domains: this.data.stats!.stats.domainCounts, total: this.data.stats!.stats.topicCount,
           chartSize: Math.min(360, Math.max(160, this.domainWidth > 0 ? this.domainWidth - 40 : this.viewportWidth - 88)),
           onDomain: (domain: string) => this.openDrilldown('domain', domain) }).width('100%').alignSelf(ItemAlign.Center)
       } else {

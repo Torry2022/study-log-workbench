@@ -353,9 +353,9 @@
 .stats-donut-segment { cursor: pointer; transition: opacity 120ms ease, stroke-width 120ms ease; }
 .stats-donut-segment:focus { outline: none; }
 .stats-donut:has(.stats-donut-segment:focus-visible) .stats-donut-segment:not(:focus-visible) { opacity: 0.42; }
-.stats-donut-segment:hover { stroke-width: 21; }
+@media (hover: hover) { .stats-donut-segment:hover { stroke-width: 21; } }
 .stats-donut-segment:focus-visible { stroke-width: 24; }
-.stats-donut:has(.stats-donut-segment:hover) .stats-donut-segment:not(:hover) { opacity: 0.42; }
+@media (hover: hover) { .stats-donut:has(.stats-donut-segment:hover) .stats-donut-segment:not(:hover) { opacity: 0.42; } }
 
 .stats-donut-center {
   position: absolute;
@@ -375,10 +375,9 @@
 .stats-donut-center span { margin-top: 4px; color: var(--muted); font-size: 11px; }
 
 .stats-donut-tooltip {
-  position: absolute;
-  left: 78%;
-  top: 14%;
-  z-index: 2;
+  position: fixed;
+  width: 180px;
+  z-index: 20;
   min-width: 180px;
   display: grid;
   grid-template-columns: 10px 1fr;
@@ -397,9 +396,10 @@
 .stats-donut-tooltip dl div { display: flex; justify-content: space-between; gap: 16px; }
 .stats-donut-tooltip dt { color: var(--muted); }
 .stats-donut-tooltip dd { margin: 0; color: var(--body); font-variant-numeric: tabular-nums; }
-@media (max-width: 760px) {
-  .stats-donut-tooltip { left: auto; right: 0; top: 0; min-width: 180px; max-width: 100%; }
-}
+.stats-donut-segment.selected { stroke-width: 21; }
+.stats-donut:has(.stats-donut-segment.selected) .stats-donut-segment:not(.selected) { opacity: 0.42; }
+.stats-donut-legend button[aria-pressed="true"] { background: var(--surface-card); color: var(--body-strong); }
+@media (hover: none) { .stats-donut-tooltip { display: none; } }
 
 .stats-topic-ranking {
   display: grid;

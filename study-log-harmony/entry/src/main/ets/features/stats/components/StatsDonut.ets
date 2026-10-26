@@ -15,6 +15,7 @@ export struct StatsDonut {
   @StorageProp('systemTheme') @Watch('redraw') private systemTheme: string = 'light';
   @Prop @Watch('redraw') domains: DomainCount[] = [];
   @Prop total: number = 0;
+  @Prop @Watch('redraw') selectedDomain: string = '';
   @Prop @Watch('redraw') chartSize: number = 360;
   @State private activeIndex: number = -1;
   private canvas: CanvasRenderingContext2D = new CanvasRenderingContext2D(new RenderingContextSettings(true));
@@ -51,12 +52,14 @@ export struct StatsDonut {
     this.canvas.stroke();
     this.segments().forEach((segment: DomainSegment) => {
       if (segment.end <= segment.start) return;
+      this.canvas.globalAlpha = this.selectedDomain.length > 0 && segment.domain.domain !== this.selectedDomain ? 0.42 : 1;
       this.canvas.strokeStyle = colors.getColorSync(this.color(segment.index).id);
       this.canvas.beginPath();
       this.canvas.arc(center, center, radius, segment.start * Math.PI * 2 - Math.PI / 2,
         segment.end * Math.PI * 2 - Math.PI / 2);
       this.canvas.stroke();
     });
+    this.canvas.globalAlpha = 1;
   }
 
   private segmentAt(x: number, y: number): number {
@@ -101,11 +104,12 @@ export struct StatsDonut {
           Text('日志小节').fontSize(12).fontColor($r('app.color.muted'))
         }.width(this.chartSize).height(this.chartSize).justifyContent(FlexAlign.Center).hitTestBehavior(HitTestMode.None)
       }.width(this.chartSize).height(this.chartSize).id('stats_domain_chart')
+        .onTouch(() => this.activeIndex = -1)
         .onMouse((event: MouseEvent) => this.activeIndex = this.segmentAt(event.x, event.y))
         .onHover((hover: boolean) => { if (!hover) this.activeIndex = -1; })
         .onClick((event: ClickEvent) => {
           const index = this.segmentAt(event.x, event.y);
-          if (index >= 0) { this.activeIndex = index; this.onDomain(this.domains[index].domain); }
+          if (index >= 0) { this.onDomain(this.domains[index].domain); }
         })
         .bindPopup(this.activeIndex >= 0 && this.activeIndex < this.domains.length, {
           builder: this.domainDetails(), placement: Placement.Top, width: 200,
@@ -121,8 +125,8 @@ export struct StatsDonut {
               Circle().width(8).height(8).fill(this.color(index))
               Text(domain.domain).fontSize(12).fontColor($r('app.color.body'))
             }
-          }.height(32).padding({ left: 6, right: 6 }).backgroundColor(Color.Transparent).borderRadius(6)
-            .onClick(() => { this.activeIndex = index; this.onDomain(domain.domain); })
+          }.height(32).padding({ left: 6, right: 6 }).backgroundColor(domain.domain === this.selectedDomain ? $r('app.color.surface_card') : Color.Transparent).borderRadius(6)
+            .onClick(() => { this.onDomain(domain.domain); })
             .accessibilityText(`${domain.domain}，${domain.count} 个小节，${domain.percentage.toFixed(1)}%`)
         }, (domain: DomainCount) => domain.domain)
       }.width('100%')

@@ -18,6 +18,7 @@ async function actualMethods(file, names) {
 test('actual donut geometry keeps every domain and maps only the ring to its original domain', async () => {
   const chart = await actualMethods('features/stats/components/StatsDonut.ets', ['segments', 'segmentAt', 'redraw']);
   chart.chartSize = 240;
+  chart.selectedDomain = '';
   chart.domains = [{ domain: 'A', count: 3 }, { domain: 'B', count: 1 }];
   const segments = chart.segments();
   assert.deepEqual(segments.map(segment => [segment.domain.domain, segment.start, segment.end]), [['A', 0, 0.75], ['B', 0.75, 1]]);
@@ -57,4 +58,28 @@ test('actual month layout fills cross-year rows without clipping a partial last 
   assert.equal(view.gridHeight(), 214);
   assert.deepEqual(view.months.slice(0, 4), before);
   view.months = []; assert.equal(view.gridHeight(), 0);
+});
+
+
+test('actual domain selection toggles off and drawing restores opacity when cleared', async () => {
+  const page = await actualMethods('features/stats/StatsPage.ets', ['openDrilldown']);
+  page.isLargeWorkspace = () => true;
+  page.openDrilldown('domain', 'A');
+  assert.equal(page.drilldownValue, 'A');
+  page.openDrilldown('domain', 'B');
+  assert.equal(page.drilldownValue, 'B');
+  page.openDrilldown('domain', 'B');
+  assert.equal(page.drilldownKind, '');
+  const chart = await actualMethods('features/stats/components/StatsDonut.ets', ['segments', 'redraw']);
+  chart.chartSize = 240; chart.canvasReady = true;
+  chart.domains = [{ domain: 'A', count: 3 }, { domain: 'B', count: 1 }];
+  const opacity = [];
+  chart.canvas = { clearRect() {}, beginPath() {}, arc() {}, stroke() { opacity.push(this.globalAlpha ?? 1); } };
+  chart.getUIContext = () => ({ getHostContext: () => ({ resourceManager: { getColorSync: () => 0xffcc8866 } }) });
+  chart.color = () => ({ id: 0 });
+  chart.selectedDomain = 'A'; chart.redraw();
+  assert.deepEqual(opacity.slice(1), [1, 0.42]);
+  assert.equal(chart.canvas.globalAlpha, 1);
+  chart.selectedDomain = ''; opacity.length = 0; chart.redraw();
+  assert.deepEqual(opacity, [1, 1, 1]);
 });

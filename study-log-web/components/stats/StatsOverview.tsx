@@ -1,7 +1,7 @@
 "use client";
 
 import { CalendarDays, ChevronDown, RefreshCw, TrendingDown, TrendingUp } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { StatsDayDetails, StatsEntryList } from "./StatsDayDetails";
 import { WorkspaceState } from "../WorkspaceState";
 import type { DomainCount, MonthlyStats, StatsEntry, TagCount } from "@/lib/stats-types";
@@ -91,10 +91,21 @@ export function StatsOverview({
   onRefresh,
   onOpenEntry
 }: StatsOverviewProps) {
+  const [tooltipPosition, setTooltipPosition] = useState({ left: 0, top: 0 });
   const [activeDomain, setActiveDomain] = useState<string | null>(null);
   const [drilldown, setDrilldown] = useState<Drilldown>(null);
   const [dayAnchor, setDayAnchor] = useState<HTMLButtonElement | null>(null);
   const [dayMonth, setDayMonth] = useState("");
+  useEffect(() => {
+    const hideTooltip = () => setActiveDomain(null);
+    window.addEventListener("scroll", hideTooltip, true);
+    window.addEventListener("resize", hideTooltip);
+    return () => {
+      window.removeEventListener("scroll", hideTooltip, true);
+      window.removeEventListener("resize", hideTooltip);
+    };
+  }, []);
+
   const segments = useMemo(() => {
     let cursor = 0;
     return (stats?.domainCounts || []).map((item, index) => {
@@ -125,9 +136,20 @@ export function StatsOverview({
       : drilldown.value
     : "";
 
-  function chooseDomain(item: DomainCount) {
+  function showDomain(item: DomainCount, target: SVGElement) {
+    const bounds = target.closest("figure")!.getBoundingClientRect();
+    const left = bounds.right + 196 <= window.innerWidth ? bounds.right + 8
+      : bounds.left >= 196 ? bounds.left - 188 : Math.max(12, bounds.left + (bounds.width - 180) / 2);
+    const beside = bounds.right + 196 <= window.innerWidth || bounds.left >= 196;
+    const top = beside ? Math.max(12, Math.min(bounds.top + 12, window.innerHeight - 122))
+      : bounds.top >= 122 ? bounds.top - 110 : bounds.bottom + 8;
+    setTooltipPosition({ left, top });
     setActiveDomain(item.domain);
-    setDrilldown({ kind: "domain", value: item.domain });
+  }
+
+  function chooseDomain(item: DomainCount) {
+    setActiveDomain(null);
+    setDrilldown(drilldown?.kind === "domain" && drilldown.value === item.domain ? null : { kind: "domain", value: item.domain });
   }
 
   function chooseTag(item: TagCount) {
@@ -138,7 +160,7 @@ export function StatsOverview({
     <>
       <div className="stats-section-heading">
         <div><h3>{drillTitle}</h3><p>{drillEntries.length} 个日志小节，点击查看原文。</p></div>
-        <button className="button secondary compact" onClick={() => setDrilldown(null)}>关闭</button>
+        <button className="button secondary compact" onClick={() => { setActiveDomain(null); setDrilldown(null); }}>关闭</button>
       </div>
       <StatsEntryList entries={drillEntries} onOpenEntry={onOpenEntry} />
 
@@ -214,16 +236,16 @@ export function StatsOverview({
                 <svg viewBox="8 8 104 104" role="group" aria-label={`${selectedMonth} 领域占比`}>
                   <circle className="stats-donut-track" cx="60" cy="60" r="40" />
                   {segments.map((item) => item.end - item.start >= 99.99 ? (
-                    <circle key={item.domain} className="stats-donut-segment" cx="60" cy="60" r="40" stroke={item.color} role="button" tabIndex={0} aria-label={`${item.domain}：${item.count}个，${item.percentage}%`} onFocus={() => setActiveDomain(item.domain)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); chooseDomain(item); } }} onMouseEnter={() => setActiveDomain(item.domain)} onClick={() => chooseDomain(item)} />
+                    <circle key={item.domain} className={drilldown?.kind === "domain" && drilldown.value === item.domain ? "stats-donut-segment selected" : "stats-donut-segment"} aria-pressed={drilldown?.kind === "domain" && drilldown.value === item.domain} cx="60" cy="60" r="40" stroke={item.color} role="button" tabIndex={0} aria-label={`${item.domain}：${item.count}个，${item.percentage}%`} onFocus={event => { if (event.currentTarget.matches(":focus-visible")) showDomain(item, event.currentTarget); }} onBlur={() => setActiveDomain(null)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); chooseDomain(item); } }} onPointerMove={event => { if (event.pointerType === "mouse") showDomain(item, event.currentTarget); }} onClick={() => chooseDomain(item)} />
                   ) : (
-                    <path key={item.domain} className="stats-donut-segment" d={describeArc(item.start, item.end)} stroke={item.color} role="button" tabIndex={0} aria-label={`${item.domain}：${item.count}个，${item.percentage}%`} onFocus={() => setActiveDomain(item.domain)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); chooseDomain(item); } }} onMouseEnter={() => setActiveDomain(item.domain)} onClick={() => chooseDomain(item)} />
+                    <path key={item.domain} className={drilldown?.kind === "domain" && drilldown.value === item.domain ? "stats-donut-segment selected" : "stats-donut-segment"} aria-pressed={drilldown?.kind === "domain" && drilldown.value === item.domain} d={describeArc(item.start, item.end)} stroke={item.color} role="button" tabIndex={0} aria-label={`${item.domain}：${item.count}个，${item.percentage}%`} onFocus={event => { if (event.currentTarget.matches(":focus-visible")) showDomain(item, event.currentTarget); }} onBlur={() => setActiveDomain(null)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); chooseDomain(item); } }} onPointerMove={event => { if (event.pointerType === "mouse") showDomain(item, event.currentTarget); }} onClick={() => chooseDomain(item)} />
                   ))}
                 </svg>
                 <div className="stats-donut-center"><strong>{stats.topicCount}</strong><span>日志小节</span></div>
-                {activeSegment && <div className="stats-donut-tooltip"><i style={{ background: activeSegment.color }} /><strong>{activeSegment.domain}</strong><dl><div><dt>日志小节</dt><dd>{activeSegment.count}</dd></div><div><dt>占比</dt><dd>{activeSegment.percentage}%</dd></div><div><dt>记录天数</dt><dd>{activeSegment.activeDays}</dd></div></dl></div>}
+                {activeSegment && <div role="tooltip" className="stats-donut-tooltip" style={tooltipPosition}><i style={{ background: activeSegment.color }} /><strong>{activeSegment.domain}</strong><dl><div><dt>日志小节</dt><dd>{activeSegment.count}</dd></div><div><dt>占比</dt><dd>{activeSegment.percentage}%</dd></div><div><dt>记录天数</dt><dd>{activeSegment.activeDays}</dd></div></dl></div>}
               </figure>
               <div className="stats-donut-legend" aria-label="领域图例">
-                {segments.map(item => <button key={item.domain} type="button" onClick={() => chooseDomain(item)}
+                {segments.map(item => <button key={item.domain} type="button" aria-pressed={drilldown?.kind === "domain" && drilldown.value === item.domain} onClick={() => chooseDomain(item)}
                   aria-label={`${item.domain}，${item.count} 个小节，${item.percentage}%`}>
                   <i style={{ background: item.color }} />{item.domain}
                 </button>)}

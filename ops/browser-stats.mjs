@@ -69,6 +69,14 @@ try {
   });
   await page.mouse.click(point.x, point.y);
   await expect(page.locator(".stats-drilldown-list > button")).toHaveCount(2);
+  await page.mouse.move(5, 5);
+  await expect(segment).toHaveAttribute("aria-pressed", "true");
+  const legend = page.locator(".stats-donut-legend button").filter({ hasText: domain });
+  await expect(legend).toHaveAttribute("aria-pressed", "true");
+  await legend.click();
+  await expect(page.locator(".stats-drilldown")).toHaveCount(0);
+  await expect(segment).toHaveAttribute("aria-pressed", "false");
+
   await page.locator(".stats-review-actions").getByRole("button", { name: "分类管理", exact: true }).click();
 
   // An independent editor changes the same taxonomy snapshot while this UI holds a draft.

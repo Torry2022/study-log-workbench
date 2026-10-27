@@ -132,7 +132,10 @@ export struct QaPage {
       this.workspaceBreakpoint === WorkspaceBreakpoint.EXTRA_LARGE;
   }
 
-  aboutToAppear(): void { this.data.activate(); }
+  @StorageLink('workspaceForeground') @Watch('foregroundChanged') appForeground: boolean = true;
+  private foregroundChanged(): void { this.data.setForeground(this.appForeground); }
+
+  aboutToAppear(): void { this.data.setForeground(this.appForeground); this.data.activate(); }
 
   private focusQuestion(): void {
     this.questionFocused = true;

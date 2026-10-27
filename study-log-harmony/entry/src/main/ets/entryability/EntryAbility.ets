@@ -133,8 +133,11 @@ export default class EntryAbility extends UIAbility {
   }
 
   onForeground(): void {
+    AppStorage.setOrCreate<boolean>('workspaceForeground', true);
     this.observeWindow();
   }
+
+  onBackground(): void { AppStorage.setOrCreate<boolean>('workspaceForeground', false); }
 
   onWindowStageDestroy(): void {
     const closingWindow = this.mainWindow;

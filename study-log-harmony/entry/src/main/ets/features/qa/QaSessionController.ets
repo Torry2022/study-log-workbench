@@ -302,6 +302,8 @@ export class QaSessionController {
     this.view.onQuestionEditsChange?.(dirty);
   }
 
+  setForeground(value: boolean): void { this.taskClient?.setForeground(value); }
+
   activate(): void {
     this.pageDisposed = false;
     // Bind after ArkUI owns the observed controller, so background writes notify the page.

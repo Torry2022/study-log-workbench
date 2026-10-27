@@ -56,64 +56,67 @@ export async function requestDownload(url: string, init?: RequestInit): Promise<
   return { blob, fileName, warningCount };
 }
 
+// Only these JSON GET endpoints may be replayed; mutations retain single-attempt semantics.
+const recoverableRead = (url: string, init?: RequestInit) => (!init?.method || init.method.toUpperCase() === "GET") &&
+  /^\/api\/(?:logs(?:\/|$)|notes(?:\/|$)|favorites(?:\/|$)|stats(?:\/|$)|taxonomy(?:\/|$)|wiki(?:\/|$)|rag\/(?:tasks|sessions|queue)(?:\/|$)|capabilities$|auth\/me$|internal-links$|backups(?:\/|$))/.test(url.split("?")[0]);
+
 export async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const signal = init?.signal
-    ? AbortSignal.any([init.signal, workspaceRequests.signal])
-    : workspaceRequests.signal;
-  const response = await fetch(withBasePath(url), {
-    ...init,
-    signal,
-    headers: {
-      ...(init?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
-      ...(init?.headers || {})
-    }
-  });
-  const payload = (await response.json().catch((error) => {
-    if (init?.signal?.aborted) throw error;
-    return {};
-  })) as { error?: string; code?: string };
-  signal.throwIfAborted();
-
-  if (!response.ok) {
-    const message = payload.error || `请求失败（状态码 ${response.status}）`;
-    if (response.status === 401) {
-      if (message !== "Unauthorized") throw new ApiRequestError(message, response.status, payload.code || null);
-      window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
-      throw new ApiRequestError("登录已过期，请重新登录", response.status, payload.code || null);
-    }
-    throw new ApiRequestError(message, response.status, payload.code || null);
+  const signal = init?.signal ? AbortSignal.any([init.signal, workspaceRequests.signal]) : workspaceRequests.signal;
+  const retry = recoverableRead(url, init);
+  const started = performance.now();
+  for (let attempt = 1; ; attempt++) {
+    signal?.throwIfAborted();
+    const deadline = new AbortController();
+    const combined = signal ? AbortSignal.any([signal, deadline.signal]) : deadline.signal;
+    const timeout = retry ? setTimeout(() => deadline.abort(), 10_000) : undefined;
+    try {
+      const response = await fetch(withBasePath(url), {
+        ...init, signal: combined,
+        headers: { ...(init?.body instanceof FormData ? {} : { "Content-Type": "application/json" }), ...(init?.headers || {}) }
+      });
+      combined.throwIfAborted();
+      let payload: { error?: string; code?: string };
+      try { payload = await response.json(); }
+      catch (failure) {
+        combined.throwIfAborted();
+        if (response.ok) throw new ApiRequestError("服务器响应格式异常，请重试", response.status, "INVALID_RESPONSE");
+        payload = {};
+      }
+      combined.throwIfAborted();
+      if (!response.ok) {
+        const message = payload?.error || `请求失败（状态码 ${response.status}）`;
+        if (response.status === 401 && message === "Unauthorized") {
+          window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+          throw new ApiRequestError("登录已过期，请重新登录", 401, payload?.code || null);
+        }
+        throw new ApiRequestError(message, response.status, payload?.code || null);
+      }
+      return payload as T;
+    } catch (failure) {
+      if (failure instanceof ApiRequestError && failure.status === 401) throw failure;
+      signal?.throwIfAborted();
+      const transient = deadline.signal.aborted || failure instanceof TypeError ||
+        failure instanceof ApiRequestError && [502, 503, 504].includes(failure.status);
+      if (retry) console.warn("[api-read]", { scope: url.split("?")[0].split("/")[2], attempt, elapsedMs: Math.round(performance.now() - started),
+        status: failure instanceof ApiRequestError ? failure.status : 0,
+        kind: deadline.signal.aborted ? "timeout" : failure instanceof TypeError ? "transport" : failure instanceof ApiRequestError && failure.code === "INVALID_RESPONSE" ? "parse" : "http" });
+      if (!retry || !transient || attempt === 2) {
+        if (deadline.signal.aborted) throw new ApiRequestError("读取超时，请重试；已有内容已保留", 0, "READ_TIMEOUT");
+        if (retry && failure instanceof TypeError) throw new ApiRequestError("网络连接失败，请重试；已有内容已保留", 0, "NETWORK_ERROR");
+        throw failure;
+      }
+    } finally { clearTimeout(timeout); }
+    // A bounded retry is part of the same read and inherits its cancellation owner.
+    await new Promise<void>((resolve, reject) => {
+      const cancel = () => { clearTimeout(timer); reject(signal?.reason); };
+      const timer = setTimeout(() => { signal?.removeEventListener("abort", cancel); resolve(); }, 350);
+      signal?.addEventListener("abort", cancel, { once: true });
+      if (signal?.aborted) cancel();
+    });
   }
-
-  return payload as T;
 }
 
-// Log reads only: a timed-out GET may be retried, while mutations keep their existing semantics.
-export async function requestLogJson<T>(url: string, signal?: AbortSignal): Promise<T> {
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    signal?.throwIfAborted();
-    const controller = new AbortController();
-    const cancel = () => controller.abort(signal?.reason);
-    signal?.addEventListener("abort", cancel, { once: true });
-    let timedOut = false;
-    const started = performance.now();
-    const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, 10_000);
-    let outcome = "success";
-    try {
-      const result = await requestJson<T>(url, { signal: controller.signal });
-      controller.signal.throwIfAborted();
-      return result;
-    } catch (error) {
-      outcome = signal?.aborted ? "cancelled" : timedOut ? "timeout" : "error";
-      if (signal?.aborted || !timedOut) throw error;
-      if (attempt === 2) throw new Error("日志读取超时，已重试一次，请稍后刷新重试");
-    } finally {
-      clearTimeout(timeout);
-      signal?.removeEventListener("abort", cancel);
-      const durationMs = Math.round(performance.now() - started);
-      if (outcome !== "cancelled" && (durationMs >= 1000 || outcome !== "success")) {
-        console.warn("[log-read]", { path: url.split("?")[0], durationMs, attempt, outcome });
-      }
-    }
-  }
-  throw new Error("日志读取失败，请重试");
+// Both entrypoints share the same deadline and retry budget; never nest read retries.
+export function requestLogJson<T>(url: string, signal?: AbortSignal): Promise<T> {
+  return requestJson<T>(url, { signal });
 }

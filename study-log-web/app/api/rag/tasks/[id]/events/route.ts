@@ -20,6 +20,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
   const body = new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
+        let heartbeatAt = Date.now();
         while (!stopped && !request.signal.aborted) {
           if (requireAuth(request)) { controller.enqueue(encoder.encode('event: error\ndata: {"error":"Unauthorized"}\n\n')); break; }
           const task = await taskRuntime().get(id);
@@ -28,6 +29,9 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
             controller.enqueue(encoder.encode(`id: ${after}\nevent: snapshot\ndata: ${JSON.stringify({ task })}\n\n`));
           }
           if (!["queued", "running"].includes(task.state) && (task.state !== "succeeded" || task.saveState !== "pending")) break;
+          if (Date.now() - heartbeatAt >= 10000) {
+            controller.enqueue(encoder.encode(': keep-alive\n\n')); heartbeatAt = Date.now();
+          }
           await new Promise(resolve => setTimeout(resolve, 250));
         }
       } catch { if (!stopped && !request.signal.aborted) controller.enqueue(encoder.encode('event: error\ndata: {"error":"任务读取失败，请重新连接"}\n\n')); }

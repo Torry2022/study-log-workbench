@@ -85,6 +85,26 @@ export class RagTaskClient {
   private refreshing: Promise<void> | null = null;
   private sending = new Map<string, Promise<void>>();
   private stopped = false;
+  private started = false;
+  private scheduleRevision = 0;
+  private readFailures = 0;
+  private lastEventAt = 0;
+  private readonly resume = () => {
+    this.scheduleRevision++; clearTimeout(this.timer);
+    if (typeof document !== "undefined" && document.hidden) { this.stream?.controller.abort(); this.stream = null; return; }
+    this.syncStream();
+    if (this.started && !this.stopped) void this.tick();
+  };
+  private async tick(revision = this.scheduleRevision) {
+    await this.refresh();
+    if (revision === this.scheduleRevision && !this.stopped && !(typeof document !== "undefined" && document.hidden)) { clearTimeout(this.timer); this.timer = setTimeout(() => void this.tick(revision), this.pollDelay()); }
+  }
+  private pollDelay() {
+    if (this.readFailures) return Math.min(15_000, 1000 * 2 ** Math.min(this.readFailures, 4));
+    if (this.pending().length) return 1000;
+    if ([...this.tasks.values()].some(ragTaskRetained)) return this.lastEventAt > Date.now() - 5000 ? 3000 : 1000;
+    return 15_000;
+  }
   readonly instanceId: string;
   private storage: Storage;
   private callbacks: Callbacks;
@@ -105,12 +125,13 @@ export class RagTaskClient {
     const task = latest && latest.applicable !== false && (ragTaskActive(latest) || latest.state === "succeeded" && latest.saveState === "pending") ? latest : undefined;
     if (this.stream?.id === task?.id) return;
     this.stream?.controller.abort(); this.stream = null;
-    if (!task || this.stopped) return;
+    if (!task || this.stopped || typeof document !== "undefined" && document.hidden) return;
     const connection = { id: task.id, controller: new AbortController() }; this.stream = connection;
+    if (this.started) { clearTimeout(this.timer); this.timer = setTimeout(() => void this.tick(), 1000); }
     void this.events(`/api/rag/tasks/${task.id}/events?after=${task.revision}`, {
       signal: connection.controller.signal, headers: { "X-Study-Log-Instance": this.instanceId }
-    }, async value => { if (this.stream === connection && !connection.controller.signal.aborted) await this.accept(value, task); })
-      .catch(() => { /* Polling reconciles and reconnects the same task; never resubmit a generation. */ })
+    }, async value => { if (this.stream === connection && !connection.controller.signal.aborted) { await this.accept(value, task); if (this.stream === connection && !connection.controller.signal.aborted) this.lastEventAt = Date.now(); } })
+      .catch(() => { if (this.stream === connection) this.lastEventAt = 0; /* Polling reconciles and reconnects the same task; never resubmit a generation. */ })
       .finally(() => { if (this.stream === connection) this.stream = null; });
   }
   private pending(): PendingRagTask[] {
@@ -236,14 +257,18 @@ export class RagTaskClient {
             this.forget(input.submissionId);
           } else await this.send(input);
         }
+        this.readFailures = 0;
         if (!this.stopped && !this.pending().length) this.callbacks.error("");
-      } catch (error) { if (!this.stopped) this.callbacks.error(error instanceof Error ? error.message : "任务状态读取失败，请重试"); }
+      } catch (error) { if (!this.stopped) { this.readFailures++; this.callbacks.error(error instanceof Error ? error.message : "任务状态读取失败，请重试"); } }
     })().finally(() => { this.refreshing = null; this.syncStream(); });
     return this.refreshing;
   }
   start() {
-    const tick = async () => { await this.refresh(); if (!this.stopped) this.timer = setTimeout(tick, 1000); };
-    void tick();
+    if (this.started || this.stopped) return;
+    this.started = true;
+    if (typeof window !== "undefined") window.addEventListener("online", this.resume);
+    if (typeof document !== "undefined") document.addEventListener("visibilitychange", this.resume);
+    if (!(typeof document !== "undefined" && document.hidden)) void this.tick();
   }
   async cancel(id: string) { const result = await this.request<{ task: RagTask }>(`/api/rag/tasks/${id}/cancel`, { method: "POST" }); await this.accept(result.task); }
   async stopSession(id: string) {
@@ -284,5 +309,8 @@ export class RagTaskClient {
     }
   }
   async remove(id: string) { const result = await this.request<{ removed: boolean }>(`/api/rag/tasks/${id}`, { method: "DELETE" }); if (result.removed !== true) throw new Error("放弃结果尚未确认，请保留回答并重试"); this.removed.add(id); this.tasks.delete(id); }
-  stop() { this.stopped = true; clearTimeout(this.timer); this.controller.abort(); this.stream?.controller.abort(); this.stream = null; }
+  stop() { this.scheduleRevision++; this.started = false;
+    if (typeof window !== "undefined") window.removeEventListener("online", this.resume);
+    if (typeof document !== "undefined") document.removeEventListener("visibilitychange", this.resume);
+    this.stopped = true; clearTimeout(this.timer); this.controller.abort(); this.stream?.controller.abort(); this.stream = null; }
 }

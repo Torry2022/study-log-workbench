@@ -1,3 +1,5 @@
+import { BusinessError } from '@kit.BasicServicesKit';
+import { hilog } from '@kit.PerformanceAnalysisKit';
 import { rcp } from '@kit.RemoteCommunicationKit';
 import { util } from '@kit.ArkTS';
 import { activeInstance } from './InstanceConfig';
@@ -58,15 +60,46 @@ export class ApiClient {
     return () => { if (this.onUnauthorized === handler) this.onUnauthorized = () => {}; };
   }
 
-  get<T>(path: string, cancellation?: ReadCancellation): Promise<T> {
-    return this.request<T>(path, 'GET', undefined, cancellation);
+  async get<T>(path: string, cancellation?: ReadCancellation): Promise<T> {
+    return this.read<T>(path, cancellation);
   }
+
+  private async read<T>(path: string, cancellation?: ReadCancellation, instanceId?: string): Promise<T> {
+    const binding = this.getConnectionBinding();
+    const started = Date.now();
+    const safe = /^\/(logs|notes|favorites|stats|taxonomy|wiki|rag|capabilities|auth|internal-links|backups)(\/|\?|$)/.test(path);
+    for (let attempt = 1; ; attempt++) {
+      cancellation?.check();
+      if (binding !== this.getConnectionBinding()) throw new Error('会话已切换，请重新操作');
+      try { return await this.request<T>(path, 'GET', undefined, cancellation, instanceId); }
+      catch (error) {
+        cancellation?.check();
+        if (binding !== this.getConnectionBinding()) throw new Error('会话已切换，请重新操作');
+        const status = error instanceof ApiError ? error.statusCode : 0;
+        const nativeCode = error instanceof ApiError ? Number(error.code) || 0 : Number((error as BusinessError).code) || 0;
+        const transient = [502, 503, 504].includes(status) ||
+          [1007900005, 1007900006, 1007900007, 1007900028, 1007900035, 1007900052, 1007900055, 1007900056].includes(nativeCode);
+        hilog.error(0x0000, 'StudyLogRead',
+          'scope=%{public}s status=%{public}d nativeCode=%{public}d attempt=%{public}d elapsedMs=%{public}d',
+          path.split('?')[0].split('/')[1], status, nativeCode, attempt, Date.now() - started);
+        if (!safe || !transient || attempt === 2) {
+          if (nativeCode === 1007900028) throw new ApiError('读取超时，请重试；已有内容已保留', 0, String(nativeCode));
+          throw error as Error;
+        }
+      }
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => { cancellation?.release(); resolve(); }, 350);
+        cancellation?.bind(() => { clearTimeout(timer); reject(new Error('读取已取消')); });
+      });
+    }
+  }
+
   post<T>(path: string, body: object): Promise<T> { return this.request<T>(path, 'POST', body); }
   put<T>(path: string, body: object): Promise<T> { return this.request<T>(path, 'PUT', body); }
   patch<T>(path: string, body: object): Promise<T> { return this.request<T>(path, 'PATCH', body); }
   delete<T>(path: string, body?: object): Promise<T> { return this.request<T>(path, 'DELETE', body); }
 
-  getForInstance<T>(path: string, instanceId: string): Promise<T> { return this.request<T>(path, 'GET', undefined, undefined, instanceId); }
+  getForInstance<T>(path: string, instanceId: string): Promise<T> { return this.read<T>(path, undefined, instanceId); }
   postForInstance<T>(path: string, body: object, instanceId: string): Promise<T> { return this.request<T>(path, 'POST', body, undefined, instanceId); }
   deleteForInstance<T>(path: string, instanceId: string): Promise<T> { return this.request<T>(path, 'DELETE', undefined, undefined, instanceId); }
 
@@ -227,9 +260,11 @@ export class ApiClient {
     if (requestToken) headers['authorization'] = `Bearer ${requestToken}`;
     if (expectedInstanceId) headers['X-Study-Log-Instance'] = expectedInstanceId;
     const session = rcp.createSession({ requestConfiguration: {
-      transfer: { autoRedirect: false, timeout: { connectMs: 15000, transferMs: 60000 } }
+      transfer: { autoRedirect: false, timeout: { connectMs: method === 'GET' ? 5000 : 15000, transferMs: method === 'GET' ? 10000 : 60000 } }
     } });
 
+    let deadline: number = -1;
+    let timedOut: boolean = false;
     try {
       const request = new rcp.Request(activeInstance.apiUrl(path), method, headers,
         body ? JSON.stringify(body) : undefined);
@@ -237,11 +272,13 @@ export class ApiClient {
         try { session.cancel(request); }
         catch (_) { /* The read may have just completed. */ }
       });
-      const response = await session.fetch(request).catch(() => {
+      if (method === 'GET') deadline = setTimeout(() => { timedOut = true; try { session.cancel(request); } catch (_) {} }, 10000);
+      const response = await session.fetch(request).catch((error: BusinessError) => {
         cancellation?.check();
-        throw new ApiError('无法连接服务器，请检查网络后重试', 0, 'NETWORK_ERROR');
+        throw new ApiError('无法连接服务器，请检查网络后重试', 0, String(timedOut ? 1007900028 : error.code || 'NETWORK_ERROR'));
       });
       cancellation?.check();
+      if (timedOut) throw new ApiError('读取超时，请重试', 0, '1007900028');
       if (instanceRevision !== activeInstance.revision || sessionRevision !== this.sessionRevision) {
         throw new Error('会话已切换，请重新操作');
       }
@@ -255,6 +292,7 @@ export class ApiClient {
       try { return JSON.parse(raw) as T; }
       catch (_) { throw new ApiError('服务器响应格式异常', response.statusCode, 'INVALID_RESPONSE'); }
     } finally {
+      clearTimeout(deadline);
       cancellation?.release();
       session.close();
     }

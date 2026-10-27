@@ -17,13 +17,14 @@ async function loadEts(name, dependencies = {}) {
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS,
     target: ts.ScriptTarget.ES2022 } }).outputText;
   const module = { exports: {} };
-  runInNewContext(code, { module, exports: module.exports, Error, SyntaxError, JSON, Date, ArrayBuffer,
+  runInNewContext(code, { module, exports: module.exports, Error, SyntaxError, JSON, Date, ArrayBuffer, setTimeout, clearTimeout,
     Uint8Array,
     require(name) {
       if (name === '@kit.ArkTS') return { util: { TextDecoder: { create: () => {
         const decoder = new TextDecoder();
         return { decodeToString: (bytes, options) => decoder.decode(bytes, options) };
       } } } };
+      if (name === '@kit.PerformanceAnalysisKit') return { hilog: { error() {} } };
       if (name === './ReadCancellation') return cancellationModule.exports;
       if (!(name in dependencies)) throw new Error(`Missing dependency: ${name}`); return dependencies[name];
     }

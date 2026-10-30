@@ -27,15 +27,20 @@ test('copying a user question preserves original newlines and source-like tokens
 });
 
 test('question date separators use only known original times, at day changes or 30 minute gaps', async () => {
-  const Page = await pageMethods('  private questionTimeLabel(', '  private answerMarkdown(');
+  class FixedDate extends Date { static now() { return Date.parse('2026-10-30T04:00:00Z'); } }
+  const Page = await pageMethods('  private questionTimeLabel(', '  private answerMarkdown(', { Date: FixedDate });
   const page = new Page(); let previous = 0;
   const label = value => page.questionTimeLabel(value, previous, time => { previous = time; });
   assert.equal(label(undefined), ''); assert.equal(label('invalid'), ''); assert.equal(previous, 0);
-  assert.match(label('2026-10-22T12:00:00'), /^2026-10-22 12:00$/);
-  assert.equal(label('2026-10-22T12:29:00'), '');
-  assert.match(label('2026-10-22T12:59:00'), /12:59$/);
-  assert.match(label('2026-10-22T23:59:00'), /23:59$/);
-  assert.match(label('2026-10-23T00:01:00'), /^2026-10-23 00:01$/);
+  assert.match(label('2026-10-22T12:00:00+08:00'), /^10月22日 12:00$/);
+  assert.equal(label('2026-10-22T12:29:00+08:00'), '');
+  assert.match(label('2026-10-22T12:59:00+08:00'), /12:59$/);
+  assert.match(label('2026-10-22T23:59:00+08:00'), /23:59$/);
+  assert.match(label('2026-10-23T00:01:00+08:00'), /^10月23日 00:01$/);
+  previous=0; assert.equal(label('2026-10-29T16:05:00Z'), '今天 00:05');
+  previous=0; assert.equal(label('2026-10-29T15:59:00Z'), '昨天 23:59');
+  previous=0; assert.equal(label('2026-10-28T04:00:00Z'), '星期三 12:00');
+  previous=0; assert.equal(label('2025-10-28T04:00:00Z'), '2025年10月28日 12:00');
 });
 
 test('orphan drafts remain actual reader content even when no canonical messages remain', async () => {

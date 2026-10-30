@@ -312,14 +312,9 @@
         const article = document.createElement('article');
         article.className = `qa-message qa-message-${isUser ? 'user' : 'assistant'}`;
         if (message.timeLabel) {
-          const time = document.createElement('div'); time.className = 'qa-message-time'; time.textContent = message.timeLabel;
+          const time = document.createElement('div'); time.className = 'qa-message-time'; time.textContent = message.timeLabel; time.title = message.timeTitle ? new Date(message.timeTitle).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }) : ''; time.setAttribute('aria-label', time.title || message.timeLabel);
           article.appendChild(time);
         }
-
-        const label = document.createElement('div');
-        label.className = 'qa-message-label';
-        label.textContent = isUser ? '你' : '日志问答';
-        article.appendChild(label);
 
         if (isUser) {
           if (message.editToken) {
@@ -508,9 +503,10 @@
     function installQaPresentation() {
     const renderReceivedMarkdown = window.renderMarkdown;
     const qaPresentation = new QaPresentation();
-    let qaPresentationInput = null, qaPresentationTimer = 0, qaPaintRevision = 0, qaDetached = false;
+    let qaPresentationInput = null, qaPresentationTimer = 0, qaPaintRevision = 0, qaDetached = false, qaReturnFrame = 0;
     const motionAllowed = () => !document.hidden && !matchMedia('(prefers-reduced-motion: reduce)').matches;
     window.cancelQaPresentation = () => {
+      cancelAnimationFrame(qaReturnFrame); qaReturnFrame = 0;
       clearTimeout(qaPresentationTimer); qaPresentationTimer = 0; qaPresentationInput = null;
       qaPresentation.reset(); qaPaintRevision++;
     };
@@ -523,7 +519,7 @@
         { ...message, content: qaPresentation.text, displayPending: qaPresentation.pending } : message);
       await renderReceivedMarkdown(JSON.stringify(messages), input.token, input.theme, 'qa', input.origin);
       if (revision !== qaPaintRevision || input !== qaPresentationInput) return;
-      if (input.follow && !qaDetached) window.scrollTo(0, document.documentElement.scrollHeight);
+      if (input.follow && !qaDetached && !qaReturnFrame) window.scrollTo(0, document.documentElement.scrollHeight);
       if (qaPresentation.pending) qaPresentationTimer = setTimeout(() => {
         paintQaPresentation().catch(() => window.readerFrames?.failed?.(window.readerActionRevision));
       }, 50);
@@ -534,31 +530,45 @@
       const key = `${documentKey}:${answer?.id || ''}`, previousKey = qaPresentation.key;
       const wasLive = qaPresentation.eligible;
       qaPresentation.update(key, answer?.content || '', answer?.status, performance.now(), motionAllowed());
-      if (previousKey !== key) qaDetached = false;
+      if (previousKey !== key) { cancelAnimationFrame(qaReturnFrame); qaReturnFrame = 0; qaDetached = false; }
       qaPresentationInput = { messages, answerId: answer?.id, token, theme, origin, documentKey,
         follow: mayFollow && (qaPresentation.eligible || previousKey === key && wasLive) };
       return paintQaPresentation();
     };
     function detachQaFollow() {
+      cancelAnimationFrame(qaReturnFrame); qaReturnFrame = 0;
       if (!qaPresentationInput || qaDetached) return;
       qaDetached = true;
       window.readerFrames?.qaFollowStopped?.(qaPresentationInput.documentKey);
     }
-    window.resumeQaFollow = function() {
+    window.resumeQaFollow = function(smooth = false) {
+      cancelAnimationFrame(qaReturnFrame); qaReturnFrame = 0;
       qaDetached = false;
       if (qaPresentationInput) {
         qaPresentationInput.follow = true;
         window.readerFrames?.qaFollowResumed?.(qaPresentationInput.documentKey);
       }
-      window.scrollTo(0, document.documentElement.scrollHeight);
+      if (!smooth || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        window.scrollTo(0, document.documentElement.scrollHeight);
+      } else {
+        const from = scrollY, started = performance.now();
+        const tick = now => {
+          const progress = Math.min(1, (now - started) / 360);
+          const target = Math.max(0, document.documentElement.scrollHeight - innerHeight);
+          window.scrollTo({ top: from + (target - from) * (1 - (1 - progress) ** 3), behavior: 'instant' });
+          if (progress < 1) qaReturnFrame = requestAnimationFrame(tick);
+          else { qaReturnFrame = 0; window.scrollTo(0, document.documentElement.scrollHeight); }
+        };
+        qaReturnFrame = requestAnimationFrame(tick);
+      }
       return true;
     };
-    document.addEventListener('wheel', event => { if (event.deltaY < 0) detachQaFollow(); }, { passive: true });
+    document.addEventListener('wheel', event => { if (qaReturnFrame || event.deltaY < 0) detachQaFollow(); }, { passive: true });
     let qaTouchY = 0;
     document.addEventListener('touchstart', event => qaTouchY = event.touches[0]?.clientY || 0, { passive: true });
     document.addEventListener('touchmove', event => {
       const y = event.touches[0]?.clientY || 0;
-      if (y > qaTouchY + 2) detachQaFollow();
+      if (qaReturnFrame || y > qaTouchY + 2) detachQaFollow();
       qaTouchY = y;
     }, { passive: true });
     document.addEventListener('visibilitychange', () => {
@@ -569,7 +579,7 @@
     });
     window.addEventListener('pagehide', window.cancelQaPresentation);
     window.followQaLayout = () => {
-      if (qaPresentationInput?.follow && !qaDetached && reader.classList.contains('qa-conversation')) {
+      if (qaPresentationInput?.follow && !qaDetached && !qaReturnFrame && reader.classList.contains('qa-conversation')) {
         window.scrollTo(0, document.documentElement.scrollHeight);
       }
     };

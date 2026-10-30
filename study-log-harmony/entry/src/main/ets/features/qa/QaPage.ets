@@ -36,6 +36,7 @@ interface QaRenderMessage {
   attemptId?: string;
   groundingWarning?: string;
   timeLabel?: string;
+  timeTitle?: string;
   canEdit?: boolean;
   editSupported?: boolean;
   editBusy?: boolean;
@@ -123,6 +124,7 @@ export struct QaPage {
   private pointerChanged: () => void = () => { this.detectHoverPointer(); };
   @State private scrollToTopRequestRevision: number = 0;
   @State private answerVersionRevision: number = 0;
+  @State private smoothReturnToBottom: boolean = false;
   @State private copiedAnswerId: string = '';
   @State private questionFocused: boolean = false;
   @State private followAnswer: boolean = true;
@@ -319,6 +321,7 @@ export struct QaPage {
   }
 
   private scrollToBottom(): void {
+    this.smoothReturnToBottom = true;
     this.followAnswer = true;
     this.setComposerHidden(false);
     this.answerVersionRevision += 1;
@@ -384,6 +387,7 @@ export struct QaPage {
       id: message.id, copied: this.copiedAnswerId === message.id, citations: message.citations, versions: message.versions, versionIndex: message.versionIndex,
       canRegenerate: message.canRegenerate, saveError: message.saveError, canSave: message.canSave, canRetry: message.canRetry, canDiscard: message.canDiscard,
       role: message.role,
+      timeTitle: message.questionCreatedAt || '',
       timeLabel: message.role === 'user' ? this.questionTimeLabel(message.questionCreatedAt, previousTime,
         (time: number) => previousTime = time) : '',
       canEdit: this.workspaceActive && message.role === 'user' && this.data.canEditQuestion(message.id),
@@ -418,9 +422,17 @@ export struct QaPage {
     const date = new Date(createdAt), time = date.getTime();
     if (!Number.isFinite(time)) return '';
     remember(time);
-    const day = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-    if (previous && time - previous < 30 * 60 * 1000 && new Date(previous).toDateString() === date.toDateString()) return '';
-    return `${day} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+    const display = new Date(time + 8 * 60 * 60 * 1000);
+    const sameDay = previous && Math.floor((previous + 8 * 60 * 60 * 1000) / 86400000) === Math.floor(display.getTime() / 86400000);
+    if (sameDay && time - previous < 30 * 60 * 1000) return '';
+    const clock = `${String(display.getUTCHours()).padStart(2, '0')}:${String(display.getUTCMinutes()).padStart(2, '0')}`;
+    if (sameDay) return clock;
+    const now = new Date(Date.now() + 8 * 60 * 60 * 1000);
+    const days = Math.floor(now.getTime() / 86400000) - Math.floor(display.getTime() / 86400000);
+    const day = days === 0 ? '今天' : days === 1 ? '昨天' : days > 1 && days < 7 ?
+      `星期${'日一二三四五六'.charAt(display.getUTCDay())}` :
+      `${display.getUTCFullYear() === now.getUTCFullYear() ? '' : `${display.getUTCFullYear()}年`}${display.getUTCMonth() + 1}月${display.getUTCDate()}日`;
+    return `${day} ${clock}`;
   }
 
   private answerMarkdown(message: RagChatMessage): string {
@@ -563,6 +575,7 @@ export struct QaPage {
                 trackScrollProgress: true,
                 scrollToTopRequestRevision: this.scrollToTopRequestRevision,
                 scrollToEndRequestRevision: this.answerVersionRevision,
+                smoothScrollToEnd: this.smoothReturnToBottom,
                 themePreference: this.themePreference,
                 onScrollPosition: (yOffset: number, layoutChange: boolean) => this.handleReaderScroll(yOffset, layoutChange),
                 onScrollProgress: (progress: number) => this.handleReaderProgress(progress),

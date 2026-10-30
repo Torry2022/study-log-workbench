@@ -104,7 +104,8 @@
   gap: 0;
 }
 
-.rag-time-separator { padding: 12px 0 0; color: var(--muted-soft); font-size: 12px; text-align: center; }
+.rag-time-separator { padding: 12px 0 0; color: var(--muted); font-size: 13px; line-height: 20px; text-align: center; }
+.rag-time-separator + .rag-message { padding-top: 8px; }
 .rag-user-actions { justify-content: flex-end; }
 .rag-question-editor { width: min(760px, 100%); margin-left: auto; padding: 12px; border-radius: var(--radius-md); background: var(--surface-soft); }
 .rag-question-editor textarea { display: block; width: 100%; min-height: 96px; padding: 10px; resize: vertical; font: inherit; line-height: 1.6; color: var(--ink); background: var(--canvas); border: 1px solid var(--hairline); border-radius: var(--radius-sm); }
@@ -114,13 +115,6 @@
   min-width: 0;
   padding: 24px 0;
   border-bottom: 1px solid var(--hairline-soft);
-}
-
-.rag-message-label {
-  margin-bottom: 10px;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 700;
 }
 
 .rag-message-user p {
@@ -135,11 +129,7 @@
   white-space: pre-wrap;
 }
 
-.rag-message-user .rag-message-label {
-  text-align: right;
-}
-
-.rag-answer .markdown-preview {
+.rag-message-user .rag-answer .markdown-preview {
   overflow: visible;
   padding: 0;
   color: var(--body);

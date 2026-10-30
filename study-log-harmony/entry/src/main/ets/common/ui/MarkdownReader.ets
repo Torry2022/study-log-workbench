@@ -61,6 +61,7 @@ export struct MarkdownReader {
   @Prop followEnd: boolean = false;
   @Prop presentationFollowEnd: boolean = false;
   @Prop @Watch('contentChanged') scrollToEndRequestRevision: number = 0;
+  @Prop smoothScrollToEnd: boolean = false;
   @Prop resetScrollOnContentChange: boolean = false;
   @Prop @Watch('contentChanged') documentKey: string = '';
   @Prop restoreScrollOffset: number = 0;
@@ -311,7 +312,7 @@ export struct MarkdownReader {
       (kind === 'search' ? `window.scrollToText(${query}, true)` :
         (this.targetHeading || this.targetHeadingId ?
           `window.scrollToHeading(${heading}, ${this.targetHeadingIndex}, ${headingId})` : 'window.scrollToTop()')) :
-      (this.contentMode === 'qa' && this.scrollToEndRequestRevision > 0 && this.scrollToEndRequestRevision !== this.handledEndRevision ? 'window.resumeQaFollow()' :
+      (this.contentMode === 'qa' && this.scrollToEndRequestRevision > 0 && this.scrollToEndRequestRevision !== this.handledEndRevision ? `window.resumeQaFollow(${this.smoothScrollToEnd})` :
       this.followEnd || this.scrollToEndRequestRevision > 0 && this.scrollToEndRequestRevision !== this.handledEndRevision ? 'window.scrollTo(0, document.body.scrollHeight)' :
         (documentChanged ? `window.scrollTo(0, ${restoreScrollOffset})` :
           (this.resetScrollOnContentChange && hasNewContent ? 'window.scrollToTop()' : 'true')));

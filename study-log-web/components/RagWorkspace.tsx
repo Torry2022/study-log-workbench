@@ -107,6 +107,7 @@ export function RagWorkspace({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const composerRef = useRef<HTMLFormElement | null>(null);
   const followOutputRef = useRef(false);
+  const bottomReturnFrameRef = useRef(0);
   const workspaceRef = useRef<HTMLDivElement | null>(null);
   const readingAnchorRef = useRef<RagReadingAnchor | null>(null);
   const scrollYRef = useRef(0);
@@ -150,6 +151,7 @@ export function RagWorkspace({
 
   useLayoutEffect(() => {
     if (enabled && lastNavigationToken.current === sessionNavigationToken) return;
+    cancelAnimationFrame(bottomReturnFrameRef.current); bottomReturnFrameRef.current = 0;
     wasPresentingRef.current = presenting;
     wasAnswerStartTokenRef.current = answerStartToken;
     followOutputRef.current = false;
@@ -165,10 +167,32 @@ export function RagWorkspace({
 
   const followLatest = useCallback(() => {
     if (!enabled || !workspaceRef.current?.getClientRects().length) return;
+    if (bottomReturnFrameRef.current) return;
     window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "instant" });
     scrollYRef.current = window.scrollY;
     setAwayFromBottom(false);
   }, [enabled]);
+
+  useEffect(() => () => cancelAnimationFrame(bottomReturnFrameRef.current), []);
+
+  const returnToBottom = () => {
+    cancelAnimationFrame(bottomReturnFrameRef.current);
+    readingAnchorRef.current = null;
+    setComposerHidden(false);
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      bottomReturnFrameRef.current = 0; followOutputRef.current = true; followLatest(); return;
+    }
+    followOutputRef.current = false;
+    const from = window.scrollY, started = performance.now();
+    const tick = (now: number) => {
+      const progress = Math.min(1, (now - started) / 360);
+      const target = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+      window.scrollTo({ top: from + (target - from) * (1 - (1 - progress) ** 3), behavior: "instant" });
+      if (progress < 1) bottomReturnFrameRef.current = requestAnimationFrame(tick);
+      else { bottomReturnFrameRef.current = 0; followOutputRef.current = true; followLatest(); }
+    };
+    bottomReturnFrameRef.current = requestAnimationFrame(tick);
+  };
 
   const updateComposerDock = useCallback(() => {
     if (!enabled) return;
@@ -244,6 +268,7 @@ export function RagWorkspace({
     let touchY = 0;
     const startManualScroll = (target: EventTarget | null, delta: number) => {
       if (!ragDocumentWillScroll(target, delta)) return;
+      cancelAnimationFrame(bottomReturnFrameRef.current); bottomReturnFrameRef.current = 0;
       // Keep the current anchor until an actual scroll replaces it.
       if (delta < 0 || !presenting) followOutputRef.current = false;
     };
@@ -400,9 +425,8 @@ export function RagWorkspace({
           <div className="rag-message-list">
             {messages.map((message, index) => (
               <Fragment key={message.id}>
-              {timeSeparators.has(message.id) && <div className="rag-time-separator" role="separator"><time dateTime={timeSeparators.get(message.id)!.time}>{timeSeparators.get(message.id)!.label}</time></div>}
+              {timeSeparators.has(message.id) && <div className="rag-time-separator" role="separator"><time dateTime={timeSeparators.get(message.id)!.time} title={new Date(timeSeparators.get(message.id)!.time).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false })}>{timeSeparators.get(message.id)!.label}</time></div>}
               <article className={`rag-message rag-message-${message.role}`}>
-                <div className="rag-message-label">{message.role === "user" ? "你" : "日志问答"}</div>
                 {message.role === "assistant" ? (
                   <>
                     {message.content ? (
@@ -531,7 +555,7 @@ export function RagWorkspace({
       <div className={`rag-composer-slot${composerHidden ? " is-hidden" : ""}${composerDocked ? " is-at-end" : ""}`}>
         {awayFromBottom && !initializing && <button className={`rag-scroll-bottom${presenting ? " is-generating" : ""}`} type="button" title="回到底部" aria-label="回到底部"
           onMouseDown={event => event.preventDefault()}
-          onClick={() => { followOutputRef.current = true; readingAnchorRef.current = null; setComposerHidden(false); followLatest(); }}><span className="rag-scroll-busy" aria-hidden="true"><span /><span /><span /></span><ArrowDown className="rag-scroll-arrow" size={18} aria-hidden="true" /></button>}
+          onClick={returnToBottom}><span className="rag-scroll-busy" aria-hidden="true"><span /><span /><span /></span><ArrowDown className="rag-scroll-arrow" size={18} aria-hidden="true" /></button>}
       <form className={`rag-composer${composerHidden ? " is-hidden" : ""}`} onSubmit={submit} ref={composerRef}>
         {availability}
         <textarea

@@ -28,6 +28,7 @@ const RagAnswerBody = memo(function RagAnswerBody({ message, content, enabled, t
 interface RagWorkspaceProps {
   availability?: ReactNode;
   feedback?: ReactNode;
+  historyUnavailable?: boolean;
   noLogs?: boolean;
   onOpenLog?: () => void;
   active: boolean;
@@ -67,6 +68,7 @@ interface RagWorkspaceProps {
 export function RagWorkspace({
   availability,
   feedback,
+  historyUnavailable = false,
   noLogs = false,
   active,
   onOpenLog,
@@ -368,8 +370,8 @@ export function RagWorkspace({
       <div className="reader-controls">{onOpenLog && <button className="button secondary" type="button" onClick={onOpenLog}><FileText size={15} />日志</button>}</div>
     </div></div>}
     <div onPointerDownCapture={releaseFollowing} onKeyDownCapture={releaseFollowing} ref={workspaceRef} className={`rag-workspace${messages.length > 0 ? " has-messages" : ""}`} hidden={!enabled}>
+      <div className="rag-feedback">{feedback}</div>
       <div className="rag-conversation" aria-live="polite">
-        {feedback}
         {questionEdit?.orphaned && <div className="rag-question-editor" role="alert">
           <div className="rag-message-state error">原问题已不在当前会话中，修改稿仍保留。</div>
           <textarea aria-label="保留的修改稿" value={questionEdit.body} maxLength={2000}
@@ -378,7 +380,7 @@ export function RagWorkspace({
         </div>}
         {initializing && messages.length === 0 ? (
           <WorkspaceState kind="loading" title="正在加载历史问答" className="rag-empty" />
-        ) : messages.length === 0 && !questionEdit?.orphaned ? (
+        ) : messages.length === 0 && historyUnavailable ? null : messages.length === 0 && !questionEdit?.orphaned ? (
           <WorkspaceState
             kind="empty"
             icon={MessageSquareText}

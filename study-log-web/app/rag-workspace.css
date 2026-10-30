@@ -32,13 +32,14 @@
 .view-qa { overflow-anchor: none; }
 
 .rag-workspace {
+  --rag-workspace-inset: 32px;
   min-width: 0;
   width: 100%;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(360px, 1fr) auto;
   gap: 20px;
-  padding: 28px 32px 16px;
+  padding: 28px var(--rag-workspace-inset) 16px;
 }
 
 .rag-workspace.has-messages {
@@ -54,6 +55,27 @@
   contain: size;
   overflow-y: auto;
 }
+
+.rag-feedback:empty { display: none; }
+.rag-workspace:has(> .rag-feedback:not(:empty)) {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  padding-top: 0;
+}
+.rag-feedback {
+  width: calc(100% + var(--rag-workspace-inset) * 2);
+  margin-left: calc(var(--rag-workspace-inset) * -1);
+}
+.rag-feedback > .rag-navigation-error {
+  width: 100%;
+  max-width: none;
+  min-height: 0;
+  margin: 0;
+  padding: 4px var(--rag-workspace-inset);
+  border-width: 0 0 1px;
+  border-radius: 0;
+}
+.rag-navigation-error > span { flex: 1; overflow-wrap: anywhere; }
+.rag-navigation-error > svg { flex-shrink: 0; }
 
 .rag-conversation,
 .rag-composer-slot {
@@ -592,6 +614,7 @@
 
   .rag-workspace {
     min-height: 100%;
+    --rag-workspace-inset: 16px;
     gap: 12px;
     padding: 0 16px 10px;
   }
@@ -695,6 +718,7 @@
   box-shadow: none;
   pointer-events: auto;
 }
+.rag-composer-slot.is-hidden > .rag-scroll-bottom { bottom: 8px; }
 .rag-scroll-bottom::before {
   content: "";
   position: absolute;

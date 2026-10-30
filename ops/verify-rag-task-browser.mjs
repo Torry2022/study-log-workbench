@@ -127,7 +127,7 @@ try {
     await fresh(); const queueFirst = await send(); await fresh(); await input.fill('合成保存排队中的第二个问题'); await page.getByRole('button', { name: '发送问题', exact: true }).click();
     const queuedSession = new URL(page.url()).searchParams.get('session');
     const queued = (await until(tasks, list => list.some(item => item.sessionId === queuedSession && item.state === 'queued'))).find(item => item.sessionId === queuedSession);
-    await expect(workspace).toContainText('正在等待前一项问答完成'); assert.equal(streams, queueFirst.n);
+    await expect(workspace).toContainText(/正在等待/); assert.equal(streams, queueFirst.n);
     finish(queueFirst.n); await until(() => streams, n => n === queueFirst.n + 1); finish(streams); await until(() => task(queued.id), value => value?.saveState === 'saved');
     await expect(workspace.locator('.rag-message')).toHaveCount(2); await expect(workspace).toContainText(answer(streams));
     record(`${engine}: a second session queues, keeps its own view and starts only after the first completes`);

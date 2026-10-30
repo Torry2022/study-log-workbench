@@ -345,7 +345,7 @@ export struct QaPage {
       .width(44).height(44).padding(0).borderRadius(22)
       .backgroundColor(Color.Transparent).stateEffect(false)
       .id('qa_scroll_to_bottom').accessibilityText('回到底部').bindTips('回到底部', WORKSPACE_TIPS)
-      .position({ left: '50%', bottom: this.composerHeight + 8 }).translate({ x: -22 })
+      .position({ left: '50%', bottom: (this.composerHidden ? 0 : this.composerHeight) + 8 }).translate({ x: -22 })
       .onHover((hovered: boolean) => this.bottomControlHovered = hovered)
       .onFocus(() => this.bottomControlFocused = true)
       .onBlur(() => this.bottomControlFocused = false)

@@ -80,6 +80,24 @@ try{
  const page=await context.newPage();currentPage=page;
  const requests=[],eventUrls=[],errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>{if(r.url().includes('/api/rag/'))requests.push({method:r.method(),url:r.url(),body:r.postData()});if(r.url().includes('/task-events?'))eventUrls.push(r.url());});
  assert.equal((await context.request.post(`${base}/api/auth/login`,{data:{password:'synthetic-ui-password'}})).status(),200);
+ for(const width of [1440,390]){
+  const failureContext=await browser.newContext({viewport:{width,height:900},isMobile:width===390,hasTouch:width===390});
+  await failureContext.request.post(`${base}/api/auth/login`,{data:{password:'synthetic-ui-password'}});
+  const failurePage=await failureContext.newPage();const missing=crypto.randomUUID();
+  await failurePage.goto(`${base}?view=qa&session=${missing}`);
+  const strip=failurePage.locator('.rag-navigation-error').first();await expect(strip).toContainText('问答会话不存在');
+  await failurePage.evaluate(()=>document.fonts.ready);
+  const bar=await strip.boundingBox(),heading=await failurePage.locator('.reader-toolbar-qa').boundingBox(),reader=await failurePage.locator('.reader').boundingBox();
+  assert.ok(Math.abs(bar.y-heading.y-heading.height)<2,'error strip meets the header border');
+  assert.ok(Math.abs(bar.x-reader.x)<2&&Math.abs(bar.width-reader.width)<2,'error strip spans the reader width');
+  assert.ok(bar.height<=40,'short errors use a compact strip');
+  assert.equal(await failurePage.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+  await expect(failurePage.locator('.rag-empty')).toHaveCount(0);
+  await failurePage.screenshot({path:path.join(output,`${engine}-${width}-history-error.png`)});
+  await failurePage.screenshot({path:path.join(output,`${engine}-${width}-history-error-strip.png`),clip:{x:reader.x,y:heading.y,width:Math.min(reader.width,width-reader.x),height:heading.height+bar.height+12}});
+  await strip.getByRole('button',{name:'关闭',exact:true}).click();await expect(strip).toHaveCount(0);await expect(failurePage.locator('.rag-empty')).toBeVisible();
+  await failureContext.close();
+ }
  await page.goto(base+'?view=qa');const input=page.getByRole('textbox',{name:'输入知识库问题'});await expect(input).toBeEnabled();
  const tasks=async()=>(await(await context.request.get(`${base}/api/rag/tasks`)).json()).tasks;
  const task=async id=>(await(await context.request.get(`${base}/api/rag/tasks/${id}`)).json()).task;
@@ -99,12 +117,46 @@ try{
   const draft=view.getByRole('textbox',{name:'输入知识库问题'});const editable=await draft.isEnabled();if(editable)await draft.focus();await bottom.click();await expect(bottom).toHaveCount(0);if(editable)assert.equal(await draft.evaluate(n=>document.activeElement===n),true,'jump preserves the current input focus');
   const marker=`恢复跟随${width}`;first.send({content:'\n\n'+marker+'新的正文。'.repeat(100)});await expect(view.locator('.rag-answer').last()).toContainText(marker);await view.waitForTimeout(300);assert.ok(await view.evaluate(()=>document.documentElement.scrollHeight-innerHeight-scrollY)<4,'explicit jump resumes live follow');view.removeAllListeners('pageerror');await ctx.close();
  }
- first.finish();await until(()=>task(anchor.id),t=>t.saveState==='saved');await page.reload();await expect(page.locator('.rag-answer')).toContainText('第55段');await page.mouse.move(700,400);await page.mouse.wheel(0,-500);await expect(page.getByRole('button',{name:'回到底部',exact:true})).toBeVisible();await expect(page.locator('.rag-scroll-busy')).not.toBeVisible();await page.getByRole('button',{name:'回到底部',exact:true}).click();
+ first.finish();await until(()=>task(anchor.id),t=>t.saveState==='saved');
+ await page.addInitScript(()=>{
+  window.qaHydrationProbe={saving:false,firstQuestionHasTime:null};
+  new MutationObserver(()=>{
+   if(document.querySelector('.rag-save-state')?.textContent.includes('保存中')||document.querySelector('.rag-session-status.saving')) window.qaHydrationProbe.saving=true;
+   const question=document.querySelector('.rag-message-user');
+   if(question&&window.qaHydrationProbe.firstQuestionHasTime===null) window.qaHydrationProbe.firstQuestionHasTime=Boolean(question.previousElementSibling?.querySelector('time'));
+  }).observe(document,{childList:true,subtree:true,characterData:true});
+ });
+ const timeList=`**/api/rag/tasks?sessionId=${anchor.sessionId}`;
+ await page.route(timeList,async route=>{await delay(700);await route.continue();});
+ await page.reload();await expect(page.locator('.rag-answer')).toContainText('第55段');await page.waitForTimeout(1200);
+ const hydration=await page.evaluate(()=>window.qaHydrationProbe);
+ assert.equal(hydration.saving,false,'reading saved history never advertises a write');
+ assert.equal(hydration.firstQuestionHasTime,true,'time divider and history appear in the same render, even with delayed task metadata');
+ await page.unroute(timeList); await page.screenshot({path:path.join(output,`${engine}-history-loaded.png`)});
+ await page.evaluate(()=>scrollTo(0,document.documentElement.scrollHeight));await page.waitForTimeout(150);
+ await page.mouse.move(700,400);await page.mouse.wheel(0,-500);
+ await expect(page.locator('.rag-composer-slot')).toHaveClass(/is-hidden/);
+ const hiddenBottom=page.getByRole('button',{name:'回到底部',exact:true});await expect(hiddenBottom).toBeVisible();
+ const hiddenBounds=await hiddenBottom.boundingBox();assert.ok(hiddenBounds.y+hiddenBounds.height>820&&hiddenBounds.y+hiddenBounds.height<900,'hidden composer leaves the bottom control near the viewport edge');
+ await page.waitForTimeout(180); await page.screenshot({path:path.join(output,`${engine}-composer-hidden.png`)});
+ await expect(page.locator('.rag-scroll-busy')).not.toBeVisible();await hiddenBottom.click();
+ await expect(page.locator('.rag-composer-slot')).not.toHaveClass(/is-hidden/);
+ assert.ok(await page.evaluate(()=>document.documentElement.scrollHeight-innerHeight-scrollY)<4);
+
  await input.fill('从阅读位置发起新问题');await page.evaluate(()=>scrollBy(0,-650));await expect(page.getByRole('button',{name:'回到底部',exact:true})).toBeVisible();
  const beforeNext=pending.length;await page.getByRole('button',{name:'发送问题',exact:true}).click();await until(()=>pending.length,n=>n===beforeNext+1);await page.waitForTimeout(350);
  assert.ok(await page.evaluate(()=>document.documentElement.scrollHeight-innerHeight-scrollY)<4,'sending a new question from history restores bottom follow');
  await until(async()=>{for(const stream of pending)stream.finish();return tasks();},rows=>rows.every(t=>t.saveState==='saved'));
+ const beforeRegenerate=pending.length;
+ await page.getByRole('button',{name:'重新生成',exact:true}).last().click();await until(()=>pending.length,n=>n===beforeRegenerate+1);
+ const interrupted=(await tasks()).find(t=>t.sessionId===anchor.sessionId&&t.state==='running');assert.ok(interrupted);
+ assert.equal((await context.request.post(`${base}/api/rag/tasks/${interrupted.id}/cancel`)).status(),200);pending.at(-1).finish();
+ await until(()=>task(interrupted.id),t=>t.state==='cancelled');
+ await page.route(timeList,async route=>{await delay(700);await route.continue();});
+ await page.reload();await expect(page.locator('.rag-answer').first()).toContainText('第55段');await page.waitForTimeout(1200);
+ assert.equal((await page.evaluate(()=>window.qaHydrationProbe)).firstQuestionHasTime,true,'a retained stopped version cannot paint history ahead of its time metadata');
+ await page.unroute(timeList);
  await page.getByRole('button',{name:'新建问答',exact:true}).filter({visible:true}).first().click();await expect(page.locator('.rag-message')).toHaveCount(0);await expect(page.getByRole('button',{name:'回到底部',exact:true})).toHaveCount(0);assert.deepEqual(errors,[]);
- await fs.writeFile(path.join(output,'result.json'),JSON.stringify({passed:true,engine,appRoot,modelCalls,checks:['bottom and empty hide','centered above entire composer','pointer-aware loading hover and keyboard','touch retains arrow','click preserves input focus and resumes streaming follow','completed answer and navigation'],screenshots},null,2));console.log(JSON.stringify({passed:true,engine,modelCalls}));
+ await fs.writeFile(path.join(output,'result.json'),JSON.stringify({passed:true,engine,appRoot,modelCalls,checks:['full-width compact history error strip','failed history is distinct from a new empty conversation','bottom and empty hide','centered above entire composer','pointer-aware loading hover and keyboard','touch retains arrow','click preserves input focus and resumes streaming follow','completed answer and navigation','saved history has no write indicator','time metadata hydrates atomically','stopped-version history hydrates atomically','hidden composer moves bottom control to viewport edge'],screenshots},null,2));console.log(JSON.stringify({passed:true,engine,modelCalls}));
 }catch(error){console.error(appOutput);if(currentPage)await currentPage.screenshot({path:path.join(output,'failure.png')}).catch(()=>{});throw error;}
 finally{for(const p of pending)p.finish();await browser?.close();if(app&&app.exitCode===null){app.kill();await once(app,'exit')}service.closeAllConnections();await new Promise(resolve=>service.close(resolve));}

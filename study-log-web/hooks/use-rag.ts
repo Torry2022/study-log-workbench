@@ -18,6 +18,7 @@ interface Options {
 interface Snapshot { id: string; mutationId: string; baseVersion: string | null; answerMode: RagAnswerMode; messages: RagChatMessage[] }
 interface QuestionEdit { body: string; baseVersion: string; error: string; submissionId?: string }
 interface SessionState {
+  questionTimes: Record<string, string>;
   id: string; session: RagSession | null; messages: RagChatMessage[]; question: string; answerMode: RagAnswerMode;
   unsaved: boolean; generating: boolean; saving: boolean; stage: string; error: string; saveError: string;
   pendingSave: Snapshot | null; selectionSave: Snapshot | null; request: AbortController | null; unread: boolean; createdAt: string;
@@ -25,7 +26,7 @@ interface SessionState {
   editingId: string; edits: Map<string, QuestionEdit>;
 }
 function sessionState(id: string, session: RagSession | null = null): SessionState {
-  return { id, session, messages: session?.messages || [], question: "", answerMode: session?.answerMode || "logs_only",
+  return { questionTimes: {}, id, session, messages: session?.messages || [], question: "", answerMode: session?.answerMode || "logs_only",
     unsaved: false, generating: false, saving: false, stage: "", error: "", saveError: "", pendingSave: null, selectionSave: null,
     request: null, unread: false, createdAt: session?.createdAt || new Date().toISOString(), task: null, pendingTask: null, awaitingSession: false, viewRevision: 0,
     editingId: "", edits: new Map() };
@@ -88,7 +89,8 @@ export function useRag(options: Options) {
     if (!Array.isArray(result.sessions)) throw new Error("历史列表响应不完整，请重试");
     if (!signal?.aborted && live.current.active && search === currentQuery.current) setSessions(result.sessions);
   }, []);
-  const refreshConfiguration = useCallback(async () => {
+  const configurationRead = useRef<Promise<boolean | undefined> | null>(null);
+  const readConfiguration = useCallback(async () => {
     if (!live.current.active) return;
     const epoch = activationEpoch.current;
     try {
@@ -101,8 +103,13 @@ export function useRag(options: Options) {
       const issues = result.features?.rag?.issues?.map(issue => issue.message).filter(Boolean).join("；");
       const taskReady = !tasks?.supported || tasks.configured && tasks.protocolVersion === 1;
       setConfigured(enabled && taskReady); setConfigurationError(!taskReady ? "问答任务执行器尚未就绪，请稍后重试检查。" : enabled ? "" : issues || "问答尚未配置，请配置模型和日志检索服务；已有历史仍可查看。");
+      return Boolean(tasks?.supported && tasks.configured && tasks.protocolVersion === 1);
     } catch (failure) { if (live.current.active && epoch === activationEpoch.current) { setConfigured(false); setConfigurationError(failure instanceof Error ? failure.message : "读取配置失败"); } }
   }, []);
+  const refreshConfiguration = useCallback(() => {
+    const request = readConfiguration(); configurationRead.current = request;
+    return request;
+  }, [readConfiguration]);
   useEffect(() => {
     if (!options.active || !options.visible) return;
     const controller = new AbortController(); setLoading(true); setHistoryError("");
@@ -177,12 +184,12 @@ export function useRag(options: Options) {
           if (!ragTaskActive(task) && task.state !== "succeeded" && submittedTasks.current.delete(task.submissionId)) rememberTitleOwners();
           owner.answerMode = task.mode; owner.createdAt = task.createdAt; owner.error = "";
           owner.stage = task.state === "queued" ? "正在等待执行…" : task.stage;
-          owner.saving = task.state === "succeeded" && (task.saveState === "pending" || task.saveState === "saved" && previous?.saveState !== "saved");
+          owner.saving = task.state === "succeeded" && task.saveState === "pending";
           owner.saveError = task.state === "succeeded" && ["conflict", "error"].includes(task.saveState) ? task.saveError || "回答已保留，尚未写入会话" : "";
           // Show the complete result while fetching the authoritative session, never append a snapshot delta.
           if (task.saveState !== "saved" || !previous || previous.saveState !== "saved" || previous.id !== task.id) owner.messages = ragTaskMessages({ ...task, saveState: task.saveState === "saved" ? "pending" : task.saveState }, owner.session, task.id !== latest?.id);
-          if (live.current.routeSessionId === task.sessionId && selectedId.current !== task.sessionId) {
-            loadRequest.current?.abort(); loadedRoute.current = task.sessionId; install(owner); setInitializing(false); setNavigationError("");
+          if (live.current.routeSessionId === task.sessionId && selectedId.current !== task.sessionId && task.saveState !== "saved" && !loadRequest.current) {
+            loadedRoute.current = task.sessionId; install(owner); setInitializing(false); setNavigationError("");
           }
           if (!ragTaskActive(task)) owner.unread = selectedId.current !== owner.id || !live.current.visible;
           notify();
@@ -253,6 +260,25 @@ export function useRag(options: Options) {
     };
   }, [options.active, taskCapability?.instanceId, taskCapability?.supported, taskCapability?.ready, install, notify, refreshList]);
   useEffect(() => { taskClient.current?.viewSession(options.active && options.visible ? state.id : ""); }, [options.active, options.visible, state.id]);
+  const readSession = useCallback(async (id: string, signal?: AbortSignal) => {
+    // Fetch lightweight timestamps alongside the record, before its first paint.
+    const times = (async () => {
+      if (!await configurationRead.current || signal?.aborted) return {} as Record<string, string>;
+      const result = await requestJson<{ tasks: Array<{ id: string; createdAt: string; applicable?: boolean }> }>(`/api/rag/tasks?sessionId=${encodeURIComponent(id)}`, { signal });
+      if (!Array.isArray(result.tasks)) throw new Error("回答版本列表响应不完整");
+      return Object.fromEntries(result.tasks.filter(task => task.applicable !== false && Number.isFinite(Date.parse(task.createdAt)))
+        .map(task => [`${task.id}:user`, task.createdAt]));
+    })()
+      .catch(failure => {
+        if (!signal?.aborted && live.current.active && live.current.routeSessionId === id && !(failure instanceof ApiRequestError && failure.status === 404)) setTaskConnectionError(failure.message);
+        return {} as Record<string, string>;
+      });
+    const [result, questionTimes] = await Promise.all([
+      requestJson<{ session: RagSession }>(`/api/rag/sessions/${encodeURIComponent(id)}`, { signal }), times
+    ]);
+    if (!validSession(result.session) || result.session.id !== id) throw new Error("会话响应不完整，请重试");
+    return { session: result.session, questionTimes };
+  }, []);
   useEffect(() => {
     if (!options.active || !options.visible) return;
     setNavigationError("");
@@ -260,14 +286,23 @@ export function useRag(options: Options) {
     loadRequest.current?.abort(); const controller = new AbortController(); loadRequest.current = controller;
     const target = options.routeSessionId;
     const cached = states.current.get(target);
-    if (cached) { loadedRoute.current = target; install(cached); setInitializing(false); return; }
+    if (cached) { loadRequest.current = null; loadedRoute.current = target; install(cached); setInitializing(false); return; }
     setInitializing(true);
-    void requestJson<{ session: RagSession }>(`/api/rag/sessions/${encodeURIComponent(target)}`, { signal: controller.signal }).then(result => {
+    void readSession(target, controller.signal).then(result => {
       if (!validSession(result.session) || result.session.id !== target) throw new Error("会话响应不完整，请重试");
-      if (!controller.signal.aborted) { loadedRoute.current = target; install(sessionState(target, result.session)); }
-    }).catch(failure => { if (!controller.signal.aborted) setNavigationError(failure.message); }).finally(() => { if (!controller.signal.aborted) setInitializing(false); });
+      if (!controller.signal.aborted) { loadedRoute.current = target; install({ ...sessionState(target, result.session), questionTimes: result.questionTimes }); }
+    }).catch(failure => {
+      if (controller.signal.aborted) return;
+      const retained = states.current.get(target);
+      if (failure instanceof ApiRequestError && failure.status === 404 && retained?.task && retained.task.saveState !== "saved") {
+        loadedRoute.current = target; install(retained); setNavigationError("");
+      } else setNavigationError(failure.message);
+    }).finally(() => {
+      if (loadRequest.current === controller) loadRequest.current = null;
+      if (!controller.signal.aborted) setInitializing(false);
+    });
     return () => controller.abort();
-  }, [options.active, options.visible, options.routeSessionId, options.routeToken, install]);
+  }, [options.active, options.visible, options.routeSessionId, options.routeToken, install, readSession]);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -624,11 +659,14 @@ export function useRag(options: Options) {
     try {
       const result = await requestJson<{ session: RagSession }>(`/api/rag/sessions/${id}`, { signal: controller.signal });
       if (!validSession(result.session) || result.session.id !== id) throw new Error("会话响应不完整，请重试");
-      if (!controller.signal.aborted && live.current.active && selectedId.current === owner.id) { answerViews.current.delete(id); install(sessionState(id, result.session)); loadedRoute.current = id; live.current.onRoute(id); pendingMutations.current.delete(id); await refreshList(); }
+      if (!controller.signal.aborted && live.current.active && selectedId.current === owner.id) { answerViews.current.delete(id); install({ ...sessionState(id, result.session), questionTimes: owner.questionTimes }); loadedRoute.current = id; live.current.onRoute(id); pendingMutations.current.delete(id); await refreshList(); }
     } catch (failure) { if (!controller.signal.aborted && selectedId.current === owner.id) {
       setNavigationError(failure instanceof Error ? failure.message : "读取历史失败");
     } }
-    finally { if (!controller.signal.aborted) setInitializing(false); }
+    finally {
+      if (loadRequest.current === controller) loadRequest.current = null;
+      if (!controller.signal.aborted) setInitializing(false);
+    }
   }
   const sessionActivity: Record<string, "generating" | "saving" | "unsaved" | "unread"> = {};
   const localSessions: RagSessionSummary[] = [];
@@ -662,7 +700,7 @@ export function useRag(options: Options) {
     questionEdit: questionEdit ? { id: state.editingId, ...questionEdit,
       orphaned: editOrphaned } : null,
     beginQuestionEdit, changeQuestionEdit, cancelQuestionEdit, sendQuestionEdit, reloadQuestionEdit,
-    messageTimes: originalRagMessageTimes([...taskSnapshots.current.values()].filter(task => task.sessionId === state.id)),
+    messageTimes: new Map([...Object.entries(state.questionTimes), ...originalRagMessageTimes([...taskSnapshots.current.values()].filter(task => task.sessionId === state.id))]),
     initializing, generating, saving, stage, error: navigationError || error || editRecoveryError, saveError, serverTask: Boolean(state.task), savingSelection: Boolean(state.selectionSave), submissionBlocked: initializing || !taskClientReady || state.awaitingSession || historicalTask || otherActive, canRetrySave: Boolean(state.pendingSave) || state.task?.saveState !== "conflict", configured, configurationError, focusToken, navigationToken, answerStartToken, dirty,
     viewingPreviousAnswer: Boolean(selectedParent && selectedParent.id !== state.session?.messages.at(-1)?.id), selectAnswerVersion, saveAnswer, discardAnswer,
     beforeLeave, confirmExit, refreshConfiguration, refreshList, reloadSession, submit: () => submit(), regenerate: (answerId?: string) => { if (answerId) { const answer = answerProjection(states.current.get(selectedId.current)!).messages.find(message => message.id === answerId); if (!answer?.canRegenerate && !answer?.canRetry) return; } return submit(true); }, stop: () => {

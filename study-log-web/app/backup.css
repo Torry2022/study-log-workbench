@@ -82,7 +82,7 @@
 .backup-dialog-header h2 {
   margin: 0;
   color: var(--ink);
-  font-family: Cormorant Garamond, Georgia, "Times New Roman", serif;
+  font-family: var(--font-display);
   font-size: 30px;
   font-weight: 500;
   line-height: 1.05;

@@ -47,7 +47,7 @@ const markdownEditorTheme = EditorView.theme(
     },
     ".cm-scroller": {
       minHeight: "420px",
-      fontFamily: '"JetBrains Mono", Consolas, monospace',
+      fontFamily: "var(--font-code)",
       fontSize: "14px",
       lineHeight: "1.65"
     },

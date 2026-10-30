@@ -100,7 +100,7 @@
 .taxonomy-manager-header h2 {
   margin: 0;
   color: var(--ink);
-  font-family: Cormorant Garamond, Georgia, "Times New Roman", serif;
+  font-family: var(--font-display);
   font-size: 36px;
   font-weight: 500;
   line-height: 1;
@@ -193,7 +193,7 @@
   grid-row: 1 / span 2;
   grid-column: 2;
   color: var(--ink);
-  font-family: Cormorant Garamond, Georgia, "Times New Roman", serif;
+  font-family: var(--font-display);
   font-size: 34px;
   font-weight: 500;
   line-height: 1;
@@ -366,7 +366,7 @@
 
 .stats-donut-center strong {
   color: var(--ink);
-  font-family: Cormorant Garamond, Georgia, "Times New Roman", serif;
+  font-family: var(--font-display);
   font-size: 38px;
   font-weight: 500;
   line-height: 1;
@@ -423,7 +423,7 @@
 
 .stats-topic-ranking > button:hover,
 .stats-topic-ranking > button.active { background: var(--surface-card); }
-.stats-rank-number { color: var(--muted-soft); font-family: "JetBrains Mono", Consolas, monospace; font-size: 10px; }
+.stats-rank-number { color: var(--muted-soft); font-family: var(--font-code); font-size: 10px; }
 .stats-rank-main { min-width: 0; display: grid; }
 .stats-rank-main strong { overflow: hidden; color: var(--body-strong); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
 .stats-rank-main small { margin: 1px 0 5px; color: var(--muted); font-size: 10px; }
@@ -577,7 +577,7 @@
   .stats-review-actions .stats-month-select { flex: 1 1 100%; }
   .stats-review-actions .button { width: auto; flex: 1 1 calc(50% - 3px); }
   .stats-metric-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .stats-metric-strip strong { font-family: "Study Log Latin Serif", Georgia, serif; font-size: 30px; }
+  .stats-metric-strip strong { font-family: var(--font-display); font-size: 30px; }
   .stats-calendar-scroll { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; }
   .stats-calendar-weekdays,
   .stats-calendar-grid { min-width: 332px; grid-template-columns: repeat(7, minmax(44px, 1fr)); gap: 4px; }

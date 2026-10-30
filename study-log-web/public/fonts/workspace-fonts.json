@@ -1,0 +1,51 @@
+{
+  "source": "https://github.com/google/fonts/tree/main/ofl",
+  "date": "2026-10-30",
+  "license": "SIL OFL 1.1",
+  "commonSubset": "Existing NotoSerifSC-Medium cmap plus U+0020-024F; complementary unicode-range loads full fonts only for additional characters",
+  "files": {
+    "Inter.woff2": {
+      "bytes": 350404,
+      "sha256": "4c306fd369c96f49c6242d9e499d0c0fd91f193383fbdcb64ad1f39559de863b"
+    },
+    "NotoSansSC.woff2": {
+      "bytes": 7782108,
+      "sha256": "b6ffb7cbb3d80941c2b22afa240f57400d41aea1d1127ac8bfd058a92f018338"
+    },
+    "NotoSansSC-Common.woff2": {
+      "bytes": 1961000,
+      "sha256": "552030f8b90b79aba00cde00732d122e0131ab51290cf82eaec6d20e91937359"
+    },
+    "NotoSerifSC.woff2": {
+      "bytes": 11032608,
+      "sha256": "f991189eb0feea6b37a1898187eb5e04feec069419d5ab585fda7cc3eab98fe6"
+    },
+    "NotoSerifSC-Common.woff2": {
+      "bytes": 2632840,
+      "sha256": "b6ff4639a694fa013ab215132f1e99508e6b345300a094c0f086103ed002516b"
+    },
+    "Gelasio.ttf": {
+      "bytes": 168556,
+      "sha256": "4daecea457258c9ebeb8bc99ed3fd24353618bfad3ea4b93fa0b5d0468fc04e4"
+    },
+    "JetBrainsMono.ttf": {
+      "bytes": 300144,
+      "sha256": "3cfafa86e28b87184d592fef82846e8c10cb48653c62efcda34f082da225ec34"
+    }
+  },
+  "conversionTool": "fontTools 4.56.0",
+  "upstreamInputs": {
+    "Inter": {
+      "sha256": "29160a80ff49ddcab2c97711247e08b1fab27a484a329ce8b813d820dc559031",
+      "url": "https://github.com/google/fonts/tree/main/ofl/inter"
+    },
+    "NotoSansSC": {
+      "sha256": "a3041811a78c361b1de50f953c805e0244951c21c5bd412f7232ef0d899af0da",
+      "url": "https://github.com/google/fonts/tree/main/ofl/notosanssc"
+    },
+    "NotoSerifSC": {
+      "sha256": "050080d9255a86808f2945bffac582b31ef32bc36411ce29563b4961670c66f9",
+      "url": "https://github.com/google/fonts/tree/main/ofl/notoserifsc"
+    }
+  }
+}

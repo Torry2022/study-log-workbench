@@ -16,7 +16,7 @@
   background: var(--canvas);
   color: var(--muted);
   transform: translateY(-50%);
-  font-family: "JetBrains Mono", Consolas, monospace;
+  font-family: var(--font-code);
   font-size: 11px;
   font-weight: 700;
   line-height: 1;
@@ -737,7 +737,7 @@
   justify-content: space-between;
   gap: 12px;
   color: var(--ink);
-  font-family: Cormorant Garamond, Georgia, "Times New Roman", serif;
+  font-family: var(--font-display);
   font-size: 28px;
   font-weight: 500;
   line-height: 1.06;
@@ -745,7 +745,7 @@
 
 .favorites-month-heading small {
   color: var(--muted);
-  font-family: "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  font-family: var(--font-ui);
   font-size: 12px;
   font-weight: 700;
 }
@@ -887,7 +887,7 @@
 .favorite-group-dialog-header h3 {
   margin: 0 0 4px;
   color: var(--ink);
-  font-family: Cormorant Garamond, Georgia, "Times New Roman", serif;
+  font-family: var(--font-display);
   font-size: 30px;
   font-weight: 500;
 }
@@ -1224,7 +1224,7 @@
   }
 
   .favorites-month-heading > span {
-    font-family: "Study Log Latin Serif", Georgia, serif;
+    font-family: var(--font-display);
     font-size: 24px;
     font-weight: 500;
   }

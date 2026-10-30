@@ -3,7 +3,7 @@
   display: grid;
   grid-template-columns: minmax(0, 11fr) minmax(380px, 9fr);
   background: var(--surface-soft);
-  font-family: "HarmonyOS Sans SC", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-ui);
 }
 
 .login-identity {
@@ -141,7 +141,7 @@
 .login-statement h1 {
   margin: 0;
   color: var(--ink);
-  font-family: Cormorant Garamond, Georgia, "Times New Roman", serif;
+  font-family: var(--font-display);
   font-size: 76px;
   font-weight: 500;
   line-height: 1;
@@ -237,7 +237,7 @@
 
 .login-access-heading h2 {
   margin: 0;
-  font-family: Cormorant Garamond, Georgia, "Times New Roman", serif;
+  font-family: var(--font-display);
   font-size: 48px;
   font-weight: 500;
   line-height: 1.05;
@@ -343,7 +343,7 @@
 
   .login-statement h1,
   .login-access-heading h2 {
-    font-family: "Study Log Serif", Georgia, serif;
+    font-family: var(--font-display);
     font-weight: 400;
     letter-spacing: 0;
   }

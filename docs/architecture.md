@@ -258,7 +258,7 @@ Web 与桌面 HTML 窗口的主题变量、标准按钮以 `study-log-web/public
 
 界面及当前使用说明遵循[产品用词](product-wording.md)：保存位置、学习记录、学习材料和完整备份分别表达路径、内容、输入材料和归档；日常提示不使用“实例”“日块”及锁机制术语；错误文本不展示接口字段约束，字段和校验规则保留；不改变实例目录、锁保护机制或接口协议。
 
-`study-log-web/app` 使用 Next.js App Router 提供 `/study-log` 入口。根布局在首次绘制前初始化主题；基础CSS注册三个本地字体族，原始字体与许可证作为静态资源提供。
+`study-log-web/app` 使用 Next.js App Router 提供 `/study-log` 入口。根布局在首次绘制前初始化主题；app/fonts.css统一界面、标题/日期与代码字体角色，沿用Paper Mono代码块；字体及OFL许可证随静态资源提供。常用中文与补充字形按unicode-range加载，宽窄屏使用相同字体来源。
 
 认证API使用实例密码校验和HMAC签名；Cookie与App Token按受众区分。能力接口读取实例身份、聊天配置及模板状态，不产生资料写入。日志读写、整理、AI 写作与日志问答已接入；各自的验收边界见[实施状态](implementation-status.md)。
 

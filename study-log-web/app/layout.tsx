@@ -3,6 +3,7 @@ import Script from "next/script";
 import { logReloadInitializer } from "@/lib/log-reload-restore";
 import "../public/ui/theme.css";
 import "../public/ui/controls.css";
+import "./fonts.css";
 import "./globals.css";
 import "./log-reload.css";
 import "../public/scrollbars/overlay-scrollbars.css";

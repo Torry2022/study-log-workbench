@@ -134,7 +134,7 @@
 .rag-answer .markdown-preview h2,
 .rag-answer .markdown-preview h3 {
   color: var(--ink);
-  font-family: Cormorant Garamond, Georgia, "Times New Roman", serif;
+  font-family: var(--font-display);
   font-weight: 500;
   line-height: 1.2;
 }
@@ -319,7 +319,7 @@
 
 .rag-citation span {
   color: var(--primary);
-  font-family: "JetBrains Mono", Consolas, monospace;
+  font-family: var(--font-code);
   font-size: 12px;
   font-weight: 700;
 }

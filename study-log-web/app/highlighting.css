@@ -78,7 +78,7 @@
 .highlight-review-overlay .diff-header h3 {
   margin: 3px 0 4px;
   color: var(--ink);
-  font-family: Cormorant Garamond, Georgia, "Times New Roman", serif;
+  font-family: var(--font-display);
   font-size: 30px;
   font-weight: 500;
   line-height: 1.05;
@@ -137,7 +137,7 @@
   scrollbar-gutter: stable;
   padding: 8px 0;
   color: var(--body);
-  font-family: "JetBrains Mono", Consolas, monospace;
+  font-family: var(--font-code);
   font-size: 12px;
   line-height: 1.7;
   white-space: pre;

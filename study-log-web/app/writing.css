@@ -60,7 +60,7 @@
 .writing-panel .ai-output {
   min-height: 0;
   padding: 12px;
-  font-family: "JetBrains Mono", Consolas, monospace;
+  font-family: var(--font-code);
   font-size: 13px;
   line-height: 1.65;
 }

@@ -82,7 +82,8 @@ try {
   await stopping;
   assert.match(stream, /event: done/); assert.doesNotMatch(stream, /event: error/);
   const done = JSON.parse(stream.split("\n\n").find(frame => frame.startsWith("event: done\n")).split("\ndata: ")[1]);
-  assert.equal(done.diagnostics.retrievalMode, "lexical_fallback"); assert.ok(done.citations.length);
+  assert.equal(done.diagnostics.retrievalMode, "bounded_evidence"); assert.ok(done.citations.length);
+  assert.ok(done.citations.some(citation => citation.heading.includes("SyntheticLocalLearningEvidence")), "the packaged keyword tool must return the saved synthetic section");
   assert.deepEqual(await fs.readFile(path.join(root, "data", "2026-10_学习日志.md")), before);
   await assert.rejects(fs.stat(path.join(root, "data", ".instance-operation.lock")), { code: "ENOENT" });
   mark("Actual Web→local keyword MCP→synthetic model citations, stop during RAG waits for done");

@@ -15,7 +15,7 @@ const source = await fs.readFile(new URL('../hooks/use-rag.ts', import.meta.url)
 function fixture({ newSession = false, taskSupported = true } = {}) {
   const id = randomUUID(), requests = [], removed = [], clients = [], routes = [], allocatedIds = [], legacyRequests = [], slots = [], effects = new Map();
   let instanceId = randomUUID();
-  let cursor = 0, readError, readGate, capabilityGate;
+  let cursor = 0, readError, readGate, capabilityGate, capabilityError;
   const saved = { id, title: '合成会话', version: 'a'.repeat(64), answerMode: 'logs_only',
     createdAt: '2026-10-22T01:00:00Z', updatedAt: '2026-10-22T01:00:00Z',
     messages: [{ id: 'question', role: 'user', content: '原问题\n[S1]' }, { id: 'answer', role: 'assistant', content: '原回答' }] };
@@ -48,10 +48,12 @@ function fixture({ newSession = false, taskSupported = true } = {}) {
     if (path === '/api/capabilities') {
       const gate = capabilityGate; capabilityGate = undefined;
       if (gate) { gate.start(); await gate.wait; }
+      if (capabilityError) throw capabilityError;
       return { instanceId, features: { ragTasks: { supported: taskSupported, configured: true,
       questionEditing: taskSupported, protocolVersion: 1 }, rag: { supported: true, configured: true } } };
     }
     if (path.startsWith('/api/rag/sessions?q=')) return { sessions: [clone(saved)] };
+    if (path === `/api/rag/tasks?sessionId=${id}`) return { tasks: [] };
     if (path === `/api/rag/sessions/${id}`) {
       if (readError) throw readError;
       const response = { session: clone(saved) }, gate = readGate; readGate = undefined;
@@ -78,6 +80,7 @@ function fixture({ newSession = false, taskSupported = true } = {}) {
     question: '修改问题', editMessageId: 'question', questionMessageId: undefined, replaceLast: false,
     mode: 'logs_only', state: 'failed', saveState: 'pending', partial: '', stage: '', error: '合成失败', saveError: '', result: null, ...values });
   return { saved, requests, removed, options, clients, routes, allocatedIds, legacyRequests, setInstance(value) { instanceId = value; }, task, render, settle, flushEffects, ApiRequestError, failRead(error) { readError = error; }, get ui() { return ui; },
+    failCapabilities(error) { capabilityError = error; },
     holdCapabilities() { let release, start; const started = new Promise(resolve => start = resolve), wait = new Promise(resolve => release = resolve);
       capabilityGate = { start, wait }; return { started, release }; },
     holdRead() { let release, start; const started = new Promise(resolve => start = resolve), wait = new Promise(resolve => release = resolve);
@@ -313,7 +316,8 @@ test('queued task means awaiting execution without inventing an older blocked an
 for (const newSession of [false, true]) test(`client initialization blocks ${newSession ? 'a new session' : 'canonical recovery'} before IDs or routing change`, async t => {
   const f = fixture({ newSession }); t.after(() => f.dispose());
   const capabilities = f.holdCapabilities(); f.render(); await capabilities.started; await f.settle();
-  assert.equal(f.ui.initializing, false); assert.equal(f.ui.configured, false); assert.equal(f.clients.length, 0);
+  // Existing history waits for its time metadata; a new empty session has none to hydrate.
+  assert.equal(f.ui.initializing, !newSession); assert.equal(f.ui.configured, false); assert.equal(f.clients.length, 0);
   capabilities.release(); await f.settle(false);
   f.ui.setQuestion('合成恢复后的下一问'); f.render(false);
   assert.equal(f.ui.configured, true, 'server configuration remains independent of client readiness');
@@ -327,6 +331,17 @@ for (const newSession of [false, true]) test(`client initialization blocks ${new
   await f.ui.submit();
   assert.equal(f.requests.length, 1); assert.equal(f.requests[0].question, '合成恢复后的下一问');
   assert.equal(f.routes.length, newSession ? 1 : 0);
+});
+
+test('capability read failure still permits historical reading and keeps submission blocked', async t => {
+  const f = fixture(); t.after(() => f.dispose());
+  f.failCapabilities(new Error('合成配置读取失败')); await f.settle();
+  assert.equal(f.ui.initializing, false);
+  assert.equal(f.ui.session.id, f.saved.id);
+  assert.equal(f.ui.configured, false);
+  assert.ok(f.ui.configurationError, 'the configuration failure remains visible while history is readable');
+  f.ui.setQuestion('配置恢复前不可提交'); f.render(); await f.ui.submit();
+  assert.equal(f.requests.length, 0); assert.equal(f.allocatedIds.length, 0);
 });
 
 test('capabilities and task client arriving before canonical recovery submit once after recovery', async t => {

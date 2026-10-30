@@ -59,7 +59,7 @@ findFeedback(ast); assert.ok(expression);
 const feedbackModule = { exports: {} };
 runInNewContext(ts.transpileModule(`export const Feedback = ({rag,active}) => (${expression});`, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX }
-}).outputText, { module: feedbackModule, exports: feedbackModule.exports, require });
+}).outputText, { module: feedbackModule, exports: feedbackModule.exports, require, CircleAlert: require('lucide-react').CircleAlert });
 
 test('actual workspace error feedback offers one retry for edits and none for orphan drafts', () => {
   let retries = 0;

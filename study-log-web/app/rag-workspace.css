@@ -372,13 +372,15 @@
   position: sticky;
   bottom: 16px;
   z-index: 8;
-  overflow: clip;
+  overflow: visible;
   border-radius: var(--radius-md);
   box-shadow: var(--popover-shadow);
   transition: opacity 140ms ease;
 }
 
-.rag-composer-slot.is-hidden { pointer-events: none; opacity: 0; }
+.rag-composer-slot.is-hidden { pointer-events: none; background: transparent; box-shadow: none; }
+.rag-composer-slot > :not(.rag-scroll-bottom) { transition: opacity 140ms ease; }
+.rag-composer-slot.is-hidden > :not(.rag-scroll-bottom) { opacity: 0; pointer-events: none; }
 
 .rag-composer-slot.is-at-end { position: relative; bottom: auto; }
 
@@ -397,7 +399,6 @@
 .rag-composer.is-hidden {
   pointer-events: none;
   opacity: 0;
-  transform: translateY(calc(100% + 24px));
 }
 
 .rag-composer textarea {
@@ -675,3 +676,46 @@
     min-height: 44px;
   }
 }
+
+/* The visible 36px control keeps a separate touch target above the complete composer. */
+.rag-scroll-bottom {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--body);
+  box-shadow: none;
+  pointer-events: auto;
+}
+.rag-scroll-bottom::before {
+  content: "";
+  position: absolute;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--hairline);
+  border-radius: 50%;
+  background: var(--canvas);
+}
+.rag-scroll-bottom > * { position: relative; }
+.rag-scroll-bottom:hover { background: transparent; }
+.rag-scroll-bottom:hover::before { background: var(--surface-soft); }
+.rag-scroll-bottom:focus-visible { outline: 2px solid var(--primary); outline-offset: 0; }
+@media (pointer: coarse) { .rag-scroll-bottom { width: 44px; height: 44px; } }
+.rag-scroll-busy { display: none; align-items: center; gap: 3px; height: 16px; }
+.rag-scroll-busy > span { width: 3px; height: 3px; border-radius: 50%; background: currentColor; animation: rag-scroll-dot 1s ease-in-out infinite; }
+.rag-scroll-busy > span:nth-child(2) { animation-delay: 120ms; }
+.rag-scroll-busy > span:nth-child(3) { animation-delay: 240ms; }
+@media (hover: hover) and (pointer: fine) {
+  .rag-scroll-bottom.is-generating:not(:hover):not(:focus-visible) .rag-scroll-arrow { display: none; }
+  .rag-scroll-bottom.is-generating:not(:hover):not(:focus-visible) .rag-scroll-busy { display: flex; }
+}
+@keyframes rag-scroll-dot { 0%, 60%, 100% { opacity: .4; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-1px); } }
+@media (prefers-reduced-motion: reduce) { .rag-scroll-busy > span { animation: none; } }

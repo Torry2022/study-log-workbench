@@ -2,7 +2,7 @@
 
 import "@/app/rag-workspace.css";
 
-import { BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, Copy, FileText, LoaderCircle, MessageSquareText, Pencil, RotateCcw, Send, Square } from "lucide-react";
+import { ArrowDown, BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, Copy, FileText, LoaderCircle, MessageSquareText, Pencil, RotateCcw, Send, Square } from "lucide-react";
 import { Fragment, type FormEvent, type KeyboardEvent, type ReactNode, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { MarkdownPreview } from "@/components/MarkdownPreview";
 import { WorkspaceState } from "@/components/WorkspaceState";
@@ -116,6 +116,7 @@ export function RagWorkspace({
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [composerHidden, setComposerHidden] = useState(false);
   const [composerDocked, setComposerDocked] = useState(false);
+  const [awayFromBottom, setAwayFromBottom] = useState(false);
   const [expandedCitationKey, setExpandedCitationKey] = useState<string | null>(null);
   const enabled = active && visible;
   const output = messages.at(-1);
@@ -164,6 +165,7 @@ export function RagWorkspace({
     if (!enabled || !workspaceRef.current?.getClientRects().length) return;
     window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "instant" });
     scrollYRef.current = window.scrollY;
+    setAwayFromBottom(false);
   }, [enabled]);
 
   const updateComposerDock = useCallback(() => {
@@ -175,6 +177,7 @@ export function RagWorkspace({
     const terminal = lastMessage?.querySelector(".rag-answer-pending, .rag-message-state, .rag-answer-actions");
     const tail = answer ? answer.getBoundingClientRect().bottom : terminal ? terminal.getBoundingClientRect().top : conversation.getBoundingClientRect().bottom;
     setComposerDocked(tail <= window.innerHeight);
+    setAwayFromBottom(Boolean(conversation.querySelector(".rag-message")) && document.documentElement.scrollHeight - window.scrollY - window.innerHeight > 32);
   }, [enabled]);
   useLayoutEffect(updateComposerDock);
 
@@ -524,6 +527,9 @@ export function RagWorkspace({
       </div>
 
       <div className={`rag-composer-slot${composerHidden ? " is-hidden" : ""}${composerDocked ? " is-at-end" : ""}`}>
+        {awayFromBottom && !initializing && <button className={`rag-scroll-bottom${presenting ? " is-generating" : ""}`} type="button" title="回到底部" aria-label="回到底部"
+          onMouseDown={event => event.preventDefault()}
+          onClick={() => { followOutputRef.current = true; readingAnchorRef.current = null; setComposerHidden(false); followLatest(); }}><span className="rag-scroll-busy" aria-hidden="true"><span /><span /><span /></span><ArrowDown className="rag-scroll-arrow" size={18} aria-hidden="true" /></button>}
       <form className={`rag-composer${composerHidden ? " is-hidden" : ""}`} onSubmit={submit} ref={composerRef}>
         {availability}
         <textarea

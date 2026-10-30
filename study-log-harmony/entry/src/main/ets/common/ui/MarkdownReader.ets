@@ -95,6 +95,7 @@ export struct MarkdownReader {
   onContentRendered: (content: string, documentKey: string) => void = () => {};
   onScrollPosition: (yOffset: number, layoutChange: boolean) => void = () => {};
   onScrollProgress: (progress: number) => void = () => {};
+  onScrollRemaining: (remaining: number) => void = () => {};
   onTopDividerPosition: (yOffset: number) => void = () => {};
   onActiveHeading: (headingId: string) => void = () => {};
   onWorkspaceKey: (event: KeyEvent) => boolean = () => false;
@@ -310,7 +311,8 @@ export struct MarkdownReader {
       (kind === 'search' ? `window.scrollToText(${query}, true)` :
         (this.targetHeading || this.targetHeadingId ?
           `window.scrollToHeading(${heading}, ${this.targetHeadingIndex}, ${headingId})` : 'window.scrollToTop()')) :
-      (this.followEnd || this.scrollToEndRequestRevision > 0 && this.scrollToEndRequestRevision !== this.handledEndRevision ? 'window.scrollTo(0, document.body.scrollHeight)' :
+      (this.contentMode === 'qa' && this.scrollToEndRequestRevision > 0 && this.scrollToEndRequestRevision !== this.handledEndRevision ? 'window.resumeQaFollow()' :
+      this.followEnd || this.scrollToEndRequestRevision > 0 && this.scrollToEndRequestRevision !== this.handledEndRevision ? 'window.scrollTo(0, document.body.scrollHeight)' :
         (documentChanged ? `window.scrollTo(0, ${restoreScrollOffset})` :
           (this.resetScrollOnContentChange && hasNewContent ? 'window.scrollToTop()' : 'true')));
     const targetResultUrl = JSON.stringify(
@@ -484,6 +486,7 @@ export struct MarkdownReader {
     this.scrollProgress = this.maxScrollOffset > 0 ?
       Math.min(1, Math.max(0, this.scrollOffset / this.maxScrollOffset)) : 0;
     this.onScrollProgress(this.scrollProgress);
+    this.onScrollRemaining(Math.max(0, this.maxScrollOffset - this.scrollOffset));
   }
 
   private measureScrollRange(): void {

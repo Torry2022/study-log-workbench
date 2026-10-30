@@ -1,7 +1,7 @@
 import { BackToTopControl } from '../../common/ui/BackToTopControl';
 import { EmptyState, InlineStatus, LoadFailure } from '../../common/ui/FeedbackStates';
 import { ModulePageHeader } from '../../common/ui/WorkspaceChrome';
-import { KeyCode } from '@kit.InputKit';
+import { KeyCode, inputDevice } from '@kit.InputKit';
 import { workspaceKey, textNavigationKey } from '../../common/ui/WorkspaceKeys';
 import { WORKSPACE_TIPS } from '../../common/ui/WorkspaceTips';
 import { LoadingHintAnchor, LoadingHintPlacement } from '../../common/ui/LoadingHintAnchor';
@@ -113,6 +113,14 @@ export struct QaPage {
   @State private contentViewportWidth: number = 0;
   @State private readerScrollOffset: number = 0;
   @State private readerScrollProgress: number = 0;
+  @State private readerScrollRemaining: number = 0;
+  @State private pointerHoverSupported: boolean = false;
+  @State private bottomControlHovered: boolean = false;
+  @State private bottomControlFocused: boolean = false;
+  @State private bottomBusyPhase: boolean = false;
+  private pointerRevision: number = 0;
+  private pointerListening: boolean = false;
+  private pointerChanged: () => void = () => { this.detectHoverPointer(); };
   @State private scrollToTopRequestRevision: number = 0;
   @State private answerVersionRevision: number = 0;
   @State private copiedAnswerId: string = '';
@@ -219,6 +227,7 @@ export struct QaPage {
     this.scrollTravel = 0;
     this.scrollDirection = 0;
     this.readerScrollOffset = 0;
+    this.readerScrollRemaining = 0;
     this.readerScrollProgress = 0;
     this.topDividerOffset = 0;
     this.onScrollStateChange(false);
@@ -273,6 +282,76 @@ export struct QaPage {
   private handleReaderProgress(progress: number): void {
     this.readerScrollProgress = progress;
     if (progress >= 0.999 && this.readerScrollOffset > 8) this.setComposerHidden(false);
+  }
+
+  private observeHoverPointer(): void {
+    try { inputDevice.on('change', this.pointerChanged); this.pointerListening = true; } catch (_) {}
+    this.detectHoverPointer();
+  }
+
+  private releaseHoverPointer(): void {
+    this.pointerRevision++;
+    if (this.pointerListening) {
+      try { inputDevice.off('change', this.pointerChanged); } catch (_) {}
+      this.pointerListening = false;
+    }
+  }
+
+  private async detectHoverPointer(): Promise<void> {
+    const revision = ++this.pointerRevision;
+    try {
+      const ids = await inputDevice.getDeviceList();
+      let supported = false;
+      for (const id of ids) {
+        const device = await inputDevice.getDevice(id);
+        if (device.sources.some((source: inputDevice.SourceType) => ['mouse', 'touchpad', 'trackball'].includes(source))) supported = true;
+      }
+      if (revision === this.pointerRevision) this.pointerHoverSupported = supported;
+    } catch (_) { if (revision === this.pointerRevision) this.pointerHoverSupported = false; }
+  }
+
+  private bottomControlBusy(): boolean {
+    return this.data.sending && this.pointerHoverSupported && !this.bottomControlHovered && !this.bottomControlFocused;
+  }
+
+  private scrollToBottomVisible(): boolean {
+    return this.hasConversation() && !this.data.sessionLoading && this.readerScrollRemaining > 32;
+  }
+
+  private scrollToBottom(): void {
+    this.followAnswer = true;
+    this.setComposerHidden(false);
+    this.answerVersionRevision += 1;
+  }
+
+  @Builder
+  private qaScrollToBottomButton() {
+    if (this.scrollToBottomVisible()) {
+      Button({ type: ButtonType.Normal }) {
+        Stack() {
+          if (this.bottomControlBusy()) {
+            Row({ space: 3 }) {
+              ForEach([0, 1, 2], (index: number) => {
+                Circle().width(3).height(3).fill($r('app.color.body'))
+                  .opacity(this.bottomBusyPhase ? 1 : 0.4)
+                  .translate({ y: this.bottomBusyPhase ? -1 : 0 })
+                  .animation({ duration: 500, delay: index * 120, iterations: -1, playMode: PlayMode.Alternate, curve: Curve.EaseInOut })
+              })
+            }.onAppear(() => this.bottomBusyPhase = true).onDisAppear(() => this.bottomBusyPhase = false)
+          } else SymbolGlyph($r('sys.symbol.arrow_down')).fontSize(18).fontColor([$r('app.color.body')])
+        }.width(36).height(36).borderRadius(18).backgroundColor($r('app.color.canvas'))
+          .border({ width: 0.5, color: $r('app.color.hairline') })
+      }
+      .width(44).height(44).padding(0).borderRadius(22)
+      .backgroundColor(Color.Transparent).stateEffect(false)
+      .id('qa_scroll_to_bottom').accessibilityText('回到底部').bindTips('回到底部', WORKSPACE_TIPS)
+      .position({ left: '50%', bottom: this.composerHeight + 8 }).translate({ x: -22 })
+      .onHover((hovered: boolean) => this.bottomControlHovered = hovered)
+      .onFocus(() => this.bottomControlFocused = true)
+      .onBlur(() => this.bottomControlFocused = false)
+      .onDisAppear(() => { this.bottomControlHovered = false; this.bottomControlFocused = false; })
+      .onClick(() => this.scrollToBottom())
+    }
   }
 
   @Builder
@@ -487,6 +566,7 @@ export struct QaPage {
                 themePreference: this.themePreference,
                 onScrollPosition: (yOffset: number, layoutChange: boolean) => this.handleReaderScroll(yOffset, layoutChange),
                 onScrollProgress: (progress: number) => this.handleReaderProgress(progress),
+                onScrollRemaining: (remaining: number) => this.readerScrollRemaining = remaining,
                 onTopDividerPosition: (yOffset: number) => {
                   this.topDividerOffset = yOffset;
                   this.onScrollStateChange(yOffset > 0 && this.readerScrollOffset >= yOffset - 0.5);
@@ -603,6 +683,7 @@ export struct QaPage {
             .translate({ y: this.composerHidden ? this.composerHeight : 0 })
             .hitTestBehavior(this.composerHidden ? HitTestMode.None : HitTestMode.Default)
             .animation({ duration: 140, curve: Curve.Ease })
+            this.qaScrollToBottomButton()
             if (!this.isLargeWorkspace()) this.qaBackToTopButton()
           }
           .layoutWeight(1)

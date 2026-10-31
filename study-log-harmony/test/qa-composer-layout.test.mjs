@@ -77,8 +77,29 @@ test('reader inset updates never rerender content and reject stale and disposed 
 });
 
 test('native reaching the end reveals the input without changing the measured footer slot', () => {
-  const page = subject(qa, ['setComposerHidden', 'handleReaderProgress']);
+  const page = subject(qa, ['setComposerHidden', 'handleReaderProgress', 'handleReaderRemaining']);
   Object.assign(page,{composerHidden:true,composerHeight:132,readerScrollOffset:500});
-  page.handleReaderProgress(0.5);assert.equal(page.composerHidden,true);
-  page.handleReaderProgress(1);assert.equal(page.composerHidden,false);assert.equal(page.composerHeight,132);
+  page.handleReaderProgress(1);assert.equal(page.composerHidden,true);
+  page.handleReaderRemaining(0);assert.equal(page.composerHidden,false);assert.equal(page.composerHeight,132);
+});
+
+
+test('return-to-bottom retains composer visibility until the button has left the viewport', () => {
+  const page = subject(qa, ['setComposerHidden', 'scrollToBottom', 'handleReaderScroll', 'handleReaderProgress', 'handleReaderRemaining']);
+  for (const hidden of [true, false]) {
+    Object.assign(page, { composerHidden: hidden, returningToBottom: false, answerVersionRevision: 0,
+      lastScrollY: 100, scrollTravel: 0, scrollDirection: 0, topDividerOffset: 0,
+      data: { question: '', sending: false }, onScrollStateChange() {} });
+    page.scrollToBottom(); assert.equal(page.composerHidden, hidden);
+    assert.equal(page.returningToBottom, true); assert.equal(page.answerVersionRevision, 1);
+    for (const [offset, remaining] of [[400,300],[600,100],[680,20]]) {
+      page.handleReaderScroll(offset); page.handleReaderProgress(offset / 700); page.handleReaderRemaining(remaining);
+      assert.equal(page.composerHidden, hidden); assert.equal(page.returningToBottom, true);
+    }
+    page.handleReaderProgress(1); page.handleReaderRemaining(0);
+    assert.equal(page.readerScrollRemaining, 0); assert.equal(page.composerHidden, false);
+    assert.equal(page.returningToBottom, false);
+  }
+  assert.match(qa, /onQaFollowStopped: \(\) => \{ this.returningToBottom = false; this.followAnswer = false; \}/);
+  assert.match(qa, /onScrollRemaining: \(remaining: number\) => this.handleReaderRemaining\(remaining\)/);
 });

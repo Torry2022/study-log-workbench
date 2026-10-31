@@ -181,9 +181,8 @@ export function RagWorkspace({
   const returnToBottom = () => {
     cancelAnimationFrame(bottomReturnFrameRef.current);
     readingAnchorRef.current = null;
-    setComposerHidden(false);
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      bottomReturnFrameRef.current = 0; followOutputRef.current = true; followLatest(); return;
+      bottomReturnFrameRef.current = 0; followOutputRef.current = true; followLatest(); setComposerHidden(false); return;
     }
     followOutputRef.current = false;
     const from = window.scrollY, started = performance.now();
@@ -192,7 +191,7 @@ export function RagWorkspace({
       const target = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
       window.scrollTo({ top: from + (target - from) * (1 - (1 - progress) ** 3), behavior: "instant" });
       if (progress < 1) bottomReturnFrameRef.current = requestAnimationFrame(tick);
-      else { bottomReturnFrameRef.current = 0; followOutputRef.current = true; followLatest(); }
+      else { bottomReturnFrameRef.current = 0; followOutputRef.current = true; followLatest(); setComposerHidden(false); }
     };
     bottomReturnFrameRef.current = requestAnimationFrame(tick);
   };
@@ -205,7 +204,7 @@ export function RagWorkspace({
     const answer = lastMessage?.querySelector(".rag-answer");
     const terminal = lastMessage?.querySelector(".rag-answer-pending, .rag-message-state, .rag-answer-actions");
     const tail = answer ? answer.getBoundingClientRect().bottom : terminal ? terminal.getBoundingClientRect().top : conversation.getBoundingClientRect().bottom;
-    setComposerDocked(tail <= window.innerHeight);
+    if (!bottomReturnFrameRef.current) setComposerDocked(tail <= window.innerHeight);
     setAwayFromBottom(Boolean(conversation.querySelector(".rag-message")) && document.documentElement.scrollHeight - window.scrollY - window.innerHeight > 32);
   }, [enabled]);
   useLayoutEffect(updateComposerDock);
@@ -298,6 +297,7 @@ export function RagWorkspace({
       const clamped = scrollYRef.current > maximum + 1 && Math.abs(currentScrollY - maximum) <= 1;
       scrollYRef.current = currentScrollY;
       updateComposerDock();
+      if (bottomReturnFrameRef.current) { travel = 0; direction = 0; return; }
       // A shorter document can clamp the viewport upward without user input.
       if (delta < -1 && !clamped) followOutputRef.current = false;
       else if (presenting && delta > 0 && remaining <= 2) followOutputRef.current = true;

@@ -19,7 +19,7 @@ const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const contexts=Array.from({length:6},(_,i)=>({sourceId:`S${i+1}`,date:'2026-10-01',month:'2026-10',fileName:'2026-10_学习日志.md',heading:`合成检索记录${i+1}`,headingIndex:i,chunkId:`2026-10-01:${i}`,contentHash:'a'.repeat(64),content:`合成检索记录${i+1}：检索结果需回到原文核对。`,excerpt:`合成来源${i+1}`,score:1,truncated:false}));
 const pending=[],eventTransports=new Set();
 let app,browser,currentPage,appOutput='',modelCalls=0;
-const prompts=[];
+const prompts=[],failedRequests=[];
 const service=http.createServer(async(req,res)=>{
  try{
   if(req.url.startsWith('/task-events?')){
@@ -78,7 +78,7 @@ try{
  browser=await ({chromium,webkit})[engine].launch();const context=await browser.newContext({viewport:{width:1440,height:900}});
  await context.addInitScript(port=>{const Native=window.EventSource;window.EventSource=class extends Native{constructor(url,options){const original=new URL(url,location.href);super(original.pathname.endsWith('/events')?`http://127.0.0.1:${port}/task-events?target=${encodeURIComponent(original.href)}`:url,{...options,withCredentials:true});}};},servicePort);
  const page=await context.newPage();currentPage=page;
- const inflight=new Set();page.on('request',r=>{if(r.url().includes('/api/rag/')&&!r.url().includes('/events'))inflight.add(r)});for(const event of ['requestfinished','requestfailed'])page.on(event,r=>inflight.delete(r));const requests=[],eventUrls=[],errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>{if(r.url().includes('/api/rag/'))requests.push({method:r.method(),url:r.url(),body:r.postData()});if(r.url().includes('/task-events?'))eventUrls.push(r.url());});
+ const inflight=new Set();page.on('request',r=>{if(r.url().includes('/api/rag/')&&!r.url().includes('/events'))inflight.add(r)});for(const event of ['requestfinished','requestfailed'])page.on(event,r=>inflight.delete(r));const requests=[],eventUrls=[],errors=[];page.on('requestfailed',r=>failedRequests.push({url:r.url(),failure:r.failure()}));page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>{if(r.url().includes('/api/rag/'))requests.push({method:r.method(),url:r.url(),body:r.postData()});if(r.url().includes('/task-events?'))eventUrls.push(r.url());});
  assert.equal((await context.request.post(`${base}/api/auth/login`,{data:{password:'synthetic-ui-password'}})).status(),200);
  for(const width of [1440,390]){
   const failureContext=await browser.newContext({viewport:{width,height:900},isMobile:width===390,hasTouch:width===390});
@@ -144,7 +144,27 @@ try{
  const hiddenBottom=page.getByRole('button',{name:'回到底部',exact:true});await expect(hiddenBottom).toBeVisible();
  const hiddenBounds=await hiddenBottom.boundingBox();assert.ok(hiddenBounds.y+hiddenBounds.height>820&&hiddenBounds.y+hiddenBounds.height<900,'hidden composer leaves the bottom control near the viewport edge');
  await page.waitForTimeout(180); await page.screenshot({path:path.join(output,`${engine}-composer-hidden.png`)});
- await expect(page.locator('.rag-scroll-busy')).not.toBeVisible();await hiddenBottom.click();
+ await expect(page.locator('.rag-scroll-busy')).not.toBeVisible();
+ await page.evaluate(() => {
+  window.qaReturnFrames = []; const started = performance.now();
+  const record = () => {
+   const button = document.querySelector('.rag-scroll-bottom');
+   window.qaReturnFrames.push({ y: button?.getBoundingClientRect().y ?? null,
+    hidden: document.querySelector('.rag-composer-slot').classList.contains('is-hidden'),
+    remaining: document.documentElement.scrollHeight-innerHeight-scrollY });
+   if (performance.now()-started < 650) requestAnimationFrame(record); else window.qaReturnRecorded = true;
+  }; requestAnimationFrame(record);
+ });
+ await hiddenBottom.click();
+ await page.waitForFunction(() => window.qaReturnRecorded);
+ const returnFrames = await page.evaluate(() => window.qaReturnFrames);
+ await fs.writeFile(path.join(output,`${engine}-bottom-return-frames.json`),JSON.stringify(returnFrames,null,2));
+ assert.ok(returnFrames.some(frame => frame.remaining > 32 && frame.remaining < 450), 'return visibly scrolls through intermediate positions');
+ for (const frame of returnFrames.filter(frame => frame.y !== null && frame.remaining > 32)) {
+  assert.equal(frame.hidden, true, 'return keeps the hidden input hidden while the control is visible');
+  assert.ok(Math.abs(frame.y-hiddenBounds.y)<2, 'bottom control never jumps above the input during return');
+ }
+
  await expect(page.locator('.rag-composer-slot')).not.toHaveClass(/is-hidden/);
  await until(()=>page.evaluate(()=>document.documentElement.scrollHeight-innerHeight-scrollY),value=>value<4);
 
@@ -163,5 +183,5 @@ try{
  await page.unroute(timeList);
  await page.getByRole('button',{name:'新建问答',exact:true}).filter({visible:true}).first().click();await expect(page.locator('.rag-message')).toHaveCount(0);await expect(page.getByRole('button',{name:'回到底部',exact:true})).toHaveCount(0);assert.deepEqual(errors,[]);
  await fs.writeFile(path.join(output,'result.json'),JSON.stringify({passed:true,engine,appRoot,modelCalls,checks:['full-width compact history error strip','failed history is distinct from a new empty conversation','bottom and empty hide','centered above entire composer','pointer-aware loading hover and keyboard','touch retains arrow','click preserves input focus and resumes streaming follow','completed answer and navigation','saved history has no write indicator','time metadata hydrates atomically','stopped-version history hydrates atomically','hidden composer moves bottom control to viewport edge'],screenshots},null,2));console.log(JSON.stringify({passed:true,engine,modelCalls}));
-}catch(error){console.error(appOutput);if(currentPage)await currentPage.screenshot({path:path.join(output,'failure.png')}).catch(()=>{});throw error;}
+}catch(error){console.error(appOutput);await fs.writeFile(path.join(output,'failed-requests.json'),JSON.stringify(failedRequests,null,2));if(currentPage)await currentPage.screenshot({path:path.join(output,'failure.png')}).catch(()=>{});throw error;}
 finally{for(const p of pending)p.finish();await browser?.close();if(app&&app.exitCode===null){app.kill();await once(app,'exit')}service.closeAllConnections();await new Promise(resolve=>service.close(resolve));}

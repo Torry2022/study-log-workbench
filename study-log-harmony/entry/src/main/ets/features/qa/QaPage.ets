@@ -126,6 +126,7 @@ export struct QaPage {
   @State private scrollToTopRequestRevision: number = 0;
   @State private answerVersionRevision: number = 0;
   @State private smoothReturnToBottom: boolean = false;
+  private returningToBottom: boolean = false;
   @State private copiedAnswerId: string = '';
   @State private questionFocused: boolean = false;
   @State private followAnswer: boolean = true;
@@ -226,6 +227,7 @@ export struct QaPage {
 
   private resetComposerScroll(): void {
     this.answerVersionRevision = 0;
+    this.returningToBottom = false;
     this.lastScrollY = 0;
     this.scrollTravel = 0;
     this.scrollDirection = 0;
@@ -246,6 +248,12 @@ export struct QaPage {
   private handleReaderScroll(yOffset: number, layoutChange: boolean = false): void {
     this.readerScrollOffset = Math.max(0, yOffset);
     this.onScrollStateChange(this.topDividerOffset > 0 && this.readerScrollOffset >= this.topDividerOffset - 0.5);
+    if (this.returningToBottom) {
+      this.lastScrollY = yOffset;
+      this.scrollTravel = 0;
+      this.scrollDirection = 0;
+      return;
+    }
     if (layoutChange) {
       this.lastScrollY = yOffset;
       return;
@@ -284,7 +292,14 @@ export struct QaPage {
 
   private handleReaderProgress(progress: number): void {
     this.readerScrollProgress = progress;
-    if (progress >= 0.999 && this.readerScrollOffset > 8) this.setComposerHidden(false);
+  }
+
+  private handleReaderRemaining(remaining: number): void {
+    this.readerScrollRemaining = remaining;
+    if (remaining <= 2) {
+      this.returningToBottom = false;
+      if (this.readerScrollOffset > 8) this.setComposerHidden(false);
+    }
   }
 
   private observeHoverPointer(): void {
@@ -322,9 +337,9 @@ export struct QaPage {
   }
 
   private scrollToBottom(): void {
+    this.returningToBottom = true;
     this.smoothReturnToBottom = true;
     this.followAnswer = true;
-    this.setComposerHidden(false);
     this.answerVersionRevision += 1;
   }
 
@@ -593,7 +608,7 @@ export struct QaPage {
                 fillAvailableWidth: true,
                 followEnd: this.data.sending && this.followAnswer && !this.data.questionEdit()?.error,
                 presentationFollowEnd: this.followAnswer && !this.data.questionEdit()?.error,
-                onQaFollowStopped: () => this.followAnswer = false,
+                onQaFollowStopped: () => { this.returningToBottom = false; this.followAnswer = false; },
                 showBackToTop: false,
                 trackScrollProgress: true,
                 scrollToTopRequestRevision: this.scrollToTopRequestRevision,
@@ -602,7 +617,7 @@ export struct QaPage {
                 themePreference: this.themePreference,
                 onScrollPosition: (yOffset: number, layoutChange: boolean) => this.handleReaderScroll(yOffset, layoutChange),
                 onScrollProgress: (progress: number) => this.handleReaderProgress(progress),
-                onScrollRemaining: (remaining: number) => this.readerScrollRemaining = remaining,
+                onScrollRemaining: (remaining: number) => this.handleReaderRemaining(remaining),
                 onTopDividerPosition: (yOffset: number) => {
                   this.topDividerOffset = yOffset;
                   this.onScrollStateChange(yOffset > 0 && this.readerScrollOffset >= yOffset - 0.5);

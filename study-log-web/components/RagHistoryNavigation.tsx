@@ -36,7 +36,7 @@ export function RagHistoryNavigation({ history, root, messages, navigationToken,
   const readingIntent = useRef(false);
   const queuedTarget = useRef<string | undefined>(undefined);
   const navigation = useRef(navigationToken); navigation.current = navigationToken;
-  const raf = useRef(0), highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const raf = useRef(0);
   const peekRef = useRef<HTMLDivElement | null>(null);
   const [active, setActive] = useState("");
   const [hovered, setHovered] = useState("");
@@ -54,13 +54,13 @@ export function RagHistoryNavigation({ history, root, messages, navigationToken,
   const jump = (id: string) => {
     const node = root.current && messageElement(root.current, id);
     if (!node) return;
+    const separator = node.previousElementSibling;
+    const time = separator?.matches('.rag-time-divider, .rag-time-separator') ? separator.querySelector('time') : null;
+    const target = time || node.querySelector(':scope > p, :scope > .rag-question-editor') || node;
     onNavigate();
-    window.scrollTo({ top: scrollY + node.getBoundingClientRect().top - topInset() - 16,
+    window.scrollTo({ top: scrollY + target.getBoundingClientRect().top - topInset() - 16,
       behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
-    root.current?.querySelectorAll(".is-history-located").forEach(item => item.classList.remove("is-history-located"));
-    node.classList.add("is-history-located"); setActive(id);
-    if (highlightTimer.current) clearTimeout(highlightTimer.current);
-    highlightTimer.current = setTimeout(() => node.classList.remove("is-history-located"), 1800);
+    setActive(id);
   };
   const load = async (id?: string) => {
     if (pending.current) { if (id) queuedTarget.current = id; return; }
@@ -125,7 +125,6 @@ export function RagHistoryNavigation({ history, root, messages, navigationToken,
     addEventListener('wheel', wheel, { passive: true }); addEventListener('touchmove', touch, { passive: true }); addEventListener('keydown', key);
     return () => { cancelAnimationFrame(raf.current); removeEventListener('scroll', update); removeEventListener('resize', update); removeEventListener('wheel', wheel); removeEventListener('touchmove', touch); removeEventListener('keydown', key); };
   }, [navigationToken, messages.length, entries.length]);
-  useEffect(() => () => { if (highlightTimer.current) clearTimeout(highlightTimer.current); }, []);
 
   return <>
     {history?.window && history.window.start > 0 && <div className="qa-history-load" role="status">

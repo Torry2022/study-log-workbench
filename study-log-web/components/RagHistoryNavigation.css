@@ -11,7 +11,5 @@
 .qa-history-peek strong, .qa-history-peek p { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
 .qa-history-peek strong { -webkit-line-clamp: 2; font-weight: 500; color: var(--ink); }
 .qa-history-peek p { -webkit-line-clamp: 3; margin: 6px 0 0; color: var(--muted); }
-.is-history-located { animation: qa-history-locate 1800ms ease-out; }
-@keyframes qa-history-locate { 0%, 35% { outline: 1px solid var(--primary); outline-offset: 6px; } 100% { outline: 1px solid transparent; outline-offset: 8px; } }
 @media (min-width: 1100px) and (min-height: 560px) and (hover: hover) and (pointer: fine) { .qa-history-rail { display: block; } }
-@media (prefers-reduced-motion: reduce) { .qa-history-tick span { transition: none; } .is-history-located { animation: none; outline: 1px solid var(--primary); } }
+@media (prefers-reduced-motion: reduce) { .qa-history-tick span { transition: none; } }

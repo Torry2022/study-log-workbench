@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url';
 const [repo,output]=process.argv.slice(2);
 const {chromium,webkit,expect}=createRequire(path.join(repo,'study-log-web/package.json'))('@playwright/test');
 await fs.mkdir(output,{recursive:true});const results=[];
-const full=Array.from({length:55},(_,i)=>[{id:`q${i}`,role:'user',content:`第${i+1}轮：这一周的学习进展如何？`},
+const full=Array.from({length:55},(_,i)=>[{id:`q${i}`,role:'user',content:`第${i+1}轮：这一周的学习进展如何？`,...(i===25?{timeLabel:'10月24日 19:25'}:{})},
  {id:`a${i}`,role:'assistant',content:`### 第${i+1}轮合成回答\n\n`+'整理遇到的问题、尝试的方法和接下来要做的事。\n\n'.repeat(9),status:'complete'}]).flat();
 const outline=full.filter(m=>m.role==='user').slice(-30).map(m=>({questionId:m.id,question:m.content,preview:'合成回答摘要，仅使用已有内容。'}));
 for(const [engine,launcher] of [['chromium',chromium],['webkit',webkit]]){
@@ -28,9 +28,12 @@ for(const [engine,launcher] of [['chromium',chromium],['webkit',webkit]]){
   assert.equal(await page.evaluate(()=>window.originalTick===document.querySelector('.qa-history-tick:last-of-type')),true,'live rerender retains tick nodes');
   await page.screenshot({path:path.join(output,`${engine}-wide.png`)});
   await page.locator('.qa-history-tick').first().click();await render(40);
-  await expect(page.locator('[data-rag-message-id="q25"]')).toHaveClass(/is-history-located/);
-  await expect.poll(()=>page.locator('[data-rag-message-id="q25"]').evaluate(n=>n.getBoundingClientRect().top),{timeout:4000}).toBeGreaterThan(10);
-  await expect.poll(()=>page.locator('[data-rag-message-id="q25"]').evaluate(n=>n.getBoundingClientRect().top),{timeout:4000}).toBeLessThan(20);
+  await expect.poll(()=>page.locator('[data-rag-message-id="q25"] > .qa-message-time').evaluate(n=>Math.abs(n.getBoundingClientRect().top-16)),{timeout:4000}).toBeLessThan(1);
+  assert.equal(await page.locator('.is-history-located').count(),0,'tick jumps do not frame the message');
+  await page.screenshot({path:path.join(output,`${engine}-located-time.png`)});
+  await page.locator('.qa-history-tick').nth(1).click();
+  await expect.poll(()=>page.locator('[data-rag-message-id="q26"] > p').evaluate(n=>Math.abs(n.getBoundingClientRect().top-16)),{timeout:4000}).toBeLessThan(1);
+  await page.screenshot({path:path.join(output,`${engine}-located-bubble.png`)});
   assert.equal(await page.locator('.qa-history-tick').count(),30);
   await page.evaluate(()=>{const n=document.querySelector('[data-rag-message-id="q21"]');scrollTo({top:scrollY+n.getBoundingClientRect().top-180,behavior:'instant'});});
   await page.locator('[data-rag-message-id="q21"]').hover({force:true});await page.mouse.wheel(0,-1);

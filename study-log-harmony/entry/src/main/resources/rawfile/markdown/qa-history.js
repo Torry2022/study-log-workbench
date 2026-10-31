@@ -1,6 +1,6 @@
 /* Recent question navigation. The controller owns versioned, contiguous history reads. */
 (() => {
-  let state = {}, entries = [], pending = null, anchor = null, frame = 0, highlight = 0, ready = false, readingIntent = false;
+  let state = {}, entries = [], pending = null, anchor = null, frame = 0, ready = false, readingIntent = false;
   const rail = document.createElement('nav');
   rail.className = 'qa-history-rail'; rail.setAttribute('aria-label', '本次对话快速跳转');
   const peek = document.createElement('div'); peek.className = 'qa-history-peek'; peek.setAttribute('role', 'tooltip');
@@ -27,11 +27,9 @@
   };
   const jump = id => {
     const node = find(id); if (!node) return;
+    const target = node.querySelector(':scope > .qa-message-time, :scope > p, :scope > .qa-question-editor') || node;
     window.detachQaFollow?.();
-    scrollTo({ top: scrollY + node.getBoundingClientRect().top - 16, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
-    nodes().forEach(item => item.classList.remove('is-history-located'));
-    node.classList.add('is-history-located'); clearTimeout(highlight);
-    highlight = setTimeout(() => node.classList.remove('is-history-located'), 1800);
+    scrollTo({ top: scrollY + target.getBoundingClientRect().top - 16, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
   };
   const load = (target = '') => {
     if (target && find(target)) { jump(target); return; }

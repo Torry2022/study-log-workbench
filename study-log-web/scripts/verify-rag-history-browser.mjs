@@ -48,12 +48,25 @@ try {
     // Indexed target is outside the initial batch: one direct, contiguous range read.
     await page.locator('.qa-history-tick').first().click();
     await expect(page.locator('[data-rag-message-id="q20"]')).toHaveCount(1);
-    await expect(page.locator('[data-rag-message-id="q25"]')).toHaveClass(/is-history-located/);
-    await expect.poll(()=>page.locator('[data-rag-message-id="q25"]').evaluate(node=>node.getBoundingClientRect().top),{timeout:4000}).toBeGreaterThan(70);
+    const jumpGap=()=>page.locator('[data-rag-message-id="q25"]').evaluate(node=>{
+      const prior=node.previousElementSibling;
+      const target=prior?.matches('.rag-time-divider, .rag-time-separator')?prior.querySelector('time'):node.querySelector(':scope > p');
+      const bar=document.querySelector('.reader-toolbar-qa');
+      return target.getBoundingClientRect().top-bar.getBoundingClientRect().bottom;
+    });
+    await expect.poll(async()=>Math.abs(await jumpGap()-16),{timeout:4000}).toBeLessThan(1);
+    assert.equal(await page.locator('.is-history-located').count(),0,'tick jumps do not frame the message');
     assert.equal(reads.filter(url=>url.includes('around=')).length,1);
     const located=await page.locator('[data-rag-message-id="q25"]').evaluate(node=>({top:node.getBoundingClientRect().top, y:scrollY, headers:[...document.querySelectorAll('.reader-toolbar, .mobile-topbar, .reader-header')].map(h=>({cls:h.className,top:h.getBoundingClientRect().top,bottom:h.getBoundingClientRect().bottom}))}));
     await fs.writeFile(path.join(output,engine+'-geometry.json'),JSON.stringify(located));await page.screenshot({path:path.join(output,engine+'-located.png')});
-    assert.ok(located.top>=70&&located.top<240,'direct target stays below toolbar: '+JSON.stringify(located));
+    await page.locator('[data-rag-message-id="q25"]').evaluate(node=>{
+      const date=document.createElement('div');date.dataset.syntheticJumpTime='true';
+      date.className='rag-time-separator';
+      const time=document.createElement('time');time.textContent='10月24日 19:25';date.append(time);node.before(date);
+    });
+    await page.locator('.qa-history-tick').first().click();await expect.poll(async()=>Math.abs(await jumpGap()-16),{timeout:4000}).toBeLessThan(1);
+    await page.screenshot({path:path.join(output,engine+'-located-time.png')});
+    await page.locator('[data-synthetic-jump-time]').evaluate(node=>node.remove());
     assert.equal(await page.locator('.qa-history-tick').count(),30);
     assert.ok((await page.locator('.qa-history-tick').first().getAttribute('aria-label')).includes('26'),'old loaded questions do not replace recent index');
     // Trigger a normal prepend while still reading the first loaded round.

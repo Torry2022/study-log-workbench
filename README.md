@@ -13,7 +13,7 @@
 - **AI 辅助整理**：从学习材料生成日志草稿，标注正文重点、提取随记；三套技术学习写作预设可复制为个人方案，帮助形成自己的记录写法。
 - **向自己的学习记录提问**：配置聊天模型和检索服务后，用问题找回相关经历，结合日志与通用知识理解问题；回答提供来源入口，方便对照原文继续回顾。
 
-在网页或 Windows 中等待回答时，可以切换会话或去其他模块，回答会继续生成。历史列表显示生成进度，完成后保存到原会话，未保存的回答和草稿也会保留。Windows 本地模式下，退出应用会停止本地服务。0.1.6 还支持编辑已保存的问题：新回答保存成功后，替换该问题及后续对话；生成失败或主动停止时，原对话和编辑稿仍会保留。
+在网页或 Windows 中等待回答时，可以切换会话或去其他模块，回答会继续生成。历史列表显示生成进度，完成后保存到原会话，未保存的回答和草稿也会保留。Windows 本地模式下，退出应用会停止本地服务。支持编辑已保存的问题：新回答保存成功后，替换该问题及后续对话；生成失败或主动停止时，原对话和编辑稿仍会保留。
 
 ## 界面预览
 
@@ -41,11 +41,11 @@ Windows 桌面端既可本地使用，也可连接服务器。本地与服务器
 
 工作台按单使用者设计，目前没有多用户账号或项目方提供的公共云服务。源码按 MIT 许可开放，当前仍处于试用阶段。
 
-本源码版本为 0.1.6，提供 Windows 安装包、服务器部署文件和鸿蒙客户端源码。变更与实际验证范围见[发布记录](docs/release-0.1.6-2026-10-22.md)。
+本源码版本为 0.2.0，提供 Windows 安装包、服务器部署文件和鸿蒙客户端源码。变更与实际验证范围见[发布记录](docs/release-0.2.0-2026-10-31.md)。
 
 ### Windows：本地使用
 
-下载 [Windows x64 安装包](https://github.com/Torry2022/study-log-workbench/releases/download/v0.1.6/study-log-desktop-0.1.6-x64-setup.exe)。安装包尚未签名；版本说明和 SHA-256 校验文件可在[发布页](https://github.com/Torry2022/study-log-workbench/releases/tag/v0.1.6)查看。
+下载 [Windows x64 安装包](https://github.com/Torry2022/study-log-workbench/releases/download/v0.2.0/study-log-desktop-0.2.0-x64-setup.exe)。安装包尚未签名；版本说明和 SHA-256 校验文件可在[发布页](https://github.com/Torry2022/study-log-workbench/releases/tag/v0.2.0)查看。
 
 1. 安装桌面试用包，首次打开选择“本地使用”，确认保存位置。
 2. 点击“今天”，写下学习内容并保存。
@@ -59,7 +59,7 @@ Windows 桌面端既可本地使用，也可连接服务器。本地与服务器
 
 ### 服务器：使用预构建镜像
 
-准备自己的 Linux amd64 主机及 Docker Compose，下载[服务器部署配置包](https://github.com/Torry2022/study-log-workbench/releases/download/v0.1.6/study-log-server-0.1.6.zip)（或使用 `deploy/` 中的文件），按[部署指南](deploy/README.md)完成初始化和启动。使用公开 ACR 镜像无需阿里云账号，也无需在服务器安装 Node 或构建源码。
+准备自己的 Linux amd64 主机及 Docker Compose，下载[服务器部署配置包](https://github.com/Torry2022/study-log-workbench/releases/download/v0.2.0/study-log-server-0.2.0.zip)（或使用 `deploy/` 中的文件），按[部署指南](deploy/README.md)完成初始化和启动。使用公开 ACR 镜像无需阿里云账号，也无需在服务器安装 Node 或构建源码。
 
 请使用同一版本配套的镜像、Compose 示例和[版本说明](deploy/RELEASE-NOTES.md)。首次部署先确认本机能够访问，再按需要配置模型、HTTPS 和其他客户端。服务器和域名由部署者准备。
 

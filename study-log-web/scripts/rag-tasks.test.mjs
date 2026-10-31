@@ -67,7 +67,8 @@ test('no subscriber is needed to finish and atomically persist the answer in its
 });
 
 test('question editing derives the authoritative prefix and only commits the branch with its answer', async () => {
-  const r = runtime(executor({ delay: 80 })); r.start();
+  // create() starts each task; omit periodic heartbeats while asserting read-only database access.
+  const r = runtime(executor({ delay: 80 }));
   const first = await r.create(submission()); await done(r, first.id);
   let saved = await getRagSession(first.sessionId);
   const second = await r.create(submission({ sessionId: first.sessionId, baseVersion: saved.version, question: '后续问题' })); await done(r, second.id);

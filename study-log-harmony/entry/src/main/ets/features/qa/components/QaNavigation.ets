@@ -20,6 +20,7 @@ export struct QaNavigation {
   @Prop qaRailPopover: string = '';
   @Prop moduleFrameHeight: number = 0;
   @State private hoveredNavigation: string = '';
+  @State private pressedNavigation: string = '';
   onQuery: (query: string) => void = () => {};
   onSession: (id: string) => void = () => {};
   onMenu: (id: string) => void = () => {};
@@ -29,6 +30,11 @@ export struct QaNavigation {
   onCancelRename: () => void = () => {};
   onDelete: (session: RagSessionSummary) => void = () => {};
   onRetry: () => void = () => {};
+
+  private sessionTouch(id: string, event: TouchEvent): void {
+    if (event.type === TouchType.Down) this.pressedNavigation = id;
+    else if (event.type === TouchType.Up || event.type === TouchType.Cancel) this.pressedNavigation = '';
+  }
 
   private filteredQaSessions(): RagSessionSummary[] {
     const query = this.qaSessionQuery.trim().toLowerCase();
@@ -124,6 +130,8 @@ export struct QaNavigation {
                 .layoutWeight(1).height(38).padding({ left: 8, right: 5 }).backgroundColor(Color.Transparent)
                 .borderRadius(8).clip(true)
                 .hoverEffect(HoverEffect.None)
+                .stateEffect(false)
+                .onTouch((event: TouchEvent) => this.sessionTouch(session.id, event))
                 .onClick(() => this.onSession(session.id)).enabled(!this.qaBusy)
                 Button({ type: ButtonType.Normal }) {
                   Text('⋯').fontSize(19).fontColor($r('app.color.muted'))
@@ -144,10 +152,13 @@ export struct QaNavigation {
                 })
                 Text(this.qaUpdatedLabel(session)).fontSize(12).fontWeight(FontWeight.Regular)
                   .fontColor($r('app.color.muted_soft')).textAlign(TextAlign.End).flexShrink(0)
+                  .margin({ left: 6, right: 5 })
+                  .onTouch((event: TouchEvent) => this.sessionTouch(session.id, event))
+                  .enabled(!this.qaBusy).onClick(() => this.onSession(session.id))
               }.width('100%')
             }
             .width('100%')
-            .attributeModifier(new InteractiveSurface(this.qaActiveSessionId === session.id ? $r('app.color.surface_card') : Color.Transparent, this.hoveredNavigation === `qa-${session.id}`, this.qaActiveSessionId === session.id))
+            .attributeModifier(new InteractiveSurface(this.pressedNavigation === session.id ? $r('app.color.surface_cream_strong') : this.qaActiveSessionId === session.id ? $r('app.color.surface_card') : Color.Transparent, this.hoveredNavigation === `qa-${session.id}`, this.qaActiveSessionId === session.id || this.pressedNavigation === session.id))
             .onHover((hover: boolean) => animateHover(this.getUIContext(), () => this.hoveredNavigation = hover ? `qa-${session.id}` : ''))
             .border({ width: { left: 2 }, color: this.qaActiveSessionId === session.id ? $r('app.color.primary') : Color.Transparent })
             .borderRadius(8).clip(true)
@@ -164,7 +175,7 @@ export struct QaNavigation {
         focusKey: rail ? 'qa_rail_search' : 'qa_session_search', focusRevision: this.qaSearchRevision,
         compact: true, showSubmit: false, onChange: (value: string) => this.onQuery(value), onSubmit: () => {} })
         .layoutWeight(1)
-      if (this.qaSessions.length > 0) {
+      if (this.qaSessions.length > 0 && (this.qaNavigationLoading || this.qaNavigationError)) {
         Stack() {
           if (this.qaNavigationLoading) LoadingProgress().width(15).height(15).color($r('app.color.primary'))
           else if (this.qaNavigationError) {

@@ -294,11 +294,11 @@ body { color: var(--body); font-family: "HarmonyOS Sans SC", system-ui, sans-ser
   .wiki-contribution-summary { grid-column: 1 / -1; grid-row: 2; white-space: normal; }
 }
 
-.markdown-body.qa-conversation { padding: 0 var(--reader-inset) 24px; }
+.markdown-body.qa-conversation { max-width: 1040px; margin: 0 auto; padding: 0 var(--reader-inset) 24px; }
 .markdown-body.qa-conversation::after { content: ""; display: block; height: var(--reader-bottom-inset, 0px); }
 .markdown-body.qa-conversation > :first-child { margin-top: 0; }
 .qa-message { min-width: 0; padding: 16px 0; border-bottom: 1px solid var(--hairline-soft); }
-.qa-message-user .qa-message:has(> .qa-message-time) { padding-top: 12px; }
+.qa-message:has(> .qa-message-time) { padding-top: 12px; }
 .qa-message-time { margin: 0 0 8px; color: var(--muted); text-align: center; font-size: 13px; font-weight: 400; line-height: 20px; }
 .qa-user-actions { justify-content: flex-end; }
 .qa-question-editor { display: block; width: 100%; min-height: 120px; resize: vertical; padding: 12px 14px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--soft); color: var(--ink); font: inherit; line-height: 1.6; }

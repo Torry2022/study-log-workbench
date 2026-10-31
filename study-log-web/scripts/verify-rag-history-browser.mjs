@@ -36,6 +36,7 @@ try {
     await expect(page.locator('[data-rag-message-id]')).toHaveCount(20,{timeout:30000}); await page.evaluate(()=>document.fonts.ready); await sleep(300);
     assert.ok(await page.evaluate(()=>document.documentElement.scrollHeight-scrollY-innerHeight<6),'opens at bottom');
     await expect(page.locator('.qa-history-tick')).toHaveCount(30);
+    await expect.poll(()=>page.locator('.qa-history-rail').evaluate(node=>node.getBoundingClientRect().left-document.querySelector('.rag-workspace').getBoundingClientRect().left)).toBe(16);
     assert.ok(reads.every(url=>url.includes('history=recent')),'no hidden full history download');
     const last=page.locator('.qa-history-tick').last(); await last.hover(); await expect(page.locator('.qa-history-peek')).toContainText('55');
     const tickBox=await last.boundingBox(),peekBox=await page.locator('.qa-history-peek').boundingBox();

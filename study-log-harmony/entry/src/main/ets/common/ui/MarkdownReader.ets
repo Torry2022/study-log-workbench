@@ -342,7 +342,7 @@ export struct MarkdownReader {
       `document.documentElement.dataset.typography = '${typography}'; ` +
       `window.readerActionRevision = ${renderSequence}; ` +
       (this.contentMode === 'qa' ? `window.setQaHistory(${JSON.stringify(this.qaHistory)}); ` : 'window.setQaHistory(""); ') +
-      `${renderContent}.then(() => { if (${contentMode} === 'qa' && window.readerActionRevision !== ${renderSequence}) return; ${afterRenderAction}; ` +
+      `${renderContent}.then(() => { if (${contentMode} === 'qa' && window.readerActionRevision !== ${renderSequence}) return; ${afterRenderAction}; ${this.contentMode === 'qa' ? 'window.qaHistoryReady();' : ''} ` +
       `requestAnimationFrame(() => requestAnimationFrame(() => { window.readerFrames.rendered(${renderSequence}); })); })` +
       `.catch(() => window.readerFrames.failed(${renderSequence}))`,
       (error) => {

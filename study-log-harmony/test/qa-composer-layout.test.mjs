@@ -6,7 +6,7 @@ import ts from 'typescript';
 const base = new URL('../entry/src/main/ets/', import.meta.url);
 const qa = await readFile(new URL('features/qa/QaPage.ets', base), 'utf8');
 const reader = await readFile(new URL('common/ui/MarkdownReader.ets', base), 'utf8');
-function subject(source, names) {
+function subject(source, names, globals = {}) {
   const methods = names.map(name => {
     const start = source.search(new RegExp(`^  (?:private )?${name}\\(`, 'm'));
     assert.ok(start >= 0, name);
@@ -16,9 +16,31 @@ function subject(source, names) {
   const module = { exports: {} };
   runInNewContext(ts.transpileModule(`export class Subject {${methods}}`, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }
-  }).outputText, { module, exports: module.exports });
+  }).outputText, { module, exports: module.exports, ...globals });
   return new module.exports.Subject();
 }
+
+test('QA mounting observes pointer devices and unmounting releases the observer', () => {
+  const page = subject(qa, ['aboutToAppear', 'aboutToDisappear']);
+  const calls = [];
+  Object.assign(page, { appForeground: true,
+    observeHoverPointer() { calls.push('observe'); }, releaseHoverPointer() { calls.push('release'); },
+    blurQuestion() { calls.push('blur'); },
+    data: { setForeground(value) { assert.equal(value, true); }, activate() { calls.push('activate'); }, dispose() { calls.push('dispose'); } }
+  });
+  page.aboutToAppear(); page.aboutToDisappear();
+  assert.deepEqual(calls, ['observe', 'activate', 'release', 'dispose', 'blur']);
+});
+
+test('full-width navigation keeps the previous centered composer geometry', () => {
+  const page = subject(qa, ['composerHorizontalInset'], { READING_MAX_WIDTH: 1040, WorkspaceBreakpoint: { COMPACT: 'compact' } });
+  Object.assign(page, { workspaceBreakpoint: 'large', isLargeWorkspace: () => true });
+  for (const [width, inset, composerWidth] of [[840,96,648],[1040,96,848],[1382,195,992],[1900,454,992]]) {
+    page.contentViewportWidth = width;
+    assert.equal(page.composerHorizontalInset(), inset);
+    assert.equal(width - inset * 2, composerWidth);
+  }
+});
 test('composer clearance changes do not count as upward gestures and focused input remains available', () => {
   const page = subject(qa, ['setComposerHidden', 'handleReaderScroll']);
   Object.assign(page, { composerHidden: false, questionFocused: false, lastScrollY: 0,

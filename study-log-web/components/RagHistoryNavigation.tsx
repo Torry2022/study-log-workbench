@@ -112,7 +112,7 @@ export function RagHistoryNavigation({ history, root, messages, navigationToken,
         const question = [...questions].reverse().find(node => node.getBoundingClientRect().top <= topInset() + innerHeight * .35) || questions[0];
         if (question) setActive(question.dataset.ragMessageId!);
         const rect = root.current.getBoundingClientRect(), content = root.current.querySelector('.rag-message-list')?.getBoundingClientRect();
-        setRailLeft(content && content.left - rect.left >= 32 ? rect.left + 8 : null);
+        setRailLeft(content && content.left - rect.left >= 44 ? rect.left + 16 : null);
         setRailTop(Math.max(topInset() + 24, innerHeight / 2 - Math.min(entries.length * 6, 180)));
         const first = root.current.querySelector('[data-rag-message-id]')?.getBoundingClientRect();
         if (readingIntent.current && current.current?.window?.start && !current.current.error && first && scrollY + innerHeight < document.documentElement.scrollHeight - 32 && first.top >= topInset() - innerHeight * .75) void loadRef.current();

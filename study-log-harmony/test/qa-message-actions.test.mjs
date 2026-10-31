@@ -99,9 +99,9 @@ test('an older streaming render cannot scroll an inline editor to the bottom aft
   assert.ok(start >= 0 && end > start);
   const { code } = await transform(`class Reader { ${reader.slice(start, end)} }`, { loader: 'ts' });
   const Reader = new Function('apiClient', 'usesWideTypography', 'activeInstance', `${code}; return Reader;`)({ getToken: () => '' }, () => false, { origin: 'http://synthetic-instance.invalid' });
-  let finishOld, request = 0; const scrolls = [], completed = [];
+  let finishOld, request = 0; const scrolls = [], completed = [], historyReady = [];
   const context = { document: { documentElement: { style: { setProperty() {} }, dataset: {} }, body: { scrollHeight: 3000 } },
-    window: { setQaHistory() {}, qaHistoryReady() {}, clearLocatedHeading() {}, renderMarkdown: () => ++request === 1 ? new Promise(resolve => { finishOld = resolve; }) : Promise.resolve(),
+    window: { setQaHistory() {}, qaHistoryReady() { historyReady.push(context.window.readerActionRevision); }, clearLocatedHeading() {}, renderMarkdown: () => ++request === 1 ? new Promise(resolve => { finishOld = resolve; }) : Promise.resolve(),
       scrollTo: (...args) => scrolls.push(args), readerFrames: { rendered: value => completed.push(value), failed() { assert.fail('render should succeed'); } } },
     requestAnimationFrame: callback => callback() };
   const r = Object.assign(new Reader(), { active: true, ready: true, content: 'streaming', contentMode: 'qa',
@@ -113,4 +113,5 @@ test('an older streaming render cannot scroll an inline editor to the bottom aft
   r.render(); r.content = 'inline editor'; r.followEnd = false; r.render();
   await Promise.resolve(); finishOld(); await Promise.resolve(); await Promise.resolve();
   assert.deepEqual(scrolls, []); assert.deepEqual(completed, [2]);
+  assert.deepEqual(historyReady, [2], 'only the current completed render enables history loading');
 });

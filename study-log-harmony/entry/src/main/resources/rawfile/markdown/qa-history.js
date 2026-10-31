@@ -42,7 +42,7 @@
     cancelAnimationFrame(frame);
     frame = requestAnimationFrame(() => {
       const root = reader(); if (!root || !state.key) { rail.remove(); return; }
-      const rect = root.getBoundingClientRect(), first = nodes()[0]?.getBoundingClientRect();
+      const first = nodes()[0]?.getBoundingClientRect();
       const questions = nodes().filter(node => node.classList.contains('qa-message-user'));
       const active = [...questions].reverse().find(node => node.getBoundingClientRect().top <= innerHeight * .35) || questions[0];
       rail.querySelectorAll('.qa-history-tick').forEach(button => {
@@ -52,7 +52,7 @@
       });
       // The rail occupies existing reader whitespace, never the message's hit area.
       const content = questions[0]?.getBoundingClientRect();
-      const left = Math.max(8, rect.left + 8);
+      const left = 12;
       const room = content && content.left - left >= 28;
       rail.style.visibility = room && state.hover ? 'visible' : 'hidden';
       rail.style.left = `${left}px`; rail.style.top = `${Math.max(24, innerHeight / 2 - Math.min(entries.length * 6, 180))}px`; placePeek();

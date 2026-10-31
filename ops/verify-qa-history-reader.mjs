@@ -11,7 +11,7 @@ const full=Array.from({length:55},(_,i)=>[{id:`q${i}`,role:'user',content:`第${
 const outline=full.filter(m=>m.role==='user').slice(-30).map(m=>({questionId:m.id,question:m.content,preview:'合成回答摘要，仅使用已有内容。'}));
 for(const [engine,launcher] of [['chromium',chromium],['webkit',webkit]]){
  const browser=await launcher.launch();try{
-  const page=await browser.newPage({viewport:{width:1440,height:900}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const page=await browser.newPage({viewport:{width:1040,height:824}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto(pathToFileURL(path.join(repo,'study-log-harmony/entry/src/main/resources/rawfile/markdown/index.html')).href);
   await page.evaluate(()=>window.readerFrames={activeHeading(){},rendered(){},failed(){},bottomInsetReady(){},qaFollowStopped(){},qaFollowResumed(){}});
   const render=async(start,loading=false)=>page.evaluate(async({start,loading,full,outline})=>{
@@ -21,6 +21,15 @@ for(const [engine,launcher] of [['chromium',chromium],['webkit',webkit]]){
   },{start,loading,full,outline});
   await render(90);await page.evaluate(async()=>{window.setReaderBottomInset(130,1);await document.fonts.ready;window.resumeQaFollow(false);window.qaHistoryReady();});
   await expect(page.locator('[data-rag-message-id]')).toHaveCount(20);await expect(page.locator('.qa-history-tick')).toHaveCount(30);
+  await expect(page.locator('.qa-history-rail')).toBeVisible();
+  await page.setViewportSize({width:839,height:824});
+  await expect(page.locator('.qa-history-rail')).toBeHidden();
+  await page.setViewportSize({width:840,height:824});
+  await expect(page.locator('.qa-history-rail')).toBeVisible();
+  await page.setViewportSize({width:1040,height:824});
+  await page.setViewportSize({width:1440,height:900});
+  await expect.poll(()=>page.locator('.qa-history-rail').evaluate(n=>n.getBoundingClientRect().left)).toBe(12);
+  assert.equal(await page.locator('#reader').evaluate(n=>n.getBoundingClientRect().width),1040,'reading width stays bounded independently of the rail');
   await page.locator('.qa-history-tick').last().hover();await expect(page.locator('.qa-history-peek')).toContainText('55');
   const tickBox=await page.locator('.qa-history-tick').last().boundingBox(),peekBox=await page.locator('.qa-history-peek').boundingBox();
   assert.ok(Math.abs(tickBox.y+tickBox.height/2-peekBox.y-peekBox.height/2)<2,'native tooltip is beside hovered tick');
@@ -29,6 +38,7 @@ for(const [engine,launcher] of [['chromium',chromium],['webkit',webkit]]){
   await page.screenshot({path:path.join(output,`${engine}-wide.png`)});
   await page.locator('.qa-history-tick').first().click();await render(40);
   await expect.poll(()=>page.locator('[data-rag-message-id="q25"] > .qa-message-time').evaluate(n=>Math.abs(n.getBoundingClientRect().top-16)),{timeout:4000}).toBeLessThan(1);
+  assert.equal(await page.locator('[data-rag-message-id="q25"]').evaluate(n=>getComputedStyle(n).paddingTop),'12px','dated questions use compact top spacing');
   assert.equal(await page.locator('.is-history-located').count(),0,'tick jumps do not frame the message');
   await page.screenshot({path:path.join(output,`${engine}-located-time.png`)});
   await page.locator('.qa-history-tick').nth(1).click();

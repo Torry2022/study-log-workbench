@@ -146,7 +146,7 @@ export struct QaPage {
   @StorageLink('workspaceForeground') @Watch('foregroundChanged') appForeground: boolean = true;
   private foregroundChanged(): void { this.data.setForeground(this.appForeground); }
 
-  aboutToAppear(): void { this.data.setForeground(this.appForeground); this.data.activate(); }
+  aboutToAppear(): void { this.observeHoverPointer(); this.data.setForeground(this.appForeground); this.data.activate(); }
 
   private focusQuestion(): void {
     this.questionFocused = true;
@@ -157,7 +157,7 @@ export struct QaPage {
     this.questionFocused = false;
   }
 
-  aboutToDisappear(): void { this.data.dispose(); this.blurQuestion(); }
+  aboutToDisappear(): void { this.releaseHoverPointer(); this.data.dispose(); this.blurQuestion(); }
 
   private navigationRequestChanged(): void {
     if (this.navigationRequestRevision <= 0) return;
@@ -486,7 +486,7 @@ export struct QaPage {
   private composerHorizontalInset(): number {
     if (this.workspaceBreakpoint === WorkspaceBreakpoint.COMPACT) return 16;
     if (!this.isLargeWorkspace()) return 24;
-    return Math.max(24, 96 - Math.max(0, (this.contentViewportWidth - READING_MAX_WIDTH) / 2));
+    return Math.max(96, 24 + (this.contentViewportWidth - READING_MAX_WIDTH) / 2);
   }
 
   build() {
@@ -717,7 +717,7 @@ export struct QaPage {
           .layoutWeight(1)
           .width('100%')
         }
-        .width('100%').constraintSize({ maxWidth: READING_MAX_WIDTH })
+        .width('100%')
         .height('100%').backgroundColor($r('app.color.canvas'))
       }
       .height('100%').width('100%').justifyContent(FlexAlign.Center)

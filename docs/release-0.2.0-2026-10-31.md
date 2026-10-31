@@ -50,17 +50,17 @@ v0.1.6 于 2026-10-22 19:44:33（Asia/Shanghai）首次公开。原提交 `655f2
 
 ## 源码与候选标识
 
-当前通用版 Web、Windows 内置网页与鸿蒙产品源码为 `13fdfe1f43753ac96700246c476c9fa3cc1d3688`。配套 MCP／tools 自 `bbe4750cc3e1d6166769c9cf8f7df7a28ded584c` 后未变，保留其实际构建标签。后续测试与交付文档提交不改变产品产物。个人版镜像产品源码为 `b56aa97b417385680df1dd9d569742db3177185b`，继续使用原执行路径，Pi 不启用。
+当前通用版 Web、Windows 内置网页与鸿蒙产品源码为 `2d59c50eda298f9a69316875f61ff013bc1faa67`。配套 MCP／tools 自 `bbe4750cc3e1d6166769c9cf8f7df7a28ded584c` 后未变，保留其实际构建标签。后续测试与交付文档提交不改变产品产物。个人版镜像产品源码为 `8fecc435eb868e14c548d7310e1cd1adbbaae9b1`，继续使用原执行路径，Pi 不启用。
 
-Windows 内置 Node 22.23.3，Web 构建标识为 `RQixX80wsNXxEyJGrkoyk`；个人版网页构建标识为 `YFvnQ_cBnSRkSvF9Ry5Ap`。Windows 安装候选未签名。以下是当前收尾候选的摘要；此前构建及失败记录保留。
+Windows 内置 Node 22.23.3，Web 构建标识为 `Wu3C145Xw5qXaZ4q-LRR6`；个人版网页构建标识为 `yC5-mqWok6d9eZObPCn8m`。Windows 安装候选未签名。以下是当前收尾候选的摘要；此前构建及失败记录保留。
 
 | 文件 | SHA-256 |
 | --- | --- |
-| `study-log-desktop-0.2.0-x64-setup.exe` | `d7421574316ebee575c0ae48c9938edff246c57a8bad7b1dd9b88fd999dc55a6` |
-| `study-log-harmony-0.2.0-unsigned.hap` | `58453eb6f8f1aafbabe3671b4bd735f7b18ebe3f904976d613df2edfb639b108` |
+| `study-log-desktop-0.2.0-x64-setup.exe` | `923cb30c9d33ba3cfa96b90070e5bbfe00196dec1da85658a8e99ef2d71bbfdf` |
+| `study-log-harmony-0.2.0-unsigned.hap` | `ac8351d8d50149182f92b0fe79ccaead6409f574d87096ff1203b339175dd096` |
 | `study-log-server-0.2.0.zip` | `b2d8cd155f93c8cd5c62fbe0b24658aa59f84096da9f102a9cc56c5bfe7b0ca6` |
 
-三个公开候选镜像均为 Linux amd64，尚无公开 Registry manifest digest。Web／MCP／tools 的本地 image ID 分别为 `sha256:38baf37aa86f39e7a7cfb959c39b9ca40ce8dae2c9e127bc5c2cafbb8e71c19e`、`sha256:c242d446f0404c6c6f6d40240ceaa24027281590834c073237fbeeb34017376d`、`sha256:dbd7e46e7966a7098d7c412dc9925a78a583b33010bbd7af8106190a63ba4825`。
+三个公开候选镜像均为 Linux amd64，已推送并以无凭据配置按固定摘要拉取复核，公开 Web manifest digest 为 `sha256:0966864cf6a95a8126c96798e900c237da29fcba01d887249d42f317d3d648ea`。Web／MCP／tools 的本地 image ID 分别为 `sha256:0966864cf6a95a8126c96798e900c237da29fcba01d887249d42f317d3d648ea`、`sha256:c242d446f0404c6c6f6d40240ceaa24027281590834c073237fbeeb34017376d`、`sha256:dbd7e46e7966a7098d7c412dc9925a78a583b33010bbd7af8106190a63ba4825`。
 
 原桌面浏览器脚本仍按旧版首开顶部、旧侧栏按钮名及旧错误容器检查，本次已对齐当前入口和首开底部规则。其窄窗检查在已有的 160ms 模块退出快照结束后测量；立即切窗时旧快照仍保留桌面宽度的证据单列记录，不能据此声称动画中切窗也无瞬时溢出。稳定页面检查通过，未改产品代码来迎合旧断言。
 
@@ -69,3 +69,7 @@ Windows 内置 Node 22.23.3，Web 构建标识为 `RQixX80wsNXxEyJGrkoyk`；个�
 用 0.1.6 打包服务创建合成日志、随记和已保存问答，正常停止后保留备份，并在原任务库准备一份版本 3 的已完成任务记录；0.2.0 打包服务使用原凭据打开同一实例，原文件和任务行保持不变，数据库完整性检查通过，随后可保存新的日志版本。此结果证明被测数据的服务升级读取和保存，不等同于执行了 NSIS 原位安装，也不代表已复验物理设备。
 
 本轮没有真实模型费用或生产实例写入。本轮获授权后已在 MateBook Pro S（MOR-M1）原位更新两版并复验启动。安装前后 203 份应用私有文件哈希一致；通用版专项测试后 49 份原配置与资料恢复为原字节，测试登录退出，自有反向通道与服务关闭。个人版未登录生产会话，其真实会话的设备验收未宣称通过。没有操作 MatePad Edge。
+
+## 发布前追加复核
+
+输入框隐藏时点击回到底部，显式滚动期间保持显隐与悬浮布局，到底后再显示输入框并隐藏按钮；两版网页逐帧检查通过，鸿蒙实际页面方法验证及 release 构建通过。通用版 CI `41204874072`、个人版产品与测试 CI `41209299092` 通过，个人版完整鸿蒙测试 664 项通过。个人版首次 CI 的 4 项旧测试问题及修正记录保留；其后提交仅改测试与文档，不重建相同产品镜像。当前公开附件、镜像与证据入口已改为协调发布目录 `20261031-v020-bottom-return/`；此前候选保留供追溯。

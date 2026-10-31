@@ -58,6 +58,7 @@ export struct LoadFailure {
 
 @Component
 export struct InlineStatus {
+  @Prop compact: boolean = false;
   @Prop text: string = '';
   @Prop error: boolean = false;
   @Prop loading: boolean = false;
@@ -88,7 +89,7 @@ export struct InlineStatus {
         }
       }
       .width('100%')
-      .padding({ left: 16, right: 16, top: 9, bottom: 9 })
+      .padding({ left: 16, right: 16, top: this.compact ? 4 : 9, bottom: this.compact ? 4 : 9 })
       .backgroundColor(this.error ? $r('app.color.error_surface') : $r('app.color.success_surface'))
       .border({ width: { bottom: 1 }, color: $r('app.color.hairline_soft') })
     }

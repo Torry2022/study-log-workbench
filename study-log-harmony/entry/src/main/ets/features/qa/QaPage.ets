@@ -488,6 +488,20 @@ export struct QaPage {
         ModulePageHeader({ title: '知识问答',
           headerId: 'desktop_page_qa', onOpenLog: this.onOpenLog })
       }
+      if (this.data.taskMode && this.data.taskError || this.data.noticeMessage ||
+        !this.data.failedAttempt && !(this.data.failedSessionId && this.data.messages.length === 0) && this.data.errorMessage) {
+        Column({ space: 0 }) {
+          if (this.data.taskMode && this.data.taskError) {
+            InlineStatus({ compact: true, text: this.data.taskError, error: true, retry: true,
+              onRetry: () => this.data.refreshTasks() })
+          } else {
+            InlineStatus({ compact: true, text: this.data.failedAttempt || (this.data.failedSessionId && this.data.messages.length === 0) ? '' : this.data.errorMessage,
+              error: true, retry: this.data.failedSessionId.length > 0 && !this.data.sending,
+              onRetry: () => this.data.openSession(this.data.failedSessionId) })
+          }
+          InlineStatus({ compact: true, text: this.data.noticeMessage, error: false })
+        }.width('100%').id('qa_page_feedback')
+      }
       Stack({ alignContent: Alignment.BottomEnd }) {
       Row() {
         Column() {
@@ -592,14 +606,6 @@ export struct QaPage {
             }
 
             Column({ space: 6 }) {
-              if (this.data.taskMode) {
-                InlineStatus({ text: this.data.taskError, error: true, retry: !!this.data.taskError,
-                  onRetry: () => this.data.refreshTasks() })
-              }
-              InlineStatus({ text: this.data.noticeMessage, error: false })
-              InlineStatus({ text: this.data.failedAttempt || (this.data.failedSessionId && this.data.messages.length === 0) ? '' : this.data.errorMessage,
-                error: true, retry: this.data.failedSessionId.length > 0 && !this.data.sending,
-                onRetry: () => this.data.openSession(this.data.failedSessionId) })
               Column({ space: 8 }) {
                 TextArea({ text: this.data.question, controller: this.questionController,
                   placeholder: '询问学习日志中的内容' })

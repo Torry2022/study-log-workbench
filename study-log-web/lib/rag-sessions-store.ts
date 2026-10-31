@@ -1,3 +1,4 @@
+import { ragHistoryPage, RagHistoryCursorError, type RagHistoryQuery } from "./rag-history.ts";
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -227,6 +228,14 @@ export function listRagSessions(query = ""): Promise<RagSessionSummary[]> {
 }
 export function getRagSession(id: string): Promise<RagSession> { const target = uuid(id); return queued(async root => session(find((await read(root)).file, target)), true); }
 
+export async function getRagSessionHistory(id: string, query: RagHistoryQuery, expectedVersion?: string): Promise<RagSession> {
+  const saved = await getRagSession(id);
+  if (expectedVersion && saved.version !== expectedVersion) throw new RagSessionConflictError();
+  for (const value of [query.before, query.around, query.from]) if (value !== undefined) text(value, "消息定位", 120);
+  try { return ragHistoryPage(saved, query); }
+  catch (error) { if (error instanceof RagHistoryCursorError) throw new RagSessionConflictError(); throw error; }
+}
+
 export function deletedRagSessionIds(): Promise<string[]> {
   return queued(async root => (await read(root)).file.tombstones.map(item => item.id), true);
 }
@@ -316,6 +325,8 @@ export function updateRagSession(id: string, input: SaveRagSessionInput): Promis
     const { file, raw } = await read(root), record = find(file, target);
     if (retry(record, mutationId, digest)) return session(record);
     if (version(record) !== base) throw new RagSessionConflictError();
+    // Snapshot updates cannot discard an unseen prefix. Branch editing is owned by applyRagTaskResult.
+    if (content.length < record.messages.length || record.messages.length > 2 && content[0].id !== record.messages[0].id) throw new RagSessionConflictError();
     Object.assign(record, { answerMode: mode, messages: content, updatedAt: new Date().toISOString(), lastMutationId: mutationId, fingerprint: digest });
     await write(root, file, raw); return session(record);
   });

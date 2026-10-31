@@ -292,11 +292,12 @@ export class RagTaskClient {
     await this.accept(result.task);
     if (this.tasks.get(id) === old && old) await this.callbacks.task(old);
   }
-  async readSession(sessionId: string) {
+  async readSession(sessionId: string, questionIds?: string[]) {
     if (!uuid(sessionId)) throw new Error("会话标识无效");
     const result = await this.request<{ tasks: RagTaskSummary[] }>(`/api/rag/tasks?sessionId=${encodeURIComponent(sessionId)}`);
     if (!Array.isArray(result.tasks) || result.tasks.some(task => !uuid(task.id) || task.sessionId !== sessionId || !uuid(task.submissionId) || !Number.isSafeInteger(task.revision))) throw new Error("回答版本列表响应不完整");
     for (const task of result.tasks) {
+      if (questionIds && task.questionMessageId && !questionIds.includes(task.questionMessageId) && task.saveState === "saved" && !["queued", "running"].includes(task.state)) continue;
       if (task.applicable === false) {
         this.superseded.add(task.id);
         const known = this.tasks.get(task.id);

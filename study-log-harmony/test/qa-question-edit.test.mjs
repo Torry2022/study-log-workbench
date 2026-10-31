@@ -61,7 +61,7 @@ test('an in-flight old canonical read cannot overwrite a newly committed edit, a
   let hold = true;
   f.transport.get = async path => {
     const result = plain(await get(path));
-    if (path.endsWith(f.saved.id) && hold) { hold = false; started(); await gate; }
+    if (path.split('?')[0].endsWith(f.saved.id) && hold) { hold = false; started(); await gate; }
     return result;
   };
   const opening = f.controller.openSession(f.saved.id); await start;

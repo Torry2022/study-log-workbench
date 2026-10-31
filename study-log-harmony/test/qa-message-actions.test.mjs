@@ -48,7 +48,7 @@ test('orphan drafts remain actual reader content even when no canonical messages
   const draft = { messageId: 'removed', content: '可复制的草稿\n[S1]', token: 'edit-token', baseVersion: '', error: '' };
   const page = Object.assign(new Page(), { workspaceActive: true, copiedAnswerId: '', data: {
     questionEdit: () => draft, questionEditRevision: 2, sessionDocumentKey: 'session-key', messages: [],
-    answerMessages: () => [], orphanQuestionEdits: () => [draft], sending: false, taskSaving: false
+    visibleAnswerMessages: () => [], orphanQuestionEdits: () => [draft], sending: false, taskSaving: false
   } });
   const payload = JSON.parse(page.conversationPayload());
   assert.equal(payload.length, 1); assert.equal(payload[0].editOrphan, true);
@@ -101,7 +101,7 @@ test('an older streaming render cannot scroll an inline editor to the bottom aft
   const Reader = new Function('apiClient', 'usesWideTypography', 'activeInstance', `${code}; return Reader;`)({ getToken: () => '' }, () => false, { origin: 'http://synthetic-instance.invalid' });
   let finishOld, request = 0; const scrolls = [], completed = [];
   const context = { document: { documentElement: { style: { setProperty() {} }, dataset: {} }, body: { scrollHeight: 3000 } },
-    window: { clearLocatedHeading() {}, renderMarkdown: () => ++request === 1 ? new Promise(resolve => { finishOld = resolve; }) : Promise.resolve(),
+    window: { setQaHistory() {}, qaHistoryReady() {}, clearLocatedHeading() {}, renderMarkdown: () => ++request === 1 ? new Promise(resolve => { finishOld = resolve; }) : Promise.resolve(),
       scrollTo: (...args) => scrolls.push(args), readerFrames: { rendered: value => completed.push(value), failed() { assert.fail('render should succeed'); } } },
     requestAnimationFrame: callback => callback() };
   const r = Object.assign(new Reader(), { active: true, ready: true, content: 'streaming', contentMode: 'qa',

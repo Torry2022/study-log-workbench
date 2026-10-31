@@ -256,12 +256,13 @@ export class QaTaskClient {
     this.refreshing = work().finally(() => { this.refreshing = undefined; this.syncStream(); });
     return this.refreshing;
   }
-  async readSessionTasks(sessionId: string): Promise<void> {
+  async readSessionTasks(sessionId: string, questionIds?: string[]): Promise<void> {
     this.checkConnection();
     const response = await this.transport.getForInstance<QaTaskListResponse>(`/rag/tasks?sessionId=${encodeURIComponent(sessionId)}`, this.instanceId);
     if (!Array.isArray(response.tasks) || response.tasks.some((task: QaTaskSummary) => !validTaskSummary(task))) throw new Error('回答版本列表响应不完整');
     // Fetch only this conversation, not the result bodies of every conversation in discovery.
     for (const task of response.tasks.filter((item: QaTaskSummary) => item.sessionId === sessionId)) {
+      if (questionIds && task.questionMessageId && !questionIds.includes(task.questionMessageId) && task.saveState === 'saved' && !['queued', 'running'].includes(task.state)) continue;
       if (task.applicable === false) {
         this.superseded.add(task.id);
         const known = this.tasks.find((item: QaTask) => item.id === task.id);

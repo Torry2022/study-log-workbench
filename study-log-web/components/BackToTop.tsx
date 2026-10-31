@@ -24,7 +24,7 @@ export function BackToTop({ view, active }: { view: WorkspaceView; active: boole
       const clearance = composer && !composer.classList.contains("is-hidden") ?
         composer.offsetHeight + Math.max(0, parseFloat(getComputedStyle(composer.parentElement!).bottom) || 0) + 12 : 0;
       // Keep a focused control mounted through the last pixels of smooth scrolling.
-      setState(previous => ({ visible: top > 0 && ((show && top > 8) || previous.visible), progress: Math.min(1, progress), right: Math.max(24, innerWidth - (reader?.getBoundingClientRect().right ?? innerWidth) + 24), clearance }));
+      setState(previous => ({ visible: !(view === "qa" && document.querySelector('.rag-workspace[data-history-paginated="true"]')) && top > 0 && ((show && top > 8) || previous.visible), progress: Math.min(1, progress), right: Math.max(24, innerWidth - (reader?.getBoundingClientRect().right ?? innerWidth) + 24), clearance }));
     };
     const scheduleHide = () => { clearTimeout(timer); timer = setTimeout(() => { if (!keepVisible.current) setState(previous => ({ ...previous, visible: false })); }, 2500); };
     const scroll = (event: Event) => {

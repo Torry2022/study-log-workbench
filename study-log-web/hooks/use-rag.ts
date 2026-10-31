@@ -9,6 +9,7 @@ import { RagTaskClient, ragTaskMessages, ragTaskRetained, newestRagTask, type Pe
 import { ragAnswerVersions } from "@/lib/rag-answer-versions";
 import { ragTaskActive, type RagTask } from "@/lib/rag-task-types";
 import { originalRagMessageTimes } from "@/lib/rag-message-time";
+import { completeRagSession, reopenRagHistory, retainRagHistory, prependRagHistory, visibleRagHistory } from "@/lib/rag-history";
 
 interface Options {
   active: boolean; visible: boolean; routeSessionId: string; routeToken: number;
@@ -18,6 +19,7 @@ interface Options {
 interface Snapshot { id: string; mutationId: string; baseVersion: string | null; answerMode: RagAnswerMode; messages: RagChatMessage[] }
 interface QuestionEdit { body: string; baseVersion: string; error: string; submissionId?: string }
 interface SessionState {
+  historyLoading: boolean; historyError: string; readingPosition?: { id: string; top: number; y: number };
   questionTimes: Record<string, string>;
   id: string; session: RagSession | null; messages: RagChatMessage[]; question: string; answerMode: RagAnswerMode;
   unsaved: boolean; generating: boolean; saving: boolean; stage: string; error: string; saveError: string;
@@ -26,7 +28,7 @@ interface SessionState {
   editingId: string; edits: Map<string, QuestionEdit>;
 }
 function sessionState(id: string, session: RagSession | null = null): SessionState {
-  return { questionTimes: {}, id, session, messages: session?.messages || [], question: "", answerMode: session?.answerMode || "logs_only",
+  return { historyLoading: false, historyError: "", questionTimes: {}, id, session, messages: session?.messages || [], question: "", answerMode: session?.answerMode || "logs_only",
     unsaved: false, generating: false, saving: false, stage: "", error: "", saveError: "", pendingSave: null, selectionSave: null,
     request: null, unread: false, createdAt: session?.createdAt || new Date().toISOString(), task: null, pendingTask: null, awaitingSession: false, viewRevision: 0,
     editingId: "", edits: new Map() };
@@ -120,10 +122,11 @@ export function useRag(options: Options) {
   const install = useCallback((value: SessionState) => {
     const previous = states.current.get(selectedId.current);
     if (previous?.id && previous !== value && !previous.generating && !previous.saving && !previous.unsaved && !previous.pendingSave && !previous.question.trim() && !previous.edits.size && !previous.unread) states.current.delete(previous.id);
+    value.readingPosition = undefined;
     states.current.set(value.id, value); selectedId.current = value.id; value.unread = false;
     if (value.id && taskClient.current) {
       const client = taskClient.current, epoch = activationEpoch.current;
-      void client.readSession(value.id).catch(failure => { if (taskClient.current === client && epoch === activationEpoch.current && states.current.get(value.id) === value) setTaskConnectionError(failure instanceof TypeError ? "回答版本暂时无法更新，请重试连接" : failure.message); });
+      void client.readSession(value.id, value.session?.messages.filter(message => message.role === "user").map(message => message.id)).catch(failure => { if (taskClient.current === client && epoch === activationEpoch.current && states.current.get(value.id) === value) setTaskConnectionError(failure instanceof TypeError ? "回答版本暂时无法更新，请重试连接" : failure.message); });
     }
     notify(); setNavigationToken(token => token + 1);
   }, [notify]);
@@ -196,11 +199,11 @@ export function useRag(options: Options) {
           if (!owner.session || task.saveState === "saved" && previous?.saveState !== "saved") {
             if (task.saveState === "saved") owner.awaitingSession = true;
             try {
-              const result = await requestJson<{ session: RagSession }>(`/api/rag/sessions/${task.sessionId}`);
+              const result = await readSaved(task.sessionId);
               if (!validSession(result.session) || result.session.id !== task.sessionId) throw new Error("会话响应不完整，请重新读取");
               if (!current() || owner.task !== task || states.current.get(owner.id) !== owner) return;
               if (task.editMessageId && task.saveState === "saved" && !result.session.messages.some(message => message.id === `${task.id}:assistant`)) throw new Error("读取到的会话仍为旧版本，请重新读取。");
-              owner.session = result.session; owner.messages = ragTaskMessages(task, result.session, task.id !== newestRagTask(taskSnapshots.current.values(), owner.id)?.id); owner.awaitingSession = false;
+              owner.session = retainRagHistory(result.session, owner.session); owner.messages = ragTaskMessages(task, result.session, task.id !== newestRagTask(taskSnapshots.current.values(), owner.id)?.id); owner.awaitingSession = false;
               if (task.editMessageId && task.saveState === "saved" && owner.edits.get(task.editMessageId)?.submissionId === task.submissionId) {
                 owner.edits.delete(task.editMessageId);
                 if (owner.editingId === task.editMessageId) owner.editingId = "";
@@ -252,7 +255,7 @@ export function useRag(options: Options) {
       taskClient.current = client; client.start();
       setTaskClientInstance(taskCapability.instanceId);
       client.viewSession(live.current.visible ? selectedId.current : "");
-      if (selectedId.current) void client.readSession(selectedId.current).catch(failure => { if (current()) setTaskConnectionError(failure.message); });
+      if (selectedId.current) void client.readSession(selectedId.current, states.current.get(selectedId.current)?.session?.messages.filter(message => message.role === "user").map(message => message.id)).catch(failure => { if (current()) setTaskConnectionError(failure.message); });
     } catch (failure) { setTaskConnectionError(failure instanceof Error ? failure.message : "任务恢复不可用"); }
     return () => {
       client?.stop();
@@ -260,6 +263,40 @@ export function useRag(options: Options) {
     };
   }, [options.active, taskCapability?.instanceId, taskCapability?.supported, taskCapability?.ready, install, notify, refreshList]);
   useEffect(() => { taskClient.current?.viewSession(options.active && options.visible ? state.id : ""); }, [options.active, options.visible, state.id]);
+  async function readSaved(id: string, signal?: AbortSignal, full = false) {
+    const first = states.current.get(id)?.session?.history?.firstQuestionId;
+    const query = full ? "" : `?history=recent${first ? `&from=${encodeURIComponent(first)}` : ""}`;
+    return requestJson<{ session: RagSession }>(`/api/rag/sessions/${encodeURIComponent(id)}${query}`, { signal });
+  }
+  async function completeForWrite(owner: SessionState): Promise<boolean> {
+    const saved = owner.session;
+    if (!saved || completeRagSession(saved)) return true;
+    try {
+      const result = await readSaved(owner.id, undefined, true);
+      if (!owned(owner) || owner.session?.version !== saved.version) return false;
+      if (!validSession(result.session) || result.session.version !== saved.version || !completeRagSession(result.session)) throw new Error("会话已更新，请重新读取后再操作；草稿仍保留");
+      owner.session = retainRagHistory(result.session, saved);
+      if (!owner.unsaved && !owner.task && !owner.pendingTask) owner.messages = result.session.messages;
+      return true;
+    } catch (failure) { if (owned(owner)) { owner.error = failure instanceof Error ? failure.message : "完整会话读取失败，尚未保存"; notify(); } return false; }
+  }
+  async function loadEarlier(around?: string): Promise<boolean> {
+    const owner = states.current.get(selectedId.current)!, saved = owner.session, history = saved?.history;
+    if (!saved || !history || history.start === 0 || owner.historyLoading) return false;
+    owner.historyLoading = true; owner.historyError = ""; notify();
+    const current = () => owned(owner) && selectedId.current === owner.id && owner.session?.version === saved.version && owner.session.history?.firstQuestionId === history.firstQuestionId;
+    try {
+      const result = await requestJson<{ session: RagSession }>(`/api/rag/sessions/${encodeURIComponent(owner.id)}?history=recent&before=${encodeURIComponent(history.firstQuestionId)}&version=${saved.version}${around ? `&around=${encodeURIComponent(around)}` : ""}`);
+      if (!current()) return false;
+      const merged = prependRagHistory(saved, result.session);
+      await taskClient.current?.readSession(owner.id, merged.messages.filter(message => message.role === "user").map(message => message.id));
+      if (!current()) return false;
+      owner.messages = [...result.session.messages, ...visibleRagHistory(owner.messages, saved)]; owner.session = merged;
+      notify();
+      return true;
+    } catch (failure) { if (current()) owner.historyError = failure instanceof Error ? failure.message : "更早记录读取失败，请重试"; return false; }
+    finally { if (owned(owner)) { owner.historyLoading = false; notify(); } }
+  }
   const readSession = useCallback(async (id: string, signal?: AbortSignal) => {
     // Fetch lightweight timestamps alongside the record, before its first paint.
     const times = (async () => {
@@ -274,7 +311,7 @@ export function useRag(options: Options) {
         return {} as Record<string, string>;
       });
     const [result, questionTimes] = await Promise.all([
-      requestJson<{ session: RagSession }>(`/api/rag/sessions/${encodeURIComponent(id)}`, { signal }), times
+      readSaved(id, signal), times
     ]);
     if (!validSession(result.session) || result.session.id !== id) throw new Error("会话响应不完整，请重试");
     return { session: result.session, questionTimes };
@@ -286,7 +323,7 @@ export function useRag(options: Options) {
     loadRequest.current?.abort(); const controller = new AbortController(); loadRequest.current = controller;
     const target = options.routeSessionId;
     const cached = states.current.get(target);
-    if (cached) { loadRequest.current = null; loadedRoute.current = target; install(cached); setInitializing(false); return; }
+    if (cached) { if (cached.session && !cached.editingId) cached.session = reopenRagHistory(cached.session); loadRequest.current = null; loadedRoute.current = target; install(cached); setInitializing(false); return; }
     setInitializing(true);
     void readSession(target, controller.signal).then(result => {
       if (!validSession(result.session) || result.session.id !== target) throw new Error("会话响应不完整，请重试");
@@ -350,12 +387,12 @@ export function useRag(options: Options) {
     owner.messages = owner.session?.messages || []; notify();
     const current = () => owned(owner) && epoch === activationEpoch.current && owner.viewRevision === revision;
     try {
-      const result = await requestJson<{ session: RagSession }>(`/api/rag/sessions/${owner.id}`);
+      const result = await readSaved(owner.id);
       if (!validSession(result.session) || result.session.id !== owner.id) throw new Error("会话响应不完整，请重新读取");
       if (!current()) return;
       const committed = newestRagTask([...taskSnapshots.current.values()].filter(task => task.sessionId === owner.id), owner.id);
       if (committed?.editMessageId && committed.saveState === "saved" && !result.session.messages.some(message => message.id === `${committed.id}:assistant`)) throw new Error("读取到的会话仍为旧版本，请重新读取。");
-      owner.session = result.session; owner.messages = result.session.messages; owner.awaitingSession = false; owner.error = "";
+      owner.session = retainRagHistory(result.session, owner.session); owner.messages = result.session.messages; owner.awaitingSession = false; owner.error = "";
       if (committed?.editMessageId && committed.saveState === "saved" && owner.edits.get(committed.editMessageId)?.submissionId === committed.submissionId) {
         owner.edits.delete(committed.editMessageId);
         if (owner.editingId === committed.editMessageId) owner.editingId = "";
@@ -397,12 +434,14 @@ export function useRag(options: Options) {
     choices.set(questionId, answerId); answerViews.current.set(owner.id, choices); notify();
   }
   async function commitAnswerSelection(owner: SessionState) {
-    const saved = owner.session, questionId = saved?.messages.at(-2)?.id;
+    let saved = owner.session; const questionId = saved?.messages.at(-2)?.id;
     const answer = answerProjection(owner).messages.find(message => message.questionId === questionId);
     if (!saved || !answer || answer.id === saved.messages.at(-1)?.id) return true;
     if (!answer.content.trim() || ["streaming", "error", "stopped"].includes(answer.status || "")) {
       owner.error = "所选回答尚未完整，请选择完整回答后再继续提问。"; notify(); return false;
     }
+    if (!await completeForWrite(owner)) return false;
+    saved = owner.session!;
     const selected: RagChatMessage = { id: answer.id, role: "assistant", content: answer.content,
       citations: answer.citations || [], status: "complete",
       ...(answer.groundingWarning === undefined ? {} : { groundingWarning: answer.groundingWarning }) };
@@ -420,9 +459,9 @@ export function useRag(options: Options) {
     try {
       await taskClient.current.save(taskId);
       if (owned(owner) && owner.task?.id !== taskId) {
-        const result = await requestJson<{ session: RagSession }>(`/api/rag/sessions/${owner.id}`);
+        const result = await readSaved(owner.id);
         if (!validSession(result.session) || result.session.id !== owner.id) throw new Error("会话响应不完整，请重新读取");
-        if (owned(owner)) owner.session = result.session;
+        if (owned(owner)) owner.session = retainRagHistory(result.session, owner.session);
       }
     }
     catch (failure) { if (owned(owner)) owner.error = failure instanceof Error ? failure.message : "保存重试失败"; }
@@ -474,7 +513,7 @@ export function useRag(options: Options) {
       if (!validSession(result.session) || result.session.id !== snapshot.id ||
         JSON.stringify(result.session.messages.map(message => [message.id, message.content, message.status || "complete"])) !==
         JSON.stringify(snapshot.messages.map(message => [message.id, message.content, message.status || "complete"]))) throw new Error("保存响应不完整，请保留回答并重试保存");
-      owner.pendingSave = null; owner.session = result.session; owner.unsaved = false;
+      owner.pendingSave = null; owner.session = retainRagHistory(result.session, owner.session); owner.unsaved = false;
       if (committingSelection) {
         owner.messages = result.session.messages; owner.selectionSave = null;
         const questionId = snapshot.messages.at(-2)?.id, choices = answerViews.current.get(owner.id);
@@ -554,6 +593,7 @@ export function useRag(options: Options) {
     if (!live.current.active || !live.current.visible || !configured || !taskClientReady || state.generating || initializing || state.saving || state.pendingSave || state.awaitingSession || state.editingId) return;
     if (state.task && state.task.id !== newestRagTask(taskSnapshots.current.values(), state.id)?.id || [...taskSnapshots.current.values()].some(task => task.applicable !== false && task.sessionId === state.id && ragTaskActive(task) && task.id !== state.task?.id)) return;
     if (regenerate && (answerProjection(state).historical || state.question.trim())) return;
+    if (!taskCapability?.supported && !await completeForWrite(state)) return;
     const text = regenerate ? state.messages.at(-2)?.content || "" : state.question.trim();
     if (!text || text.length > 2000) return;
     if (!regenerate && !(await commitAnswerSelection(state))) return;
@@ -561,7 +601,7 @@ export function useRag(options: Options) {
       taskCapability?.supported && (!client || client !== taskClient.current || state.pendingTask || taskScope.current !== taskCapability.instanceId)) return;
     if (!regenerate && state.question.trim() !== text) return;
     const history = regenerate ? state.messages.slice(0, -2) : state.messages;
-    if (history.length >= 198) { setError("当前会话已达到消息上限，请新建会话。"); return; }
+    if ((state.session?.messageCount || history.length) >= 198 && !regenerate) { setError("当前会话已达到消息上限，请新建会话。"); return; }
     if (!state.id) {
       states.current.delete(""); state.id = clientUuid(); states.current.set(state.id, state);
       states.current.set("", sessionState("")); selectedId.current = state.id; loadedRoute.current = state.id;
@@ -657,7 +697,7 @@ export function useRag(options: Options) {
     loadRequest.current?.abort(); const controller = new AbortController(); loadRequest.current = controller;
     setInitializing(true); setNavigationError("");
     try {
-      const result = await requestJson<{ session: RagSession }>(`/api/rag/sessions/${id}`, { signal: controller.signal });
+      const result = await readSaved(id, controller.signal);
       if (!validSession(result.session) || result.session.id !== id) throw new Error("会话响应不完整，请重试");
       if (!controller.signal.aborted && live.current.active && selectedId.current === owner.id) { answerViews.current.delete(id); install({ ...sessionState(id, result.session), questionTimes: owner.questionTimes }); loadedRoute.current = id; live.current.onRoute(id); pendingMutations.current.delete(id); await refreshList(); }
     } catch (failure) { if (!controller.signal.aborted && selectedId.current === owner.id) {
@@ -692,7 +732,7 @@ export function useRag(options: Options) {
   const editOrphaned = deletedSessions.current.has(state.id) || Boolean(state.session && !state.session.messages.some(message => message.role === "user" && message.id === state.editingId));
   const editRecoveryError = questionEdit && !editOrphaned ? questionEdit.error || state.saveError ||
     (state.awaitingSession ? "回答状态尚未确认，请重试读取会话。" : !questionEdit.baseVersion || questionEdit.baseVersion !== state.session?.version ? "会话版本尚未确认，请重试后继续编辑。" : "") : "";
-  return { sessions: displayedSessions, activeSessionId: selectedId.current, sessionActivity, session, messages: displayMessages, question, setQuestion,
+  return { sessions: displayedSessions, activeSessionId: selectedId.current, sessionActivity, session, history: { window: session?.history, loading: state.historyLoading, error: state.historyError, loadEarlier, readingPosition: state.readingPosition, rememberPosition: (position: { id: string; top: number; y: number } | undefined) => { state.readingPosition = position; } }, messages: visibleRagHistory(displayMessages, session), question, setQuestion,
     answerMode, setAnswerMode, query, setQuery, loading, historyError, retryHistory: () => setHistoryRevision(value => value + 1),
     taskConnectionError, retryTaskConnection: () => { void taskClient.current?.refresh(); },
     questionEditing: taskCapability?.questionEditing === true && !projection.historical,

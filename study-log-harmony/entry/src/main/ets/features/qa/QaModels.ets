@@ -1,3 +1,4 @@
+import { QaHistoryWindow } from './QaHistory';
 export interface RagSessionSummary {
   id: string;
   title: string;
@@ -43,6 +44,7 @@ export interface RagCitation {
 }
 
 export interface RagSession extends RagSessionSummary {
+  history?: QaHistoryWindow;
   answerMode: string;
   messages: RagChatMessage[];
 }

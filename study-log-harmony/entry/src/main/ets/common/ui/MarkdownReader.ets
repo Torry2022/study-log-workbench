@@ -49,6 +49,8 @@ class ReaderFrameBridge {
 export struct MarkdownReader {
   @Consume('workspaceBreakpoint') private workspaceBreakpoint: WorkspaceBreakpoint;
   @Prop @Watch('contentChanged') content: string = '';
+  @Prop @Watch('contentChanged') qaHistory: string = '';
+  onQaHistoryLoad: (questionId: string) => void = () => {};
   @Prop @Watch('viewportRequested') viewportRequestRevision: number = 0;
   @Prop contentMode: string = 'document';
   onImageDrop?: (event: DragEvent) => void;
@@ -267,7 +269,7 @@ export struct MarkdownReader {
     const theme = this.themePreference === 'dark' || this.themePreference === 'light' ?
       this.themePreference : this.systemTheme;
     return JSON.stringify([
-      this.content, this.contentMode, Math.max(0, this.contentTopInset),
+      this.content, this.qaHistory, this.contentMode, Math.max(0, this.contentTopInset),
       JSON.stringify(apiClient.getToken()), activeInstance.origin, theme,
       usesWideTypography(this.workspaceBreakpoint) ? 'wide' : 'compact',
       this.targetHeading, this.targetHeadingIndex, this.targetHeadingId, this.targetKind,
@@ -314,7 +316,7 @@ export struct MarkdownReader {
           `window.scrollToHeading(${heading}, ${this.targetHeadingIndex}, ${headingId})` : 'window.scrollToTop()')) :
       (this.contentMode === 'qa' && this.scrollToEndRequestRevision > 0 && this.scrollToEndRequestRevision !== this.handledEndRevision ? `window.resumeQaFollow(${this.smoothScrollToEnd})` :
       this.followEnd || this.scrollToEndRequestRevision > 0 && this.scrollToEndRequestRevision !== this.handledEndRevision ? 'window.scrollTo(0, document.body.scrollHeight)' :
-        (documentChanged ? `window.scrollTo(0, ${restoreScrollOffset})` :
+        (documentChanged ? this.contentMode === 'qa' ? 'window.resumeQaFollow(false)' : `window.scrollTo(0, ${restoreScrollOffset})` :
           (this.resetScrollOnContentChange && hasNewContent ? 'window.scrollToTop()' : 'true')));
     const targetResultUrl = JSON.stringify(
       `study-log://target-result?kind=${encodeURIComponent(kind)}&revision=${revision}`
@@ -339,6 +341,7 @@ export struct MarkdownReader {
       `document.documentElement.style.setProperty('--reading-scale', '${this.readingScale}'); ` +
       `document.documentElement.dataset.typography = '${typography}'; ` +
       `window.readerActionRevision = ${renderSequence}; ` +
+      (this.contentMode === 'qa' ? `window.setQaHistory(${JSON.stringify(this.qaHistory)}); ` : 'window.setQaHistory(""); ') +
       `${renderContent}.then(() => { if (${contentMode} === 'qa' && window.readerActionRevision !== ${renderSequence}) return; ${afterRenderAction}; ` +
       `requestAnimationFrame(() => requestAnimationFrame(() => { window.readerFrames.rendered(${renderSequence}); })); })` +
       `.catch(() => window.readerFrames.failed(${renderSequence}))`,
@@ -436,6 +439,11 @@ export struct MarkdownReader {
 
   private handleNavigation(url: string): boolean {
     if (this.handleTargetResult(url)) return true;
+    if (url.startsWith('study-log://qa-history?')) {
+      const values = this.queryValues(url);
+      if (this.contentMode === 'qa' && values['key'] === this.documentKey) this.onQaHistoryLoad(values['target'] || '');
+      return true;
+    }
     if (url.startsWith('study-log://qa-answer?')) {
       const values = this.queryValues(url);
       if (this.contentMode === 'qa' && values['id'] && ['copy', 'edit', 'version', 'regenerate', 'save', 'retry', 'discard'].includes(values['action'])) {

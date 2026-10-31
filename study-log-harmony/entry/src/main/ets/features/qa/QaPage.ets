@@ -14,6 +14,7 @@ import { RagChatMessage, RagCitation, RagSessionSummary } from './QaModels';
 import { QaSessionController, QaQuestionEdit } from './QaSessionController';
 import { createQaTaskConnection } from './QaTaskConnection';
 import { QaAnswerMessage } from './QaTaskModels';
+import { QaHistoryPresentation } from './QaHistory';
 import { pasteboard } from '@kit.BasicServicesKit';
 import { appFeedback } from '../../common/ui/AppFeedback';
 
@@ -278,7 +279,7 @@ export struct QaPage {
   }
 
   private backToTopVisible(): boolean {
-    return this.data.messages.length > 0 && this.readerScrollOffset > 8 && !this.questionFocused && !this.data.sending;
+    return !this.data.historyWindow?.paginated && this.data.messages.length > 0 && this.readerScrollOffset > 8 && !this.questionFocused && !this.data.sending;
   }
 
   private handleReaderProgress(progress: number): void {
@@ -379,11 +380,17 @@ export struct QaPage {
     .zIndex(4)
   }
 
+  private historyPayload(): string {
+    const history: QaHistoryPresentation = { window: this.data.historyWindow, loading: this.data.historyLoading,
+      error: this.data.historyError, key: this.data.sessionDocumentKey, hover: this.pointerHoverSupported && this.isLargeWorkspace() };
+    return JSON.stringify(history);
+  }
+
   private conversationPayload(): string {
     const edit = this.data.questionEdit();
     const editRevision = this.data.questionEditRevision;
     let previousTime: number = 0;
-    const messages: QaRenderMessage[] = this.data.answerMessages().map((message: QaAnswerMessage): QaRenderMessage => ({
+    const messages: QaRenderMessage[] = this.data.visibleAnswerMessages().map((message: QaAnswerMessage): QaRenderMessage => ({
       id: message.id, copied: this.copiedAnswerId === message.id, citations: message.citations, versions: message.versions, versionIndex: message.versionIndex,
       canRegenerate: message.canRegenerate, saveError: message.saveError, canSave: message.canSave, canRetry: message.canRetry, canDiscard: message.canDiscard,
       role: message.role,
@@ -549,6 +556,8 @@ export struct QaPage {
                 onViewportReady: this.onWorkspaceLayoutReady,
                 onRenderReady: this.onWorkspaceLayoutReady,
                 content: this.conversationPayload(),
+                qaHistory: this.historyPayload(),
+                onQaHistoryLoad: (id: string) => { this.followAnswer = false; this.data.loadEarlier(id); },
                 onQaAnswerAction: (id: string, action: string, target: string) => this.answerAction(id, action, target),
                 onQaQuestionEdit: (id: string, token: string, action: string, value: string) => {
                   if (!this.workspaceActive || this.data.questionEdit(id)?.token !== token) return;

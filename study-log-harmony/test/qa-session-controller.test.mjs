@@ -26,6 +26,7 @@ async function loadController() {
     '../../common/network/ApiClient': { ApiError: class extends Error {}, ApiStreamCancelledError: class extends Error {} },
     './QaStreamParser': { QaStreamParser },
     './QaTaskModels': taskModels,
+    './QaHistory': await load('QaHistory.ets', {}),
     '@kit.ArkTS': { util: { generateRandomUUID: () => `00000000-0000-4000-8000-${String(++sequence).padStart(12, '0')}` } }
   });
   return QaSessionController;
@@ -65,7 +66,7 @@ test('history loading preserves a new question and cannot send it with the previ
   let finishOpen, streams = 0;
   const sent = [];
   const controller = new Controller({
-    get: path => path === '/rag/sessions/target' ? new Promise(resolve => { finishOpen = resolve; }) :
+    get: path => path.split('?')[0] === '/rag/sessions/target' ? new Promise(resolve => { finishOpen = resolve; }) :
       Promise.resolve({ sessions: [] }),
     postStream: async (_path, request, chunk) => {
       streams++; sent.push(structuredClone(request));
@@ -84,7 +85,7 @@ test('history loading preserves a new question and cannot send it with the previ
   assert.equal(controller.question, 'question typed while loading');
   assert.equal(controller.messages.length, 2);
   assert.equal(controller.sessionLoading, true);
-  finishOpen({ session: { id: 'target', version: 'v1', answerMode: 'logs_only', messages: [
+  finishOpen({ session: { id: 'target', version: 'v1', messageCount: 2, answerMode: 'logs_only', messages: [
     { id: 'new-u', role: 'user', content: 'target question' },
     { id: 'new-a', role: 'assistant', content: 'target answer' }
   ] } });
@@ -273,7 +274,7 @@ test('late stopped-answer save cannot replace a newly opened session', async () 
   const controller = new QaSessionController({
     cancelStream() {},
     post: () => new Promise(resolve => { finishSave = resolve; }),
-    get: async path => path === '/rag/sessions/new-session' ? {
+    get: async path => path.split('?')[0] === '/rag/sessions/new-session' ? {
       session: { id: 'new-session', version: 'v2', messages: [], answerMode: 'logs_only' }
     } : { sessions: [] }
   }, view());

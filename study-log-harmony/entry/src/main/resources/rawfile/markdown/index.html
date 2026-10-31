@@ -12,12 +12,14 @@
   </style>
   <link rel="stylesheet" href="katex.min.css">
   <link rel="stylesheet" href="reader.css">
+  <link rel="stylesheet" href="qa-history.css">
   <script src="marked.umd.js"></script>
   <script src="purify.min.js"></script>
   <script src="katex.min.js"></script>
   <script src="auto-render.min.js"></script>
   <script src="mermaid.min.js"></script>
   <script src="qa-presentation.js"></script>
+  <script src="qa-history.js"></script>
 </head>
 <body>
   <main id="reader" class="markdown-body"></main>
@@ -289,6 +291,7 @@
         messages = [];
       }
 
+      window.qaHistoryBeforeRender?.(messages);
       const articles = [];
       const editors = new Map(Array.from(reader.querySelectorAll('[data-edit-token]')).map(node => [node.dataset.editToken, node]));
       let focusEditor = null;
@@ -297,6 +300,7 @@
         const preserved = isUser && message.editToken ? editors.get(message.editToken) : null;
         if (preserved) {
           preserved.dataset.documentKey = message.documentKey || '';
+          preserved.dataset.ragMessageId = message.id || '';
           preserved.querySelector('textarea').readOnly = !!message.editBusy;
           preserved.querySelector('textarea').dataset.canSend = message.canEdit ? 'true' : 'false';
           preserved.querySelector('.qa-edit-error').textContent = message.editError || '';
@@ -311,6 +315,7 @@
         }
         const article = document.createElement('article');
         article.className = `qa-message qa-message-${isUser ? 'user' : 'assistant'}`;
+        article.dataset.ragMessageId = message.id || '';
         if (message.timeLabel) {
           const time = document.createElement('div'); time.className = 'qa-message-time'; time.textContent = message.timeLabel; time.title = message.timeTitle ? new Date(message.timeTitle).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }) : ''; time.setAttribute('aria-label', time.title || message.timeLabel);
           article.appendChild(time);
@@ -459,6 +464,7 @@
       const retained = new Set(articles);
       Array.from(reader.children).forEach(node => { if (!retained.has(node)) node.remove(); });
       articles.forEach((node, index) => { if (reader.children[index] !== node) reader.insertBefore(node, reader.children[index] || null); });
+      window.qaHistoryAfterRender?.(messages);
       if (focusEditor) requestAnimationFrame(() => { if (reader.contains(focusEditor) && !focusEditor.readOnly) focusEditor.focus({ preventScroll: true }); });
     }
 

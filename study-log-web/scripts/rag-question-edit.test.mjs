@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import { runInNewContext } from 'node:vm';
 import { randomUUID } from 'node:crypto';
 import ts from 'typescript';
+import * as history from '../lib/rag-history.ts';
 import * as taskHelpers from '../lib/rag-task-client.ts';
 import * as versions from '../lib/rag-answer-versions.ts';
 import * as taskTypes from '../lib/rag-task-types.ts';
@@ -16,7 +17,7 @@ function fixture({ newSession = false, taskSupported = true } = {}) {
   const id = randomUUID(), requests = [], removed = [], clients = [], routes = [], allocatedIds = [], legacyRequests = [], slots = [], effects = new Map();
   let instanceId = randomUUID();
   let cursor = 0, readError, readGate, capabilityGate, capabilityError;
-  const saved = { id, title: '合成会话', version: 'a'.repeat(64), answerMode: 'logs_only',
+  const saved = { id, title: '合成会话', messageCount: 2, version: 'a'.repeat(64), answerMode: 'logs_only',
     createdAt: '2026-10-22T01:00:00Z', updatedAt: '2026-10-22T01:00:00Z',
     messages: [{ id: 'question', role: 'user', content: '原问题\n[S1]' }, { id: 'answer', role: 'assistant', content: '原回答' }] };
   const clone = value => JSON.parse(JSON.stringify(value));
@@ -54,7 +55,7 @@ function fixture({ newSession = false, taskSupported = true } = {}) {
     }
     if (path.startsWith('/api/rag/sessions?q=')) return { sessions: [clone(saved)] };
     if (path === `/api/rag/tasks?sessionId=${id}`) return { tasks: [] };
-    if (path === `/api/rag/sessions/${id}`) {
+    if (path.split('?')[0] === `/api/rag/sessions/${id}`) {
       if (readError) throw readError;
       const response = { session: clone(saved) }, gate = readGate; readGate = undefined;
       if (gate) { gate.start(); await gate.wait; }
@@ -62,7 +63,7 @@ function fixture({ newSession = false, taskSupported = true } = {}) {
     }
     throw Error('Unexpected request: ' + path);
   };
-  const dependencies = { react, '@/lib/client-http': { ApiRequestError, requestJson },
+  const dependencies = { react, '@/lib/rag-history': history, '@/lib/client-http': { ApiRequestError, requestJson },
     '@/lib/rag-client': { clientUuid: () => { const value = randomUUID(); allocatedIds.push(value); return value; }, async requestRagStream(input) { assert.equal(taskSupported, false, 'task-capable servers must not use legacy generation'); legacyRequests.push(clone(input)); } },
     '@/lib/rag-task-client': { ...taskHelpers, RagTaskClient: Client }, '@/lib/rag-answer-versions': versions,
     '@/lib/rag-task-types': taskTypes, '@/lib/rag-message-time': times };

@@ -1,13 +1,19 @@
 import { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { deleteRagSession, getRagSession, renameRagSession, updateRagSession, type DeleteRagSessionInput, type RenameRagSessionInput, type SaveRagSessionInput } from "@/lib/rag-sessions-store";
+import { deleteRagSession, getRagSession, getRagSessionHistory, renameRagSession, updateRagSession, type DeleteRagSessionInput, type RenameRagSessionInput, type SaveRagSessionInput } from "@/lib/rag-sessions-store";
 import { ragSessionError, ragSessionHeaders, readRagSessionBody } from "@/lib/rag-session-http";
 
 export const runtime = "nodejs";
 type Context = { params: Promise<{ id: string }> };
 export async function GET(request: NextRequest, context: Context) {
   const unauthorized = requireAuth(request); if (unauthorized) { unauthorized.headers.set("Cache-Control", "no-store"); return unauthorized; }
-  try { return Response.json({ session: await getRagSession((await context.params).id) }, { headers: ragSessionHeaders }); }
+  try {
+    const id = (await context.params).id, query = request.nextUrl.searchParams;
+    const session = query.get("history") === "recent" ? await getRagSessionHistory(id, {
+      from: query.get("from") || undefined, before: query.get("before") || undefined, around: query.get("around") || undefined
+    }, query.get("version") || undefined) : await getRagSession(id);
+    return Response.json({ session }, { headers: ragSessionHeaders });
+  }
   catch (error) { return ragSessionError(error); }
 }
 export async function PUT(request: NextRequest, context: Context) {

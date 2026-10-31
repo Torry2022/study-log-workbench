@@ -281,7 +281,7 @@ export function Workspace() {
     <AppFeedback feedback={navigationError ? { message: navigationError, tone: "error" } : navigationFeedback} onDismiss={() => setNavigationError("")} />
     <AppFeedback feedback={exporting.status || exporting.error || exporting.busy ? { message: exporting.error || exporting.status || "正在准备导出…", tone: exporting.error ? "error" : exporting.status ? "warning" : "info", action: exporting.busy ? { label: "取消导出", onClick: exporting.cancel } : undefined } : null} onDismiss={exporting.dismiss} />
     <div className="workspace-view" hidden={logs.selection.view !== "qa"}>
-      <RagWorkspace noLogs={!logs.navigationLoading && !logs.navigationError && !logs.months.length} onOpenLog={openLog} active={active} visible={logs.selection.view === "qa"} disabled={!rag.configured || rag.saving || rag.submissionBlocked || Boolean(rag.saveError)} answerActionBusy={rag.saving} messages={rag.messages} initializing={rag.initializing}
+      <RagWorkspace history={rag.history} noLogs={!logs.navigationLoading && !logs.navigationError && !logs.months.length} onOpenLog={openLog} active={active} visible={logs.selection.view === "qa"} disabled={!rag.configured || rag.saving || rag.submissionBlocked || Boolean(rag.saveError)} answerActionBusy={rag.saving} messages={rag.messages} initializing={rag.initializing}
         messageTimes={rag.messageTimes} questionEditing={rag.questionEditing} editableQuestionIds={rag.editableQuestionIds} questionEdit={rag.questionEdit}
         historyUnavailable={Boolean(rag.error)}
         onBeginQuestionEdit={rag.beginQuestionEdit} onQuestionEditChange={rag.changeQuestionEdit} onCancelQuestionEdit={rag.cancelQuestionEdit}

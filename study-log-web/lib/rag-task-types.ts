@@ -16,5 +16,5 @@ export interface RagTask {
   result: RagTaskResult | null; error: string; errorCode: string; replaceLast?: boolean; saveState: "pending" | "saved" | "conflict" | "error" | "deleted";
   saveError: string;
 }
-export type RagTaskSummary = Pick<RagTask, "id" | "sessionId" | "submissionId" | "state" | "revision" | "createdAt" | "updatedAt" | "mode" | "stage" | "errorCode" | "saveState" | "applicable"> & { questionPreview: string };
+export type RagTaskSummary = Pick<RagTask, "id" | "sessionId" | "submissionId" | "questionMessageId" | "state" | "revision" | "createdAt" | "updatedAt" | "mode" | "stage" | "errorCode" | "saveState" | "applicable"> & { questionPreview: string };
 export const ragTaskActive = (task: Pick<RagTask, "state">) => task.state === "queued" || task.state === "running";

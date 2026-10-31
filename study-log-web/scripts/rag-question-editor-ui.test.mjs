@@ -13,6 +13,7 @@ const source = await fs.readFile(new URL('../components/RagWorkspace.tsx', impor
 runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS,
   target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText, {
   module, exports: module.exports, require: name => {
+    if (name === './RagHistoryNavigation') return { RagHistoryNavigation: () => null };
     if (!name.startsWith('@/')) return require(name);
     if (name.endsWith('.css')) return {};
     if (name.endsWith('/MarkdownPreview')) return { MarkdownPreview: () => null };

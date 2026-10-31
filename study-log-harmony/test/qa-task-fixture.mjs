@@ -21,7 +21,7 @@ export async function loadQaTasks(apiExports) {
   const cancellationModule = { exports: {} };
   runInNewContext(ts.transpileModule(cancellationSource, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, { module: cancellationModule, exports: cancellationModule.exports, Error });
   dependencies['../../common/network/ReadCancellation'] = cancellationModule.exports;
-  const models = await load('QaTaskModels'); await load('QaStreamParser');
+  const models = await load('QaTaskModels'); await load('QaHistory'); await load('QaStreamParser');
   const { QaTaskClient } = await load('QaTaskClient'), { QaSessionController } = await load('QaSessionController'), { QaNavigationController } = await load('QaNavigationController');
   return { QaTaskClient, QaSessionController, QaNavigationController, ApiError: network.ApiError, ...models };
 }
@@ -52,14 +52,14 @@ export async function fixture() {
     getEventStreamForInstance: (path, instance, emit, cancellation) => new Promise(resolve => cancellation.bind(resolve)),
     put: async (path, body) => {
       requests.push({ method: 'PUT', path, body: plain(body) });
-      const saved = sessions.get(path.split('/').at(-1));
+      const saved = sessions.get(path.split('?')[0].split('/').at(-1));
       if (!saved || saved.version !== body.baseVersion) throw new runtime.ApiError('会话已变化', 409);
       Object.assign(saved, { messages: plain(body.messages), version: 'b'.repeat(64) });
       return { session: plain(saved) };
     },
     get: async path => {
       if (path === '/rag/sessions') return { sessions: [...sessions.values()] };
-      const result = sessions.get(path.split('/').at(-1)); if (!result) throw new runtime.ApiError('deleted session', 404);
+      const result = sessions.get(path.split('?')[0].split('/').at(-1)); if (!result) throw new runtime.ApiError('deleted session', 404);
       return { session: plain(result) };
     },
     getForInstance: async (path, instance) => {

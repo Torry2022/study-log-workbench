@@ -1,4 +1,5 @@
 "use client";
+import { RagHistoryNavigation, type RagHistoryControl } from "./RagHistoryNavigation";
 
 import "@/app/rag-workspace.css";
 
@@ -26,6 +27,7 @@ const RagAnswerBody = memo(function RagAnswerBody({ message, content, enabled, t
 });
 
 interface RagWorkspaceProps {
+  history?: RagHistoryControl;
   availability?: ReactNode;
   feedback?: ReactNode;
   historyUnavailable?: boolean;
@@ -75,6 +77,7 @@ export function RagWorkspace({
   visible,
   disabled = false,
   messages,
+  history,
   messageTimes,
   questionEditing = false,
   editableQuestionIds = [],
@@ -159,7 +162,7 @@ export function RagWorkspace({
     lastNavigationToken.current = sessionNavigationToken;
     setComposerHidden(false);
     setExpandedCitationKey(null);
-    window.scrollTo({ top: 0, behavior: "auto" });
+    followOutputRef.current = Boolean(messages.length && !history?.readingPosition);
     scrollYRef.current = window.scrollY;
   }, [enabled, sessionNavigationToken]);
 
@@ -394,9 +397,12 @@ export function RagWorkspace({
       <div className="module-title-block"><div className="reader-heading-row"><h2>知识问答</h2></div></div>
       <div className="reader-controls">{onOpenLog && <button className="button secondary" type="button" onClick={onOpenLog}><FileText size={15} />日志</button>}</div>
     </div></div>}
-    <div onPointerDownCapture={releaseFollowing} onKeyDownCapture={releaseFollowing} ref={workspaceRef} className={`rag-workspace${messages.length > 0 ? " has-messages" : ""}`} hidden={!enabled}>
+    <div onPointerDownCapture={releaseFollowing} onKeyDownCapture={releaseFollowing} ref={workspaceRef} data-history-paginated={Boolean(history?.window?.paginated)} className={`rag-workspace${messages.length > 0 ? " has-messages" : ""}`} hidden={!enabled}>
       <div className="rag-feedback">{feedback}</div>
       <div className="rag-conversation" aria-live="polite">
+        <RagHistoryNavigation history={history} root={workspaceRef} messages={messages} navigationToken={sessionNavigationToken} initializing={initializing} enabled={enabled}
+          onNavigate={() => { followOutputRef.current = false; readingAnchorRef.current = null; }}
+          onInitialEnd={() => { followOutputRef.current = true; followLatest(); }} />
         {questionEdit?.orphaned && <div className="rag-question-editor" role="alert">
           <div className="rag-message-state error">原问题已不在当前会话中，修改稿仍保留。</div>
           <textarea aria-label="保留的修改稿" value={questionEdit.body} maxLength={2000}
@@ -426,7 +432,7 @@ export function RagWorkspace({
             {messages.map((message, index) => (
               <Fragment key={message.id}>
               {timeSeparators.has(message.id) && <div className="rag-time-separator" role="separator"><time dateTime={timeSeparators.get(message.id)!.time} title={new Date(timeSeparators.get(message.id)!.time).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false })}>{timeSeparators.get(message.id)!.label}</time></div>}
-              <article className={`rag-message rag-message-${message.role}`}>
+              <article data-rag-message-id={message.id} className={`rag-message rag-message-${message.role}`}>
                 {message.role === "assistant" ? (
                   <>
                     {message.content ? (

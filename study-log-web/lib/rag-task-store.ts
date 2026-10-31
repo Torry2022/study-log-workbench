@@ -92,13 +92,13 @@ export class RagTaskStore {
     const rows = this.db.prepare(`WITH history AS (
       SELECT id FROM tasks WHERE removed=0 AND NOT ${attention} ORDER BY created_at DESC,id DESC LIMIT 100
     ) SELECT id,session_id,submission_id,state,revision,created_at,updated_at,stage,error_code,save_state,
-      substr(json_extract(input,'$.question'),1,160) AS question_preview,json_extract(input,'$.mode') AS mode
+      substr(json_extract(input,'$.question'),1,160) AS question_preview,json_extract(input,'$.questionMessageId') AS question_message_id,json_extract(input,'$.mode') AS mode
       FROM tasks WHERE removed=0 AND (${sessionId ? "session_id=?" : `${attention} OR id IN (SELECT id FROM history)`})
       ORDER BY CASE WHEN ${attention} THEN 0 ELSE 1 END,created_at DESC,id DESC`).all(...(sessionId ? [sessionId] : []));
     return rows.map(row => ({ id: row.id as string, sessionId: row.session_id as string, submissionId: row.submission_id as string,
       state: row.state as RagTaskState, revision: row.revision as number, createdAt: row.created_at as string, updatedAt: row.updated_at as string,
       stage: row.stage as string, errorCode: row.error_code as string, saveState: row.save_state as RagTask["saveState"],
-      questionPreview: row.question_preview as string, mode: row.mode as RagTask["mode"] }));
+      questionMessageId: (row.question_message_id as string | null) || `${row.id}:user`, questionPreview: row.question_preview as string, mode: row.mode as RagTask["mode"] }));
   }
   pendingSaves(): TaskRecord[] {
     return this.db.prepare("SELECT * FROM tasks WHERE removed=0 AND state='succeeded' AND save_state='pending' ORDER BY created_at,id").all().map(row => this.decode(row as Record<string, unknown>));

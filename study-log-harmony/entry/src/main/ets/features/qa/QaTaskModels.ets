@@ -12,6 +12,7 @@ export interface QaTaskSubmission {
   cancelRequested?: boolean;
 }
 export interface QaTaskSummary {
+  questionMessageId?: string;
   applicable?: boolean;
   id: string;
   submissionId: string;

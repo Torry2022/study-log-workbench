@@ -61,7 +61,7 @@ test('late canonical response cannot replace an explicit answer version', async 
   old.questionMessageId = saved.messages[0].id;
   f.sessions.set(saved.id, saved); f.tasks.set(old.id, old); await f.client.refresh(); await f.controller.openSession(saved.id);
   let release, started; const gate = new Promise(resolve => release = resolve), start = new Promise(resolve => started = resolve), get = f.transport.get;
-  f.transport.get = async path => { const result = await get(path); if (path.endsWith(saved.id)) { started(); await gate; } return result; };
+  f.transport.get = async path => { const result = await get(path); if (path.split('?')[0].endsWith(saved.id)) { started(); await gate; } return result; };
   const loading = f.controller.openSession(saved.id); await start;
   await f.controller.selectAnswerVersion(saved.messages[0].id, saved.messages[1].id);
   release(); await loading; await settle();
@@ -137,7 +137,7 @@ test('pending saves and failed authoritative reads cannot submit a follow-up usi
   Object.assign(active, { state: 'succeeded', saveState: 'pending', revision: 2, result: { answer: '完整结果', citations: [] } }); await f.client.refresh();
   assert.equal(f.controller.taskBlocked, true); f.controller.question = '下一问'; await f.controller.send(); assert.equal(f.tasks.size, 1);
   let release, started; const gate = new Promise(resolve => release = resolve), start = new Promise(resolve => started = resolve), get = f.transport.get;
-  f.transport.get = async path => { const result = await get(path); if (path.endsWith(saved.id)) { started(); await gate; throw Error('read unavailable'); } return result; };
+  f.transport.get = async path => { const result = await get(path); if (path.split('?')[0].endsWith(saved.id)) { started(); await gate; throw Error('read unavailable'); } return result; };
   saved.version = 'b'.repeat(64); Object.assign(active, { saveState: 'saved', revision: 3 }); await f.client.refresh(); await start;
   assert.equal(f.controller.sessionLoading, true); await f.controller.send(); assert.equal(f.tasks.size, 1); release(); await settle();
   assert.equal(f.controller.taskBlocked, true); await f.controller.send(); assert.equal(f.tasks.size, 1);

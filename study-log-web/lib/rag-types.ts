@@ -59,6 +59,7 @@ export interface RagSessionSummary {
 }
 
 export interface RagSession extends RagSessionSummary {
+  history?: import("./rag-history").RagHistoryWindow;
   answerMode: RagAnswerMode;
   messages: RagChatMessage[];
 }

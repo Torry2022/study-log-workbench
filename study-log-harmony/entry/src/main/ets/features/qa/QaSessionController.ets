@@ -1,3 +1,4 @@
+import { QaHistoryWindow, visibleQaHistory, retainQaHistory } from './QaHistory';
 import { ApiClient, ApiError, ApiStreamCancelledError } from '../../common/network/ApiClient';
 import { RagChatMessage, RagCitation, RagDeltaEvent, RagDoneEvent, RagErrorEvent, RagHistoryMessage, RagQueryRequest, RagSession, RagSessionResponse, RagSessionsResponse, RagSessionSummary, RagSessionWriteRequest, RagSourceRef, RagSourcesEvent, RagStatusEvent } from './QaModels';
 import { QaStreamParser } from './QaStreamParser';
@@ -352,6 +353,7 @@ export class QaSessionController {
   async newSession(): Promise<void> {
     if (this.sending && !this.taskClient) return;
     this.failedSessionId = '';
+    this.historyLoading = false; this.historyError = '';
     this.sessionLoading = false;
     const revision = ++this.sessionRequestRevision;
     this.view.onActiveSessionChange('');
@@ -384,7 +386,55 @@ export class QaSessionController {
     });
   }
 
+  historyLoading: boolean = false;
+  historyError: string = '';
+  get historyWindow(): QaHistoryWindow | undefined { return this.canonical.get(this.sessionId)?.history; }
+  visibleAnswerMessages(): QaAnswerMessage[] { return visibleQaHistory(this.answerMessages(), this.historyWindow); }
+
+  private async readSavedSession(id: string, full: boolean = false, opening: boolean = false): Promise<RagSessionResponse> {
+    const previous = this.canonical.get(id), first = opening ? undefined : previous?.history?.firstQuestionId;
+    const restoringEdit = opening && Array.from(this.questionEdits.keys()).some((key: string) => key.startsWith(`${id}:`));
+    const query = full || restoringEdit ? '' : `?history=recent${first ? `&from=${encodeURIComponent(first)}` : ''}`;
+    const response = await this.transport.get<RagSessionResponse>(`/rag/sessions/${encodeURIComponent(id)}${query}`);
+    if (full) response.session = retainQaHistory(response.session, previous);
+    return response;
+  }
+  private async completeForWrite(): Promise<boolean> {
+    const id = this.sessionId, saved = this.canonical.get(id);
+    if (!saved || saved.messages.length === saved.messageCount) return true;
+    try {
+      const response = await this.readSavedSession(id, true);
+      if (this.pageDisposed || this.sessionId !== id || this.canonical.get(id)?.version !== saved.version) return false;
+      if (response.session.id !== id || response.session.version !== saved.version || response.session.messages.length !== response.session.messageCount) throw new Error('会话已更新，请重新读取后再操作；草稿仍保留');
+      this.canonical.set(id, retainQaHistory(response.session, this.canonical.get(id)));
+      if (!this.taskClient) this.messages = response.session.messages;
+      return true;
+    } catch (error) { this.errorMessage = error instanceof Error ? error.message : '完整会话读取失败，尚未保存'; return false; }
+  }
+  async loadEarlier(questionId: string = ''): Promise<void> {
+    const id = this.sessionId, saved = this.canonical.get(id), history = saved?.history, revision = this.sessionRequestRevision;
+    if (!saved || !history || history.start === 0 || this.historyLoading) return;
+    this.historyLoading = true; this.historyError = '';
+    try {
+      const response = await this.transport.get<RagSessionResponse>(`/rag/sessions/${encodeURIComponent(id)}?history=recent&before=${encodeURIComponent(history.firstQuestionId)}&version=${saved.version}${questionId ? `&around=${encodeURIComponent(questionId)}` : ''}`);
+      if (this.pageDisposed || this.sessionId !== id || revision !== this.sessionRequestRevision || this.canonical.get(id)?.version !== saved.version) return;
+      const earlier = response.session, page = earlier.history;
+      if (!page || earlier.id !== id || earlier.version !== saved.version || page.end !== history.start) throw new Error('会话已更新，请重新读取后继续');
+      const oldMessages = saved.messages.slice(saved.messages.findIndex((message: RagChatMessage) => message.id === history.firstQuestionId));
+      await this.taskClient?.readSessionTasks(id, [...earlier.messages, ...oldMessages].filter((message: RagChatMessage) => message.role === 'user').map((message: RagChatMessage) => message.id));
+      if (this.pageDisposed || this.sessionId !== id || revision !== this.sessionRequestRevision || this.canonical.get(id)?.version !== saved.version) return;
+      saved.messages = [...earlier.messages, ...oldMessages];
+      saved.history = { start: page.start, end: history.end, total: page.total, firstQuestionId: page.firstQuestionId, paginated: history.paginated, outline: page.outline };
+      this.canonical.set(id, saved);
+      const offset = this.messages.findIndex((message: RagChatMessage) => message.id === history.firstQuestionId);
+      this.messages = [...earlier.messages, ...(offset >= 0 ? this.messages.slice(offset) : this.messages)];
+      this.taskFingerprint = ''; this.applyTasks();
+    } catch (error) { if (this.sessionId === id && revision === this.sessionRequestRevision) this.historyError = error instanceof Error ? error.message : '更早记录读取失败，请重试'; }
+    finally { if (this.sessionId === id && revision === this.sessionRequestRevision) this.historyLoading = false; }
+  }
+
   async openSession(id: string): Promise<void> {
+    this.historyLoading = false; this.historyError = '';
     if (this.taskClient) { await this.openTaskSession(id); return; }
     if (this.sending) return;
     this.failedSessionId = '';
@@ -393,7 +443,7 @@ export class QaSessionController {
     const revision = ++this.sessionRequestRevision;
     this.view.onActiveSessionChange(id);
     try {
-      const response = await this.transport.get<RagSessionResponse>(`/rag/sessions/${encodeURIComponent(id)}`);
+      const response = await this.readSavedSession(id, false, true);
       if (revision !== this.sessionRequestRevision) return;
       await this.view.onBeforeSessionChange();
       if (revision !== this.sessionRequestRevision) return;
@@ -403,6 +453,7 @@ export class QaSessionController {
       this.sessionId = response.session.id;
       this.sessionVersion = response.session.version;
       this.pendingWrite = undefined;
+      this.canonical.set(response.session.id, response.session);
       this.messages = response.session.messages;
       this.failedAttempt = undefined;
       this.reportPending();
@@ -447,6 +498,7 @@ export class QaSessionController {
 
   async send(): Promise<void> {
     if (this.taskClient) { await this.sendTask(); return; }
+    if (!await this.completeForWrite()) return;
     const clean = this.question.trim();
     if (!clean || this.sending || this.sessionLoading) return;
     if (this.pendingWrite) { this.errorMessage = '上一次回答尚未保存，请先重试保存'; return; }
@@ -715,13 +767,13 @@ export class QaSessionController {
     return !!selected && (selected.status === 'streaming' || selected.status === 'error' || selected.status === 'stopped' || !selected.content.trim());
   }
 
-  private async readTaskSession(id: string, revision: number): Promise<void> {
+  private async readTaskSession(id: string, revision: number, opening: boolean = false): Promise<void> {
     const startedTask = latestTask(this.taskClient?.tasks || [], id);
     const startedTaskId = startedTask?.id, startedSaveState = startedTask?.saveState;
     let reconcileCommit: boolean = false;
     this.sessionLoading = true;
     try {
-      const response = await this.transport.get<RagSessionResponse>(`/rag/sessions/${encodeURIComponent(id)}`);
+      const response = await this.readSavedSession(id, false, opening);
       if (this.pageDisposed || revision !== this.sessionRequestRevision || this.sessionId !== id || this.deletedSessions.has(id)) return;
       if (response.session.id !== id || !Array.isArray(response.session.messages) || !/^[a-f0-9]{64}$/.test(response.session.version)) throw new Error('会话响应不完整，请重试');
       const committedEdit = latestTask(this.taskClient?.tasks || [], id);
@@ -739,10 +791,10 @@ export class QaSessionController {
         response.session.messages.some((message: RagChatMessage) => message.id === `${committedEdit.id}:assistant`)) {
         // Applicability derives from the server's committed branch receipt, not
         // task timestamps. Reconcile it before exposing the new canonical view.
-        await this.taskClient?.readSessionTasks(id);
+        await this.taskClient?.readSessionTasks(id, this.canonical.get(id)?.messages.filter((message: RagChatMessage) => message.role === 'user').map((message: RagChatMessage) => message.id));
         if (this.pageDisposed || revision !== this.sessionRequestRevision || this.sessionId !== id || this.deletedSessions.has(id)) return;
       }
-      this.canonical.set(id, response.session); this.sessionVersion = response.session.version || ''; this.canonicalReadFailed = false; this.failedSessionId = '';
+      this.canonical.set(id, retainQaHistory(response.session, this.canonical.get(id))); this.sessionVersion = response.session.version || ''; this.canonicalReadFailed = false; this.failedSessionId = '';
       const latest = latestTask(this.taskClient?.tasks || [], id);
       const edit = this.questionEdit();
       if (latest?.editMessageId && latest.saveState === 'saved' && edit?.submissionId === latest.submissionId &&
@@ -784,15 +836,16 @@ export class QaSessionController {
     this.sessionId = id; this.sessionVersion = this.canonical.get(id)?.version || ''; this.sessionLoading = true;
     this.errorMessage = ''; this.failedSessionId = ''; this.taskFingerprint = ''; this.sessionDocumentKey = `task-session:${id}:${revision}`; this.pendingSessionKey = this.sessionDocumentKey;
     this.view.onActiveSessionChange(id); this.view.resetComposerScroll(); this.applyTasks();
-    await this.readTaskSession(id, revision);
+    await this.readTaskSession(id, revision, true);
     if (!this.pageDisposed && revision === this.sessionRequestRevision) {
-      try { await this.taskClient?.readSessionTasks(id); }
+      try { await this.taskClient?.readSessionTasks(id, this.canonical.get(id)?.messages.filter((message: RagChatMessage) => message.role === 'user').map((message: RagChatMessage) => message.id)); }
       catch (error) { if (revision === this.sessionRequestRevision) this.taskError = error instanceof Error ? error.message : '回答版本读取失败'; }
     }
   }
 
   private async commitAnswerSelection(): Promise<boolean> {
     if (!this.viewingPreviousAnswer()) return true;
+    if (!await this.completeForWrite()) return false;
     const sessionId = this.sessionId, saved = this.canonical.get(sessionId);
     const answer = this.answerMessages().find((item: QaAnswerMessage) => item.questionId === saved?.messages.slice(-2)[0]?.id);
     if (!saved || !answer || !answer.content.trim() || ['streaming', 'error', 'stopped'].includes(answer.status || '')) return false;
@@ -810,7 +863,7 @@ export class QaSessionController {
     try {
       const response = await this.transport.put<RagSessionResponse>(`/rag/sessions/${encodeURIComponent(sessionId)}`, this.selectionWrite);
       if (this.pageDisposed || this.sessionId !== sessionId || revision !== this.sessionRequestRevision) return false;
-      this.canonical.set(sessionId, response.session); this.sessionVersion = response.session.version;
+      this.canonical.set(sessionId, retainQaHistory(response.session, this.canonical.get(sessionId))); this.sessionVersion = response.session.version;
       this.messages = response.session.messages;
       this.answerViews.delete(`${sessionId}:${saved.messages[saved.messages.length - 2].id}`);
       this.selectionWrite = undefined;

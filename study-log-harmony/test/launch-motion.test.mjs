@@ -12,47 +12,29 @@ const motionModule = { exports: {} };
 runInNewContext(await compile(motionSource), { module: motionModule, exports: motionModule.exports });
 const { LaunchMotion } = motionModule.exports;
 
-test('phone, tablet and PC frames eject two unequal drops only at each actual contact', () => {
+test('phone, tablet and PC keep the logo gathering, contact compression and settled rebound', () => {
   for (const [width, height] of [[390, 844], [820, 1180], [1440, 900], [2560, 1440]]) {
     for (const rate of [30, 60, 120]) {
       const motion = new LaunchMotion(width / 2 + 48, height / 2 + 48);
-      for (let time = 0; time < 1100; time += 1000 / rate) {
-        motion.advance(time);
-        if (time < 520) assert.equal(motion.drops.length, 0);
-        for (const source of motion.drops) {
-          assert.ok(source.dy * source.y > 0, 'each drop travels to its contact outer side');
-          assert.ok(Math.sin(source.angle) * source.dx - Math.cos(source.angle) * source.dy > .99 * Math.hypot(source.dx, source.dy));
-          const drop = motion.frame(source, time);
-          assert.ok(drop.opacity >= 0 && drop.opacity <= 1);
-          assert.ok(Math.abs(drop.x) < 70 && Math.abs(drop.y) < 70, 'drops stay near the logo');
-        }
+      const frames = [];
+      for (let time = 0; time <= 1100; time += 1000 / rate) {
+        motion.advance(time); frames.push({ time, x: motion.x, scale: motion.scale });
+        if (time < 520) assert.equal(motion.scale, 1, 'no impact before the layers meet');
       }
-      assert.equal(motion.drops.length, 4, `${width}/${height}/${rate}`);
-      for (let index = 0; index < 4; index += 2) {
-        const [large, small] = motion.drops.slice(index, index + 2);
-        assert.equal(large.x, small.x); assert.equal(large.y, small.y);
-        assert.ok(large.size > small.size && large.duration > small.duration);
-        assert.ok(Math.abs(large.angle - small.angle) > .3);
-        let previous = 1;
-        for (let age = 0; age <= 500; age += 5) {
-          const frame = motion.frame(large, large.born + large.delay + age);
-          assert.ok(frame.opacity <= previous + .001); previous = frame.opacity;
-        }
-        const stretched = motion.frame(large, large.born + large.delay + large.duration * .16);
-        assert.ok(Math.abs(stretched.scaleY - 2.2) < 1e-9);
-        assert.ok(stretched.neckOpacity > .1);
-        assert.equal(motion.frame(large, 1100).opacity, 0);
-        assert.equal(motion.frame(large, 1100).neckOpacity, 0);
-      }
-      motion.advance(1100); assert.equal(motion.offset, 0); assert.equal(motion.scale, 1);
+      assert.ok(frames[0].x > width / 2, 'gather begins outside the viewport');
+      assert.ok(frames.some(frame => frame.x < 0), 'gather retains its spring overshoot');
+      assert.ok(frames.some(frame => frame.scale < .98), 'contact compresses the logo');
+      assert.ok(frames.some(frame => frame.scale > 1.02), 'compression is followed by a rebound');
+      motion.advance(1100);
+      assert.equal(motion.offset, 0); assert.equal(motion.x, 0); assert.equal(motion.y, 0); assert.equal(motion.scale, 1);
     }
   }
 });
 
-test('a skipped animation does not emit late drops or leave a partial logo', () => {
+test('a skipped animation leaves a complete logo without a late impact', () => {
   const motion = new LaunchMotion(243, 470);
   motion.advance(1100);
-  assert.equal(motion.drops.length, 0); assert.equal(motion.offset, 0);
+  assert.equal(motion.offset, 0); assert.equal(motion.scale, 1);
 });
 
 async function host() {
@@ -60,23 +42,17 @@ async function host() {
   const start = source.indexOf('  @Builder'), end = source.indexOf('  aboutToAppear()', start);
   source = source.slice(0, start) + source.slice(end);
   source = source.replace(/@Watch\('[^']+'\)/g, '').replace(/@(State|Prop)\s*/g, '');
-  const module = { exports: {} }, timers = new Map(), animators = [], draws = [];
+  const module = { exports: {} }, timers = new Map(), animators = [];
   let next = 0;
-  class Canvas {
-    clearRect() { draws.push('clear'); } save() {} restore() {} translate() {} rotate() {} scale() {}
-    beginPath() {} ellipse() { draws.push('head'); } fill() {} moveTo() {} bezierCurveTo() { draws.push('neck'); } closePath() {}
-  }
   runInNewContext(await compile(source), { module, exports: module.exports, LaunchMotion,
     display: { getDefaultDisplaySync: () => ({ width: 390, height: 844, densityPixels: 1 }) },
-    CanvasRenderingContext2D: Canvas, RenderingContextSettings: class {}, Curve: { EaseOut: 'ease-out' },
-    curves: { springMotion: () => 'spring' }, $r: name => ({ id: name.endsWith('ink') ? 0xff171614 : 0xffd07a5f }),
+    Curve: { EaseOut: 'ease-out' },
+    curves: { springMotion: () => 'spring' },
     setTimeout: (callback, delay) => { timers.set(++next, { callback, delay }); return next; }, clearTimeout: id => timers.delete(id) });
   const intro = new module.exports.LaunchIntro();
   let dismissed = 0;
   intro.onDismissed = () => dismissed++;
-  intro.canvasReady = true;
   intro.getUIContext = () => ({
-    getHostContext: () => ({ resourceManager: { getColorSync: id => id } }),
     animateTo: (options, change) => { change(); options.onFinish?.(); },
     createAnimator: options => {
       const animator = { options, play() {}, finish() { this.onFrame(1100); } };
@@ -84,14 +60,16 @@ async function host() {
     }
   });
   const fire = delay => { for (const [id, item] of timers) if (item.delay === delay) { timers.delete(id); item.callback(); return; } assert.fail('missing timer ' + delay); };
-  return { intro, timers, animators, draws, fire, dismissed: () => dismissed };
+  return { intro, timers, animators, fire, dismissed: () => dismissed };
 }
 
-test('native intro shares one timeline for painted drops and SVG positions and exits when ready', async () => {
+test('native intro keeps the logo motion and exits when ready', async () => {
   const h = await host(); h.intro.ready = true; h.intro.aboutToAppear(); h.fire(32);
   const animator = h.animators[0];
-  for (let t = 0; t <= 650; t += 5) animator.onFrame(t);
-  assert.ok(h.draws.includes('head') && h.draws.includes('neck'));
+  let overshot = false;
+  for (let t = 0; t <= 650; t += 5) { animator.onFrame(t); overshot ||= h.intro.gatherX < 0; }
+  assert.ok(overshot, 'SVG layers retain their rebound');
+  assert.doesNotMatch(introSource, /Canvas\(|drawDrops|LaunchDrop/);
   h.fire(410); h.fire(470); assert.equal(h.dismissed(), 0);
   animator.onFrame(700); assert.equal(h.dismissed(), 1);
   h.intro.aboutToDisappear(); animator.onFrame(1100);
@@ -105,14 +83,4 @@ test('waiting for data, early removal and warm re-entry keep their lifecycle bou
   h.animators[0].onFrame(1100); assert.equal(h.dismissed(), 0); assert.equal(h.intro.loadingVisible, true);
   h.intro.ready = true; h.intro.readyChanged(); assert.equal(h.dismissed(), 1);
   h.intro.aboutToDisappear(); assert.equal(h.timers.size, 0);
-});
-
-test('native droplet colors match the logo in light and dark modes', async () => {
-  for (const mode of ['base', 'dark']) {
-    const colors = JSON.parse(await fs.readFile(new URL(`resources/${mode}/element/color.json`, main), 'utf8')).color;
-    const svg = await fs.readFile(new URL(`resources/${mode}/media/launch_nodes.svg`, main), 'utf8');
-    const ink = await fs.readFile(new URL(`resources/${mode}/media/launch_top.svg`, main), 'utf8');
-    assert.ok(svg.toLowerCase().includes(colors.find(c => c.name === 'launch_coral').value.toLowerCase()));
-    assert.ok(ink.toLowerCase().includes(colors.find(c => c.name === 'launch_ink').value.toLowerCase()));
-  }
 });

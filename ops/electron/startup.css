@@ -3,18 +3,13 @@ html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background:
 body { border: 1px solid var(--hairline, #e6dfd8); -webkit-app-region: drag; }
 main { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 28px; }
 h1 { margin: 18px 0 12px; font-size: 18px; line-height: 1.4; font-weight: 500; }
-.mark { position: relative; width: 72px; height: 72px; --droplet-primary: #d07a5f; --droplet-ink: #171614; }
+.mark { position: relative; width: 72px; height: 72px; }
 .mark-frame, .mark img { position: absolute; inset: 0; width: 100%; height: 100%; }
 .mark-frame { background: #fff; border: 1px solid var(--hairline, #e6dfd8); border-radius: 14px; opacity: 0; transform: scale(.76); }
 .mark img { transform: translate(var(--x), var(--y)); }
 .mark.contacted { animation: impact 220ms ease-out both; }
 .intro-playing .mark img { animation: gather 400ms linear 300ms both; }
 .intro-playing .mark-frame { animation: frame-in 360ms cubic-bezier(.2, .9, .2, 1.18) 410ms both; }
-.droplet { position: absolute; left: 50%; top: 50%; width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px; border-radius: 50%; background: var(--droplet-primary); opacity: 0; pointer-events: none; }
-.droplet.ink { width: 3px; height: 3px; margin: -1.5px 0 0 -1.5px; background: var(--droplet-ink); }
-.droplet::after { content: ""; position: absolute; left: 50%; top: 50%; width: 2.4px; height: 7px; margin-left: -1.2px; border-radius: 50%; background: inherit; opacity: 0; transform-origin: 50% 0; }
-.droplet.hit { rotate: var(--angle); animation: splash-out var(--duration) cubic-bezier(.15, .5, .35, 1) var(--delay) both, water-shape var(--duration) linear var(--delay) both; }
-.droplet.hit::after { animation: pinch-off 120ms linear var(--delay) both; }
 .mark .nodes { --x: calc(-50vw - 48px); --y: 0px; }
 .mark .top { --x: 0px; --y: calc(-50vh - 48px); }
 .mark .arrow { --x: calc(50vw + 48px); --y: 0px; }
@@ -22,7 +17,6 @@ h1 { margin: 18px 0 12px; font-size: 18px; line-height: 1.4; font-weight: 500; }
 .mark .dark { display: none; }
 [data-theme="dark"] .mark .light { display: none; }
 [data-theme="dark"] .mark .dark { display: block; }
-[data-theme="dark"] .mark { --droplet-primary: #d4876a; --droplet-ink: #f5f0e8; }
 [data-theme="dark"] .mark-frame { background: #1c1a17; }
 .status { display: flex; align-items: center; gap: 8px; color: var(--muted, #6c6a64); font-size: 13px; line-height: 20px; }
 .spinner { width: 14px; height: 14px; border: 2px solid var(--hairline, #e6dfd8); border-top-color: var(--primary, #cc785c); border-radius: 50%; animation: spin 900ms linear infinite; }
@@ -37,25 +31,6 @@ h1 { margin: 18px 0 12px; font-size: 18px; line-height: 1.4; font-weight: 500; }
   100% { transform: translate(0, 0); }
 }
 @keyframes impact { 0%, 100% { transform: scale(1); } 16% { transform: scale(.94); } 48% { transform: scale(1.035); } }
-@keyframes splash-out {
-  from { translate: var(--sx) var(--sy); }
-  to { translate: var(--dx) var(--dy); }
-}
-@keyframes water-shape {
-  0% { opacity: .95; border-radius: 50%; transform: scale(1.25, .65); }
-  16% { opacity: .95; border-radius: 65% 65% 50% 50% / 75% 75% 35% 35%; transform: scale(.6, 2.2); }
-  26% { opacity: .95; border-radius: 65% 65% 50% 50% / 75% 75% 35% 35%; transform: scale(.72, 1.65); }
-  40% { opacity: .9; border-radius: 50%; transform: scale(1.15, .88); }
-  58% { opacity: .75; border-radius: 50%; transform: scale(.9, .96); }
-  76% { opacity: .4; border-radius: 50%; transform: scale(.55, .6); }
-  100% { opacity: 0; border-radius: 50%; transform: scale(.12); }
-}
-@keyframes pinch-off {
-  0% { opacity: .8; transform: scale(.8, .1); }
-  28% { opacity: .8; transform: scale(.8, 1); }
-  62% { opacity: .65; transform: scale(.3, .95); }
-  100% { opacity: 0; transform: scale(.1, 0); }
-}
 @keyframes frame-in { from { opacity: 0; transform: scale(.76); } to { opacity: 1; transform: scale(1); } }
 @keyframes spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .mark.contacted, .droplet.hit, .droplet.hit::after, .intro-playing .mark-frame, .intro-playing .mark img, .spinner { animation: none; } .mark-frame { opacity: 1; transform: none; } .mark img { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .mark.contacted, .intro-playing .mark-frame, .intro-playing .mark img, .spinner { animation: none; } .mark-frame { opacity: 1; transform: none; } .mark img { transform: none; } }

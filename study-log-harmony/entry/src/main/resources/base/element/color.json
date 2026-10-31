@@ -1,7 +1,5 @@
 {
   "color": [
-    { "name": "launch_coral", "value": "#D07A5F" },
-    { "name": "launch_ink", "value": "#171614" },
     { "name": "logo_surface", "value": "#FFFFFF" },
     { "name": "interaction_hover", "value": "#F2EDE4" },
     { "name": "interaction_hover_clear", "value": "#00F2EDE4" },

@@ -18,13 +18,9 @@ export struct LaunchIntro {
   @State private logoScale: number = 1;
   private motion: LaunchMotion = new LaunchMotion(introHorizontalTravel, introVerticalTravel);
   private animator: AnimatorResult | undefined = undefined;
-  private canvas: CanvasRenderingContext2D = new CanvasRenderingContext2D(new RenderingContextSettings(true));
-  private canvasReady: boolean = false;
   private active: boolean = true;
   private logoCompleted: boolean = false;
   private timers: number[] = [];
-  private coral: string = '#d07a5f';
-  private ink: string = '#171614';
   @State private frameVisible: boolean = false;
   @State private sloganVisible: boolean = false;
   @State private loadingVisible: boolean = false;
@@ -66,11 +62,6 @@ export struct LaunchIntro {
     if (!this.visible) return;
     hasPlayedLaunchIntro = true;
 
-    const resources = this.getUIContext().getHostContext()?.resourceManager;
-    if (resources) {
-      this.coral = '#' + (resources.getColorSync($r('app.color.launch_coral').id) & 0xffffff).toString(16).padStart(6, '0');
-      this.ink = '#' + (resources.getColorSync($r('app.color.launch_ink').id) & 0xffffff).toString(16).padStart(6, '0');
-    }
     this.animator = this.getUIContext().createAnimator({ duration: 1100, easing: 'linear', delay: 0,
       fill: 'forwards', direction: 'normal', iterations: 1, begin: 0, end: 1100 });
     this.animator.onFrame = (time: number) => {
@@ -79,7 +70,6 @@ export struct LaunchIntro {
       this.gatherX = this.motion.x;
       this.gatherY = this.motion.y;
       this.logoScale = this.motion.scale;
-      this.drawDrops(time);
       if (time >= 700 && !this.logoCompleted) {
         this.logoCompleted = true;
         this.animationCompleted();
@@ -101,33 +91,6 @@ export struct LaunchIntro {
     this.timers.push(setTimeout(() => {
       this.tryDismiss(true);
     }, 8000));
-  }
-
-  private drawDrops(time: number): void {
-    if (!this.canvasReady) return;
-    const context = this.canvas;
-    context.clearRect(0, 0, 160, 160);
-    for (const source of this.motion.drops) {
-      const drop = this.motion.frame(source, time);
-      if (drop.opacity <= 0) continue;
-      context.save();
-      context.translate(80 + drop.x, 80 + drop.y);
-      context.rotate(drop.angle);
-      context.scale(drop.scaleX, drop.scaleY);
-      context.fillStyle = drop.ink ? this.ink : this.coral;
-      context.globalAlpha = drop.opacity;
-      context.beginPath();
-      context.ellipse(0, 0, drop.size / 2, drop.size / 2, 0, 0, Math.PI * 2);
-      context.fill();
-      const width = 2.4 * 84 / 72 * drop.neckX, height = 7 * 84 / 72 * drop.neckY;
-      context.globalAlpha = drop.opacity * drop.neckOpacity;
-      context.beginPath();
-      context.moveTo(-width / 2, 0);
-      context.bezierCurveTo(-width / 2, height, width / 2, height, width / 2, 0);
-      context.closePath();
-      context.fill();
-      context.restore();
-    }
   }
 
   aboutToDisappear(): void {
@@ -179,8 +142,6 @@ export struct LaunchIntro {
           .objectFit(ImageFit.Contain)
           .translate({ y: this.gatherY })
 
-          Canvas(this.canvas).width(160).height(160)
-            .onReady(() => this.canvasReady = true)
         }
         .width(84).height(84)
         .scale({ x: this.logoScale, y: this.logoScale })

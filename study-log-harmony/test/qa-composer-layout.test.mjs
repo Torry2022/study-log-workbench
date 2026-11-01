@@ -43,13 +43,13 @@ test('full-width navigation keeps the previous centered composer geometry', () =
 });
 test('composer clearance changes do not count as upward gestures and focused input remains available', () => {
   const page = subject(qa, ['setComposerHidden', 'handleReaderScroll']);
-  Object.assign(page, { composerHidden: false, questionFocused: false, lastScrollY: 0,
+  Object.assign(page, { composerHidden: false, questionFocused: false, lastScrollY: 200,
     scrollTravel: 0, scrollDirection: 0, topDividerOffset: 0,
     data: { question: '', sending: false }, onScrollStateChange() {} });
   page.handleReaderScroll(100); assert.equal(page.composerHidden, true);
   page.handleReaderScroll(20, true); assert.equal(page.composerHidden, true);
   assert.equal(page.lastScrollY, 20);
-  page.handleReaderScroll(100, true); page.handleReaderScroll(40);
+  page.handleReaderScroll(100, true); page.handleReaderScroll(160);
   assert.equal(page.composerHidden, false);
   page.questionFocused = true; page.handleReaderScroll(200);
   assert.equal(page.composerHidden, false);
@@ -102,4 +102,19 @@ test('return-to-bottom retains composer visibility until the button has left the
   }
   assert.match(qa, /onQaFollowStopped: \(\) => \{ this.returningToBottom = false; this.followAnswer = false; \}/);
   assert.match(qa, /onScrollRemaining: \(remaining: number\) => this.handleReaderRemaining\(remaining\)/);
+});
+
+
+test('composer follows Web direction after sustained reading and ignores small reversals', () => {
+  const page = subject(qa, ['setComposerHidden', 'handleReaderScroll']);
+  Object.assign(page, { composerHidden: false, questionFocused: false, lastScrollY: 500,
+    scrollTravel: 0, scrollDirection: 0, topDividerOffset: 0, data: { question: '', sending: false }, onScrollStateChange() {} });
+  page.handleReaderScroll(480); assert.equal(page.composerHidden, false);
+  page.handleReaderScroll(450); assert.equal(page.composerHidden, true, 'older messages hide the input');
+  page.handleReaderScroll(470); assert.equal(page.composerHidden, true);
+  page.handleReaderScroll(500); assert.equal(page.composerHidden, false, 'newer messages reveal the input');
+  for (const data of [{ question: 'draft', sending: false }, { question: '', sending: true }]) {
+    page.data = data; page.handleReaderScroll(page.lastScrollY - 100);
+    assert.equal(page.composerHidden, false, 'draft and generation keep the input available');
+  }
 });

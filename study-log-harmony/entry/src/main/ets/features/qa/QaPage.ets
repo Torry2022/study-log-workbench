@@ -282,7 +282,7 @@ export struct QaPage {
     }
     this.scrollTravel += Math.abs(delta);
     if (this.scrollTravel < 48) return;
-    this.setComposerHidden(nextDirection > 0);
+    this.setComposerHidden(nextDirection < 0);
     this.scrollTravel = 0;
   }
 

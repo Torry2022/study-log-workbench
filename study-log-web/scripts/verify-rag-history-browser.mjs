@@ -38,6 +38,21 @@ try {
     await expect(page.locator('.qa-history-tick')).toHaveCount(30);
     await expect.poll(()=>page.locator('.qa-history-rail').evaluate(node=>node.getBoundingClientRect().left-document.querySelector('.rag-workspace').getBoundingClientRect().left)).toBe(16);
     assert.ok(reads.every(url=>url.includes('history=recent')),'no hidden full history download');
+    const renameKeepingWindow = async suffix => {
+      const before = await page.locator('[data-rag-message-id]').evaluateAll(nodes => nodes.map(node => node.dataset.ragMessageId));
+      const anchor = await page.locator('[data-rag-message-id]').evaluateAll(nodes => { const node=nodes.find(n=>n.getBoundingClientRect().bottom>100); return {id:node.dataset.ragMessageId,top:node.getBoundingClientRect().top}; });
+      await page.locator(`[data-session-id="${session.id}"]`).getByRole('button',{name:/^管理会话：/}).click();
+      await page.getByRole('button',{name:'重命名',exact:true}).click();
+      const title=page.getByRole('textbox',{name:'会话标题',exact:true}); await title.fill(`合成历史重命名 ${engine} ${suffix}`);
+      const changed=page.waitForResponse(r=>r.request().method()==='PATCH'&&new URL(r.url()).pathname.endsWith('/api/rag/sessions/'+session.id));
+      await title.press('Enter'); assert.equal((await changed).status(),200); await expect(title).toHaveCount(0);
+      await expect(page.locator('[data-rag-message-id]')).toHaveCount(before.length);
+      assert.deepEqual(await page.locator('[data-rag-message-id]').evaluateAll(nodes=>nodes.map(node=>node.dataset.ragMessageId)),before,'rename preserves the loaded message window');
+      await expect.poll(()=>page.locator(`[data-rag-message-id="${anchor.id}"]`).evaluate(node=>node.getBoundingClientRect().top)).toBeCloseTo(anchor.top,0);
+      await expect(page.locator('.back-to-top-control')).toBeHidden();
+      await page.screenshot({path:path.join(output,`${engine}-rename-${suffix}.png`)});
+    };
+    await renameKeepingWindow('recent');
     const last=page.locator('.qa-history-tick').last(); await last.hover(); await expect(page.locator('.qa-history-peek')).toContainText('55');
     const tickBox=await last.boundingBox(),peekBox=await page.locator('.qa-history-peek').boundingBox();
     assert.ok(Math.abs((tickBox.y+tickBox.height/2)-(peekBox.y+peekBox.height/2))<2,'tooltip is beside the hovered tick');
@@ -79,6 +94,7 @@ try {
     const anchorTop=await page.locator('[data-rag-message-id="q20"]').evaluate(node=>node.getBoundingClientRect().top);
     assert.ok(Math.abs(anchorTop-180)<8,`prepend preserves reading anchor: ${anchorTop}`);
     await page.screenshot({path:path.join(output,`${engine}-wide-prepend.png`)});
+    await renameKeepingWindow('prepended');
     await page.getByRole('button',{name:'折叠问答历史',exact:true}).click();await sleep(180);
     await expect(page.locator('.qa-history-rail')).toBeVisible();
     await page.getByRole('button',{name:'展开问答历史',exact:true}).click();await sleep(180);

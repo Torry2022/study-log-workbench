@@ -659,7 +659,7 @@ export function useRag(options: Options) {
       if (!validSession(result.session) || result.session.id !== id) throw new Error("重命名响应不完整，请刷新历史核对");
       pendingMutations.current.delete(id);
       setSessions(list => list.map(item => item.id === id ? result.session! : item));
-      if (target) { target.session = result.session; notify(); }
+      if (target) { target.session = retainRagHistory(result.session, target.session); notify(); }
     } else {
       if (result.ok !== true) throw new Error("删除响应不完整，请刷新历史核对");
       pendingMutations.current.delete(id);

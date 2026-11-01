@@ -21,8 +21,12 @@ export function BackToTop({ view, active }: { view: WorkspaceView; active: boole
       const items = surfaces();
       const top = Math.max(0, ...items.map(element => element.scrollTop));
       const progress = Math.max(0, ...items.map(element => element.scrollHeight > element.clientHeight ? element.scrollTop / (element.scrollHeight - element.clientHeight) : 0));
-      const clearance = composer && !composer.classList.contains("is-hidden") ?
-        composer.offsetHeight + Math.max(0, parseFloat(getComputedStyle(composer.parentElement!).bottom) || 0) + 12 : 0;
+      const slot = composer?.parentElement;
+      const bounds = slot?.getBoundingClientRect();
+      const button = control.current?.getBoundingClientRect();
+      const overlaps = bounds && button && button.left < bounds.right && button.right > bounds.left;
+      const clearance = composer && slot && !composer.classList.contains("is-hidden") && overlaps ?
+        slot.offsetHeight + Math.max(0, parseFloat(getComputedStyle(slot).bottom) || 0) + 12 : 0;
       // Keep a focused control mounted through the last pixels of smooth scrolling.
       setState(previous => ({ visible: !(view === "qa" && document.querySelector('.rag-workspace[data-history-paginated="true"]')) && top > 0 && ((show && top > 8) || previous.visible), progress: Math.min(1, progress), right: Math.max(24, innerWidth - (reader?.getBoundingClientRect().right ?? innerWidth) + 24), clearance }));
     };
@@ -35,14 +39,18 @@ export function BackToTop({ view, active }: { view: WorkspaceView; active: boole
     if (composer) resize.observe(composer);
     const changes = new MutationObserver(() => update());
     if (composer) changes.observe(composer, { attributes: true, attributeFilter: ["class"] });
+    if (control.current) changes.observe(control.current, { attributes: true, attributeFilter: ["style"] });
+    const windowResize = () => update();
+    window.addEventListener("resize", windowResize);
     document.addEventListener("scroll", scroll, true);
     const leave = () => { keepVisible.current = false; scheduleHide(); };
     const enter = () => { keepVisible.current = true; clearTimeout(timer); };
     const node = control.current;
+    node?.addEventListener("transitionend", windowResize);
     node?.addEventListener("pointerenter", enter); node?.addEventListener("pointerleave", leave);
     node?.addEventListener("focusin", enter); node?.addEventListener("focusout", leave);
     setState(previous => ({ ...previous, visible: false })); update();
-    return () => { clearTimeout(timer); cancelAnimationFrame(frame); resize.disconnect(); changes.disconnect(); document.removeEventListener("scroll", scroll, true); node?.removeEventListener("pointerenter", enter); node?.removeEventListener("pointerleave", leave); node?.removeEventListener("focusin", enter); node?.removeEventListener("focusout", leave); };
+    return () => { node?.removeEventListener("transitionend", windowResize); window.removeEventListener("resize", windowResize); clearTimeout(timer); cancelAnimationFrame(frame); resize.disconnect(); changes.disconnect(); document.removeEventListener("scroll", scroll, true); node?.removeEventListener("pointerenter", enter); node?.removeEventListener("pointerleave", leave); node?.removeEventListener("focusin", enter); node?.removeEventListener("focusout", leave); };
   }, [view, active]);
   const top = () => {
     const behavior = matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth";

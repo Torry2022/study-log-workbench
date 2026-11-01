@@ -57,6 +57,7 @@ try {
     });
     await expect.poll(async()=>Math.abs(await jumpGap()-16),{timeout:4000}).toBeLessThan(1);
     assert.equal(await page.locator('.is-history-located').count(),0,'tick jumps do not frame the message');
+    await expect(page.locator('.back-to-top-control')).toBeHidden();
     assert.equal(reads.filter(url=>url.includes('around=')).length,1);
     const located=await page.locator('[data-rag-message-id="q25"]').evaluate(node=>({top:node.getBoundingClientRect().top, y:scrollY, headers:[...document.querySelectorAll('.reader-toolbar, .mobile-topbar, .reader-header')].map(h=>({cls:h.className,top:h.getBoundingClientRect().top,bottom:h.getBoundingClientRect().bottom}))}));
     await fs.writeFile(path.join(output,engine+'-geometry.json'),JSON.stringify(located));await page.screenshot({path:path.join(output,engine+'-located.png')});
@@ -96,6 +97,8 @@ try {
     const complete=await context.request.get(`${base}/api/rag/sessions/${session.id}`);assert.equal((await complete.json()).session.messages.length,110);
     await page.setViewportSize({width:390,height:844}); await sleep(200);
     await expect(page.locator('.qa-history-rail')).toBeHidden();
+    await page.evaluate(()=>scrollBy(0,-600)); await sleep(200);
+    await expect(page.getByRole('button',{name:/^返回顶部/})).toBeHidden();
     const overflow=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,wide:[...document.querySelectorAll('body *')].filter(n=>n.getBoundingClientRect().right>innerWidth+1).slice(0,12).map(n=>({tag:n.tagName,cls:n.className,right:n.getBoundingClientRect().right}))}));
     await fs.writeFile(path.join(output,engine+'-overflow.json'),JSON.stringify(overflow));
     assert.ok(overflow.scroll<=overflow.width,JSON.stringify(overflow));

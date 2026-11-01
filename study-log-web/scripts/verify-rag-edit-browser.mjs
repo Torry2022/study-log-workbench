@@ -74,7 +74,7 @@ try {
     const editor = page.getByRole('textbox', { name: '编辑问题', exact: true });
     const getSession = async () => { const id = new URL(page.url()).searchParams.get('session'); return (await (await page.request.get(`${base}/api/rag/sessions/${id}`)).json()).session; };
     const getTasks = async () => (await (await page.request.get(`${base}/api/rag/tasks`)).json()).tasks;
-    const retryEdit = workspace.locator('.editor-navigation-status').getByRole('button', { name: '重试', exact: true });
+    const retryEdit = workspace.locator('.rag-navigation-error').getByRole('button', { name: '重试', exact: true });
     const rejectStaleEdit = async (status = 409) => {
       const before = streams;
       const rejected = page.waitForResponse(response => response.url().endsWith('/api/rag/tasks') && response.request().method() === 'POST');
@@ -229,7 +229,8 @@ try {
     const backgroundNumber = streams + 1;
     const background = await page.request.post(`${base}/api/rag/tasks`, { data: { submissionId: randomUUID(), sessionId: editBase.id, baseVersion: editBase.version, question: '合成保存：其他客户端追加', mode: 'logs_only' } });
     assert.equal(background.status(), 200); await until(() => streams, value => value === backgroundNumber);
-    await expect(page.getByRole('button', { name: '停止生成', exact: true })).toBeVisible(); finish(backgroundNumber);
+    // Idle cross-client discovery runs every 15 seconds; the composer may be hidden while editing.
+    await expect(page.locator(`.rag-session-item[data-session-id="${editBase.id}"] .rag-session-status.generating`)).toBeVisible({ timeout: 20000 }); finish(backgroundNumber);
     await until(getSession, value => value.messages.length === editBase.messages.length + 2);
     await expect(editor).toHaveValue('合成保存：后台重读不得更换原基线');
     await expect(page.getByRole('button', { name: '停止生成', exact: true })).toHaveCount(0);
@@ -242,7 +243,12 @@ try {
     await expect(editor).toHaveValue('合成保存：后台重读不得更换原基线');
     record(`${engine}: real background task refresh cannot silently rebase an open draft; stale send is rejected before generation`);
     const latest = await getSession();
-    const removedTarget = await page.request.put(`${base}/api/rag/sessions/${latest.id}`, { data: { mutationId: randomUUID(), baseVersion: latest.version, answerMode: latest.answerMode, messages: latest.messages.slice(0, 2) } }); assert.equal(removedTarget.status(), 200);
+    // Session snapshots cannot truncate history. Another client's question edit replaces the later branch.
+    const replacementNumber = streams + 1;
+    const removedTarget = await page.request.post(`${base}/api/rag/tasks`, { data: { submissionId: randomUUID(), sessionId: latest.id, baseVersion: latest.version,
+      question: '合成保存：另一端改写早期问题', editMessageId: latest.messages[0].id, mode: latest.answerMode } }); assert.equal(removedTarget.status(), 200);
+    await until(() => streams, value => value === replacementNumber); finish(replacementNumber);
+    await until(getSession, value => value.messages.length === 2 && value.messages[0].content === '合成保存：另一端改写早期问题');
     await rejectStaleEdit(); await retryEdit.click();
     await expect(page.getByRole('textbox', { name: '保留的修改稿', exact: true })).toHaveValue('合成保存：后台重读不得更换原基线');
     await page.getByRole('button', { name: '复制修改稿', exact: true }).click(); assert.equal(await page.evaluate(() => window.s36Copied), '合成保存：后台重读不得更换原基线');

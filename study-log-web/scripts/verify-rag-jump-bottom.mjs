@@ -105,7 +105,7 @@ try{
  const first=await send('核对长回答的回到底部操作');
  first.send({content:'\n\n'+Array.from({length:55},(_,i)=>`第${i+1}段：${'回到底部保留阅读位置与后续跟随。'.repeat(6)}`).join('\n\n')});
  await expect(page.locator('.rag-answer').last()).toContainText('第55段',{timeout:30000});const anchor=(await tasks()).find(t=>t.state==='running');assert.ok(anchor);const screenshots=[];
- for(const [width,height,touch] of [[1440,900,false],[820,1000,true],[390,844,true]]){
+ for(const [width,height,touch] of [[1440,900,false],[1200,900,false],[820,1000,true],[390,844,true]]){
   const ctx=await browser.newContext({viewport:{width,height},hasTouch:touch,isMobile:touch});await ctx.request.post(`${base}/api/auth/login`,{data:{password:'synthetic-ui-password'}});const view=await ctx.newPage();view.on('pageerror',e=>errors.push(e.message));await view.goto(`${base}?view=qa&session=${anchor.sessionId}`);await expect(view.locator('.rag-answer').last()).toContainText('第55段',{timeout:30000});await view.evaluate(()=>document.fonts.ready);
   await view.evaluate(()=>scrollTo(0,document.documentElement.scrollHeight));await view.waitForTimeout(200);await expect(view.getByRole('button',{name:'回到底部',exact:true})).toHaveCount(0);
   await view.mouse.move(width/2,height/2);if(touch) await view.evaluate(()=>scrollBy(0,-550)); else await view.mouse.wheel(0,-550);await view.waitForTimeout(200);const bottom=view.getByRole('button',{name:'回到底部',exact:true});await expect(bottom).toBeVisible();
@@ -114,7 +114,23 @@ try{
   if(hover){await expect(bottom.locator('.rag-scroll-busy')).toBeVisible();const busyShot=path.join(output,`${engine}-${width}-generating.png`);await view.screenshot({path:busyShot});screenshots.push(busyShot);await expect(bottom.locator('.rag-scroll-arrow')).not.toBeVisible();await bottom.hover();await expect(bottom.locator('.rag-scroll-arrow')).toBeVisible();await expect(bottom.locator('.rag-scroll-busy')).not.toBeVisible();await view.mouse.move(0,0);await bottom.focus();await bottom.press('ArrowRight');await expect(bottom.locator('.rag-scroll-arrow')).toBeVisible();}
   else{await expect(bottom.locator('.rag-scroll-arrow')).toBeVisible();await expect(bottom.locator('.rag-scroll-busy')).not.toBeVisible();}
   const screenshot=path.join(output,`${engine}-${width}-away.png`);await view.screenshot({path:screenshot});screenshots.push(screenshot);
-  const draft=view.getByRole('textbox',{name:'输入知识库问题'});const editable=await draft.isEnabled();if(editable)await draft.focus();await view.evaluate(()=>{window.qaReturnSamples=[];window.qaReturnProbe=()=>window.qaReturnSamples.push(scrollY);addEventListener('scroll',window.qaReturnProbe)});await bottom.click();await expect(bottom).toHaveCount(0);assert.ok(await view.evaluate(()=>new Set(window.qaReturnSamples.map(Math.round)).size)>=4,'explicit return visibly traverses intermediate positions');await view.evaluate(()=>removeEventListener('scroll',window.qaReturnProbe));if(editable)assert.equal(await draft.evaluate(n=>document.activeElement===n),true,'jump preserves the current input focus');
+  const draft=view.getByRole('textbox',{name:'输入知识库问题'});const editable=await draft.isEnabled();if(editable)await draft.focus();
+  {
+   await expect(view.locator('.rag-composer')).not.toHaveClass(/is-hidden/);
+   let clearanceProbe;
+   await expect.poll(async()=>{clearanceProbe=await view.evaluate(()=>{
+    const input=document.querySelector('.rag-composer-slot').getBoundingClientRect(),control=document.querySelector('.back-to-top-control'),button=control.getBoundingClientRect();
+    const overlaps=button.left<input.right&&button.right>input.left;
+    const clearance=parseFloat(getComputedStyle(control).getPropertyValue('--back-to-top-clearance'))||0;
+    return {valid:overlaps?clearance>0:clearance===0,overlaps,clearance,display:getComputedStyle(control).display,input:input.toJSON(),button:button.toJSON(),classes:document.querySelector('.rag-composer-slot').className};
+   });return clearanceProbe.valid;}).toBe(true).catch(async error=>{await fs.writeFile(path.join(output,`${engine}-${width}-clearance-failure.json`),JSON.stringify(clearanceProbe,null,2));throw error;});
+   await fs.writeFile(path.join(output,`${engine}-${width}-clearance-geometry.json`),JSON.stringify(clearanceProbe,null,2));
+   const clearance=await view.evaluate(()=>({value:parseFloat(getComputedStyle(document.querySelector('.back-to-top-control')).getPropertyValue('--back-to-top-clearance'))||0}));
+   if(width===1440){assert.ok(clearanceProbe.button.width>0,'wide control is rendered');assert.equal(clearanceProbe.overlaps,false,'wide control is beside the composer');assert.equal(clearance.value,0,'separated control stays in place');}
+   if(clearanceProbe.button.width===0)assert.equal(clearanceProbe.display,'none','narrow layout replaces the global control with its toolbar control');
+   await fs.writeFile(path.join(output,`${engine}-${width}-back-top-clearance.json`),JSON.stringify(clearance));
+  }
+  await view.evaluate(()=>{window.qaReturnSamples=[];window.qaReturnProbe=()=>window.qaReturnSamples.push(scrollY);addEventListener('scroll',window.qaReturnProbe)});await bottom.click();await expect(bottom).toHaveCount(0);assert.ok(await view.evaluate(()=>new Set(window.qaReturnSamples.map(Math.round)).size)>=4,'explicit return visibly traverses intermediate positions');await view.evaluate(()=>removeEventListener('scroll',window.qaReturnProbe));if(editable)assert.equal(await draft.evaluate(n=>document.activeElement===n),true,'jump preserves the current input focus');
   const marker=`恢复跟随${width}`;first.send({content:'\n\n'+marker+'新的正文。'.repeat(100)});await expect(view.locator('.rag-answer').last()).toContainText(marker);await view.waitForTimeout(300);assert.ok(await view.evaluate(()=>document.documentElement.scrollHeight-innerHeight-scrollY)<4,'explicit jump resumes live follow');view.removeAllListeners('pageerror');await ctx.close();
  }
  first.finish();await until(()=>task(anchor.id),t=>t.saveState==='saved');

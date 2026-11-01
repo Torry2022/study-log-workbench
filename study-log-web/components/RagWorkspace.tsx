@@ -121,7 +121,6 @@ export function RagWorkspace({
   const copyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [composerHidden, setComposerHidden] = useState(false);
-  const [composerDocked, setComposerDocked] = useState(false);
   const [awayFromBottom, setAwayFromBottom] = useState(false);
   const [expandedCitationKey, setExpandedCitationKey] = useState<string | null>(null);
   const enabled = active && visible;
@@ -196,18 +195,13 @@ export function RagWorkspace({
     bottomReturnFrameRef.current = requestAnimationFrame(tick);
   };
 
-  const updateComposerDock = useCallback(() => {
+  const updateBottomDistance = useCallback(() => {
     if (!enabled) return;
     const conversation = workspaceRef.current?.querySelector('.rag-conversation');
     if (!conversation) return;
-    const lastMessage = conversation.querySelector(".rag-message:last-child");
-    const answer = lastMessage?.querySelector(".rag-answer");
-    const terminal = lastMessage?.querySelector(".rag-answer-pending, .rag-message-state, .rag-answer-actions");
-    const tail = answer ? answer.getBoundingClientRect().bottom : terminal ? terminal.getBoundingClientRect().top : conversation.getBoundingClientRect().bottom;
-    if (!bottomReturnFrameRef.current) setComposerDocked(tail <= window.innerHeight);
     setAwayFromBottom(Boolean(conversation.querySelector(".rag-message")) && document.documentElement.scrollHeight - window.scrollY - window.innerHeight > 32);
   }, [enabled]);
-  useLayoutEffect(updateComposerDock);
+  useLayoutEffect(updateBottomDistance);
 
   useLayoutEffect(() => {
     if (!enabled) return;
@@ -254,13 +248,13 @@ export function RagWorkspace({
       if (!root.getClientRects().length) { followOutputRef.current = false; readingAnchorRef.current = null; return; }
       if (followOutputRef.current) followLatest();
       else restoreReading();
-      updateComposerDock();
+      updateBottomDistance();
     });
     observer.observe(root);
     const content = root.querySelector(".rag-message-list");
     if (content) observer.observe(content);
     return () => observer.disconnect();
-  }, [enabled, sessionNavigationToken, hasMessages, restoreReading, followLatest, updateComposerDock]);
+  }, [enabled, sessionNavigationToken, hasMessages, restoreReading, followLatest, updateBottomDistance]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -296,7 +290,7 @@ export function RagWorkspace({
       const maximum = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
       const clamped = scrollYRef.current > maximum + 1 && Math.abs(currentScrollY - maximum) <= 1;
       scrollYRef.current = currentScrollY;
-      updateComposerDock();
+      updateBottomDistance();
       if (bottomReturnFrameRef.current) { travel = 0; direction = 0; return; }
       // A shorter document can clamp the viewport upward without user input.
       if (delta < -1 && !clamped) followOutputRef.current = false;
@@ -332,14 +326,14 @@ export function RagWorkspace({
     window.addEventListener("touchstart", handleTouchStart, { passive: true });
     window.addEventListener("touchmove", handleTouchMove, { passive: true });
     window.addEventListener("keydown", handleKey);
-    window.addEventListener("resize", updateComposerDock);
+    window.addEventListener("resize", updateBottomDistance);
     return () => {
       window.removeEventListener("scroll", handleScroll); window.removeEventListener("wheel", handleWheel);
       window.removeEventListener("touchstart", handleTouchStart); window.removeEventListener("touchmove", handleTouchMove);
       window.removeEventListener("keydown", handleKey);
-      window.removeEventListener("resize", updateComposerDock);
+      window.removeEventListener("resize", updateBottomDistance);
     };
-  }, [enabled, generating, presenting, question, updateComposerDock]);
+  }, [enabled, generating, presenting, question, updateBottomDistance]);
 
   function submit(event?: FormEvent) {
     event?.preventDefault();
@@ -558,7 +552,7 @@ export function RagWorkspace({
         )}
       </div>
 
-      <div className={`rag-composer-slot${composerHidden ? " is-hidden" : ""}${composerDocked ? " is-at-end" : ""}`}>
+      <div className={`rag-composer-slot${composerHidden ? " is-hidden" : ""}`}>
         {awayFromBottom && !initializing && <button className={`rag-scroll-bottom${presenting ? " is-generating" : ""}`} type="button" title="回到底部" aria-label="回到底部"
           onMouseDown={event => event.preventDefault()}
           onClick={returnToBottom}><span className="rag-scroll-busy" aria-hidden="true"><span /><span /><span /></span><ArrowDown className="rag-scroll-arrow" size={18} aria-hidden="true" /></button>}

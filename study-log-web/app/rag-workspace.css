@@ -394,8 +394,6 @@
 .rag-composer-slot > :not(.rag-scroll-bottom) { transition: opacity 140ms ease; }
 .rag-composer-slot.is-hidden > :not(.rag-scroll-bottom) { opacity: 0; pointer-events: none; }
 
-.rag-composer-slot.is-at-end { position: relative; bottom: auto; }
-
 .rag-composer {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 42px;

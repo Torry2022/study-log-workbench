@@ -12,7 +12,7 @@
 | 回答与版本 | 生成、完成、停止、失败；旧版本仍可切换；重新生成、刷新、保存冲突及另一端修改 | `verify-rag-jump-bottom.mjs`、`verify-rag-edit-browser.mjs`、`verify-rag-task-browser.mjs` |
 | 正文渲染 | 长正文、表格重排、延迟图片及图表；跟随中资源加载；手动阅读后不抢位置 | `verify-rag-reading-anchor.mjs`、`verify-rag-smooth-output.mjs` |
 | 来源 | 折叠摘要、编号定位、长摘要、连续定位、打开原日志再返回；具备来源列表收起功能的版本还要验隐藏来源展开和底部保持 | 个人版 `verify-rag-pi-browser.mjs`、`verify-rag-reader-source-boundaries.mjs`；原生入口另验 |
-| 输入区 | 空内容、长草稿、焦点、发送/停止；显隐、自动增高；输入区外侧控件仍可点击；前后台与会话切换 | `verify-rag-composer-layout.mjs`、`verify-rag-edit-browser.mjs`、`verify-rag-jump-bottom.mjs` |
+| 输入区 | 空内容、长草稿、焦点、发送/停止；显隐、自动增高；输入区外侧控件仍可点击；前后台与会话切换 | `verify-rag-composer-continuity.mjs`、`verify-rag-composer-layout.mjs`、`verify-rag-edit-browser.mjs`、`verify-rag-jump-bottom.mjs` |
 | 队列 | 仅在服务支持时展示；收起/展开、菜单、编辑复用输入框、失败恢复；队列消失不丢草稿 | 个人版 `verify-rag-pi-browser.mjs`、`verify-rag-pi-recovery.mjs`；不能把通用版无此能力当作遗漏 |
 | 滚动入口 | 输入框出现/隐藏、焦点变化、回答进行中、宽窄切换；回底过程与后续跟随；返回顶部仅避让实际重叠的输入区 | `verify-rag-jump-bottom.mjs` |
 | 分批历史 | 20 轮以内全量；超过 20 轮每批 10 轮；首开底部、补载不跳、刻度定向补载；分页会话宽窄入口都隐藏返回顶部 | `verify-rag-history-browser.mjs`、`rag-history.test.mjs` |
@@ -33,3 +33,12 @@
 用授权设备和隔离资料，记录包身份、系统窗口宽度与原配置。至少覆盖短/长会话、来源操作、版本/错误、输入法、输入框显隐、回底、前后台；结束退出测试登录、恢复配置并核对原资料。个人版正式包服务地址固定，不能把它直接接入隔离服务，也不能静默替换登录令牌。需要测试包时先准备候选并获得安装授权。
 
 实际 Windows 包需检查窗口缩放、菜单/焦点及内置页面；普通 Chromium 检查只能证明共享网页实现。鸿蒙 rawfile 在 Chromium/WebKit 通过只能证明阅读器页面，不代表 ArkUI 容器、软键盘和安全区通过。
+
+
+## 2026-11-01：输入区临近底部的跳变
+
+回答末尾进入视口时，旧实现把输入区从 sticky 改为 relative；它后面的操作区和间距尚未滚入，输入区便突然落到更低的位置。合成历史在通用版生产页面复现：页面前进 8px，输入框向下跳约 328px，反向也会跳回。两版均移除这一状态与样式切换，保留 sticky 在普通文档流中的占位、显隐和原有跟随逻辑。
+
+两版类型检查、生产构建通过。`verify-rag-composer-continuity.mjs` 以真实历史 API 建立合成会话，不调用模型；Chromium/WebKit 的 1440/390 宽度、短/多行草稿共 16 组双向逐帧检查通过，无位置突变或页面高度变化，底部操作区与输入框分开占位。另运行两版 `verify-rag-jump-bottom.mjs`，两个浏览器均通过宽窄屏、隐藏输入框回底、滚动动效、恢复流式跟随和时间加载回归，模型由本机模拟服务提供。
+
+本批仅本地修复与验证，未推送、上线或替换 Windows 安装包。Windows 共用本次网页实现，但尚未验证包含此修复的实际 EXE；鸿蒙原生没有这段定位切换，本批不改原生代码，也未安装设备。

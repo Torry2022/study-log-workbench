@@ -75,8 +75,8 @@ test('query done keeps a bare partial-source mention distinct from the complete 
   state.answer='明确确认后才能保存[S2]。S1 为部分片段，S2 提供完整条件。';
   const values=await events(query.createRagQueryStream({question:'保存的条件是什么？',history:[],mode:'logs_only'},config,new AbortController().signal));
   const result=values.at(-1);assert.equal(result.event,'done');
-  assert.equal(result.data.answer,'明确确认后才能保存[S1]。S2 为部分片段，S1 提供完整条件。');
-  assert.deepEqual(result.data.citations.map(item=>({sourceId:item.sourceId,chunkId:item.chunkId})),[{sourceId:'S1',chunkId:'complete'},{sourceId:'S2',chunkId:'partial'}]);
+  assert.equal(result.data.answer,state.answer);
+  assert.deepEqual(result.data.citations.map(item=>({sourceId:item.sourceId,chunkId:item.chunkId})),[{sourceId:'S2',chunkId:'complete'},{sourceId:'S1',chunkId:'partial'}]);
   assert.deepEqual(values.find(item=>item.event==='sources').data.citations,result.data.citations);
   const generated=state.requests.find(item=>item.stream);
   assert.ok(generated.messages[0].content.includes('正文有截断的来源：[S1]'));
@@ -449,7 +449,7 @@ test("actual route streams local MCP and provider calls end to end", async t => 
   const response = await route.POST(new Request("http://localhost/api/rag/query", { method: "POST", body: JSON.stringify(input) }));
   assert.equal(response.status, 200); assert.match(response.headers.get("content-type"), /text\/event-stream/); assert.equal(response.headers.get("x-accel-buffering"), "no");
   const values = await events(response.body); assert.equal(values.at(-1).event, "done", JSON.stringify(values));
-  assert.equal(values.at(-1).data.answer, "第二项[S1]，S1 说明第二项[S1]；S2 说明第一项[S2]。");
+  assert.equal(values.at(-1).data.answer, state.answer);
   assert.deepEqual(values.at(-1).data.citations.map(item => item.heading), ["第2项", "第1项"]);
 });
 

@@ -1038,7 +1038,7 @@ test('query delivers from the same canonical evidence view used by SDK assessmen
   const events=raw.trim().split('\n\n').map(block=>({event:block.split('\n')[0].slice(7),data:JSON.parse(block.split('\n')[1].slice(6))}));
   assert.equal(requests.length,3);assert.equal(requests[2].tools,undefined);assert.equal(events.at(-1).event,'done');assert.ok(!raw.includes('内部文本'));
   assert.ok(events.at(-1).data.answer.includes(tail));assert.equal(events.at(-1).data.citations.length,1);assert.equal(events.at(-1).data.citations[0].chunkId,'2026-09-01:range:0');
-  assert.equal(events.at(-1).data.citations[0].sourceId,'S1');
+  assert.equal(events.at(-1).data.citations[0].sourceId,'S3');
 });
 
 test('second-turn length, filtering and oversized answers retain completion guards', async t => {

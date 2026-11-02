@@ -200,20 +200,16 @@ export function normalizeRagAnswer(
   mode: RagAnswerMode = "logs_only"
 ): { answer: string; citations: RagCitation[]; groundingWarning?: string } {
   const sourceById = new Map(sources.map((source) => [source.sourceId, source]));
-  const remappedIds = new Map<string, string>();
+  const usedIds = new Set<string>();
   const excluded = excludedSourceLabelRanges(answer);
-  // Both reference forms use the original text and the same first-use registry.
-  // An uncited bare label must not retain an ID now assigned to another source.
+  // Keep the identity supplied to the model, including labels retained in literal code.
   const normalizedAnswer = answer.replace(/\[([Ss]\d+)\]|\b(S\d+)\b/g, (full, bracketed: string | undefined, bare: string | undefined, offset: number) => {
     if (excluded.some(([start, end]) => offset >= start && offset < end)) return full;
     const sourceId = bracketed?.toUpperCase() || bare!;
     if (!sourceById.has(sourceId)) return bracketed ? "" : full;
-    if (!remappedIds.has(sourceId)) remappedIds.set(sourceId, `S${remappedIds.size + 1}`);
-    return bracketed ? `[${remappedIds.get(sourceId)}]` : remappedIds.get(sourceId)!;
+    usedIds.add(sourceId);
+    return bracketed ? `[${sourceId}]` : sourceId;
   }).trim();
-  const citations = [...remappedIds].map(([sourceId, remappedSourceId]) => ({
-      ...sourceById.get(sourceId)!,
-      sourceId: remappedSourceId
-    }));
+  const citations = [...usedIds].map((sourceId) => ({ ...sourceById.get(sourceId)! }));
   return { answer: normalizedAnswer, citations, groundingWarning: groundingWarning(normalizedAnswer, citations, mode) };
 }

@@ -37,11 +37,11 @@ test('comparison prompts label each source with its program-computed range', () 
   assert.doesNotMatch(buildRagMessages('总结八月', [], [august]).at(-1).content, /比较范围/);
 });
 
-test("citation numbering follows first use and preserves exact source identity", () => {
+test("citation order follows first use while original source identities stay stable", () => {
   const first = source("S1"), second = source("S2", 1);
   const result = normalizeRagAnswer("结论[S2]，再次[S2]，另一结论[S1]，不存在[S99]。", [first, second]);
-  assert.equal(result.answer, "结论[S1]，再次[S1]，另一结论[S2]，不存在。");
-  assert.deepEqual(result.citations, [{ ...second, sourceId: "S1" }, { ...first, sourceId: "S2" }]);
+  assert.equal(result.answer, "结论[S2]，再次[S2]，另一结论[S1]，不存在。");
+  assert.deepEqual(result.citations, [second, first]);
   assert.equal(second.sourceId, "S2");
   assert.deepEqual(normalizeRagAnswer("无引用", [first]).citations, []);
 });
@@ -49,41 +49,41 @@ test("citation numbering follows first use and preserves exact source identity",
 test('lowercase bracketed citations share the canonical source identity without rewriting literal text',()=>{
   const first=source('S1'),ninth=source('S9',8);
   const result=normalizeRagAnswer('条件[s9]，后续[S1]，再引[S9]。变量s9与`s9 [s9]`，链接[s9](https://example.test/s9)，未知[s99]。',[first,ninth]);
-  assert.equal(result.answer,'条件[S1]，后续[S2]，再引[S1]。变量s9与`s9 [s9]`，链接[s9](https://example.test/s9)，未知。');
-  assert.deepEqual(result.citations,[{...ninth,sourceId:'S1'},{...first,sourceId:'S2'}]);
+  assert.equal(result.answer,'条件[S9]，后续[S1]，再引[S9]。变量s9与`s9 [s9]`，链接[s9](https://example.test/s9)，未知。');
+  assert.deepEqual(result.citations,[ninth,first]);
   assert.equal(stripRagCitationLabels('条件[s9]，代码`[s9]`。'),'条件，代码`[s9]`。');
   assert.equal(parseRagHistory([{role:'assistant',content:'历史条件[s9]，代码`[s9]`。'}])[0].content,'历史条件，代码`[s9]`。');
 });
 
-test("bare source mentions follow their citations after first-use renumbering", () => {
+test("bare source mentions retain their original citation identities", () => {
   const sources = Array.from({ length: 5 }, (_, i) => source(`S${i + 1}`, i));
   const answer = "旧事故[S3]；S5 说明正式规则[S5]，S4 说明旧规则[S4]。\n\n" +
     "`S5` 和 [链接](https://example.test/S4) 应保持原文。\n\n```md\nS5 示例\n```";
   const result = normalizeRagAnswer(answer, sources);
-  assert.match(result.answer, /旧事故\[S1\]；S2 说明正式规则\[S2\]，S3 说明旧规则\[S3\]/);
+  assert.match(result.answer, /旧事故\[S3\]；S5 说明正式规则\[S5\]，S4 说明旧规则\[S4\]/);
   assert.match(result.answer, /`S5` 和 \[链接\]\(https:\/\/example\.test\/S4\)/);
   assert.match(result.answer, /```md\nS5 示例\n```/);
   assert.deepEqual(result.citations.map((item) => item.headingIndex), [2, 4, 3]);
 });
 
-test('a source mentioned without brackets cannot collide with a renumbered citation',()=>{
+test('bare and bracketed references keep their assigned source identities',()=>{
   const partial=source('S1'),complete=source('S4',1);
   const result=normalizeRagAnswer('完整条件[S4]。S1 是部分片段，S4 是完整来源。',[partial,complete]);
-  assert.equal(result.answer,'完整条件[S1]。S2 是部分片段，S1 是完整来源。');
-  assert.deepEqual(result.citations,[{...complete,sourceId:'S1'},{...partial,sourceId:'S2'}]);
+  assert.equal(result.answer,'完整条件[S4]。S1 是部分片段，S4 是完整来源。');
+  assert.deepEqual(result.citations,[complete,partial]);
 });
 
 test('bare and bracketed references share first-use order, protected and unknown labels stay literal',()=>{
   const sources=[source('S1'),source('S4',1)];
   const result=normalizeRagAnswer('S4 给出完整条件，片段[S1]。`S1`、<span data-source="S4"></span>、[链接 S1](https://example.test/S4)、S99 和 [S99]。',sources);
-  assert.equal(result.answer,'S1 给出完整条件，片段[S2]。`S1`、<span data-source="S4"></span>、[链接 S1](https://example.test/S4)、S99 和 。');
+  assert.equal(result.answer,'S4 给出完整条件，片段[S1]。`S1`、<span data-source="S4"></span>、[链接 S1](https://example.test/S4)、S99 和 。');
   assert.deepEqual(result.citations.map(item=>item.headingIndex),[1,0]);
 });
 
 test("citation-like tokens inside code and links remain literal and do not create sources", () => {
   const answer = "`items[S1]`\n\n```js\nitems[S2]\n```\n\n[link](https://example.test/[S1])\n\n事实[S2]";
   const result = normalizeRagAnswer(answer, [source("S1"), source("S2", 1)]);
-  assert.equal(result.answer, answer.replace("事实[S2]", "事实[S1]"));
+  assert.equal(result.answer, answer);
   assert.equal(result.citations.length, 1);
   assert.equal(result.citations[0].headingIndex, 1);
 });
@@ -100,7 +100,7 @@ test("dated claims warn when their citation points to another day, without rewri
   const incident = { ...source("S2", 1), date: "2026-01-15" };
   const wrong = "| 旧方案 | 2026-01-14 | 每十秒轮询备份。 | [S2] |\n- 2026-01-15 决定停用轮询。[S1]";
   const result = normalizeRagAnswer(wrong, [old, incident]);
-  assert.equal(result.answer, "| 旧方案 | 2026-01-14 | 每十秒轮询备份。 | [S1] |\n- 2026-01-15 决定停用轮询。[S2]");
+  assert.equal(result.answer, wrong);
   assert.match(result.groundingWarning, /日期与引用来源的日块日期不同/);
   assert.equal(normalizeRagAnswer("| 旧方案 | 2026-01-14 | 每十秒轮询备份。 | [S1] |", [old, incident]).groundingWarning, undefined);
   assert.equal(normalizeRagAnswer("- 2026-01-15 决定停用轮询。[S2]", [old, incident]).groundingWarning, undefined);
@@ -149,7 +149,7 @@ test('Chinese leading dates retain original claims while advising on mismatched 
   for (const text of ['- 10月7日 发布版本[S8]', '- **2026年10月7日** 发布版本[S8]']) {
     const result = normalizeRagAnswer(text, [s]);
     assert.match(result.groundingWarning, /事后记录或错引/);
-    assert.equal(result.answer, text.replace('[S8]', '[S1]'));
+    assert.equal(result.answer, text);
   }
   assert.equal(normalizeRagAnswer('- 10月8日 发布版本[S8]', [s]).groundingWarning, undefined);
   assert.equal(normalizeRagAnswer('```md\n10月7日 示例[S8]\n```', [s]).groundingWarning, undefined);

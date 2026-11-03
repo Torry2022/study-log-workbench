@@ -89,7 +89,7 @@ export async function callStudyLogTool(name: "retrieve_contexts" | "read_log_ran
   try {
     combined.throwIfAborted();
     await client.connect(transport, { signal: combined, timeout: Math.min(timeoutMs, 15000) });
-    const result = await client.callTool({ name, arguments: args }, { signal: combined, timeout: Math.min(timeoutMs, 45000) });
+    const result = await client.callTool({ name, arguments: args }, { signal: combined, timeout: timeoutMs });
     combined.throwIfAborted();
     const output = result.structuredContent;
     const block = result.content?.find(item => item.type === "text");

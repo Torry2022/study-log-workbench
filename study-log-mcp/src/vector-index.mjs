@@ -6,7 +6,7 @@ import { assertSafePath, resolveRoots } from "./paths.mjs";
 import { checkCancelled, ProviderError } from "./providers.mjs";
 
 export const INDEX_VERSION = 3;
-export const CHUNKING_VERSION = 3;
+export const CHUNKING_VERSION = 4;
 const queues = new Map();
 // This queue serializes only this process. One running MCP process must own an
 // INDEX_ROOT; sharing an index between processes is not supported.

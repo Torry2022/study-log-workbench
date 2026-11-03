@@ -6,7 +6,7 @@ import { getBackupRoot, getLogRoot, LOG_FILE_PATTERN } from "./config.ts";
 import { findLevelTwoHeadings, findRootAtxHeadings, normalizeDayContent, stripTrailingStructuralSeparator } from "./day-content.ts";
 import { buildMarkdownOutline } from "./markdown-outline.ts";
 import type { DayEntry, DaySummary, MonthSummary, SaveDayInput, DeleteDayInput } from "./types.ts";
-import { assertLogDateIsNotFuture, isValidLogDate } from "./study-date.ts";
+import { assertLogDateIsNotFuture, isValidLogDate, normalizeLogHeadingDate } from "./study-date.ts";
 
 
 interface LogFile {
@@ -97,7 +97,10 @@ function parseBlocks(content: string, file: LogFile, includeContent = true, requ
       cachedCharacters -= cached.content.length;
       parsedFileCache.delete(file.filePath);
     }
-    headings = findLevelTwoHeadings(content).filter((heading) => /^\d{4}-\d{2}-\d{2}$/.test(heading.text));
+    headings = findLevelTwoHeadings(content).flatMap(heading => {
+      const date = normalizeLogHeadingDate(heading.text);
+      return date ? [{ ...heading, text: date }] : [];
+    });
     // Compare actual content, not mtimes: synced files can retain their timestamps.
     if (content.length <= MAX_CACHED_CHARACTERS) {
       while (parsedFileCache.size && (parsedFileCache.size >= 32 || cachedCharacters + content.length > MAX_CACHED_CHARACTERS)) {
@@ -114,6 +117,9 @@ function parseBlocks(content: string, file: LogFile, includeContent = true, requ
   }
   const entry = parsedFileCache.get(file.filePath);
   if (includeContent && entry && !entry.bodies) entry.bodies = new Map();
+  if (new Set(headings.map(heading => heading.text)).size !== headings.length) {
+    throw new LogWriteInputError("日志文件中存在重复日期");
+  }
   return headings.map((heading, index) => {
     if (!isValidLogDate(heading.text)) throw new Error("源文件包含无效日期");
     const sourceDate = file.fileName.match(LOG_FILE_PATTERN);

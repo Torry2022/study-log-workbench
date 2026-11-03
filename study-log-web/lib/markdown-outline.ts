@@ -1,3 +1,4 @@
+import { normalizeLogHeadingDate } from "./study-date.ts";
 import { findRootAtxHeadings } from "./day-content.ts";
 
 export interface MarkdownHeading {
@@ -35,7 +36,7 @@ export function buildMarkdownOutline(markdown: string): MarkdownHeading[] {
   const headings: MarkdownHeading[] = [];
   for (const heading of findRootAtxHeadings(markdown)) {
     const text = stripMarkdownInline(heading.text);
-    if (!text || /^\d{4}-\d{2}-\d{2}$/.test(text)) continue;
+    if (!text || normalizeLogHeadingDate(text)) continue;
 
     const baseId = slugifyHeading(text);
     const count = used.get(baseId) || 0;

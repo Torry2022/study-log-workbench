@@ -7,6 +7,12 @@ const SHANGHAI_DATE_FORMATTER = new Intl.DateTimeFormat("en-CA", {
 
 export const FUTURE_LOG_DATE_ERROR_CODE = "FUTURE_LOG_DATE";
 
+/** Normalize source heading spelling; callers retain their calendar-validation policy. */
+export function normalizeLogHeadingDate(value: string): string | null {
+  const match = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(value);
+  return match ? `${match[1]}-${match[2].padStart(2, "0")}-${match[3].padStart(2, "0")}` : null;
+}
+
 export function isValidLogDate(date: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
   const parsed = new Date(`${date}T00:00:00.000Z`);

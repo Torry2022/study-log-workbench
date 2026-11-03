@@ -1,5 +1,6 @@
 import { unified } from "unified";
 import remarkParse from "remark-parse";
+import { normalizeLogHeadingDate } from "./study-date.ts";
 
 const markdownParser = unified().use(remarkParse);
 
@@ -74,8 +75,8 @@ export function assertEditableDayBody(content: string): void {
 export function toEditableDayBody(date: string, content: string): string {
   const trimmed = stripTrailingStructuralSeparator(content);
   const heading = findLevelTwoHeadings(trimmed)[0];
-  if (!heading || heading.start !== 0 || heading.text !== date) return trimmed;
-  return trimmed.slice(heading.end).replace(/^\r?\n+/, "").trimEnd();
+  if (!heading || heading.start !== 0 || normalizeLogHeadingDate(heading.text) !== date) return trimmed;
+  return trimmed.slice(heading.end).replace(/^(?:\r?\n)+/, "").trimEnd();
 }
 
 export function normalizeDayContent(date: string, content: string): string {
@@ -86,7 +87,7 @@ export function normalizeDayContent(date: string, content: string): string {
   let body = trimmed;
   if (headings[0]?.start === 0) {
     const firstHeading = headings[0];
-    if (firstHeading.text !== date) {
+    if (normalizeLogHeadingDate(firstHeading.text) !== date) {
       throw new InvalidDayContentError("日志顶部日期与当前选择的日期不一致");
     }
     body = trimmed.slice(firstHeading.end).replace(/^(?:[ \t]*\r?\n)+/, "").trimEnd();

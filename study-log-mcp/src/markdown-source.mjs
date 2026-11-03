@@ -1,6 +1,7 @@
 import { unified } from "unified";
 import remarkParse from "remark-parse";
 import { SourceError } from "./paths.mjs";
+import { normalizeLogHeadingDate } from "./date-heading.mjs";
 
 const parser = unified().use(remarkParse);
 export const LOG_FILE_PATTERN = /^(\d{4})(?:-(0[1-9]|1[0-2]))?_学习日志\.md$/;
@@ -53,7 +54,11 @@ export function getPreview(content, maxLength = 180) {
 export function parseDayBlocks(content, fileName) {
   const source = fileName.match(LOG_FILE_PATTERN);
   if (!source) throw new SourceError("Unsupported log filename.");
-  const headings = rootHeadings(content, 2).filter(heading => /^\d{4}-\d{2}-\d{2}$/.test(heading.text));
+  const headings = rootHeadings(content, 2).flatMap(heading => {
+    const date = normalizeLogHeadingDate(heading.text);
+    return date ? [{ ...heading, text: date }] : [];
+  });
+  if (new Set(headings.map(heading => heading.text)).size !== headings.length) throw new SourceError("Duplicate day dates in source.");
   return headings.map((heading, index) => {
     if (!isValidDate(heading.text)) throw new SourceError("Source contains an invalid calendar date.");
     const prefix = source[2] ? `${source[1]}-${source[2]}-` : `${source[1]}-`;
@@ -66,7 +71,7 @@ export function parseSections(block) {
   const headings = rootHeadings(block.content, 3), sections = [];
   let preamble = block.content.slice(0, headings[0]?.start ?? block.content.length);
   const day = rootHeadings(preamble, 2)[0];
-  if (day?.start === 0 && day.text === block.date) preamble = preamble.slice(day.end);
+  if (day?.start === 0 && normalizeLogHeadingDate(day.text) === block.date) preamble = preamble.slice(day.end);
   if (preamble.trim()) sections.push({ heading: null, headingIndex: null, body: preamble.trim() });
   headings.forEach((heading, headingIndex) => {
     sections.push({ heading: plainInline(heading.text).replace(/^\d+\.\s*/, "").trim(), headingIndex,

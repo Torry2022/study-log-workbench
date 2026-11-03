@@ -68,3 +68,30 @@ test('relative years in an event range do not create or widen a journal-date fil
   assert.equal(scoped.dateFrom,'2032-10-01');assert.equal(scoped.dateTo,'2032-10-31');
   assert.equal(scoped.ranges,undefined);
 });
+
+test('descriptive coordinated calendar days inherit only the nearest explicit month', () => {
+  const days = planRagRetrieval('4月8日记的实验准备，和10日记的结果一起回顾', now);
+  assert.deepEqual(days.ranges, [{dateFrom:'2032-04-08',dateTo:'2032-04-08'},{dateFrom:'2032-04-10',dateTo:'2032-04-10'}]);
+  assert.deepEqual(planRagRetrieval('2030年3月2日记甲和4日记乙，再和7月8日记丙及9日记丁',now).ranges.map(range=>range.dateFrom), ['2030-03-02','2030-03-04','2030-07-08','2030-07-09']);
+  for(const tail of ['持续12日','第12日','12个实验']) {
+    const plan=planRagRetrieval(`4月8日记录中，${tail}`,now);assert.equal(plan.ranges,undefined);assert.equal(plan.dateTo,'2032-04-08');
+  }
+  for(const boundary of ['。','！','？','\n']) assert.equal(planRagRetrieval(`4月8日记录${boundary}和12日记录`,now).ranges,undefined);
+  assert.equal(planRagRetrieval('和12日记录一起解释',now).dateFrom,undefined);
+  assert.equal(planRagRetrieval('4月8日记的实验，和31日记的结果一起回顾',now).invalidDate,true);
+});
+test('an abbreviated event day does not become a journal constraint', () => {
+  const plan=planRagRetrieval('4月8日记的实验和12日发布的版本之间有什么关系',now);
+  assert.equal(plan.dateFrom,'2032-04-08');assert.equal(plan.dateTo,'2032-04-08');assert.equal(plan.ranges,undefined);assert.equal(plan.eventDates,true);
+});
+
+test('calendar inheritance cannot cross a line, month-only boundary, or excluded event day', () => {
+  for(const connector of ['和\n','，\n']) {
+    const plan=planRagRetrieval(`4月8日${connector}12日记乙`,now);
+    assert.equal(plan.dateTo,'2032-04-08');assert.equal(plan.ranges,undefined);
+  }
+  const scopes=planRagRetrieval('4月8日记甲和5月记录乙，12日记录丙',now).ranges;
+  assert.ok(scopes && scopes.every(scope=>!('2032-04-12'>=scope.dateFrom && '2032-04-12'<=scope.dateTo)));
+  const event=planRagRetrieval('4月8日和12日发布的版本',now);
+  assert.equal(event.eventDates,true);assert.equal(event.dateTo,'2032-04-08');assert.equal(event.ranges,undefined);
+});

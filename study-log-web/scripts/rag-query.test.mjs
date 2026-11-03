@@ -57,6 +57,22 @@ async function events(stream) {
   return (await new Response(stream).text()).trim().split("\n\n").filter(Boolean).map(block => ({ event: block.split("\n")[0].slice(7), data: JSON.parse(block.split("\n").slice(1).join("\n").slice(6)) }));
 }
 
+test('ISO abbreviated date lists reach MCP as three separate days and finish with all citations', async t => {
+  const { state, config } = await fixture(t);
+  const dates = ['2031-01-03', '2031-02-05', '2031-04-07'];
+  const blocks = dates.map(date => ({ date, month: date.slice(0, 7), fileName: `${date.slice(0, 7)}_学习日志.md`, content: '合成日期的完整进展。' }));
+  state.rangePage = args => {
+    assert.equal(args.dateFrom, args.dateTo); assert.ok(dates.includes(args.dateFrom));
+    return readLogRange(blocks, args);
+  };
+  state.answer = '三个指定日期的完整进展[S1][S2][S3]';
+  const values = await events(query.createRagQueryStream({ question: '比较2031-01-03、02-05和04-07的记录', history: [], mode: 'logs_only' }, config, new AbortController().signal));
+  const reads = state.requests.filter(request => request.method === 'tools/call' && request.params.name === 'read_log_range');
+  assert.equal(values.at(-1).event, 'done', JSON.stringify({ values, reads }));
+  assert.deepEqual(reads.map(request => request.params.arguments.dateFrom), dates);
+  assert.deepEqual(values.at(-1).data.citations.map(citation => citation.date), dates);
+});
+
 test('query error diagnostics retain supplied usage for truncated final generation',async t=>{
   const {state,config}=await fixture(t);
   state.modelFrame={choices:[{finish_reason:'length'}],usage:{prompt_tokens:42,completion_tokens:21}};

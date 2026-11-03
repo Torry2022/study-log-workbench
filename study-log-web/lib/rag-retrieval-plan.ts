@@ -179,9 +179,19 @@ export function planRagRetrieval(query: string, now = new Date()): RagRetrievalP
   // Resolve calendar months in code, including an omitted year in “九月和十月”.
   const replacedYears = [...new Set([...query.slice(0, query.length - activeText.length).matchAll(/(20\d{2})年/g)].map(match => match[1]))];
   let year = Number(calendar.match(/(20\d{2})年/)?.[1] || (replacedYears.length === 1 ? replacedYears[0] : undefined) || today.getUTCFullYear());
+  // Resolve omitted years across an ISO date list before deriving any scopes.
+  const expandedIsoDates = calendar.replace(/((20\d{2})[-/]\d{1,2}[-/]\d{1,2})((?:\s*(?:至|到|与|和|及|、|,|，|~|—|-)\s*(?:(?:20\d{2})[-/])?\d{1,2}[-/]\d{1,2}(?!\d))+)/g,
+    (_full, first, namedYear, rest: string) => {
+      if (!/[与和及、,，]/.test(rest)) return _full;
+      let listYear = namedYear;
+      return first + rest.replace(/(?:(20\d{2})[-/])?(\d{1,2})[-/](\d{1,2})(?!\d)/g, (_date, nextYear, month, day) => {
+        if (nextYear) listYear = nextYear;
+        return `${listYear}-${month}-${day}`;
+      });
+    });
   // Enumerations inherit the named month: “10月1日、2日和3日”.
   // Require 日 on abbreviated items so ordinary numbers are not treated as dates.
-  const expandedDays = calendar.replace(/((20\d{2})年(\d{1,2})月\d{1,2}日)((?:\s*(?:、|和|与|及|至|到|~|—|-)\s*\d{1,2}日)+)/g,
+  const expandedDays = expandedIsoDates.replace(/((20\d{2})年(\d{1,2})月\d{1,2}日)((?:\s*(?:、|和|与|及|至|到|~|—|-)\s*\d{1,2}日)+)/g,
     (_full, first, namedYear, month, rest: string) => first + rest.replace(/\d{1,2}日/g, day => `${namedYear}年${month}月${day}`));
   const value = expandedDays.replace(/(?:(20\d{2})年)?([一二三四五六七八九十]+|\d{1,2})月(?!\d|[一二三四五六七八九十]+日)/g, (full, namedYear, monthText) => {
     const month = parseDayCount(monthText);

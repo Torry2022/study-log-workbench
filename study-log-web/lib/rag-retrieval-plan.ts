@@ -35,7 +35,10 @@ function shiftDays(date: Date, days: number): Date {
 }
 
 function parseDayCount(value: string): number | null {
-  if (/^\d+$/.test(value)) return Number(value);
+  if (/^\d+$/.test(value)) {
+    const number = Number(value);
+    return Number.isSafeInteger(number) ? number : null;
+  }
   const digits: Record<string, number> = { 零: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
   const units: Record<string, number> = { 十: 10, 百: 100 };
   let total = 0;
@@ -134,7 +137,7 @@ function extractLiteralLookup(value: string): string | null {
 }
 
 function explicitDateRange(value: string): Pick<RagRetrievalPlan, "dateFrom" | "dateTo"> | null {
-  const namedDays = [...value.matchAll(/(20\d{2})[-年/](\d{1,2})[-月/](\d{1,2})日?/g)];
+  const namedDays = [...value.matchAll(/(20\d{2})[-年/](\d+)[-月/](\d+)日?/g)];
   for (let start = 0; start < namedDays.length - 2; start++) {
     const connected = [namedDays[start]];
     for (let next = start + 1; next < namedDays.length; next++) {
@@ -170,7 +173,8 @@ export function planRagRetrieval(query: string, now = new Date()): RagRetrievalP
   const literalQuery = extractLiteralLookup(activeText);
   // Quoted lookup text is content, not an independent calendar constraint.
   const active = (literalQuery ? activeText.replace(/`[^`\n]+`|“[^”\n]+”|‘[^’\n]+’|"[^"\n]+"|'[^'\n]+'/g, "") : activeText).normalize("NFKC");
-  const withoutEvents = active.replace(/(?:20\d{2}[-/]\d{1,2}(?:[-/]\d{1,2})?|(?:(?:20\d{2}年|前年|去年|今年|本年度|明年|后年)[ \t]*(?:的[ \t]*)?)?(?:[一二三四五六七八九十]+|\d{1,2})月(?:(?:[一二三四五六七八九十]+|\d{1,2})日)?|(?:20\d{2}年|前年|去年|今年|本年度|明年|后年)[ \t]*(?:的[ \t]*)?)(?=\s*(?:正式|首次)?(?:发布|推出|发生|上线|举办|版本))/g, "");
+  const withoutEventRanges = active.replace(/(?:(?:(?:20\d{2}年|前年|去年|今年|本年度|明年|后年)[ \t]*(?:的[ \t]*)?)?[零一二三四五六七八九十\d]+月[零一二三四五六七八九十\d]+日|20\d{2}[-/]\d+[-/]\d+)\s*(?:至|到|~|—|-)\s*(?:20\d{2}[-年/]|(?:前年|去年|今年|本年度|明年|后年)[ \t]*(?:的[ \t]*)?)?(?:[零一二三四五六七八九十\d]+[-月/])?[零一二三四五六七八九十\d]+日?(?=\s*(?:正式|首次)?(?:发布|推出|发生|上线|举办|版本))/g, "");
+  const withoutEvents = withoutEventRanges.replace(/(?:20\d{2}[-/]\d{1,2}(?:[-/]\d{1,2})?|(?:(?:20\d{2}年|前年|去年|今年|本年度|明年|后年)[ \t]*(?:的[ \t]*)?)?(?:[一二三四五六七八九十]+|\d{1,2})月(?:(?:[一二三四五六七八九十]+|\d{1,2})日)?|(?:20\d{2}年|前年|去年|今年|本年度|明年|后年)[ \t]*(?:的[ \t]*)?)(?=\s*(?:正式|首次)?(?:发布|推出|发生|上线|举办|版本))/g, "");
   const today = chinaToday(now);
   const relativeYears: Record<string, number> = { 前年: -2, 去年: -1, 今年: 0, 本年度: 0, 明年: 1, 后年: 2 };
   // Expand only a year qualifier attached to a month; event dates were removed first.
@@ -178,7 +182,7 @@ export function planRagRetrieval(query: string, now = new Date()): RagRetrievalP
     (_full, label: string) => `${today.getUTCFullYear() + relativeYears[label]}年`);
   // Resolve calendar months in code, including an omitted year in “九月和十月”.
   const replacedYears = [...new Set([...query.slice(0, query.length - activeText.length).matchAll(/(20\d{2})年/g)].map(match => match[1]))];
-  let year = Number(calendar.match(/(20\d{2})年/)?.[1] || (replacedYears.length === 1 ? replacedYears[0] : undefined) || today.getUTCFullYear());
+  let year = Number((replacedYears.length === 1 ? replacedYears[0] : undefined) || today.getUTCFullYear());
   // Resolve omitted years across an ISO date list before deriving any scopes.
   const expandedIsoDates = calendar.replace(/((20\d{2})[-/]\d{1,2}[-/]\d{1,2})((?:\s*(?:至|到|与|和|及|、|,|，|~|—|-)\s*(?:(?:20\d{2})[-/])?\d{1,2}[-/]\d{1,2}(?!\d))+)/g,
     (_full, first, namedYear, rest: string) => {
@@ -189,11 +193,24 @@ export function planRagRetrieval(query: string, now = new Date()): RagRetrievalP
         return `${listYear}-${month}-${day}`;
       });
     });
+  // A month/day without a year uses the same calendar-year policy as a named month.
+  // Resolve it before abbreviated day lists so their first endpoint has a year.
+  let dayYear = year;
+  const expandedCalendarDays = expandedIsoDates.replace(/(?:(20\d{2})年)?([零一二三四五六七八九十]+|\d+)月([零一二三四五六七八九十]+|\d+)日|(20\d{2})(?=年|[-/]\d)/g,
+    (full, namedYear, monthText, dayText, dateYear) => {
+      if (dateYear) { dayYear = Number(dateYear); return full; }
+      if (namedYear) dayYear = Number(namedYear);
+      return `${dayYear}年${parseDayCount(monthText) ?? 0}月${parseDayCount(dayText) ?? 0}日`;
+    });
   // Enumerations inherit the named month: “10月1日、2日和3日”.
   // Require 日 on abbreviated items so ordinary numbers are not treated as dates.
-  const expandedDays = expandedIsoDates.replace(/((20\d{2})年(\d{1,2})月\d{1,2}日)((?:\s*(?:、|和|与|及|至|到|~|—|-)\s*\d{1,2}日)+)/g,
-    (_full, first, namedYear, month, rest: string) => first + rest.replace(/\d{1,2}日/g, day => `${namedYear}年${month}月${day}`));
-  const value = expandedDays.replace(/(?:(20\d{2})年)?([一二三四五六七八九十]+|\d{1,2})月(?!\d|[一二三四五六七八九十]+日)/g, (full, namedYear, monthText) => {
+  const expandDayLists = (text: string) => text.replace(/((20\d{2})年(\d{1,2})月\d{1,2}日)((?:\s*(?:、|和|与|及|至|到|~|—|-)\s*[零一二三四五六七八九十\d]+日)+)/g,
+    (_full, first, namedYear, month, rest: string) => first + rest.replace(/([零一二三四五六七八九十\d]+)日/g, (_day, dayText) => `${namedYear}年${month}月${parseDayCount(dayText) ?? 0}日`));
+  const previousDayShape = expandDayLists(expandedIsoDates);
+  const expandedDays = expandDayLists(expandedCalendarDays);
+  // Track every explicit year in text order, including full dates skipped by the month matcher.
+  const value = expandedDays.replace(/(?:(20\d{2})年)?([一二三四五六七八九十]+|\d{1,2})月(?!\d|[一二三四五六七八九十]+日)|(20\d{2})(?=年|[-/]\d)/g, (full, namedYear, monthText, dateYear) => {
+    if (dateYear) { year = Number(dateYear); return full; }
     const month = parseDayCount(monthText);
     if (!month || month > 12) return full;
     if (namedYear) year = Number(namedYear);
@@ -203,8 +220,8 @@ export function planRagRetrieval(query: string, now = new Date()): RagRetrievalP
   let invalidDate = false;
 
   const explicitRange = explicitDateRange(value);
-  const explicitDay = value.match(/(20\d{2})[-年/](\d{1,2})[-月/](\d{1,2})日?/);
-  const explicitMonth = value.match(/(20\d{2})[-年/](\d{1,2})月?/);
+  const explicitDay = value.match(/(20\d{2})[-年/](\d+)[-月/](\d+)日?/);
+  const explicitMonth = value.match(/(20\d{2})[-年/](\d+)月?/);
   const recentDays = value.match(/(?:最近|近|过去)\s*([0-9零一二两三四五六七八九十百]+)\s*天/);
 
   if (explicitRange) {
@@ -245,12 +262,27 @@ export function planRagRetrieval(query: string, now = new Date()): RagRetrievalP
   if (literalQuery) Object.assign(plan, { matchMode: "literal", literalQuery });
   if (withoutEvents !== active) plan.eventDates = true;
   // Separate explicit scopes must not silently include days between them.
-  const scopes = [...value.matchAll(/(20\d{2})[-年/](\d{1,2})(?:[-月/](\d{1,2})日?|月)?(?!\d)/g)];
+  // Resolve omitted years and endpoints before grouping, not only in the first range.
+  let scopeYear = Number((replacedYears.length === 1 ? replacedYears[0] : undefined) || today.getUTCFullYear());
+  // ISO endpoints may omit the day unit; Chinese abbreviated endpoints may not.
+  const isoScopes = value.replace(/((20\d{2})[-/](\d+)[-/]\d+)(\s*(?:至|到|~|—|-)\s*)(?:(20\d{2})[-/])?(?:(\d+)[-/])?(\d+)(?!\d)/g,
+    (_full, first, namedYear, month, connector, endYear, endMonth, day) =>
+      `${first}${connector}${endYear || namedYear}-${endMonth || month}-${day}`);
+  const namedScopes = isoScopes.replace(/(?:(20\d{2})年)?(\d+)月(?:(\d+)日?)?|(20\d{2})[-/](\d+)(?:[-/](\d+))?/g,
+    (_full, namedYear, month, day, isoYear, isoMonth, isoDay) => {
+      if (namedYear || isoYear) scopeYear = Number(namedYear || isoYear);
+      return `${scopeYear}年${month || isoMonth}月${day || isoDay ? `${day || isoDay}日` : ""}`;
+    });
+  const scopeValue = namedScopes.replace(/((20\d{2})年(\d+)月\d+日)(\s*(?:至|到|与|和|及|、|~|—|-)\s*)(?:(20\d{2})年)?(?:(\d+)月)?(\d+)日/g,
+    (_full, first, namedYear, month, connector, endYear, endMonth, day) =>
+      `${first}${connector}${endYear || namedYear}年${endMonth || month}月${day}日`);
+  const scopePattern = /(20\d{2})[-年/](\d+)(?:[-月/](\d+)日?|月)?(?!\d)/g;
+  const scopes = [...scopeValue.matchAll(scopePattern)];
   const groupedRanges = (matches: RegExpMatchArray[], ranges: Array<{ dateFrom: string; dateTo: string }>) => {
     const groups: typeof ranges = [];
     ranges.forEach((range, index) => {
       const previous = matches[index - 1];
-      const connector = previous ? value.slice(previous.index! + previous[0].length, matches[index].index) : "";
+      const connector = previous ? scopeValue.slice(previous.index! + previous[0].length, matches[index].index) : "";
       if (previous && /^\s*(?:至|到|~|—|-)\s*$/.test(connector)) {
         const group = groups[groups.length - 1];
         group.dateFrom = [group.dateFrom, range.dateFrom].sort()[0];
@@ -268,7 +300,11 @@ export function planRagRetrieval(query: string, now = new Date()): RagRetrievalP
       }
       return month >= 1 && month <= 12 ? monthRange(year, month) : null;
     });
-    if (ranges.every(Boolean)) plan.ranges = groupedRanges(scopes, ranges as Array<{ dateFrom: string; dateTo: string }>).sort((a, b) => a.dateFrom.localeCompare(b.dateFrom));
+    if (ranges.every(Boolean)) {
+      const grouped = groupedRanges(scopes, ranges as Array<{ dateFrom: string; dateTo: string }>).sort((a, b) => a.dateFrom.localeCompare(b.dateFrom));
+      // Preserve the existing single-range shape when only an endpoint was expanded.
+      if (grouped.length > 1 || scopes.every(scope => scope[3] === undefined) || [...previousDayShape.matchAll(scopePattern)].length > 1) plan.ranges = grouped;
+    }
     else plan.invalidDate = true;
   }
   if (plan.ranges?.length) {

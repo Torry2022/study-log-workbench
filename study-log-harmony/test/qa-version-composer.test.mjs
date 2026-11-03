@@ -19,7 +19,7 @@ test('version replacement scroll is layout-owned until its completed frame, then
   r.handleScroll(1800); assert.equal(h.composerHidden, false); assert.equal(h.lastScrollY, 1800);
   r.handleScroll(7200); assert.equal(h.composerHidden, false);
   r.handledEndRevision = 1;
-  r.handleScroll(7300); assert.equal(h.composerHidden, true);
+  r.handleScroll(7100); assert.equal(h.composerHidden, true);
   r.handleScroll(7200); assert.equal(h.composerHidden, false);
 });
 

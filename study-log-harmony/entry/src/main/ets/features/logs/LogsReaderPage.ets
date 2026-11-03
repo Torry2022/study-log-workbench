@@ -2677,7 +2677,7 @@ export struct LogsReaderPage {
             .height('100%')
             .backgroundColor(this.aiOpen ? $r('app.color.canvas') : $r('app.color.surface_soft'))
             .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
-            .border({ width: { left: 1 }, color: $r('app.color.hairline') })
+            .border({ width: { left: 1 - this.reading.readingProgress }, color: $r('app.color.hairline') })
             .hitTestBehavior(this.reading.logsReadingMode ? HitTestMode.None : HitTestMode.Default)
             .clip(true).id('log_ai_dock')
         }

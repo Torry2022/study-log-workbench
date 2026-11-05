@@ -59,7 +59,7 @@ export function Workspace() {
   const notes = useNotes({ active, visible: logs.selection.view === "notes", onConfirm: confirm, routeNoteId: logs.selection.noteId, routeToken: logs.navigationRevision });
   const extraction = useNoteCandidates({ active, visible: logs.selection.view === "notes", tags: notes.tags, onConfirm: confirm, onSaved: async () => { notes.clearFilters(); notes.clearSearch(); await notes.reload(); } });
   const notesWithExtraction = { ...notes, openNew: async () => { if (!(await extraction.beforeLeave())) return false; return notes.openNew(); } };
-  const stats = useStats({ active, visible: logs.selection.view === "stats", onConfirm: confirm, routeMonth: logs.selection.statsMonth, onRouteMonthChange: logs.selectStatsMonth });
+  const stats = useStats({ active, visible: logs.selection.view === "stats", onConfirm: confirm, routeMonth: logs.selection.statsMonth, onRouteMonthChange: logs.selectStatsMonth, onDefaultMonth: logs.replaceDefaultStatsMonth });
   const favorites = useFavorites(active);
   const acceptSaved = useCallback((day: DayEntry) => { logs.acceptSaved(day); void favorites.reload(); }, [logs.acceptSaved, favorites.reload]);
   const draft = useLogDraft(logs.day, active, acceptSaved);

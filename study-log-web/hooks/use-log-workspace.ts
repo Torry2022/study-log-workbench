@@ -220,6 +220,14 @@ export function useLogWorkspace(active: boolean, beforeLeave?: RefObject<() => P
   const selectView = useCallback((view: WorkspaceView) => navigate({ ...currentSelection.current, view }), [navigate]);
   const selectNote = useCallback((noteId: string) => navigate({ ...currentSelection.current, view: "notes", noteId }), [navigate]);
   const selectStatsMonth = useCallback((statsMonth: string) => navigate({ ...currentSelection.current, view: "stats", statsMonth }), [navigate]);
+  const replaceDefaultStatsMonth = useCallback((statsMonth: string) => {
+    const current = currentSelection.current;
+    if (current.view !== "stats" || current.statsMonth || readLocation().view !== "stats") return;
+    const next = { ...current, statsMonth };
+    currentSelection.current = next;
+    setSelection(next);
+    writeLocation(next, true);
+  }, []);
   const selectRagSession = useCallback((sessionId: string) => navigate({ ...currentSelection.current, view: "qa", sessionId }), [navigate]);
   // A successful save updates the current address without navigating away from its answer.
   const replaceRagSession = useCallback((sessionId: string) => {
@@ -244,7 +252,7 @@ export function useLogWorkspace(active: boolean, beforeLeave?: RefObject<() => P
     months: monthsLoading && !monthsError && reloadContext ? reloadContext.months : months,
     days: daysLoading && !daysError && reloadContext ? reloadContext.days : days,
     reloadContext,
-    day: day?.date === selection.date ? day : null, selection, selectMonth, selectDate, selectView, selectNote, selectStatsMonth, selectRagSession, replaceRagSession, scrollTarget, navigationRevision,
+    day: day?.date === selection.date ? day : null, selection, selectMonth, selectDate, selectView, selectNote, selectStatsMonth, replaceDefaultStatsMonth, selectRagSession, replaceRagSession, scrollTarget, navigationRevision,
     monthsLoading, monthsError,
     navigationLoading: daysLoading,
     navigationError: daysError,

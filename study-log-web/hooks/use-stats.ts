@@ -12,6 +12,7 @@ import { useTaxonomySuggestions } from "./use-taxonomy-suggestions";
 interface Options {
   active: boolean; visible: boolean; routeMonth?: string;
   onRouteMonthChange?: (month: string) => Promise<boolean>;
+  onDefaultMonth?: (month: string) => void;
   onConfirm: (options: ConfirmationOptions) => Promise<boolean>;
 }
 const empty = (): Taxonomy => ({ domains: ["其他"], mappings: {}, updatedAt: null, version: null });
@@ -35,7 +36,7 @@ export function useStats(options: Options) {
   const [feedback, setFeedback] = useState("");
   const [reloadRevision, setReloadRevision] = useState(0);
   const [statsRevision, setStatsRevision] = useState(0);
-  const initializedRevision = useRef(-1);
+  const loadedRevision = useRef(-1);
   const operation = useRef<AbortController | null>(null);
   const current = useRef({ options, taxonomy, savedTaxonomy, selectedMonth, busy });
   current.current = { options, taxonomy, savedTaxonomy, selectedMonth, busy };
@@ -48,22 +49,24 @@ export function useStats(options: Options) {
 
   useEffect(() => {
     if (!options.active || !options.visible) return;
-    if (initializedRevision.current === reloadRevision) return;
-    initializedRevision.current = reloadRevision;
+    if (loadedRevision.current === reloadRevision) return;
     const controller = new AbortController();
     setInitialLoading(true); setTaxonomyError("");
     Promise.all([
       requestJson<{ months: MonthSummary[] }>("/api/logs/months", { signal: controller.signal }),
       requestJson<{ taxonomy: Taxonomy; catalog: TaxonomyCatalogItem[] }>("/api/taxonomy", { signal: controller.signal })
     ]).then(([monthPayload, payload]) => {
-      if (controller.signal.aborted) return;
+      const state = current.current;
+      if (controller.signal.aborted || !state.options.active || !state.options.visible) return;
+      loadedRevision.current = reloadRevision;
       setMonths(monthPayload.months); setCatalog(payload.catalog);
       if (same(current.current.taxonomy, current.current.savedTaxonomy)) {
         setTaxonomy(payload.taxonomy); setSavedTaxonomy(payload.taxonomy); setConflict(false);
       }
-      if (!current.current.selectedMonth) {
+      if (!state.selectedMonth && !validMonth(state.options.routeMonth)) {
         const month = monthPayload.months[0]?.id || todayInShanghai().slice(0, 7);
-        setSelectedMonth(month); void current.current.options.onRouteMonthChange?.(month);
+        setSelectedMonth(month);
+        state.options.onDefaultMonth?.(month);
       }
     }).catch(error => {
       if (!controller.signal.aborted && error?.name !== "AbortError") setTaxonomyError(error instanceof Error ? error.message : "读取分类失败");

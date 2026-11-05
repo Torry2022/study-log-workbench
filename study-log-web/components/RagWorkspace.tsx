@@ -371,6 +371,10 @@ export function RagWorkspace({
   }
 
   const toggleCitation = useCallback((messageId: string, citation: RagCitation, open = false) => {
+    if (!open) {
+      followOutputRef.current = document.documentElement.scrollHeight - window.scrollY - window.innerHeight <= 2;
+      if (followOutputRef.current) readingAnchorRef.current = null;
+    }
     const key = `${messageId}:${citation.sourceId}`;
     setExpandedCitationKey((current) => (current === key && !open ? null : key));
     if (open) {

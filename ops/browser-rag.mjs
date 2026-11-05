@@ -111,6 +111,15 @@ try {
   }
   await center(); await send("第一问"); await expect(workspace).toContainText("合成依据边界提示"); await expect.poll(async () => (await ownSessions()).length).toBe(23); await expect(page).toHaveURL(/session=/); const firstId = new URL(page.url()).searchParams.get("session"); owned.add(firstId); await expect(page.getByRole("button", { name: "发送问题", exact: true })).toBeDisabled();
   assert.equal((await get(firstId)).messages[1].status, "complete");
+  const bottomDistance = () => page.evaluate(() => document.documentElement.scrollHeight - innerHeight - scrollY);
+  await expect.poll(bottomDistance).toBeLessThanOrEqual(2);
+  const citationToggle = workspace.locator(".rag-citation").first();
+  await citationToggle.click();
+  await expect(workspace.locator(".rag-citation-detail")).toBeVisible();
+  await expect.poll(bottomDistance).toBeLessThanOrEqual(2);
+  await citationToggle.click();
+  await expect(workspace.locator(".rag-citation-detail")).toHaveCount(0);
+  await expect.poll(bottomDistance).toBeLessThanOrEqual(2);
   const sourceButton = workspace.locator(".rag-citation").first(); await sourceButton.click(); await workspace.getByRole("button", { name: "查看原日志", exact: true }).click(); await expect(page).toHaveURL(new RegExp(`date=${date}`)); await expect(page.locator(".workspace-view:not([hidden]) .reader-preview-pane .markdown-preview")).toContainText(marker); await expect(page.locator(".workspace-transition-snapshot")).toHaveCount(0); await page.waitForFunction(() => !document.documentElement.dataset.workspaceTransition, null, { timeout: 5000 }); await page.getByRole("button", { name: "返回问答", exact: true }).click(); await expect(workspace).toContainText("合成依据边界提示");
   await question.fill(`${prefix}未发送问题`); await page.getByRole("button", { name: "日志", exact: true }).filter({ visible: true }).first().click(); await center(); await expect(question).toHaveValue(`${prefix}未发送问题`);
   await page.evaluate(() => window.dispatchEvent(new Event("study-log:auth-expired"))); await login(); await expect(question).toHaveValue(`${prefix}未发送问题`); await question.fill("");

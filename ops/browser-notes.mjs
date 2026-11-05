@@ -85,6 +85,14 @@ try {
   await edit(`${prefix}编辑`); await page.screenshot({ path: path.resolve("artifacts/notes/desktop-editor.png") }); await discard();
   await page.goto(`${base}?view=notes&note=${saved.id}`); await expect(card(`${prefix}编辑`)).toBeFocused();
   await page.setViewportSize({ width: 390, height: 844 }); await page.evaluate(() => window.scrollTo(0, 0)); await page.screenshot({ path: path.resolve("artifacts/notes/mobile.png") }); assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  const mobileSearch = page.getByRole("textbox", { name: "搜索随记", exact: true });
+  await expect(mobileSearch).toHaveAttribute("placeholder", "搜索随记");
+  await expect.poll(() => mobileSearch.evaluate(input => {
+    const style = getComputedStyle(input);
+    const context = document.createElement("canvas").getContext("2d");
+    context.font = style.font;
+    return context.measureText(input.placeholder).width <= input.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+  })).toBe(true);
   await start(); await body.fill("手机随记正文"); await insight.fill("手机心得"); await page.screenshot({ path: path.resolve("artifacts/notes/mobile-editor.png") }); assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)); await discard();
   await card(`${prefix}编辑`).getByLabel(`更多随记操作：${prefix}编辑`, { exact: true }).click(); await card(`${prefix}编辑`).getByRole("button", { name: "删除随记", exact: true }).click(); await confirm("取消");
   assert.deepEqual(errors, []); console.log("Passed: notes desktop/mobile layout, deep link focus and mobile delete cancellation");

@@ -302,7 +302,7 @@ export function NotesModule({ notes, themeMode, onOpenLogTarget, exportAction, e
       <div className="notes-title-block module-title-block"><div className="reader-heading-row"><h2>随记</h2></div></div>
       <div className="reader-controls notes-header-actions">
         <form className="notes-search" onSubmit={event => { event.preventDefault(); notes.submitSearch(); }}>
-          <Search size={15} /><input value={notes.query} onChange={event => notes.setQuery(event.target.value)} placeholder="搜索随记内容、来源或标签" aria-label="搜索随记" />
+          <Search size={15} /><input value={notes.query} onChange={event => notes.setQuery(event.target.value)} placeholder="搜索随记" aria-label="搜索随记" />
           <button className="search-submit" type="submit" disabled={!notes.query.trim()} aria-label="搜索随记内容"><Search size={14} /></button>
           {(notes.query || notes.submittedQuery) && <button className="search-clear" type="button" onClick={notes.clearSearch} aria-label="清空随记搜索"><X size={14} /></button>}
         </form>

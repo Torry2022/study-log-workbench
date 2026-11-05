@@ -337,7 +337,6 @@ html.reading-mode-transition .workspace { transition: none; }
 }
 @keyframes workspace-content-old { to { opacity: 0; transform: translateX(-8px); } }
 .workspace-content-revealing { animation: workspace-content-reveal 160ms ease-out both; }
-.workspace-position-revealing { animation: result-surface-enter 160ms ease-out both; }
 .workspace-content-waiting { opacity: 0; }
 .workspace-transition-snapshot {
   position: fixed;
@@ -346,6 +345,9 @@ html.reading-mode-transition .workspace { transition: none; }
   pointer-events: none;
   contain: paint;
 }
+@keyframes workspace-mode-out { to { opacity: 0; } }
+.workspace-mode-snapshot-exiting { animation: workspace-mode-out 160ms ease-out both; }
+
 .workspace-transition-snapshot-exiting { animation: workspace-content-old 160ms ease-out both; }
 html[data-workspace-transition="workspace"] .workspace { transition: none; }
 
@@ -420,7 +422,7 @@ html[data-workspace-transition="workspace"] .workspace { transition: none; }
   .motion-segmented::before { transition: none; }
   .dialog-exiting,
   .workspace-content-revealing,
-  .workspace-position-revealing,
+  .workspace-mode-snapshot-exiting,
   .workspace-transition-snapshot-exiting,
   .result-surface-reveal,
   .secondary-page-reveal,

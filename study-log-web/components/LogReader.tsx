@@ -501,7 +501,7 @@ export function LogReader({ onHeadingLocated, onPositionReady, onCancelTransitio
       </div>)}
     </div></div>
   </nav>;
-  const reloadLoading = <div id="log-reload-loading"><WorkspaceState kind="loading" title="正在加载日志" /></div>;
+  const reloadLoading = <div className="log-reload-loading"><WorkspaceState kind="loading" title="正在加载日志" /></div>;
 
   return <>
     <div className={`reader-toolbar-container${loading && content.trim() ? " pending" : ""}`} ref={toolbar}><div className={`reader-toolbar reader-toolbar-log${reading ? " reading-active" : ""}`}>

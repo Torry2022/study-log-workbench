@@ -275,7 +275,12 @@ export function Workspace() {
     selectedLogLabel={logs.error ? "日志加载失败" : logs.loading ? "正在加载日志" : logs.selection.date ? logs.day?.headings.join(" / ") || "未命名日志" : "未选择日志"}
     theme={theme} themePreference={preference} onTheme={chooseTheme}
     onMonth={month => { clearSearch(); logs.selectMonth(month); }} onDate={selectSidebarDate} onRetry={logs.retry}
-    onSearchChange={clearSearch} onSearchSelect={async result => { if (!(await selectDate(result.date))) return false; setMode("preview"); setReading(false); setSearchSelection(result); return true; }}
+    onSearchChange={clearSearch} onSearchSelect={result => logs.selectDate(result.date, "", () => {
+      setMode("preview");
+      setReading(false);
+      setMissingFavorite(null);
+      setSearchSelection(result);
+    })}
     onNewQuestion={async () => { if (!(await logs.selectView("qa"))) return false; clearSearch(); setReading(false); return rag.newSession(); }}
     onNewDate={date => { if (logs.loading || logs.error) return; void logs.selectDate(date).then(accepted => { if (accepted) setMode("source"); }); }} onLogout={() => void exit()}>
     <AppFeedback feedback={navigationError ? { message: navigationError, tone: "error" } : navigationFeedback} onDismiss={() => setNavigationError("")} />

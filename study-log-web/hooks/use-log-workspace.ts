@@ -185,21 +185,22 @@ export function useLogWorkspace(active: boolean, beforeLeave?: RefObject<() => P
     if (selection.month) { writeLocation(selection, true); acceptedIndex.current = window.history.state.studyLogIndex; }
   }, [selection]);
 
-  const navigate = useCallback(async (next: Selection) => {
+  const navigate = useCallback(async (next: Selection, onSelect?: () => void) => {
     const attempt = ++navigationAttempt.current;
     if (needsLeave(currentSelection.current, next) && beforeLeave?.current && !(await beforeLeave.current())) return false;
     if (attempt !== navigationAttempt.current) return false;
     const resetLogScroll = next.view === "log" && !next.heading &&
       (next.date !== currentSelection.current.date || next.month !== currentSelection.current.month);
     window.history.replaceState({ ...window.history.state, studyLogScrollY: window.scrollY }, "");
-    if (resetLogScroll) window.scrollTo({ top: 0, behavior: "instant" });
     const previous = currentSelection.current;
     const commit = () => {
+      if (resetLogScroll) window.scrollTo({ top: 0, behavior: "instant" });
       setScrollTarget(null);
       setNavigationRevision(value => value + 1);
       currentSelection.current = next;
       setSelection(next); writeLocation(next);
       acceptedIndex.current = window.history.state?.studyLogIndex || 0;
+      onSelect?.();
     };
     if (runTransition && previous.view !== next.view) return await runTransition("workspace", commit, { waitForReady: true });
     else if (runTransition && next.view === "log" && (previous.date !== next.date || previous.month !== next.month)) return await runTransition("log-document", commit, { waitForReady: true });
@@ -215,7 +216,7 @@ export function useLogWorkspace(active: boolean, beforeLeave?: RefObject<() => P
     }
     void navigate({ ...current, view: "log", month, date: "", heading: "" });
   }, [navigate]);
-  const selectDate = useCallback((date: string, heading = "") => navigate({ ...currentSelection.current, view: "log", month: date.slice(0, 7), date, heading }), [navigate]);
+  const selectDate = useCallback((date: string, heading = "", onSelect?: () => void) => navigate({ ...currentSelection.current, view: "log", month: date.slice(0, 7), date, heading }, onSelect), [navigate]);
   const selectView = useCallback((view: WorkspaceView) => navigate({ ...currentSelection.current, view }), [navigate]);
   const selectNote = useCallback((noteId: string) => navigate({ ...currentSelection.current, view: "notes", noteId }), [navigate]);
   const selectStatsMonth = useCallback((statsMonth: string) => navigate({ ...currentSelection.current, view: "stats", statsMonth }), [navigate]);

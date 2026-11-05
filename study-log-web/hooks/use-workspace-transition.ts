@@ -49,7 +49,7 @@ export function useWorkspaceTransition() {
     snapshotRef.current?.remove();
     snapshotRef.current = null;
     document.querySelectorAll<HTMLElement>("[data-workspace-transition-surface]").forEach(surface => {
-      surface.classList.remove("workspace-content-waiting", "workspace-content-revealing", "workspace-position-revealing");
+      surface.classList.remove("workspace-content-waiting", "workspace-content-revealing");
     });
     delete document.documentElement.dataset.workspaceTransition;
   }, [finishWaiting]);
@@ -98,13 +98,18 @@ export function useWorkspaceTransition() {
     if (options.waitForReady && currentSurface) {
       const rect = currentSurface.getBoundingClientRect();
       const bounds = visibleBounds();
-      snapshot = currentSurface.cloneNode(true) as HTMLElement;
-      snapshot.removeAttribute("data-workspace-transition-surface");
-      snapshot.querySelectorAll("[id]").forEach((element) => element.removeAttribute("id"));
+      const copy = currentSurface.cloneNode(true) as HTMLElement;
+      copy.removeAttribute("data-workspace-transition-surface");
+      copy.querySelectorAll("[id]").forEach((element) => element.removeAttribute("id"));
+      copy.classList.remove("workspace-content-revealing", "workspace-content-waiting");
+      Object.assign(copy.style, { width: "100%", height: "100%" });
+      // Keep the reader grid separate from the fixed overlay that clips it.
+      snapshot = document.createElement("div");
       snapshot.setAttribute("aria-hidden", "true");
       snapshot.setAttribute("inert", "");
-      snapshot.classList.remove("workspace-content-revealing", "workspace-content-waiting", "workspace-position-revealing");
-      snapshot.classList.add("workspace-transition-snapshot");
+      snapshot.className = "workspace-transition-snapshot";
+      if (copy.classList.contains("editing-workspace")) snapshot.classList.add("editing-workspace-snapshot");
+      snapshot.append(copy);
       Object.assign(snapshot.style, {
         top: `${rect.top}px`,
         left: `${rect.left}px`,
@@ -115,7 +120,7 @@ export function useWorkspaceTransition() {
       });
       document.body.append(snapshot);
       const originals = [currentSurface, ...currentSurface.querySelectorAll<HTMLElement>("*")];
-      const copies = [snapshot, ...snapshot.querySelectorAll<HTMLElement>("*")];
+      const copies = [copy, ...copy.querySelectorAll<HTMLElement>("*")];
       originals.forEach((element, index) => {
         copies[index].scrollTop = element.scrollTop;
         copies[index].scrollLeft = element.scrollLeft;
@@ -149,14 +154,12 @@ export function useWorkspaceTransition() {
           snapshot.remove();
           return;
         }
-        const revealClass = kind === "log-mode" ? "workspace-position-revealing" : "workspace-content-revealing";
-        surface.classList.add(revealClass);
-        if (kind === "log-mode") snapshot.remove();
-        else snapshot.classList.add("workspace-transition-snapshot-exiting");
+        if (kind !== "log-mode") surface.classList.add("workspace-content-revealing");
+        snapshot.classList.add(kind === "log-mode" ? "workspace-mode-snapshot-exiting" : "workspace-transition-snapshot-exiting");
         window.setTimeout(() => {
           snapshot.remove();
           if (snapshotRef.current === snapshot) snapshotRef.current = null;
-          if (tokenRef.current === token) surface.classList.remove(revealClass);
+          if (tokenRef.current === token) surface.classList.remove("workspace-content-revealing");
           clearTransitionState();
         }, 160);
       };

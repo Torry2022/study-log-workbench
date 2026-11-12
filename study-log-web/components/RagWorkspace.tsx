@@ -270,6 +270,11 @@ export function RagWorkspace({
       if (delta < 0 || !presenting) followOutputRef.current = false;
     };
     const handleWheel = (event: WheelEvent) => { startManualScroll(event.target, event.deltaY); };
+    const handleBackToTop = (event: MouseEvent) => {
+      if (!(event.target instanceof Element) || !event.target.closest(".back-to-top-button")) return;
+      cancelAnimationFrame(bottomReturnFrameRef.current); bottomReturnFrameRef.current = 0;
+      followOutputRef.current = false;
+    };
     const handleTouchStart = (event: TouchEvent) => { touchY = event.touches[0]?.clientY || 0; };
     const handleTouchMove = (event: TouchEvent) => {
       const next = event.touches[0]?.clientY || touchY;
@@ -324,11 +329,13 @@ export function RagWorkspace({
     }
     window.addEventListener("scroll", handleScroll, { passive: true });
     window.addEventListener("wheel", handleWheel, { passive: true });
+    window.addEventListener("click", handleBackToTop, true);
     window.addEventListener("touchstart", handleTouchStart, { passive: true });
     window.addEventListener("touchmove", handleTouchMove, { passive: true });
     window.addEventListener("keydown", handleKey);
     window.addEventListener("resize", updateBottomDistance);
     return () => {
+      window.removeEventListener("click", handleBackToTop, true);
       window.removeEventListener("scroll", handleScroll); window.removeEventListener("wheel", handleWheel);
       window.removeEventListener("touchstart", handleTouchStart); window.removeEventListener("touchmove", handleTouchMove);
       window.removeEventListener("keydown", handleKey);

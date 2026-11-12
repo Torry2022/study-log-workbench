@@ -54,7 +54,14 @@ export function RagSources({ messageId, citations, request, onOpen, onDisclosure
       if (navigation && navigation.height > 0 && navigation.top < bottom && navigation.bottom > top) bottom = Math.min(bottom, navigation.top - 8);
       if (scroller) { const rect = scroller.getBoundingClientRect(); top = Math.max(top, rect.top); bottom = Math.min(bottom, rect.bottom); }
       const rect = target.getBoundingClientRect();
-      return rect.top < top + 8 || rect.height > bottom - top - 16 ? rect.top - top - 8 : rect.bottom > bottom - 8 ? rect.bottom - bottom + 8 : 0;
+      const toggle = target === target.parentElement?.lastElementChild ? root.current?.querySelector<HTMLElement>(".rag-list-toggle")?.getBoundingClientRect() : null;
+      const targetBottom = toggle && toggle.bottom - rect.top <= bottom - top - 16 ? Math.max(rect.bottom, toggle.bottom) : rect.bottom;
+      const floating = document.querySelector<HTMLElement>(".back-to-top-control.is-visible")?.getBoundingClientRect();
+      if (floating && floating.left < rect.right && floating.right > rect.left && floating.top < targetBottom && floating.bottom > rect.top) {
+        if (floating.top + floating.height / 2 < (top + bottom) / 2) top = Math.max(top, floating.bottom + 8);
+        else bottom = Math.min(bottom, floating.top - 8);
+      }
+      return rect.top < top + 8 || targetBottom - rect.top > bottom - top - 16 ? rect.top - top - 8 : targetBottom > bottom - 8 ? targetBottom - bottom + 8 : 0;
     };
     const locate = (target: HTMLElement) => {
       const delta = deltaFor(target);

@@ -58,7 +58,7 @@ export async function requestDownload(url: string, init?: RequestInit): Promise<
 
 // Only these JSON GET endpoints may be replayed; mutations retain single-attempt semantics.
 const recoverableRead = (url: string, init?: RequestInit) => (!init?.method || init.method.toUpperCase() === "GET") &&
-  /^\/api\/(?:logs(?:\/|$)|notes(?:\/|$)|favorites(?:\/|$)|stats(?:\/|$)|taxonomy(?:\/|$)|wiki(?:\/|$)|rag\/(?:tasks|sessions|queue)(?:\/|$)|capabilities$|auth\/me$|internal-links$|backups(?:\/|$))/.test(url.split("?")[0]);
+  /^\/api\/(?:logs(?:\/|$)|notes(?:\/|$)|favorites(?:\/|$)|stats(?:\/|$)|taxonomy(?:\/|$)|wiki(?:\/|$)|rag\/(?:tasks|sessions|queue)(?:\/|$)|capabilities$|auth\/me$|internal-links$|links$|backups(?:\/|$))/.test(url.split("?")[0]);
 
 export async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const signal = init?.signal ? AbortSignal.any([init.signal, workspaceRequests.signal]) : workspaceRequests.signal;

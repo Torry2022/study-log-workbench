@@ -2,6 +2,21 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { requestJson } from '../lib/client-http.ts';
 const ok = () => new Response('{"value":"recovered"}');
+test('internal link searches retry transient read failures',async t=>{
+ const saved=globalThis.fetch;t.after(()=>globalThis.fetch=saved);let calls=0;
+ globalThis.fetch=async()=>++calls===1?new Response('{}',{status:503}):ok();
+ assert.deepEqual(await requestJson('/api/links?query=example'),{value:'recovered'});assert.equal(calls,2);
+});
+test('internal link invalid input is not retried',async t=>{
+ const saved=globalThis.fetch;t.after(()=>globalThis.fetch=saved);let calls=0;
+ globalThis.fetch=async()=>{calls++;return new Response('{"error":"bad query"}',{status:400})};
+ await assert.rejects(requestJson('/api/links?query=invalid'));assert.equal(calls,1);
+});
+test('internal link cancellation prevents retry',async t=>{
+ const saved=globalThis.fetch;t.after(()=>globalThis.fetch=saved);let calls=0;const controller=new AbortController();
+ globalThis.fetch=async()=>{calls++;controller.abort();return new Response('{}',{status:503})};
+ await assert.rejects(requestJson('/api/links?query=cancel',{signal:controller.signal}));assert.equal(calls,1);
+});
 for (const failure of [502,503,504,'network']) test(`safe GET recovers after ${failure} without caller-visible failure`, async t => {
  const saved=globalThis.fetch;t.after(()=>globalThis.fetch=saved);let calls=0;
  globalThis.fetch=async()=>{if(++calls===1){if(failure==='network')throw new TypeError('synthetic offline');return new Response('<html>upstream unavailable</html>',{status:failure});}return ok()};

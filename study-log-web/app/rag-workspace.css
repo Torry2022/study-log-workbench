@@ -731,3 +731,11 @@
 }
 @keyframes rag-scroll-dot { 0%, 60%, 100% { opacity: .4; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-1px); } }
 @media (prefers-reduced-motion: reduce) { .rag-scroll-busy > span { animation: none; } }
+
+.rag-citation-entry.is-located { background: color-mix(in srgb, var(--primary) 12%, var(--canvas)); box-shadow: inset 0 0 0 1px var(--primary); }
+.rag-citation-entry { transition: background 200ms ease, box-shadow 200ms ease; }
+.rag-list-toggle { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; margin-top: 4px; padding: 4px 0; border: 0; background: transparent; color: var(--muted); font-size: 13px; font-weight: 500; line-height: 1.4; }
+.rag-list-toggle svg { flex-shrink: 0; transition: transform 180ms ease-out; }
+.rag-list-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+@media (max-width: 600px) { .rag-citations > .rag-list-toggle { min-height: 36px; } }
+@media (prefers-reduced-motion: reduce) { .rag-list-toggle svg { transition: none; } }

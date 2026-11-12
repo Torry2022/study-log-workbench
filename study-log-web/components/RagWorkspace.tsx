@@ -3,8 +3,9 @@ import { RagHistoryNavigation, type RagHistoryControl } from "./RagHistoryNaviga
 
 import "@/app/rag-workspace.css";
 
-import { ArrowDown, BookOpen, Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, Copy, FileText, LoaderCircle, MessageSquareText, Pencil, RotateCcw, Send, Square } from "lucide-react";
+import { ArrowDown, Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, Copy, FileText, LoaderCircle, MessageSquareText, Pencil, RotateCcw, Send, Square } from "lucide-react";
 import { Fragment, type FormEvent, type KeyboardEvent, type ReactNode, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { RagSources, type RagSourceRequest } from "@/components/RagSources";
 import { MarkdownPreview } from "@/components/MarkdownPreview";
 import { WorkspaceState } from "@/components/WorkspaceState";
 import type { RagAnswerMode, RagChatMessage, RagCitation } from "@/lib/rag-types";
@@ -122,7 +123,8 @@ export function RagWorkspace({
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [composerHidden, setComposerHidden] = useState(false);
   const [awayFromBottom, setAwayFromBottom] = useState(false);
-  const [expandedCitationKey, setExpandedCitationKey] = useState<string | null>(null);
+  const [sourceRequest, setSourceRequest] = useState<RagSourceRequest | null>(null);
+  const sourceToken = useRef(0);
   const enabled = active && visible;
   const output = messages.at(-1);
   const presented = useSmoothRagAnswer(output, generating, sessionNavigationToken, answerStartToken, enabled);
@@ -160,7 +162,6 @@ export function RagWorkspace({
     if (!enabled) return;
     lastNavigationToken.current = sessionNavigationToken;
     setComposerHidden(false);
-    setExpandedCitationKey(null);
     followOutputRef.current = Boolean(messages.length && !history?.readingPosition);
     scrollYRef.current = window.scrollY;
   }, [enabled, sessionNavigationToken]);
@@ -371,18 +372,17 @@ export function RagWorkspace({
   }
 
   const toggleCitation = useCallback((messageId: string, citation: RagCitation, open = false) => {
-    if (!open) {
-      followOutputRef.current = document.documentElement.scrollHeight - window.scrollY - window.innerHeight <= 2;
-      if (followOutputRef.current) readingAnchorRef.current = null;
-    }
-    const key = `${messageId}:${citation.sourceId}`;
-    setExpandedCitationKey((current) => (current === key && !open ? null : key));
     if (open) {
-      window.requestAnimationFrame(() => {
-        document.getElementById(`rag-source-${key}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-      });
+      followOutputRef.current = false;
+      readingAnchorRef.current = null;
+      setSourceRequest({ messageId, sourceId: citation.sourceId, token: ++sourceToken.current });
     }
   }, []);
+
+  const preserveSourceScroll = (followAtBottom: boolean) => {
+    followOutputRef.current = followAtBottom && document.documentElement.scrollHeight - window.scrollY - window.innerHeight <= 32;
+    if (followOutputRef.current) readingAnchorRef.current = null;
+  };
 
   // Bottom ownership survives completion until the reader acts on the conversation.
   const releaseFollowing = (event: { target: EventTarget | null }) => {
@@ -473,39 +473,8 @@ export function RagWorkspace({
                         {message.groundingWarning}
                       </div>
                     )}
-                    {message.citations && message.citations.length > 0 && (
-                      <div className="rag-citations" aria-label="回答来源">
-                        <div className="rag-citations-title">
-                          <BookOpen size={14} />
-                          来源
-                        </div>
-                        <div className="rag-citation-list">
-                          {message.citations.map((citation) => (
-                            <div
-                              className={`rag-citation-entry${expandedCitationKey === `${message.id}:${citation.sourceId}` ? " expanded" : ""}`}
-                              id={`rag-source-${message.id}:${citation.sourceId}`}
-                              key={`${message.id}:${citation.sourceId}`}
-                            >
-                              <button className="rag-citation" type="button" onClick={() => toggleCitation(message.id, citation)}>
-                                <span>{citation.sourceId}</span>
-                                <strong>{citation.date}</strong>
-                                <em>{citation.heading || "日志原文"}</em>
-                                <ChevronDown size={14} />
-                              </button>
-                              {expandedCitationKey === `${message.id}:${citation.sourceId}` && (
-                                <div className="rag-citation-detail">
-                                  <p>{citation.excerpt || "该历史会话未保存来源片段，可前往来源页面查看。"}</p>
-                                  <button type="button" onClick={() => onCitation(citation)}>
-                                    <FileText size={14} />
-                                    查看原日志
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                    <RagSources key={message.id} messageId={message.id} citations={message.citations || []}
+                      request={sourceRequest?.messageId === message.id ? sourceRequest : null} onOpen={onCitation} onDisclosure={preserveSourceScroll} />
                     {message.saveError && <div className="rag-message-state error" role="alert">{message.saveError}</div>}
                     {message.saving && <div className="rag-message-state note" role="status">正在保存问答历史…</div>}
                     {(message.content && message.status !== "streaming" || (message.versions?.length || 0) > 1) && (

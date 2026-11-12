@@ -350,3 +350,12 @@ body { color: var(--body); font-family: "HarmonyOS Sans SC", system-ui, sans-ser
 .qa-answer-pending svg { flex: none; animation: qa-answer-spin 0.8s linear infinite; }
 @keyframes qa-answer-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .qa-answer-pending svg { animation: none; } }
+
+.qa-sources .qa-source-highlight { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 10%, var(--canvas)); transition: background 160ms ease, border-color 160ms ease; }
+.qa-sources-toggle { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; margin-top: 4px; padding: 4px 0; border: 0; background: transparent; color: var(--muted); font-family: inherit; font-size: 13px; font-weight: 500; line-height: 1.4; cursor: pointer; }
+.qa-sources-toggle svg { flex-shrink: 0; }
+.qa-sources-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+.qa-sources-toggle:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+@media (max-width: 600px) { .qa-sources-toggle { min-height: 36px; } }
+.qa-sources-toggle svg { transition: transform 180ms ease-out; }
+@media (prefers-reduced-motion: reduce) { .qa-sources-toggle svg { transition: none; } }

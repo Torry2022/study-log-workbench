@@ -118,8 +118,8 @@ export function RagHistoryNavigation({ history, root, messages, navigationToken,
         if (readingIntent.current && current.current?.window?.start && !current.current.error && first && scrollY + innerHeight < document.documentElement.scrollHeight - 32 && first.top >= topInset() - innerHeight * .75) void loadRef.current();
       });
     };
-    const wheel = (event: WheelEvent) => { if (event.deltaY < 0 && root.current?.contains(event.target as Node)) readingIntent.current = true; update(); };
-    const touch = (event: TouchEvent) => { if (root.current?.contains(event.target as Node)) { readingIntent.current = true; update(); } };
+    const wheel = (event: WheelEvent) => { if (event.deltaY < 0 && event.target instanceof Node && root.current?.contains(event.target)) readingIntent.current = true; update(); };
+    const touch = (event: TouchEvent) => { if (event.target instanceof Node && root.current?.contains(event.target)) { readingIntent.current = true; update(); } };
     const key = (event: KeyboardEvent) => { if (event.target instanceof Element && event.target.closest('input,textarea,[contenteditable=true]')) return; if (['ArrowUp', 'PageUp', 'Home'].includes(event.key)) { readingIntent.current = true; update(); } };
     update(); addEventListener('scroll', update, { passive: true }); addEventListener('resize', update);
     addEventListener('wheel', wheel, { passive: true }); addEventListener('touchmove', touch, { passive: true }); addEventListener('keydown', key);

@@ -38,6 +38,32 @@
     }
     window.setReaderBottomInset = setReaderBottomInset;
 
+    function animateQaDisclosure(element, change) {
+      const from = element.getBoundingClientRect().height;
+      let pinned = document.documentElement.scrollHeight - innerHeight - scrollY <= 2;
+      element.getAnimations().forEach(animation => animation.cancel());
+      const key = reader.dataset.qaDocumentKey || '';
+      window.readerFrames?.qaLayoutChange?.(key, true, scrollY);
+      change();
+      const follow = () => { if (pinned) window.scrollTo(0, document.documentElement.scrollHeight); };
+      if (matchMedia('(prefers-reduced-motion: reduce)').matches) { follow(); window.readerFrames?.qaLayoutChange?.(key, false, scrollY); return; }
+      const overflow = element.style.overflow;
+      const to = element.getBoundingClientRect().height;
+      element.style.overflow = 'hidden';
+      const animation = element.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: 180, easing: 'ease-out' });
+      let frame;
+      const stop = () => { pinned = false; };
+      const clean = () => {
+        cancelAnimationFrame(frame); element.style.overflow = overflow;
+        window.readerFrames?.qaLayoutChange?.(key, false, scrollY);
+        window.removeEventListener('wheel', stop); window.removeEventListener('touchstart', stop); window.removeEventListener('keydown', stop);
+      };
+      const tick = () => { if (!element.isConnected) { animation.cancel(); return; } follow(); if (animation.playState === 'running') frame = requestAnimationFrame(tick); };
+      frame = requestAnimationFrame(tick);
+      window.addEventListener('wheel', stop, { passive: true }); window.addEventListener('touchstart', stop, { passive: true }); window.addEventListener('keydown', stop);
+      animation.onfinish = () => { follow(); clean(); }; animation.oncancel = clean;
+    }
+
     function escapeHtml(value) {
       return String(value).replace(/[&<>"']/g, (character) => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -243,6 +269,64 @@
       });
     }
 
+    let highlightedSource = '';
+    let sourceHighlightTimer;
+    let cancelSourceLocate = () => {};
+    window.addEventListener('pagehide', () => { cancelSourceLocate(); clearTimeout(sourceHighlightTimer); });
+    reader.addEventListener('click', event => {
+      const link = event.target.closest('[data-citation-link]');
+      if (!link || !reader.classList.contains('qa-conversation')) return;
+      event.preventDefault(); event.stopImmediatePropagation();
+      const article = link.closest('.qa-message'), sources = article?.querySelector('.qa-sources');
+      const sourceId = decodeURIComponent(link.dataset.sourceId || '');
+      const row = Array.from(sources?.querySelectorAll('details') || []).find(item => item.dataset.sourceId === sourceId);
+      if (!row) return;
+      cancelSourceLocate();
+      window.detachQaFollow?.();
+      if (row.hidden) sources.revealSource();
+      clearTimeout(sourceHighlightTimer);
+      reader.querySelectorAll('.qa-source-highlight').forEach(item => item.classList.remove('qa-source-highlight'));
+      highlightedSource = row.dataset.sourceKey; row.classList.add('qa-source-highlight');
+      sourceHighlightTimer = setTimeout(() => { highlightedSource = ''; reader.querySelectorAll('.qa-source-highlight').forEach(item => item.classList.remove('qa-source-highlight')); }, 1800);
+      let frame = 0, cancelled = false;
+      const cancel = () => {
+        if (cancelled) return;
+        cancelled = true; cancelAnimationFrame(frame);
+        window.scrollTo({ top: scrollY, behavior: 'instant' });
+        window.removeEventListener('wheel', cancel); window.removeEventListener('touchstart', cancel); window.removeEventListener('keydown', key);
+      };
+      const key = event => { if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) cancel(); };
+      cancelSourceLocate = cancel;
+      window.addEventListener('wheel', cancel, { passive: true }); window.addEventListener('touchstart', cancel, { passive: true }); window.addEventListener('keydown', key);
+      let previousLayout = '', layoutStable = 0;
+      const locate = () => {
+        if (cancelled) return;
+        if (!row.isConnected) { cancel(); return; }
+        const rect = row.getBoundingClientRect();
+        let animating = false;
+        for (let element = row.parentElement; element && element !== reader; element = element.parentElement) {
+          if (element.getAnimations().some(animation => animation.playState === 'running')) animating = true;
+        }
+        const layout = `${Math.round((rect.top + scrollY) * 2)}:${Math.round(rect.height * 2)}`;
+        layoutStable = !animating && layout === previousLayout ? layoutStable + 1 : 0; previousLayout = layout;
+        if (layoutStable < 3) { frame = requestAnimationFrame(locate); return; }
+        const inset = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--reader-bottom-inset')) || 0;
+        const bottom = Math.max(80, innerHeight - inset - 12);
+        if (rect.top < 12 || rect.bottom > bottom) window.scrollTo({ top: Math.max(0, scrollY + rect.top - Math.max(12, (bottom - Math.min(rect.height, bottom - 12)) / 2)),
+          behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
+        const start = performance.now(); let previous = -1, stable = 0;
+        const settle = () => {
+          if (cancelled) return;
+          if (!row.isConnected) { cancel(); return; }
+          stable = Math.abs(scrollY - previous) < 0.5 ? stable + 1 : 0; previous = scrollY;
+          if (stable >= 3 && performance.now() - start > 80 || performance.now() - start > 1000) cancel();
+          else frame = requestAnimationFrame(settle);
+        };
+        frame = requestAnimationFrame(settle);
+      };
+      frame = requestAnimationFrame(locate);
+    }, true);
+
     reader.addEventListener('click', async (event) => {
       const image = event.target.closest('img');
       if (!image || image.classList.contains('image-error')) return;
@@ -282,6 +366,8 @@
     }
 
     function renderQaConversation(payload) {
+      cancelSourceLocate();
+      const expandedLists = new Set(Array.from(reader.querySelectorAll('.qa-sources[data-expanded="true"]')).map(item => item.dataset.messageId));
       const expandedSources = new Set(Array.from(reader.querySelectorAll('.qa-sources details[open]')).map(item => item.dataset.sourceKey));
       let messages = [];
       try {
@@ -388,14 +474,17 @@
           }
           if (Array.isArray(message.citations) && message.citations.length) {
             const sources = document.createElement('div');
-            sources.className = 'qa-sources';
+            sources.className = 'qa-sources'; sources.dataset.messageId = message.id;
+            sources.dataset.expanded = expandedLists.has(String(message.id)) ? 'true' : 'false';
             const title = document.createElement('div');
             title.className = 'qa-sources-title'; title.appendChild(qaIcon('sources')); title.append('来源'); sources.appendChild(title);
             message.citations.forEach(source => {
               if (!/^\d{4}-\d{2}-\d{2}$/.test(source.date || '')) return;
               const detail = document.createElement('details');
+              detail.dataset.sourceId = source.sourceId;
               detail.dataset.sourceKey = `${message.id}:${source.sourceId}`;
               detail.open = expandedSources.has(detail.dataset.sourceKey);
+              if (highlightedSource === detail.dataset.sourceKey) detail.classList.add('qa-source-highlight');
               const summary = document.createElement('summary');
               [['span', source.sourceId], ['strong', source.date], ['em', source.heading || '日志原文']].forEach(([tag, text]) => { const field = document.createElement(tag); field.textContent = text; summary.appendChild(field); });
               summary.appendChild(qaIcon('down'));
@@ -406,7 +495,23 @@
               link.href = `study-log://citation?date=${encodeURIComponent(source.date)}&heading=${encodeURIComponent(source.heading || '')}&headingIndex=${Number.isInteger(source.headingIndex) ? source.headingIndex : -1}`;
               body.appendChild(link); detail.appendChild(body); sources.appendChild(detail);
             });
-            article.appendChild(sources);
+            const rows = Array.from(sources.querySelectorAll('details'));
+            const update = () => {
+              rows.forEach((row, index) => row.hidden = index >= 3 && sources.dataset.expanded !== 'true');
+              if (toggle) {
+                toggle.querySelector('span').textContent = sources.dataset.expanded === 'true' ? '收起来源' : `展开剩余 ${rows.length - 3} 条来源`;
+                toggle.setAttribute('aria-expanded', sources.dataset.expanded);
+              }
+            };
+            const toggle = rows.length > 3 ? document.createElement('button') : null;
+            if (toggle) {
+              toggle.type = 'button'; toggle.className = 'qa-sources-toggle';
+              toggle.appendChild(document.createElement('span')); toggle.appendChild(qaIcon('down'));
+              toggle.addEventListener('click', () => animateQaDisclosure(sources, () => { sources.dataset.expanded = sources.dataset.expanded === 'true' ? 'false' : 'true'; update(); }));
+              sources.appendChild(toggle);
+            }
+            sources.revealSource = () => { sources.dataset.expanded = 'true'; update(); };
+            update(); article.appendChild(sources);
           }
           if (message.id && !message.displayPending && message.status !== 'streaming') {
             const actions = document.createElement('div'); actions.className = 'qa-answer-actions';
@@ -547,6 +652,7 @@
       qaDetached = true;
       window.readerFrames?.qaFollowStopped?.(qaPresentationInput.documentKey);
     }
+    window.detachQaFollow = detachQaFollow;
     window.resumeQaFollow = function(smooth = false) {
       cancelAnimationFrame(qaReturnFrame); qaReturnFrame = 0;
       qaDetached = false;
@@ -744,7 +850,7 @@
         params.set('date', decodeURIComponent(link.dataset.date || ''));
         params.set('heading', decodeURIComponent(link.dataset.heading || ''));
         params.set('headingIndex', link.dataset.headingIndex || '-1');
-        link.href = `study-log://citation?${params.toString()}`;
+        link.href = isQa ? '#qa-source' : `study-log://citation?${params.toString()}`;
       });
       reader.querySelectorAll('[data-wiki-citation="true"]').forEach((link) => {
         const params = new URLSearchParams();

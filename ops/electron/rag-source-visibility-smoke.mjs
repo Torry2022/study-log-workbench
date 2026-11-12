@@ -27,7 +27,7 @@ try {
   await toggle.click();await expect(sources.locator('.rag-citation-entry')).toHaveCount(5);await page.waitForTimeout(350);
   file=path.join(root,`${label}-expanded.png`);await page.screenshot({path:file});report.screenshots.push(file);
   await toggle.click();await expect(sources.locator('.rag-citation-entry')).toHaveCount(3);await answer.locator('.markdown-preview').getByText('S5',{exact:true}).first().click();
-  await expect(sources.locator('[data-rag-source="S5"]')).toHaveClass(/is-located/);file=path.join(root,`${label}-located.png`);await page.screenshot({path:file});report.screenshots.push(file);
+  await expect(sources.locator('[data-rag-source="S5"]')).toHaveClass(/is-located/);await page.waitForTimeout(200);const settled=await page.evaluate(()=>scrollY);await page.waitForTimeout(120);assert.ok(Math.abs((await page.evaluate(()=>scrollY))-settled)<2,'source location must be settled before screenshot');file=path.join(root,`${label}-located.png`);await page.screenshot({path:file});report.screenshots.push(file);
   const row=sources.locator('[data-rag-source=\"S5\"] .rag-citation');
   const hit=await row.evaluate(el=>{const r=el.getBoundingClientRect(),t=document.elementFromPoint(r.right-20,r.top+r.height/2);return !!t?.closest('[data-rag-source=\"S5\"]');});assert.equal(hit,true,`${label}: source arrow must receive pointer`);
   if(label==='narrow') {

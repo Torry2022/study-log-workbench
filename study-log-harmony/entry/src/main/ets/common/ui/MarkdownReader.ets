@@ -16,6 +16,8 @@ class ReaderFrameBridge {
   onViewportReady: (sequence: number) => void = () => {};
   onFailed: (sequence: number) => void = () => {};
   onActiveHeading: (headingId: string) => void = () => {};
+  onQaLayoutChange: (key: string, active: boolean, offset: number) => void = () => {};
+  qaLayoutChange(key: string, active: boolean, offset: number): void { this.onQaLayoutChange(key, active, offset); }
   onQaFollowStopped: (key: string) => void = () => {};
   qaFollowStopped(key: string): void { this.onQaFollowStopped(key); }
 
@@ -121,16 +123,35 @@ export struct MarkdownReader {
   private viewportSequence: number = 0;
   private maxScrollOffset: number = 0;
   private scrollRangeQueryPending: boolean = false;
+  private scrollRangeQueryQueued: boolean = false;
+  private scrollRangeRevision: number = 0;
+  private scrollPositionRevision: number = 0;
   private activeHeadingQueryPending: boolean = false;
   private viewportWidthPx: number = 0;
   private bottomInsetRevision: number = 0;
   private bottomInsetChanging: boolean = false;
+  private qaLayoutChanging: boolean = false;
+  private qaLayoutRevision: number = 0;
 
   private contentBottomInsetChanged(): void {
     if (!this.active || !this.ready) return;
     this.bottomInsetChanging = true;
     const revision = ++this.bottomInsetRevision;
     this.controller.runJavaScript(`window.setReaderBottomInset(${Math.max(0, this.contentBottomInset)}, ${revision})`);
+  }
+
+  private qaLayoutChanged(key: string, changing: boolean, offset: number): void {
+    if (!this.active || !this.ready || this.contentMode !== 'qa' || key !== this.documentKey || !Number.isFinite(offset)) return;
+    const revision = ++this.qaLayoutRevision;
+    this.qaLayoutChanging = true;
+    if (changing) return;
+    this.onScrollPosition(offset, true);
+    const sequence = this.renderSequence;
+    this.getUIContext().postFrameCallback(new FrameAction(() => {
+      if (revision !== this.qaLayoutRevision) return;
+      this.qaLayoutChanging = false;
+      if (this.acceptsRender(sequence) && key === this.documentKey) this.measureScrollRange();
+    }));
   }
 
   private viewportRequested(): void {
@@ -147,6 +168,7 @@ export struct MarkdownReader {
 
   aboutToAppear(): void {
     this.active = true;
+    this.frameBridge.onQaLayoutChange = (key: string, changing: boolean, offset: number) => this.qaLayoutChanged(key, changing, offset);
     this.frameBridge.onQaFollowStopped = (key: string) => {
       if (this.active && this.ready && this.contentMode === 'qa' && key === this.documentKey) this.onQaFollowStopped();
     };
@@ -195,6 +217,8 @@ export struct MarkdownReader {
   aboutToDisappear(): void {
     if (this.ready && this.contentMode === 'qa') this.controller.runJavaScript('window.cancelQaPresentation?.()');
     this.active = false;
+    this.qaLayoutChanging = false;
+    this.qaLayoutRevision++;
     this.renderSequence++;
     this.viewportSequence++;
     if (this.renderTimer >= 0) clearTimeout(this.renderTimer);
@@ -207,6 +231,10 @@ export struct MarkdownReader {
   }
 
   private contentChanged(): void {
+    if (this.documentKey !== this.lastRenderedDocumentKey) {
+      this.qaLayoutChanging = false;
+      this.qaLayoutRevision++;
+    }
     this.requestRender();
   }
 
@@ -472,8 +500,9 @@ export struct MarkdownReader {
   }
 
   private handleScroll(yOffset: number): void {
+    this.scrollPositionRevision++;
     this.scrollOffset = Math.max(0, yOffset);
-    this.onScrollPosition(yOffset, this.bottomInsetChanging ||
+    this.onScrollPosition(yOffset, this.bottomInsetChanging || this.qaLayoutChanging ||
       this.scrollToEndRequestRevision > 0 && this.scrollToEndRequestRevision !== this.handledEndRevision);
     this.measureActiveHeading();
     if (!this.showBackToTop && !this.trackScrollProgress) return;
@@ -499,17 +528,35 @@ export struct MarkdownReader {
   }
 
   private measureScrollRange(): void {
-    if ((!this.showBackToTop && !this.trackScrollProgress) || this.scrollRangeQueryPending) return;
+    if (!this.active || !this.ready || (!this.showBackToTop && !this.trackScrollProgress)) return;
+    const revision = ++this.scrollRangeRevision;
+    if (this.scrollRangeQueryPending) {
+      this.scrollRangeQueryQueued = true;
+      return;
+    }
     this.scrollRangeQueryPending = true;
+    this.scrollRangeQueryQueued = false;
+    const sequence = this.renderSequence;
+    const key = this.documentKey;
+    const positionRevision = this.scrollPositionRevision;
     this.controller.runJavaScript(
-      `Math.max(0, document.documentElement.scrollHeight - window.innerHeight)`,
+      `JSON.stringify([window.scrollY, Math.max(0, document.documentElement.scrollHeight - window.innerHeight)])`,
       (error, result: string) => {
         this.scrollRangeQueryPending = false;
-        if (error) return;
-        const maxScrollOffset = Number.parseFloat(result);
-        if (Number.isNaN(maxScrollOffset)) return;
-        this.maxScrollOffset = Math.max(0, maxScrollOffset);
-        this.updateScrollProgress();
+        const queued = this.scrollRangeQueryQueued;
+        this.scrollRangeQueryQueued = false;
+        if (!error && this.acceptsRender(sequence) && key === this.documentKey && revision === this.scrollRangeRevision) {
+          try {
+            const range = JSON.parse(this.javaScriptString(result)) as number[];
+            if (Array.isArray(range) && range.length === 2 && range.every((value: number) => Number.isFinite(value))) {
+              this.maxScrollOffset = Math.max(0, range[1]);
+              const offset = positionRevision === this.scrollPositionRevision ? range[0] : this.scrollOffset;
+              this.scrollOffset = Math.min(this.maxScrollOffset, Math.max(0, offset));
+              this.updateScrollProgress();
+            }
+          } catch (_) { /* Keep the last range if the WebView could not return a measurement. */ }
+        }
+        if (queued) this.measureScrollRange();
       }
     );
   }
@@ -543,7 +590,7 @@ export struct MarkdownReader {
         .nestedScroll({ scrollForward: NestedScrollMode.SELF_FIRST, scrollBackward: NestedScrollMode.SELF_FIRST })
         .onDrop(this.onImageDrop)
         .javaScriptAccess(true)
-        .javaScriptProxy({ object: this.frameBridge, name: 'readerFrames', methodList: ['rendered', 'viewportReady', 'previewImage', 'failed', 'activeHeading', 'bottomInsetReady', 'qaQuestionEdit', 'qaFollowStopped'], controller: this.controller })
+        .javaScriptProxy({ object: this.frameBridge, name: 'readerFrames', methodList: ['rendered', 'viewportReady', 'previewImage', 'failed', 'activeHeading', 'bottomInsetReady', 'qaQuestionEdit', 'qaLayoutChange', 'qaFollowStopped'], controller: this.controller })
         .onAreaChange((_oldArea, area) => {
           if (this.stableViewport) return;
           this.viewportWidthPx = this.getUIContext().vp2px(Number(area.width));

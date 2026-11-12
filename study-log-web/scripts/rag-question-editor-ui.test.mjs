@@ -16,6 +16,7 @@ runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.Modul
     if (name === './RagHistoryNavigation') return { RagHistoryNavigation: () => null };
     if (!name.startsWith('@/')) return require(name);
     if (name.endsWith('.css')) return {};
+    if (name.endsWith('/RagSources')) return { RagSources: () => null };
     if (name.endsWith('/MarkdownPreview')) return { MarkdownPreview: () => null };
     if (name.endsWith('/WorkspaceState')) return { WorkspaceState: () => null };
     if (name.endsWith('/rag-answer')) return { stripRagCitationLabels: value => value };

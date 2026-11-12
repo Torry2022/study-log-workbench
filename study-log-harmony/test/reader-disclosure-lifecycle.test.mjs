@@ -81,4 +81,3 @@ test('the actual presentation entry binds and clears the native document identit
   await window.renderMarkdown('', '', 'light', 'log');
   assert.equal(reader.dataset.qaDocumentKey, '');
 });
-

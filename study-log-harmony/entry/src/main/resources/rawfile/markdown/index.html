@@ -804,7 +804,13 @@
       });
     }
     window.addEventListener('resize', refreshOutlineGeometry);
-    new ResizeObserver(() => { refreshOutlineGeometry(); window.followQaLayout?.(); }).observe(reader);
+    new ResizeObserver(() => {
+      refreshOutlineGeometry();
+      window.followQaLayout?.();
+      if (reader.classList.contains('qa-conversation')) {
+        window.readerFrames?.qaGeometryChange?.(reader.dataset.qaDocumentKey || '', window.readerActionRevision);
+      }
+    }).observe(reader);
 
     let viewportRevision = 0;
     window.waitForReaderViewport = function(widthPx, stableViewport = false, requestSequence = 0) {

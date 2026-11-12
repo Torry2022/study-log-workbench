@@ -14,11 +14,16 @@ const methods = [
   method('  private updateScrollProgress(', '  private measureScrollRange('),
   method('  private javaScriptString(', '  private '),
   method('  private qaLayoutChanged(', '  private viewportRequested('),
-  method('  private handleScroll(', '  private measureActiveHeading(')
+  method('  private handleScroll(', '  private measureActiveHeading('),
+  method('  private desiredRenderKey(', '  private desiredContentKey('),
+  method('  private isCurrentRender(', '  private render('),
+  method('  aboutToAppear(', '  aboutToDisappear(')
 ].join('\n');
 const { code } = await transform(`class Reader { ${methods} }`, { loader: 'ts' });
 class FrameAction { constructor(callback) { this.callback = callback; } }
-const Reader = new Function('FrameAction', `${code}; return Reader;`)(FrameAction);
+const Reader = new Function('FrameAction', 'apiClient', 'activeInstance', 'usesWideTypography', `${code}; return Reader;`)(
+  FrameAction, { getToken: () => '' }, { origin: 'http://synthetic.test' }, () => false
+);
 function fixture() {
   const calls = [], frames = [], remaining = [], positions = [];
   const reader = Object.assign(new Reader(), {
@@ -26,13 +31,15 @@ function fixture() {
     renderSequence: 1, documentKey: 'current', contentMode: 'qa',
     scrollRangeRevision: 0, scrollRangeQueryPending: false, scrollRangeQueryQueued: false, scrollPositionRevision: 0,
     maxScrollOffset: 1104, scrollOffset: 1104, qaLayoutRevision: 0, qaLayoutChanging: false,
-    acceptsRender(sequence) { return this.active && this.ready && sequence === this.renderSequence; },
-    controller: { runJavaScript(script, callback) { calls.push({ script, callback }); } },
+    frameBridge: {}, controller: { runJavaScript(script, callback) { calls.push({ script, callback }); } },
     getUIContext: () => ({ postFrameCallback: action => frames.push(action.callback) }),
     onScrollPosition: (offset, layout) => positions.push([offset, layout]),
     measureActiveHeading() {}, bottomInsetChanging: false, scrollToEndRequestRevision: 0, handledEndRevision: 0,
     onScrollProgress() {}, onScrollRemaining: value => remaining.push(value)
   });
+  reader.presentationFollowEnd = true;
+  reader.lastRenderKey = reader.desiredRenderKey();
+  reader.aboutToAppear();
   return { reader, calls, frames, remaining, positions };
 }
 test('disclosure completion measures actual offset and shrinking range without moving the DOM', () => {
@@ -51,6 +58,25 @@ test('disclosure completion measures actual offset and shrinking range without m
   assert.deepEqual(remaining, [0]);
   assert.deepEqual(positions, [[1016, true]]);
 });
+test('range still refreshes after the user stops following without rerendering', () => {
+  const { reader, calls, frames, remaining } = fixture();
+  reader.presentationFollowEnd = false;
+  assert.equal(reader.acceptsRender(reader.renderSequence), false, 'full render acceptance still uses the desired inputs');
+  reader.qaLayoutChanged('current', true, 900);
+  reader.qaLayoutChanged('current', false, 900);
+  frames.shift()();
+  assert.equal(calls.length, 1);
+  calls[0].callback(null, '[900,1235]');
+  assert.equal(reader.scrollOffset, 900);
+  assert.deepEqual(remaining, [335]);
+});
+test('stopping follow during an in-flight sample does not discard the current DOM geometry', () => {
+  const { reader, calls, remaining } = fixture();
+  reader.measureScrollRange();
+  reader.presentationFollowEnd = false;
+  calls[0].callback(null, '[900,1235]');
+  assert.deepEqual(remaining, [335]);
+});
 test('pending query coalesces latest disclosure and ignores superseded measurement', () => {
   const { reader, calls, frames, remaining } = fixture();
   reader.measureScrollRange();
@@ -67,6 +93,7 @@ test('old document, old render and disposed results cannot update the current re
   for (const invalidate of [
     reader => { reader.documentKey = 'next'; },
     reader => { reader.renderSequence++; },
+    reader => { reader.contentMode = 'log'; },
     reader => { reader.active = false; },
     reader => { reader.ready = false; }
   ]) {
@@ -79,6 +106,7 @@ test('old document, old render and disposed results cannot update the current re
 test('a new document request survives an old pending callback', () => {
   const { reader, calls, remaining } = fixture();
   reader.measureScrollRange(); reader.documentKey = 'next'; reader.renderSequence++;
+  reader.lastRenderKey = reader.desiredRenderKey();
   reader.measureScrollRange(); calls[0].callback(null, '[0,0]');
   assert.equal(calls.length, 2); assert.deepEqual(remaining, []);
   calls[1].callback(null, '[120,800]'); assert.deepEqual(remaining, [680]);
@@ -119,10 +147,25 @@ test('invalid or failed measurements preserve prior range; queued latest query s
   assert.equal(calls.length, 2); calls[1].callback(null, '[400,900]');
   assert.deepEqual(remaining, [500]);
 });
+test('QA geometry changes measure only the current page and defer to an active disclosure', () => {
+  const { reader, calls, frames, remaining } = fixture();
+  const geometry = reader.frameBridge.onQaGeometryChange;
+  geometry('old', 1); geometry('current', 0);
+  reader.qaLayoutChanged('current', true, 900);
+  geometry('current', 1);
+  assert.equal(calls.length, 0);
+  reader.qaLayoutChanged('current', false, 900);
+  frames.shift()();
+  calls[0].callback(null, '[900,1200]');
+  geometry('current', 1);
+  calls[1].callback(null, '[900,1400]');
+  assert.deepEqual(remaining, [300, 500]);
+  reader.contentMode = 'log'; geometry('current', 1);
+  assert.equal(calls.length, 2);
+});
 test('native bridge exposes disclosure lifecycle on the actual Web entry', () => {
   assert.match(source, /qaLayoutChange\(key: string, active: boolean, offset: number\)/);
   assert.match(source, /this\.frameBridge\.onQaLayoutChange = .*this\.qaLayoutChanged/);
-  assert.match(source, /methodList: \[[^\]]*'qaLayoutChange'/);
+  assert.match(source, /methodList: \[[^\]]*'qaLayoutChange'[^\]]*'qaGeometryChange'/);
   assert.match(source, /this\.bottomInsetChanging \|\| this\.qaLayoutChanging/);
 });
-

@@ -18,6 +18,8 @@ class ReaderFrameBridge {
   onActiveHeading: (headingId: string) => void = () => {};
   onQaLayoutChange: (key: string, active: boolean, offset: number) => void = () => {};
   qaLayoutChange(key: string, active: boolean, offset: number): void { this.onQaLayoutChange(key, active, offset); }
+  onQaGeometryChange: (key: string, sequence: number) => void = () => {};
+  qaGeometryChange(key: string, sequence: number): void { this.onQaGeometryChange(key, sequence); }
   onQaFollowStopped: (key: string) => void = () => {};
   qaFollowStopped(key: string): void { this.onQaFollowStopped(key); }
 
@@ -150,7 +152,7 @@ export struct MarkdownReader {
     this.getUIContext().postFrameCallback(new FrameAction(() => {
       if (revision !== this.qaLayoutRevision) return;
       this.qaLayoutChanging = false;
-      if (this.acceptsRender(sequence) && key === this.documentKey) this.measureScrollRange();
+      if (this.isCurrentRender(sequence) && key === this.documentKey && this.contentMode === 'qa') this.measureScrollRange();
     }));
   }
 
@@ -169,6 +171,11 @@ export struct MarkdownReader {
   aboutToAppear(): void {
     this.active = true;
     this.frameBridge.onQaLayoutChange = (key: string, changing: boolean, offset: number) => this.qaLayoutChanged(key, changing, offset);
+    this.frameBridge.onQaGeometryChange = (key: string, sequence: number) => {
+      if (!this.qaLayoutChanging && this.contentMode === 'qa' && key === this.documentKey && this.isCurrentRender(sequence)) {
+        this.measureScrollRange();
+      }
+    };
     this.frameBridge.onQaFollowStopped = (key: string) => {
       if (this.active && this.ready && this.contentMode === 'qa' && key === this.documentKey) this.onQaFollowStopped();
     };
@@ -312,9 +319,12 @@ export struct MarkdownReader {
       usesWideTypography(this.workspaceBreakpoint)]);
   }
 
+  private isCurrentRender(sequence: number): boolean {
+    return this.active && this.ready && sequence === this.renderSequence;
+  }
+
   private acceptsRender(sequence: number): boolean {
-    return this.active && this.ready && sequence === this.renderSequence &&
-      this.lastRenderKey === this.desiredRenderKey();
+    return this.isCurrentRender(sequence) && this.lastRenderKey === this.desiredRenderKey();
   }
 
   private render(): void {
@@ -538,6 +548,7 @@ export struct MarkdownReader {
     this.scrollRangeQueryQueued = false;
     const sequence = this.renderSequence;
     const key = this.documentKey;
+    const mode = this.contentMode;
     const positionRevision = this.scrollPositionRevision;
     this.controller.runJavaScript(
       `JSON.stringify([window.scrollY, Math.max(0, document.documentElement.scrollHeight - window.innerHeight)])`,
@@ -545,7 +556,8 @@ export struct MarkdownReader {
         this.scrollRangeQueryPending = false;
         const queued = this.scrollRangeQueryQueued;
         this.scrollRangeQueryQueued = false;
-        if (!error && this.acceptsRender(sequence) && key === this.documentKey && revision === this.scrollRangeRevision) {
+        if (!error && this.isCurrentRender(sequence) && key === this.documentKey && mode === this.contentMode &&
+          revision === this.scrollRangeRevision) {
           try {
             const range = JSON.parse(this.javaScriptString(result)) as number[];
             if (Array.isArray(range) && range.length === 2 && range.every((value: number) => Number.isFinite(value))) {
@@ -590,7 +602,7 @@ export struct MarkdownReader {
         .nestedScroll({ scrollForward: NestedScrollMode.SELF_FIRST, scrollBackward: NestedScrollMode.SELF_FIRST })
         .onDrop(this.onImageDrop)
         .javaScriptAccess(true)
-        .javaScriptProxy({ object: this.frameBridge, name: 'readerFrames', methodList: ['rendered', 'viewportReady', 'previewImage', 'failed', 'activeHeading', 'bottomInsetReady', 'qaQuestionEdit', 'qaLayoutChange', 'qaFollowStopped'], controller: this.controller })
+        .javaScriptProxy({ object: this.frameBridge, name: 'readerFrames', methodList: ['rendered', 'viewportReady', 'previewImage', 'failed', 'activeHeading', 'bottomInsetReady', 'qaQuestionEdit', 'qaLayoutChange', 'qaGeometryChange', 'qaFollowStopped'], controller: this.controller })
         .onAreaChange((_oldArea, area) => {
           if (this.stableViewport) return;
           this.viewportWidthPx = this.getUIContext().vp2px(Number(area.width));

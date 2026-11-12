@@ -265,10 +265,12 @@ export struct TaxonomyManagerPage {
         .padding({ left: this.workspaceBreakpoint === WorkspaceBreakpoint.COMPACT ? 16 : 10, right: 12 })
       .border({ width: { bottom: 1 }, color: $r('app.color.hairline_soft') })
 
+      InlineStatus({ text: this.data.loadFailed ? '' : this.data.errorMessage, error: true,
+        retry: this.data.conflict, onRetry: () => this.requestReload(), retryLabel: '重新读取' })
+        .enabled(!this.data.busy)
+
       Scroll() {
         Column({ space: 14 }) {
-          InlineStatus({ text: this.data.loadFailed ? '' : this.data.errorMessage, error: true,
-            retry: this.data.conflict, onRetry: () => this.requestReload(), retryLabel: '重新读取' })
           if (this.data.loading) {
             Column({ space: 10 }) {
               LoadingProgress().width(28).height(28).color($r('app.color.primary'))

@@ -538,9 +538,14 @@ export struct NotesPage {
         }
       } else {
           ForEach(this.visibleNotes, (note: StudyNote) => {
-            ListItem() { this.noteItem(note) }
-              .padding({ left: this.workspaceBreakpoint === WorkspaceBreakpoint.COMPACT ? 16 : 24,
-                right: this.workspaceBreakpoint === WorkspaceBreakpoint.COMPACT ? 16 : 24 })
+            ListItem() {
+              Row() {
+                Column() { this.noteItem(note) }
+                  .width('100%').constraintSize({ maxWidth: READING_MAX_WIDTH })
+                  .padding({ left: this.workspaceBreakpoint === WorkspaceBreakpoint.COMPACT ? 16 : 24,
+                    right: this.workspaceBreakpoint === WorkspaceBreakpoint.COMPACT ? 16 : 24 })
+              }.width('100%').justifyContent(FlexAlign.Center)
+            }
               .onAreaChange((_oldValue, newValue) => {
                 this.noteHeights.set(note.id, Number(newValue.height));
                 this.updateNoteScrollProgress();
@@ -562,11 +567,9 @@ export struct NotesPage {
     Row() {
         Stack({ alignContent: Alignment.BottomEnd }) {
           Stack() {
-            Row() {
-              ContentRefresh({ refreshSupported: !this.isLargeWorkspace(), refreshEnabled: !this.noteEditor.editing && !this.extracting,
-                refreshId: 'notes_content_refresh', onRefresh: () => this.load(), content: () => { this.list() } })
-                .width('100%').constraintSize({ maxWidth: READING_MAX_WIDTH }).height('100%')
-            }.width('100%').height('100%').justifyContent(FlexAlign.Center)
+            ContentRefresh({ refreshSupported: !this.isLargeWorkspace(), refreshEnabled: !this.noteEditor.editing && !this.extracting,
+              refreshId: 'notes_content_refresh', onRefresh: () => this.load(), content: () => { this.list() } })
+              .width('100%').height('100%')
             ResultSurfaceCover({ controller: this.resultSurface })
           }.width('100%').height('100%').id('notes_result_surface')
           BackToTopControl({

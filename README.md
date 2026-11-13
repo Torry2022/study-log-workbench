@@ -41,7 +41,7 @@ Windows 本地模式把记录保存在这台电脑。选择连接服务器后，
 
 工作台按单使用者设计，源码采用 [MIT 许可证](LICENSE)。
 
-v0.2.2 提供 Windows 安装包、服务器部署文件和供自行签名的鸿蒙 HAP。各平台的更新内容见[版本说明](deploy/RELEASE-NOTES.md)。
+v0.2.2 提供 Windows 安装包、服务器部署文件和供自行签名的鸿蒙 HAP。各平台的更新内容见[版本说明](deploy/RELEASE-NOTES.md)。鸿蒙客户端的后续修订包见[发布记录](https://github.com/Torry2022/study-log-workbench/releases)。
 
 ### Windows：本地使用
 

@@ -1,0 +1,21 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+const base = new URL('../entry/src/main/ets/', import.meta.url);
+const source = await readFile(new URL('features/logs/components/LogDisplayModeControl.ets', base), 'utf8');
+const indicator = await readFile(new URL('common/ui/SegmentIndicator.ets', base), 'utf8');
+test('icon-only mode buttons and their indicator are square inside the existing 40vp control', () => {
+  const widths = [...source.matchAll(/\.width\((this.showLabels \? toolbarActionWidth\('浏览'\) : \d+|3 \* \(this.showLabels \? toolbarActionWidth\('浏览'\) : \d+\) \+ 6)\)/g)].map(match => match[1]);
+  assert.equal(widths.length, 2);
+  const buttonHeight = Number(source.match(/\.height\((\d+)\)\.padding\(\{ left: this.showLabels/)[1]);
+  const inset = Number(indicator.match(/inset: number = (\d+)/)[1]);
+  const evaluate = (expression, labels) => new Function('toolbarActionWidth', 'return (' + expression + ')').call({ showLabels: labels }, () => 68);
+  const button = evaluate(widths[0], false), group = evaluate(widths[1], false);
+  assert.equal(button, buttonHeight); assert.equal(button, 34); assert.equal(group, 108);
+  assert.equal((group - 2 * inset) / 3, 40 - 2 * inset);
+  assert.equal((group - 2 * inset) / 3, buttonHeight);
+  assert.equal(evaluate(widths[0], true), 68); assert.equal(evaluate(widths[1], true), 210);
+  assert.match(source, /\.height\(40\)\.backgroundColor/);
+  assert.match(source, /left: this.showLabels \? 10 : 0, right: this.showLabels \? 10 : 0/);
+  assert.match(source, /Image\(icon\)\.width\(15\)\.height\(15\)/);
+});

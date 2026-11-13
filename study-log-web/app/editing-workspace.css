@@ -367,8 +367,8 @@
 .editor-toolbar-actions { display: flex; gap: 8px; }
 .mode-split > .editor-attachment-status { grid-column: 1 / -1; }
 .mode-split { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr)); }
-.mode-split > .source-workspace { order: 1; }
-.mode-split > .reader-preview-pane { order: 2; }
+.mode-split > .reader-preview-pane { order: 1; }
+.mode-split > .source-workspace { order: 2; }
 .mode-split > .reader-preview-pane { max-height: calc(100svh - var(--reader-toolbar-height) - 64px); overflow: auto; scrollbar-gutter: stable; }
 .mode-split .preview-reading-mode-entry { display: none; }
 .mode-split .markdown-preview { padding: 28px 34px 80px; }
@@ -393,6 +393,8 @@
 @media (min-width: 1024px) {
   @container split-reader (max-width: 839px) {
     .mode-split { height: auto; min-height: 0; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; }
+    .mode-split > .source-workspace { order: 1; }
+    .mode-split > .reader-preview-pane { order: 2; }
     .mode-split > .reader-preview-pane, .mode-split > .source-workspace { grid-row: auto; height: auto; min-height: 0; max-height: none; }
     .mode-split > .reader-preview-pane { overflow: visible; }
     .mode-split > .source-workspace { min-height: calc(100svh - var(--reader-toolbar-height) - 64px); }

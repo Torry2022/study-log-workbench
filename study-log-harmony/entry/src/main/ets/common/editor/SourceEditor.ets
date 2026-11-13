@@ -30,6 +30,7 @@ interface EditorMessage extends EditorSnapshot {
   requestId: number;
   error?: string;
   command?: string;
+  progress?: number;
 }
 
 interface EditorRequest {
@@ -57,6 +58,7 @@ export class SourceEditorSession {
   private runtimeReady: boolean = false;
   onReadyChange: (ready: boolean) => void = () => {};
   onDocumentLoaded: (documentKey: string) => void = () => {};
+  onScrollProgress: (key: string, progress: number) => void = () => {};
 
   get ready(): boolean { return this.runtimeReady; }
   set ready(value: boolean) {
@@ -97,6 +99,10 @@ export class SourceEditorSession {
         if (event.type === 'change') this.onChange(event);
         if (event.type === 'dirty') this.onDirty(event.documentKey);
         if (event.type === 'command') this.onCommand(event.command || '');
+        if (event.type === 'scroll' && this.ready && this.loadedDocumentKey === this.documentKey &&
+          typeof event.progress === 'number' && Number.isFinite(event.progress)) {
+          this.onScrollProgress(event.documentKey, event.progress);
+        }
       }
     } catch (_) {
       this.onFailure('编辑器通信失败');
@@ -215,6 +221,8 @@ export struct SourceEditor {
   session: SourceEditorSession = new SourceEditorSession();
   @Prop @Watch('documentChanged') documentKey: string = '';
   @Prop @Watch('documentChanged') initialText: string = '';
+  @Prop @Watch('splitScrollChanged') splitScrollEnabled: boolean = false;
+  @Prop @Watch('splitScrollRequested') splitScrollRequest: string = '';
   @State private loaded: boolean = false;
   @State private error: string = '';
   private mouseContextMenu: boolean = false;
@@ -231,6 +239,7 @@ export struct SourceEditor {
   }
 
   private documentChanged(): void {
+    if (this.session.ready) this.session.controller.runJavaScript('window.configureEditorSplitScroll("", false)');
     this.loadRevision += 1;
     if (this.pendingLoad >= 0) clearTimeout(this.pendingLoad);
     this.pendingLoad = setTimeout(() => {
@@ -249,6 +258,7 @@ export struct SourceEditor {
       await this.session.load(key, key.slice(0, 10), text);
       if (revision !== this.loadRevision || key !== this.documentKey || text !== this.initialText) return;
       this.loaded = true;
+      this.splitScrollChanged();
     } catch (error) {
       if (revision !== this.loadRevision || key !== this.documentKey || text !== this.initialText) return;
       this.error = error instanceof Error ? error.message : '编辑器加载失败';
@@ -262,6 +272,16 @@ export struct SourceEditor {
     if (this.pendingLoad >= 0) clearTimeout(this.pendingLoad);
     this.pendingLoad = -1;
     this.session.dispose();
+  }
+
+  private splitScrollChanged(): void {
+    if (!this.session.ready || this.disposed) return;
+    this.session.controller.runJavaScript(`window.configureEditorSplitScroll(${JSON.stringify(this.documentKey)}, ${this.splitScrollEnabled})`);
+  }
+
+  private splitScrollRequested(): void {
+    if (!this.session.ready || this.disposed || !this.splitScrollEnabled || !this.splitScrollRequest) return;
+    this.session.controller.runJavaScript(`window.applyEditorSplitScroll(JSON.parse(${JSON.stringify(this.splitScrollRequest)}))`);
   }
 
   private editorMenu(items: TextMenuItem[]): TextMenuItem[] {

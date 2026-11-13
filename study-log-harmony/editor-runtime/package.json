@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "test": "node --experimental-strip-types --test test/*.test.mjs"
+    "test": "node --experimental-strip-types --test test/*.test.mjs",
+    "test:browser:split-scroll": "node --test test/browser/split-scroll.browser.mjs"
   },
   "dependencies": {
     "@codemirror/autocomplete": "6.18.6",

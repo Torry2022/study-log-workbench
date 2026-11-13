@@ -37,6 +37,20 @@ function fixture() {
   return { reader, timers, frames, scripts, events, flush };
 }
 
+test('split scroll rejects disabled, stale, invalid and disposed reader callbacks', () => {
+  const { reader, scripts } = fixture(), events = [];
+  reader.onSplitScroll = (key, progress) => events.push([key, progress]);
+  reader.splitScrollKey = 'editor:1'; reader.splitScrollEnabled = true;
+  reader.frameBridge.onRendered(reader.renderSequence);
+  reader.frameBridge.onSplitScroll('old', 0.5); reader.frameBridge.onSplitScroll('editor:1', NaN);
+  reader.frameBridge.onSplitScroll('editor:1', 0.5); assert.deepEqual(events, [['editor:1', 0.5]]);
+  reader.splitScrollEnabled = false; reader.splitScrollChanged();
+  assert.match(scripts.at(-1).script, /configureReaderSplitScroll\("editor:1", false\)/);
+  reader.frameBridge.onSplitScroll('editor:1', 0.6);
+  reader.aboutToDisappear(); reader.splitScrollEnabled = true;
+  reader.frameBridge.onSplitScroll('editor:1', 0.7); assert.equal(events.length, 1);
+});
+
 test('reader rejects completion and failure of old props before the queued replacement renders', () => {
   for (const [field, value] of [['content', 'second'], ['documentKey', 'day-b'], ['themePreference', 'dark']]) {
     const { reader, events, flush } = fixture();

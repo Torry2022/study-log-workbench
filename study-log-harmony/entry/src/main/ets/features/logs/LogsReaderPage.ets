@@ -137,6 +137,9 @@ export struct LogsReaderPage {
   @State private modeLayoutRevision: number = 0;
   private modeRequestRevision: number = 0;
   @State private editorReady: boolean = false;
+  @State private editorSplitScrollRequest: string = '';
+  @State private readerSplitScrollRequest: string = '';
+  private splitScrollSequence: number = 0;
   @State private previewText: string = '';
   @State private deleting: boolean = false;
   @State private backupOpen: boolean = false;
@@ -386,6 +389,11 @@ export struct LogsReaderPage {
     this.onCaptureDraft(() => this.captureDraft());
     this.editor.onReadyChange = (ready: boolean) =>
       this.editorReady = ready && this.editor.loadedDocumentKey === this.session.selectedDate;
+    this.editor.onScrollProgress = (key: string, progress: number) => {
+      if (this.splitMode && this.isWide() && key === this.session.selectedDate) {
+        this.readerSplitScrollRequest = JSON.stringify({ key: key, progress: progress, sequence: ++this.splitScrollSequence });
+      }
+    };
     this.editor.onDocumentLoaded = (documentKey: string) => {
       if (documentKey !== this.session.selectedDate) return;
       this.editorReady = true;
@@ -444,6 +452,7 @@ export struct LogsReaderPage {
     this.editor.onDirty = () => {};
     this.editor.onFailure = () => {};
     this.editor.onReadyChange = () => {};
+    this.editor.onScrollProgress = () => {};
     this.editor.onDocumentLoaded = () => {};
     this.editor.onCommand = () => {};
     this.editor.onImages = () => {};
@@ -2529,7 +2538,8 @@ export struct LogsReaderPage {
                   .backgroundColor($r('app.color.canvas'))
               }
               SourceEditor({ session: this.editor, documentKey: this.session.day.date,
-                initialText: this.session.editorInitialText })
+                  initialText: this.session.editorInitialText,
+                  splitScrollEnabled: this.splitMode && this.isWide(), splitScrollRequest: this.editorSplitScrollRequest })
                 .width('100%').layoutWeight(1)
                 .bindSheet($$this.linkOpen, this.safeEditorLinkPanel(), {
                   preferType: this.workspaceBreakpoint === WorkspaceBreakpoint.COMPACT ? SheetType.BOTTOM : SheetType.CENTER,
@@ -2602,6 +2612,13 @@ export struct LogsReaderPage {
   @Builder
   private previewReader() {
     MarkdownReader({ content: this.previewText, contentMode: 'log', documentKey: this.session.selectedDate,
+      splitScrollEnabled: this.splitMode && this.isWide(), splitScrollKey: this.session.selectedDate,
+      splitScrollRequest: this.readerSplitScrollRequest,
+      onSplitScroll: (key: string, progress: number) => {
+        if (this.splitMode && this.isWide() && key === this.session.selectedDate) {
+          this.editorSplitScrollRequest = JSON.stringify({ key: key, progress: progress, sequence: ++this.splitScrollSequence });
+        }
+      },
       onWorkspaceKey: (event: KeyEvent) => this.onWorkspaceKey(event),
       onImageDrop: (event: DragEvent) => this.receivePreviewImages(event),
       themePreference: this.themePreference,

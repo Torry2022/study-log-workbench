@@ -20,6 +20,7 @@
   <script src="mermaid.min.js"></script>
   <script src="qa-presentation.js"></script>
   <script src="qa-history.js"></script>
+  <script src="../editor/split-scroll.js"></script>
 </head>
 <body>
   <main id="reader" class="markdown-body"></main>
@@ -614,6 +615,7 @@
     }
 
     window.scrollToTop = function() {
+      window.readerSplitScrollIntent?.();
       window.clearLocatedHeading();
       window.scrollTo({ top: 0, behavior: 'auto' });
       return true;
@@ -897,6 +899,19 @@
       await renderDiagrams(resolvedTheme);
       return true;
     };
+    const splitScroll = window.createSplitScroll({
+      read: () => ({ offset: window.scrollY, range: document.documentElement.scrollHeight - innerHeight }),
+      write: offset => window.scrollTo({ top: offset, behavior: 'instant' }),
+      publish: (key, progress) => window.readerFrames?.splitScroll(key, progress),
+      frame: callback => requestAnimationFrame(callback), cancel: id => cancelAnimationFrame(id)
+    });
+    window.configureReaderSplitScroll = (key, enabled) => splitScroll.configure(key, enabled);
+    window.readerSplitScrollIntent = () => splitScroll.intent();
+    window.applyReaderSplitScroll = packet => splitScroll.apply(packet);
+    window.addEventListener('scroll', () => splitScroll.scroll(), { passive: true });
+    for (const event of ['wheel', 'pointerdown', 'touchstart', 'keydown']) {
+      window.addEventListener(event, () => splitScroll.intent(), { passive: true, capture: true });
+    }
     installQaPresentation();
   </script>
 </body>

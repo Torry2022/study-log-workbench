@@ -174,7 +174,7 @@ export struct StatsPage {
   }
 
   private selectedMonthValue(): string {
-    const month = this.data.months.find((item: MonthSummary) => item.id === (this.data.pendingMonth || this.data.refreshMonth()));
+    const month = this.data.months.find((item: MonthSummary) => item.id === (this.data.pendingMonth || this.data.selectedMonth));
     return month ? `${month.label} · ${month.dayCount} 天` :
       (this.data.loading ? '正在读取月份' : (this.data.errorMessage ? '月份读取失败' : '暂无月份'));
   }

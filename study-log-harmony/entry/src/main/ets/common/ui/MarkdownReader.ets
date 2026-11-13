@@ -16,6 +16,8 @@ class ReaderFrameBridge {
   onViewportReady: (sequence: number) => void = () => {};
   onFailed: (sequence: number) => void = () => {};
   onActiveHeading: (headingId: string) => void = () => {};
+  onSplitScroll: (key: string, progress: number) => void = () => {};
+  splitScroll(key: string, progress: number): void { this.onSplitScroll(key, progress); }
   onQaLayoutChange: (key: string, active: boolean, offset: number) => void = () => {};
   qaLayoutChange(key: string, active: boolean, offset: number): void { this.onQaLayoutChange(key, active, offset); }
   onQaGeometryChange: (key: string, sequence: number) => void = () => {};
@@ -86,6 +88,11 @@ export struct MarkdownReader {
   @Prop backToTopInset: number = 14;
   @Prop trackScrollProgress: boolean = false;
   @Prop trackActiveHeading: boolean = false;
+  @Prop @Watch('splitScrollChanged') splitScrollEnabled: boolean = false;
+  @Prop @Watch('splitScrollChanged') splitScrollKey: string = '';
+  @Prop @Watch('splitScrollRequested') splitScrollRequest: string = '';
+  onSplitScroll: (key: string, progress: number) => void = () => {};
+  private splitScrollConfigured: boolean = false;
   onInternalLink: (date: string, heading: string) => void = () => {};
   onCitationLink: (date: string, heading: string, headingIndex: number) => void = () => {};
   onWikiCitationLink: (pageId: string, title: string) => void = () => {};
@@ -200,6 +207,10 @@ export struct MarkdownReader {
     this.frameBridge.onViewportReady = (sequence: number) => {
       if (this.active && this.ready && sequence === this.viewportSequence) this.onViewportReady();
     };
+    this.frameBridge.onSplitScroll = (key: string, progress: number) => {
+      if (this.active && this.webContentReady && this.completedContentKey === this.desiredContentKey() &&
+        this.splitScrollEnabled && key === this.splitScrollKey && Number.isFinite(progress)) this.onSplitScroll(key, progress);
+    };
     this.frameBridge.onRendered = (sequence: number) => {
       if (!this.acceptsRender(sequence)) return;
       const endRevision = this.scrollToEndRequestRevision;
@@ -213,6 +224,7 @@ export struct MarkdownReader {
       } else this.handledEndRevision = endRevision;
       this.completedContentKey = this.desiredContentKey();
       this.webContentReady = true;
+      this.splitScrollChanged();
       this.measureScrollRange();
       this.measureActiveHeading();
       this.measureTopDividerPosition();
@@ -222,6 +234,7 @@ export struct MarkdownReader {
   }
 
   aboutToDisappear(): void {
+    if (this.ready && this.splitScrollConfigured) this.controller.runJavaScript('window.configureReaderSplitScroll("", false)');
     if (this.ready && this.contentMode === 'qa') this.controller.runJavaScript('window.cancelQaPresentation?.()');
     this.active = false;
     this.qaLayoutChanging = false;
@@ -238,11 +251,25 @@ export struct MarkdownReader {
   }
 
   private contentChanged(): void {
+    this.splitScrollChanged();
     if (this.documentKey !== this.lastRenderedDocumentKey) {
       this.qaLayoutChanging = false;
       this.qaLayoutRevision++;
     }
     this.requestRender();
+  }
+
+  private splitScrollChanged(): void {
+    if (!this.active || !this.ready) return;
+    if (!this.splitScrollEnabled && !this.splitScrollConfigured) return;
+    this.splitScrollConfigured = this.splitScrollEnabled && this.webContentReady &&
+      this.completedContentKey === this.desiredContentKey();
+    this.controller.runJavaScript(`window.configureReaderSplitScroll(${JSON.stringify(this.splitScrollKey)}, ${this.splitScrollConfigured})`);
+  }
+
+  private splitScrollRequested(): void {
+    if (!this.active || !this.ready || !this.webContentReady || !this.splitScrollEnabled || !this.splitScrollRequest) return;
+    this.controller.runJavaScript(`window.applyReaderSplitScroll(JSON.parse(${JSON.stringify(this.splitScrollRequest)}))`);
   }
 
   onDidBuild(): void {
@@ -602,7 +629,7 @@ export struct MarkdownReader {
         .nestedScroll({ scrollForward: NestedScrollMode.SELF_FIRST, scrollBackward: NestedScrollMode.SELF_FIRST })
         .onDrop(this.onImageDrop)
         .javaScriptAccess(true)
-        .javaScriptProxy({ object: this.frameBridge, name: 'readerFrames', methodList: ['rendered', 'viewportReady', 'previewImage', 'failed', 'activeHeading', 'bottomInsetReady', 'qaQuestionEdit', 'qaLayoutChange', 'qaGeometryChange', 'qaFollowStopped'], controller: this.controller })
+        .javaScriptProxy({ object: this.frameBridge, name: 'readerFrames', methodList: ['rendered', 'viewportReady', 'previewImage', 'failed', 'activeHeading', 'splitScroll', 'bottomInsetReady', 'qaQuestionEdit', 'qaLayoutChange', 'qaGeometryChange', 'qaFollowStopped'], controller: this.controller })
         .onAreaChange((_oldArea, area) => {
           if (this.stableViewport) return;
           this.viewportWidthPx = this.getUIContext().vp2px(Number(area.width));

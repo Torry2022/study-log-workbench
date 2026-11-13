@@ -9,6 +9,7 @@ import { tags } from '@lezer/highlight';
 import { createSearchPanel } from './search-panel.js';
 import { serializeContinuation, deserializeContinuation } from './continuation-state.js';
 import { formatMarkdown, toggleHeading } from './markdown-menu.js';
+import { createSplitScroll } from './split-scroll.js';
 
 let view, documentKey = '', revision = 0, timer, pending = false;
 let bookmarkSequence = 0;
@@ -25,6 +26,18 @@ window.setEditorPreferences = (size, wrap) => {
   if (view) view.dispatch({ effects:wrapping.reconfigure(wrap ? EditorView.lineWrapping : []) });
 };
 const send = event => window.editorBridge?.message(JSON.stringify({ documentKey, revision, ...event }));
+const splitScroll = createSplitScroll({
+  read: () => ({ offset: view?.scrollDOM.scrollTop || 0,
+    range: view ? view.scrollDOM.scrollHeight - view.scrollDOM.clientHeight : 0 }),
+  write: offset => { if (view) view.scrollDOM.scrollTop = offset; },
+  publish: (key, progress) => { if (key === documentKey) send({ type: 'scroll', progress }); },
+  frame: callback => requestAnimationFrame(callback), cancel: id => cancelAnimationFrame(id)
+});
+window.configureEditorSplitScroll = (key, enabled) => splitScroll.configure(key, enabled && key === documentKey);
+window.applyEditorSplitScroll = packet => { if (packet.key === documentKey) splitScroll.apply(packet); };
+for (const event of ['wheel', 'pointerdown', 'touchstart', 'keydown']) {
+  window.addEventListener(event, () => splitScroll.intent(), { passive: true, capture: true });
+}
 const snapshot = () => ({ documentKey, revision, text: view.state.doc.toString(),
   from: view.state.selection.main.from, to: view.state.selection.main.to });
 const publish = () => { clearTimeout(timer); pending = false; send({ type:'change', ...snapshot() }); };
@@ -125,6 +138,7 @@ function extensions() {
     keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...historyKeymap,
       ...searchKeymap]),
     EditorView.domEventHandlers({
+      scroll() { splitScroll.scroll(); return false; },
       paste(event) {
         const files = Array.from(event.clipboardData?.files || []);
         if (!files.length) return false;

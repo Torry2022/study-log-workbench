@@ -433,9 +433,10 @@ export class QaSessionController {
     finally { if (this.sessionId === id && revision === this.sessionRequestRevision) this.historyLoading = false; }
   }
 
-  async openSession(id: string): Promise<void> {
+  async openSession(id: string, discardInput: boolean = false): Promise<void> {
+    const discardedDraft = discardInput ? this.question : undefined;
     this.historyLoading = false; this.historyError = '';
-    if (this.taskClient) { await this.openTaskSession(id); return; }
+    if (this.taskClient) { await this.openTaskSession(id, discardInput); return; }
     if (this.sending) return;
     this.failedSessionId = '';
     this.errorMessage = '';
@@ -455,6 +456,8 @@ export class QaSessionController {
       this.pendingWrite = undefined;
       this.canonical.set(response.session.id, response.session);
       this.messages = response.session.messages;
+      if (this.question === discardedDraft) this.question = '';
+      this.view.onQuestionChange?.(this.question);
       this.failedAttempt = undefined;
       this.reportPending();
       this.answerMode = response.session.answerMode;
@@ -767,7 +770,7 @@ export class QaSessionController {
     return !!selected && (selected.status === 'streaming' || selected.status === 'error' || selected.status === 'stopped' || !selected.content.trim());
   }
 
-  private async readTaskSession(id: string, revision: number, opening: boolean = false): Promise<void> {
+  private async readTaskSession(id: string, revision: number, opening: boolean = false, discardedDraft?: string): Promise<void> {
     const startedTask = latestTask(this.taskClient?.tasks || [], id);
     const startedTaskId = startedTask?.id, startedSaveState = startedTask?.saveState;
     let reconcileCommit: boolean = false;
@@ -795,6 +798,8 @@ export class QaSessionController {
         if (this.pageDisposed || revision !== this.sessionRequestRevision || this.sessionId !== id || this.deletedSessions.has(id)) return;
       }
       this.canonical.set(id, retainQaHistory(response.session, this.canonical.get(id))); this.sessionVersion = response.session.version || ''; this.canonicalReadFailed = false; this.failedSessionId = '';
+      if (opening && discardedDraft !== undefined && this.question === discardedDraft) this.question = '';
+      if (opening) this.view.onQuestionChange?.(this.question);
       const latest = latestTask(this.taskClient?.tasks || [], id);
       const edit = this.questionEdit();
       if (latest?.editMessageId && latest.saveState === 'saved' && edit?.submissionId === latest.submissionId &&
@@ -829,14 +834,16 @@ export class QaSessionController {
     }
   }
 
-  private async openTaskSession(id: string): Promise<void> {
+  private async openTaskSession(id: string, discardInput: boolean = false): Promise<void> {
+    const discardedDraft = discardInput ? this.question : undefined;
     const revision = ++this.sessionRequestRevision;
     await this.view.onBeforeSessionChange();
     if (this.pageDisposed || revision !== this.sessionRequestRevision) return;
     this.sessionId = id; this.sessionVersion = this.canonical.get(id)?.version || ''; this.sessionLoading = true;
     this.errorMessage = ''; this.failedSessionId = ''; this.taskFingerprint = ''; this.sessionDocumentKey = `task-session:${id}:${revision}`; this.pendingSessionKey = this.sessionDocumentKey;
     this.view.onActiveSessionChange(id); this.view.resetComposerScroll(); this.applyTasks();
-    await this.readTaskSession(id, revision, true);
+    await this.readTaskSession(id, revision, true, discardedDraft);
+    if (!this.pageDisposed && revision === this.sessionRequestRevision) this.view.onQuestionChange?.(this.question);
     if (!this.pageDisposed && revision === this.sessionRequestRevision) {
       try { await this.taskClient?.readSessionTasks(id, this.canonical.get(id)?.messages.filter((message: RagChatMessage) => message.role === 'user').map((message: RagChatMessage) => message.id)); }
       catch (error) { if (revision === this.sessionRequestRevision) this.taskError = error instanceof Error ? error.message : '回答版本读取失败'; }

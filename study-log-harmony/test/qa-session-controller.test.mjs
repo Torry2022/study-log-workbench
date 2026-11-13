@@ -292,10 +292,11 @@ test('late stopped-answer save cannot replace a newly opened session', async () 
 });
 
 
-test('accepted session navigation discards the composer before loading while retries keep their draft', async () => {
+test('accepted session navigation delegates discard to the successful read while direct retries keep input', async () => {
   const source = await readFile(new URL('../entry/src/main/ets/features/qa/QaPage.ets', import.meta.url), 'utf8');
   const start = source.indexOf('  private navigationRequestChanged(): void {');
-  const end = source.indexOf('  private discardRequested()', start);
+  const end = source.indexOf('  private retrySession()', start);
+  assert.ok(start >= 0 && end > start);
   const module = { exports: {} };
   const code = ts.transpileModule(`export class Page { ${source.slice(start, end)} }`, {
     compilerOptions: { module: ts.ModuleKind.CommonJS }
@@ -303,7 +304,7 @@ test('accepted session navigation discards the composer before loading while ret
   runInNewContext(code, { module, exports: module.exports });
   const page = new module.exports.Page();
   const calls = [];
-  page.data = { question: 'unsent', openSession: id => calls.push([id, page.data.question]), newSession: () => calls.push(['new', page.data.question]) };
+  page.data = { question: 'unsent', openSession: (id, discard) => calls.push([id, page.data.question, discard]), newSession: () => calls.push(['new', page.data.question]) };
   page.onPendingChange = () => {};
   page.onDraftChange = dirty => calls.push(['dirty', dirty]);
   page.navigationRequestRevision = 0;
@@ -312,8 +313,8 @@ test('accepted session navigation discards the composer before loading while ret
   page.navigationRequestRevision = 1;
   page.navigationSessionId = 'history';
   page.navigationRequestChanged();
-  assert.equal(page.data.question, '');
-  assert.deepEqual(calls, [['dirty', false], ['history', '']]);
+  assert.equal(page.data.question, 'unsent');
+  assert.deepEqual(calls, [['history', 'unsent', true]]);
   page.data.question = 'draft during failed load';
   page.data.openSession('history');
   assert.equal(page.data.question, 'draft during failed load');

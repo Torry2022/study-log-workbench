@@ -162,11 +162,17 @@ export struct QaPage {
 
   private navigationRequestChanged(): void {
     if (this.navigationRequestRevision <= 0) return;
-    this.data.question = '';
-    this.onDraftChange(false);
-    this.onPendingChange(false);
-    if (this.navigationSessionId) this.data.openSession(this.navigationSessionId);
+    if (this.navigationSessionId) this.data.openSession(this.navigationSessionId, true);
     else this.data.newSession();
+  }
+
+  private retrySession(): void {
+    const id = this.data.failedSessionId;
+    if (!id) return;
+    if (!this.data.question.trim()) { this.data.openSession(id); return; }
+    AlertDialog.show({ message: '问答输入尚未提交，确定切换会话吗？',
+      primaryButton: { value: '继续编辑', action: () => {} },
+      secondaryButton: { value: '放弃', fontColor: $r('app.color.error'), action: () => this.data.openSession(id, true) } });
   }
 
   private discardRequested(): void {
@@ -519,7 +525,7 @@ export struct QaPage {
           } else {
             InlineStatus({ compact: true, text: this.data.failedAttempt || (this.data.failedSessionId && this.data.messages.length === 0) ? '' : this.data.errorMessage,
               error: true, retry: this.data.failedSessionId.length > 0 && !this.data.sending,
-              onRetry: () => this.data.openSession(this.data.failedSessionId) })
+              onRetry: () => this.retrySession() })
           }
           InlineStatus({ compact: true, text: this.data.noticeMessage, error: false })
         }.width('100%').id('qa_page_feedback')
@@ -538,7 +544,7 @@ export struct QaPage {
             } else if (this.data.failedSessionId && !this.hasConversation()) {
               Column() {
                 LoadFailure({ title: '会话读取失败', message: this.data.errorMessage,
-                  onRetry: () => this.data.openSession(this.data.failedSessionId) })
+                  onRetry: () => this.retrySession() })
               }.width('100%').height('100%').padding({ bottom: this.composerHeight })
             } else if (!this.hasConversation()) {
               Column({ space: 12 }) {

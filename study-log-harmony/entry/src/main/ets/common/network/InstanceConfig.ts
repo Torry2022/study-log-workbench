@@ -56,12 +56,14 @@ class ActiveInstance {
   namespace: string = '';
   revision: number = 0;
   capabilities?: InstanceCapabilities;
+  credentialId: string = '';
 
-  activate(origin: string, namespace: string, capabilities?: InstanceCapabilities): void {
+  activate(origin: string, namespace: string, capabilities?: InstanceCapabilities, credentialId: string = ''): void {
     this.revision++;
     this.origin = origin;
     this.namespace = namespace;
     this.capabilities = capabilities;
+    this.credentialId = credentialId;
   }
 
   apiUrl(path: string): string {

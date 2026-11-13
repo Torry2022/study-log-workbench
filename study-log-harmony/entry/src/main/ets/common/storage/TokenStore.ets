@@ -7,12 +7,32 @@ const decoder: util.TextDecoder = new util.TextDecoder('utf-8');
 
 function alias(): string {
   if (!activeInstance.namespace) throw new Error('请先连接服务器');
-  return 'public-token-' + activeInstance.namespace;
+  return 'public-token-' + (activeInstance.credentialId || activeInstance.namespace);
 }
 
 function bytes(value: string): Uint8Array { return encoder.encodeInto(value); }
 
 export class TokenStore {
+  static async stage(token: string): Promise<string> {
+    const credentialId = util.generateRandomUUID();
+    const attributes: asset.AssetMap = new Map();
+    attributes.set(asset.Tag.ALIAS, bytes('public-token-' + credentialId));
+    attributes.set(asset.Tag.SECRET, bytes(token));
+    attributes.set(asset.Tag.ACCESSIBILITY, asset.Accessibility.DEVICE_FIRST_UNLOCKED);
+    attributes.set(asset.Tag.SYNC_TYPE, asset.SyncType.NEVER);
+    try { await asset.add(attributes); }
+    catch (error) {
+      await TokenStore.removeCredential(credentialId);
+      throw error instanceof Error ? error : new Error('无法保存连接凭据，请重试');
+    }
+    return credentialId;
+  }
+
+  static async removeCredential(id: string): Promise<void> {
+    const query: asset.AssetMap = new Map();
+    query.set(asset.Tag.ALIAS, bytes('public-token-' + id));
+    try { await asset.remove(query); } catch (_) { /* Removing a missing credential is idempotent. */ }
+  }
   static async read(): Promise<string> {
     const query: asset.AssetMap = new Map();
     query.set(asset.Tag.ALIAS, bytes(alias()));

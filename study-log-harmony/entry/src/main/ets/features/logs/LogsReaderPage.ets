@@ -73,7 +73,7 @@ export struct LogsReaderPage {
   private workspaceBreakpoint: WorkspaceBreakpoint;
   @StorageLink('themePreference') private themePreference: string = 'system';
   onDraftChange: (namespace: string, draft: PreservedLogDraft | undefined) => void = () => {};
-  onCaptureDraft: (capture: () => Promise<PreservedLogDraft | undefined>) => void = () => {};
+  onCaptureDraft: (capture: (strict?: boolean) => Promise<PreservedLogDraft | undefined>) => void = () => {};
   onRegisterDesktopCommands: (commands: DesktopLogCommands) => void = () => {};
   initialDraft: PreservedLogDraft | undefined = undefined;
   @ObjectLink session: LogSession;
@@ -386,7 +386,7 @@ export struct LogsReaderPage {
       if (!this.sourceMode && !this.splitMode && !this.documents.dayRequestLoading && !this.logNavigation.daysLoading) this.navigateDay(offset);
     };
     this.onRegisterDesktopCommands(commands);
-    this.onCaptureDraft(() => this.captureDraft());
+    this.onCaptureDraft((strict?: boolean) => this.captureDraft(strict));
     this.editor.onReadyChange = (ready: boolean) =>
       this.editorReady = ready && this.editor.loadedDocumentKey === this.session.selectedDate;
     this.editor.onScrollProgress = (key: string, progress: number) => {
@@ -924,16 +924,26 @@ export struct LogsReaderPage {
     } : undefined);
   }
 
-  private async captureDraft(): Promise<PreservedLogDraft | undefined> {
+  private async captureDraft(strict: boolean = false): Promise<PreservedLogDraft | undefined> {
+    const namespace = activeInstance.namespace;
+    const date = this.session.selectedDate;
+    if (strict && (this.documents.saving || this.deleting || this.imageBusy || this.backupOpen || this.linkOpen)) {
+      throw new Error('日志操作正在进行，请稍候');
+    }
     if (!this.session.selectedDate) return undefined;
+    if (strict && this.session.isDirty() && !this.editorReady) throw new Error('编辑器尚未就绪，请稍后重试');
     let text = this.session.text;
     if (this.editorReady) {
       try {
         const snapshot = await this.editor.command('snapshot');
-        if (snapshot.documentKey === this.session.selectedDate) text = snapshot.text;
-      } catch (_) { /* Keep the last observed draft if the editor is closing. */ }
+        if (snapshot.documentKey === date && this.session.selectedDate === date && activeInstance.namespace === namespace) text = snapshot.text;
+        else if (strict) throw new Error('日志已变化，请重新切换连接');
+      } catch (error) {
+        if (strict) throw error instanceof Error ? error : new Error('无法捕获当前编辑，请重试');
+        // Session expiry retains the last observed draft if the editor is closing.
+      }
     }
-    return text !== this.session.baseline ? { namespace: activeInstance.namespace, date: this.session.selectedDate,
+    return text !== this.session.baseline ? { namespace, date,
       text, baseVersion: this.session.baseVersion } : undefined;
   }
 

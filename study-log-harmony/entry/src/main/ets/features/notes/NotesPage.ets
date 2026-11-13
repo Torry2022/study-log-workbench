@@ -114,6 +114,8 @@ export struct NotesPage {
   }
 
   aboutToAppear(): void {
+    this.draftNamespace = activeInstance.namespace;
+    this.onPrepareConnection(() => this.preserveConnectionDraft());
     const draft = noteDraftStore.load(activeInstance.namespace);
     if (draft) this.noteEditor.restore(draft);
     this.load();
@@ -168,8 +170,8 @@ export struct NotesPage {
   }
 
   aboutToDisappear(): void {
-    if (this.noteEditor.editing && this.editorValue() !== this.noteEditor.baseline && activeInstance.namespace) {
-      try { noteDraftStore.save(this.noteEditor.draft(activeInstance.namespace)); }
+    if (this.noteEditor.editing && this.editorValue() !== this.noteEditor.baseline && this.draftNamespace) {
+      try { noteDraftStore.save(this.noteEditor.draft(this.draftNamespace)); }
       catch (_) { this.showToast('随记草稿暂存失败，请及时复制当前内容', 'error'); }
     }
     this.data.dispose();
@@ -180,6 +182,17 @@ export struct NotesPage {
 
   private localTimestamp(): string {
     return beijingNoteTimestamp();
+  }
+
+  onPrepareConnection: (prepare: () => void) => void = () => {};
+  private draftNamespace: string = '';
+
+  private preserveConnectionDraft(): void {
+    if (activeInstance.namespace !== this.draftNamespace) throw new Error('工作台已变化，请重试');
+    if (this.data.saving || this.imageUploading || this.extracting) throw new Error('随记操作正在进行，请稍候');
+    if (this.noteEditor.editing && this.editorValue() !== this.noteEditor.baseline) {
+      noteDraftStore.save(this.noteEditor.draft(this.draftNamespace));
+    }
   }
 
   private startNew(): void {

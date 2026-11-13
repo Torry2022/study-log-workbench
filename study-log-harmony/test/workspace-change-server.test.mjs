@@ -14,28 +14,27 @@ runInNewContext(ts.transpileModule(`export class Workspace { ${source.slice(star
 }).outputText, { module, exports: module.exports, WorkspaceNavigationCommands: class {},
   AppStorage: { get: () => false } });
 
-test('changing server waits for an open taxonomy draft and ignores a stale continuation', () => {
+test('changing server opens a candidate without discarding drafts and ignores a stale mounted view', () => {
   const page = new module.exports.Workspace();
   page.sidebar = {};
   page.modules = { taxonomyOpen: true };
-  let pending, changes = 0;
-  page.confirmQaLeave = next => next();
-  page.confirmNotesLeave = next => next();
-  page.confirmTaxonomyLeave = next => { pending = next; };
-  page.changeServer = () => changes++;
-  const view = { confirmLogLeave: next => next() };
+  let candidates = 0;
+  page.modules.taxonomyDirty = true;
+  page.createConnectionController = () => ({ id: ++candidates });
+  const view = {};
   const commands = page.registerWorkspaceNavigation(view);
   commands.changeServer();
-  assert.equal(changes, 0);
-  assert.equal(typeof pending, 'function');
+  assert.equal(candidates, 1);
+  assert.equal(page.connectionOpen, true);
+  assert.equal(page.modules.taxonomyDirty, true);
   page.workspaceNavigationView = undefined;
-  pending();
-  assert.equal(changes, 0);
+  commands.changeServer();
+  assert.equal(candidates, 1);
   page.workspaceNavigationView = view;
   commands.changeServer();
-  pending();
-  assert.equal(changes, 1);
-  page.modules.taxonomyOpen = false;
+  assert.equal(candidates, 1, 'repeated open cannot replace an in-flight candidate owner');
+  page.connectionOpen = false;
   commands.changeServer();
-  assert.equal(changes, 2);
+  assert.equal(candidates, 2);
+  assert.equal(page.modules.taxonomyDirty, true);
 });

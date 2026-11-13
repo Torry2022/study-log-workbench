@@ -73,6 +73,7 @@ export struct WorkspaceContent {
         .zIndex((this.selectedModule === 3) ? 1 : 0)
       Row() {
           NotesPage({ workspaceActive: (this.selectedModule === 1),
+            onPrepareConnection: (prepare: () => void) => this.modules.prepareNotesConnection = prepare,
             navigationYear: this.modules.noteYearFilter, navigationTag: this.modules.noteTagFilter,
             navigationNewRevision: this.modules.noteNewRevision, discardRevision: this.modules.noteDiscardRevision,
             saveRevision: this.modules.noteSaveRevision, topRevision: this.modules.topRequests[1],

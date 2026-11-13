@@ -8,7 +8,7 @@ const base = '../entry/src/main/ets/';
 const sources = await Promise.all(['app/WorkspaceModuleState.ets', 'features/qa/QaNavigationController.ets',
   'features/favorites/FavoritesController.ets', 'pages/Index.ets', 'app/WorkspaceSearchController.ets',
   'features/logs/LogSearchRepository.ets', 'features/logs/SearchHistoryStore.ets', 'features/logs/LogNavigationController.ets', 'features/logs/LogSession.ets'].map(path => readFile(new URL(base + path, import.meta.url), 'utf8')));
-const rootMethods = ['cancelNavigationPan', 'resetNavigationDrawer', 'resetSidebarMotion', 'resetReadingMode', 'clearModuleNavigation', 'createQaNavigation', 'createWorkspaceSearch', 'invalidateModules', 'resetModules', 'connectedTo', 'changeServer'].map(name => {
+const rootMethods = ['cancelNavigationPan', 'resetNavigationDrawer', 'resetSidebarMotion', 'resetReadingMode', 'clearModuleNavigation', 'createQaNavigation', 'createWorkspaceSearch', 'invalidateModules', 'resetModules', 'connectedTo'].map(name => {
   const start = sources[3].search(new RegExp(`^  private (?:async )?${name}\\(`, 'm'));
   assert.ok(start >= 0, name);
   const end = sources[3].slice(start + 1).search(/^  (?:private |aboutTo|build\()/m);
@@ -91,7 +91,7 @@ test('late QA navigation from the previous instance cannot populate the new work
   const { root } = subject({ get: () => new Promise(resolve => { release = resolve; }) });
   const old = root.qaNavigation;
   const pending = old.loadQaNavigation();
-  root.changeServer();
+  root.invalidateModules();
   root.resetModules();
   root.connected = true;
   root.selectedModule = 3;
@@ -110,7 +110,7 @@ test('late QA mutation cleanup cannot clear a new instance busy state or selecte
   root.modules.qaSessionId = 'old-session';
   const pending = old.deleteQaSession('old-session');
   assert.equal(root.modules.qaBusy, true);
-  root.changeServer();
+  root.invalidateModules();
   root.resetModules();
   root.connected = true;
   root.selectedModule = 3;
@@ -128,7 +128,7 @@ test('late search response after changing instance cannot populate either worksp
   const { root } = subject({ get: () => new Promise(resolve => { release = resolve; }) });
   const old = root.search; old.changeLogSearchQuery('synthetic');
   const request = old.searchLogs(); assert.equal(root.searchOpen, true);
-  root.changeServer(); root.resetModules(); root.connected = true;
+  root.invalidateModules(); root.resetModules(); root.connected = true;
   release({ results: [{ date: 'old-instance' }] }); await request;
   assert.equal(old.searchResults.length, 0); assert.equal(root.search.searchResults.length, 0);
   assert.equal(root.searchOpen, false); assert.equal(root.search.searchQuery, '');
@@ -152,7 +152,7 @@ test('workspace exit rejects initial favorites response before a replacement con
  await root.connectedTo('',{});
  const old=root.favoritesData;
  assert.equal(old.loading,true);
- root.changeServer();root.resetModules();
+ root.invalidateModules();root.connected=false;root.resetModules();
  release({favorites:[{id:'old',month:'2026-01'}],groups:[]});
  await new Promise(resolve=>setImmediate(resolve));
  assert.equal(old.favorites.length,0);

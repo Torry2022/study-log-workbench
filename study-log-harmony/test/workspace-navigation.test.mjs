@@ -26,7 +26,7 @@ const methods = extract(source, ['bindWorkspaceNavigation','isLogDocumentReady',
  'selectedTab','selectTab','requestModule','confirmNotesLeave','confirmQaLeave','confirmTaxonomyLeave',
  'openTaxonomy','coverLogDocument','openLogSource']);
 const rootMethods = extract(rootSource, ['openCurrentSearch','selectSearchResult','openLogSource','openNoteLink','openQaCitation','openFavorite','openStatsEntry','cancelNavigationPan', 'resetNavigationDrawer', 'resetSidebarMotion','resetReadingMode','registerWorkspaceNavigation','clearModuleNavigation','requestModule','switchModule',
- 'openTaxonomy','switchQaSession','confirmQaDelete','revealModule','logDocumentReady','logNavigationFailed','confirmTaxonomyLeave','confirmNotesLeave','confirmQaLeave']);
+ 'openTaxonomy','switchQaSession','confirmQaDelete','revealModule','logDocumentReady','logNavigationFailed','confirmTaxonomyLeave','confirmNotesLeave','confirmQaLeave','connectionCanLeave']);
 
 function workspace(tab) {
   const dialogs = [], frames = [], targets = [];
@@ -498,23 +498,24 @@ test('search confirmation and commands cannot act on a replacement view', () => 
 });
 
 
-test('workspace actions are bound to the mounted view and server leave preserves all confirmations', () => {
+test('workspace actions are bound to the mounted view and opening a candidate preserves all drafts', () => {
  const {root,page,dialogs}=workspace(3);const calls=[];const logConfirm=[];
- root.openHelp=()=>calls.push('help');root.setTheme=value=>calls.push(value);root.changeServer=()=>calls.push('server');
+ root.openHelp=()=>calls.push('help');root.setTheme=value=>calls.push(value);
+ root.createConnectionController=()=>{calls.push('candidate');return {};};
  page.confirmDiscard=action=>logConfirm.push(action);
  const commands=page.navigationCommands;
  assert.equal(root.workspaceCommands, commands);
  commands.settings();commands.about();commands.help();commands.theme('dark');
  assert.equal(root.settingsOpen,true);assert.equal(root.aboutOpen,true);assert.deepEqual(calls,['help','dark']);
  page.modules.qaDirty=true;page.modules.notesDirty=true;commands.changeServer();
- assert.equal(dialogs.length,1);assert.equal(logConfirm.length,0);
- dialogs[0].secondaryButton.action();assert.equal(dialogs.length,2);assert.equal(logConfirm.length,0);
- dialogs[1].secondaryButton.action();assert.equal(logConfirm.length,1);assert.deepEqual(calls,['help','dark']);
- page.bindWorkspaceNavigation();logConfirm[0]();commands.help();commands.theme('light');commands.changeServer();
- assert.deepEqual(calls,['help','dark']);
+ assert.equal(dialogs.length,0);assert.equal(logConfirm.length,0);
+ assert.equal(root.connectionOpen,true);assert.equal(page.modules.qaDirty,true);assert.equal(page.modules.notesDirty,true);
+ assert.deepEqual(calls,['help','dark','candidate']);
+ page.bindWorkspaceNavigation();commands.help();commands.theme('light');commands.changeServer();
+ assert.deepEqual(calls,['help','dark','candidate']);
  root.settingsOpen=false;root.aboutOpen=false;commands.settings();commands.about();
  assert.equal(root.settingsOpen,false);assert.equal(root.aboutOpen,false);
- page.navigationCommands.changeServer();assert.equal(logConfirm.length,2);logConfirm[1]();assert.deepEqual(calls,['help','dark','server']);
+ root.connectionOpen=false;page.navigationCommands.changeServer();assert.equal(logConfirm.length,0);assert.deepEqual(calls,['help','dark','candidate','candidate']);
 });
 
 test('delayed log and history search focus cannot target a replacement workspace', () => {
@@ -531,14 +532,13 @@ test('delayed log and history search focus cannot target a replacement workspace
 });
 
 
-test('candidate busy gate blocks server leave before log confirmation and permits it after release', () => {
+test('candidate busy gate blocks connection submission without discarding drafts and permits it after release', () => {
  const {root,page,dialogs}=workspace(1);const calls=[];
- root.changeServer=()=>calls.push('server');
  page.confirmDiscard=action=>{calls.push('log-confirm');action();};
  page.modules.notesBusy=true;
- page.navigationCommands.changeServer();
+ assert.throws(()=>root.connectionCanLeave(),/请先完成或停止/);
  assert.deepEqual(calls,[]);assert.equal(dialogs.length,0);
  page.modules.notesBusy=false;
- page.navigationCommands.changeServer();
- assert.deepEqual(calls,['log-confirm','server']);
+ assert.doesNotThrow(()=>root.connectionCanLeave());
+ assert.deepEqual(calls,[]);
 });

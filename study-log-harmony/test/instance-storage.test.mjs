@@ -24,6 +24,7 @@ test('pending QA submissions stay in their captured namespace and require a conf
   const preferencesStore = { get: async (key, fallback) => values.get(key) ?? fallback,
     put: async (key, value) => values.set(key, value), flush: async () => { flushes++; if (fails) throw Error('flush failed'); } };
   const { InstanceStore } = await loadEts('InstanceStore', { '@kit.ArkData': { preferences: { getPreferences: async () => preferencesStore } },
+    './ConnectionSelectionStore': { ConnectionSelectionStore: class { read() { return values.get('current'); } write(raw) { values.set('current', raw); } } },
     '@kit.ArkTS': { util: {} }, '../network/InstanceConfig': { activeInstance, normalizeInstanceOrigin } });
   const store = new InstanceStore(); await store.initialize({}); await store.writeQaPending(firstId, '["A"]'); await store.writeQaPending(secondId, '["B"]');
   activeInstance.activate('https://another.example', secondId); assert.equal(await store.readQaPending(firstId), '["A"]'); assert.equal(await store.readQaPending(secondId), '["B"]');
@@ -35,6 +36,7 @@ test('saved namespaces separate origin and server identity, and returning to A r
   const store = { get: async (key, fallback) => values.get(key) ?? fallback,
     put: async (key, value) => values.set(key, value), flush: async () => {} };
   const { InstanceStore } = await loadEts('InstanceStore', {
+    './ConnectionSelectionStore': { ConnectionSelectionStore: class { read() { return values.get('current'); } write(raw) { values.set('current', raw); } } },
     '@kit.ArkData': { preferences: { getPreferences: async () => store } },
     '@kit.ArkTS': { util: { generateRandomUUID: () => `00000000-0000-0000-0000-${String(++serial).padStart(12, '0')}` } },
     '../network/InstanceConfig': { activeInstance, normalizeInstanceOrigin }

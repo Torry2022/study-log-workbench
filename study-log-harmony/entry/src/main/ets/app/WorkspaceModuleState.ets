@@ -29,6 +29,7 @@ export class WorkspaceModuleState {
   qaScrolled: boolean = false;
   notesDirty: boolean = false;
   notesBusy: boolean = false;
+  prepareNotesConnection?: () => void;
   notesScrolled: boolean = false;
   favoritesScrolled: boolean = false;
   favoritesRefreshRevision: number = 0;

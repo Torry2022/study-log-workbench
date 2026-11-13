@@ -69,7 +69,7 @@ export struct LoginPage {
       this.origin = saved.origin;
       this.localHttp = saved.localHttp;
       if (!this.restoreOnAppear) return;
-      activeInstance.activate(saved.origin, saved.namespace);
+      activeInstance.activate(saved.origin, saved.namespace, undefined, saved.credentialId || '');
       const token = await TokenStore.read();
       if (!token || generation !== this.generation) return;
       apiClient.setToken(token);
@@ -79,7 +79,7 @@ export struct LoginPage {
         await TokenStore.clear();
         throw new Error('服务器连接信息已变化，请重新输入密码连接');
       }
-      activeInstance.activate(saved.origin, saved.namespace, capabilities);
+      activeInstance.activate(saved.origin, saved.namespace, capabilities, saved.credentialId || '');
       restoredConnection = true;
       this.onConnected(saved.origin, capabilities);
     } catch (error) {

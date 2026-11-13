@@ -28,6 +28,10 @@ import { RagSessionSummary } from '../features/qa/QaModels';
 import { QaNavigationController } from '../features/qa/QaNavigationController';
 import { LoginPage } from '../app/LoginPage';
 import { TokenStore } from '../common/storage/TokenStore';
+import { instanceStore } from '../common/storage/InstanceStore';
+import { ConnectionCandidate, ConnectionProbe } from '../common/network/ConnectionProbe';
+import { ConnectionController } from '../app/ConnectionController';
+import { ConnectionPanel } from '../app/components/ConnectionPanel';
 import { LogsReaderPage, PreservedLogDraft } from '../features/logs/LogsReaderPage';
 import { logDraftStore } from '../features/logs/LogDraftStore';
 import { noteDraftStore } from '../features/notes/NoteDraftStore';
@@ -83,6 +87,9 @@ struct Index {
   @StorageLink('previewImageSource') private previewImageSource: string = '';
   @State private imagePreviewOpacity: number = 0;
   @State private settingsOpen: boolean = false;
+  @State private connectionOpen: boolean = false;
+  @State private replacingConnection: boolean = false;
+  @State private connection: ConnectionController = this.createConnectionController();
   @State private aboutOpen: boolean = false;
   @State private helpOpen: boolean = false;
   @State private menuFocusRevision: number = 0;
@@ -95,7 +102,7 @@ struct Index {
   private desktopCommands: DesktopLogCommands = new DesktopLogCommands();
   private removeUnauthorizedHandler: () => void = () => {};
   private drafts: Map<string, PreservedLogDraft> = new Map();
-  private captureDraft: () => Promise<PreservedLogDraft | undefined> = async () => undefined;
+  private captureDraft: (strict?: boolean) => Promise<PreservedLogDraft | undefined> = async () => undefined;
   private expiring: boolean = false;
   private draftStoreErrorShown: boolean = false;
   private preferencesReady: Promise<void> = Promise.resolve();
@@ -164,7 +171,7 @@ struct Index {
 
   private handleNavigationPanStart(event: GestureEvent): void {
     this.navigationGestureActive = false;
-    if (!this.connected || this.isWide() || this.settingsOpen || this.aboutOpen || this.helpOpen ||
+    if (!this.connected || this.isWide() || this.connectionOpen || this.settingsOpen || this.aboutOpen || this.helpOpen ||
       this.previewImageSource || this.desktopMenuOpen || this.workspaceShortcutBlocked()) return;
     const pan = event as PanGestureEvent;
     const finger = pan.fingerList.length > 0 ? pan.fingerList[0] : undefined;
@@ -354,12 +361,9 @@ struct Index {
     commands.help = (): void => { if (active()) this.openHelp(); };
     commands.theme = (value: string): void => { if (active()) this.setTheme(value); };
     commands.changeServer = (): void => {
-      if (!active()) return;
-      this.confirmQaLeave(() => this.confirmNotesLeave(() => view.confirmLogLeave(() => {
-        if (!active()) return;
-        if (this.modules.taxonomyOpen) this.confirmTaxonomyLeave(() => { if (active()) this.changeServer(); });
-        else this.changeServer();
-      })));
+      if (!active() || this.connectionOpen) return;
+      this.connection = this.createConnectionController();
+      this.connectionOpen = true;
     };
     commands.refreshNavigation = async (): Promise<void> => { if (active()) await this.refreshNavigationLists(); };
     commands.searchResult = (result: LogSearchResult): void => { if (active()) this.selectSearchResult(result); };
@@ -777,11 +781,13 @@ struct Index {
     this.removeUnauthorizedHandler = apiClient.setUnauthorizedHandler(() => { this.expireSession(); });
   }
 
-  aboutToDisappear(): void { this.invalidateModules(); this.removeUnauthorizedHandler(); appFeedback.detach(); }
+  aboutToDisappear(): void { this.connectionOpen = false; this.connection.dispose(); this.invalidateModules(); this.removeUnauthorizedHandler(); appFeedback.detach(); }
 
   private async expireSession(): Promise<void> {
     if (this.expiring) return;
     this.expiring = true;
+    this.connection.cancel();
+    this.connectionOpen = false;
     try {
       const draft = await this.captureDraft();
       if (draft) this.recordDraft(draft.namespace, draft);
@@ -863,12 +869,85 @@ struct Index {
     this.favoritesData.load();
   }
 
-  private changeServer(): void {
-    apiClient.setToken('');
-    activeInstance.activate('', '');
-    this.restoreOnAppear = false;
-    this.invalidateModules();
-    this.connected = false;
+  private createConnectionController(): ConnectionController {
+    const probe = new ConnectionProbe();
+    return new ConnectionController({
+      binding: () => this.expiring ? 'expired' : apiClient.getConnectionBinding(),
+      check: (input, cancellation) => probe.check(input, cancellation),
+      confirm: (candidate: ConnectionCandidate) => this.confirmConnection(candidate),
+      commit: (candidate: ConnectionCandidate, current: () => boolean) => this.commitConnection(candidate, current),
+      connected: async () => {
+        const binding = apiClient.getConnectionBinding();
+        try {
+          await new Promise<void>((resolve) => this.getUIContext().postFrameCallback(new FrameAction(resolve)));
+          if (!this.connectionOpen || binding !== apiClient.getConnectionBinding()) return;
+          const capabilities = activeInstance.capabilities;
+          if (capabilities) await this.connectedTo(activeInstance.origin, capabilities);
+        } finally {
+          this.replacingConnection = false;
+          this.connectionOpen = false;
+        }
+      }
+    });
+  }
+
+  private closeConnection(): void {
+    if (this.connection.cancel()) this.connectionOpen = false;
+  }
+
+  private connectionCanLeave(): void {
+    if (this.modules.qaBusy || this.modules.notesBusy || this.modules.taxonomyBusy) {
+      throw new Error('请先完成或停止当前操作，再更换连接');
+    }
+    if (this.modules.taxonomyDirty) throw new Error('请先保存或放弃分类修改，再更换连接');
+  }
+
+  private confirmConnection(candidate: ConnectionCandidate): Promise<boolean> {
+    this.connectionCanLeave();
+    const replaced = candidate.origin === activeInstance.origin &&
+      candidate.capabilities.instanceId !== activeInstance.capabilities?.instanceId;
+    const qaDraft = this.modules.qaDirty || this.modules.qaPending || this.modules.qaEditDirty;
+    return new Promise<boolean>((resolve) => {
+      AlertDialog.show({ title: replaced ? '工作台身份已变化' : '切换工作台',
+        message: `${candidate.origin}\n${replaced ? '此地址已是另一个工作台，原草稿不会带入。' : ''}` +
+          '\n当前日志和随记草稿将保留在此设备，返回原工作台可继续编辑。' +
+          (qaDraft ? '\n尚未提交或尚未保存的问答编辑将放弃，请先确认已保留需要的内容。' : ''),
+        autoCancel: false,
+        primaryButton: { value: '取消', action: () => resolve(false) },
+        secondaryButton: { value: '确认切换', action: () => resolve(true) },
+        cancel: () => resolve(false) });
+    });
+  }
+
+  private async commitConnection(candidate: ConnectionCandidate, current: () => boolean): Promise<void> {
+    const namespace = activeInstance.namespace;
+    const previousCredential = activeInstance.credentialId || namespace;
+    let credentialId = '';
+    let committed = false;
+    try {
+      const saved = await instanceStore.prepare(candidate.origin, candidate.capabilities, candidate.localHttp);
+      if (!current()) throw new Error('工作台已变化，请重试');
+      credentialId = await TokenStore.stage(candidate.token);
+      if (!current()) throw new Error('工作台已变化，请重试');
+      this.connectionCanLeave();
+      const draft = await this.captureDraft(true);
+      if (!current()) throw new Error('工作台已变化，请重试');
+      this.connectionCanLeave();
+      if (this.modules.notesDirty && !this.modules.prepareNotesConnection) throw new Error('随记尚未就绪，请重试');
+      this.modules.prepareNotesConnection?.();
+      if (draft) logDraftStore.save(draft);
+      else logDraftStore.clear(namespace);
+      saved.credentialId = credentialId;
+      instanceStore.commit(saved, candidate.capabilities);
+      committed = true;
+      apiClient.setToken(candidate.token);
+      // Force the old feature components to unmount before mounting B's controllers/drafts.
+      this.replacingConnection = true;
+      this.connected = false;
+      if (previousCredential) TokenStore.removeCredential(previousCredential);
+    } finally {
+      if (credentialId && !committed) await TokenStore.removeCredential(credentialId);
+    }
   }
 
   private updateBreakpoint(width: number): void {
@@ -895,7 +974,7 @@ struct Index {
   }
 
   private windowMenuEntries(menu: string): DesktopMenuEntry[] {
-    const available = this.connected && !this.previewImageSource && !this.settingsOpen &&
+    const available = this.connected && !this.previewImageSource && !this.connectionOpen && !this.settingsOpen &&
       !this.aboutOpen && !this.helpOpen;
     if (menu === '帮助') return [
       new DesktopMenuEntry('help', '使用说明与快捷键', available, false, 'F1'),
@@ -944,7 +1023,7 @@ struct Index {
   }
 
   private focusWorkspaceRegion(reverse: boolean): void {
-    if (!this.connected || !this.isWide() || this.settingsOpen || this.aboutOpen || this.helpOpen ||
+    if (!this.connected || !this.isWide() || this.connectionOpen || this.settingsOpen || this.aboutOpen || this.helpOpen ||
       this.previewImageSource || this.desktopMenuOpen || this.workspaceShortcutBlocked()) return;
     const regions = this.reading.logsReadingMode ? ['module_frame'] : ['global_log_search',
       this.sidebar.collapsedModules[this.selectedModule] ? 'sidebar_rail_expand' : 'sidebar_collapse', 'module_frame'];
@@ -956,7 +1035,7 @@ struct Index {
 
   private editorWorkspaceCommand(command: string): void {
     const view = this.workspaceNavigationView;
-    if (!this.connected || !view || this.settingsOpen || this.aboutOpen || this.helpOpen ||
+    if (!this.connected || !view || this.connectionOpen || this.settingsOpen || this.aboutOpen || this.helpOpen ||
       this.previewImageSource || this.desktopMenuOpen || this.workspaceShortcutBlocked()) return;
     if (command === 'help') this.openHelp();
     else if (command === 'focusNext' || command === 'focusPrevious') this.focusWorkspaceRegion(command === 'focusPrevious');
@@ -976,6 +1055,7 @@ struct Index {
   }
 
   private dismissTopLayer(): boolean {
+    if (this.connectionOpen) { this.closeConnection(); return true; }
     if (this.settingsOpen) { this.settingsOpen = false; return true; }
     if (this.aboutOpen) { this.aboutOpen = false; return true; }
     if (this.helpOpen) { this.helpOpen = false; return true; }
@@ -1012,7 +1092,7 @@ struct Index {
   }
 
   private handleWorkspaceKey(event: KeyEvent): boolean {
-    if (this.settingsOpen || this.aboutOpen || this.helpOpen || this.previewImageSource) {
+    if (this.connectionOpen || this.settingsOpen || this.aboutOpen || this.helpOpen || this.previewImageSource) {
       if (workspaceKey(event, KeyCode.KEYCODE_ESCAPE)) this.dismissTopLayer();
       return true;
     }
@@ -1108,7 +1188,7 @@ struct Index {
           initialDraft: this.drafts.get(activeInstance.namespace),
           onDraftChange: (namespace: string, draft: PreservedLogDraft | undefined) =>
             this.recordDraft(namespace, draft),
-          onCaptureDraft: (capture: () => Promise<PreservedLogDraft | undefined>) => this.captureDraft = capture })
+          onCaptureDraft: (capture: (strict?: boolean) => Promise<PreservedLogDraft | undefined>) => this.captureDraft = capture })
           .visibility(this.selectedModule === 0 || this.modules.outgoingTab === 0 ? Visibility.Visible : Visibility.None)
           .opacity(this.selectedModule === 0 ? this.modules.moduleReveal : 1)
           .hitTestBehavior(this.selectedModule === 0 && !this.modules.pendingLogDate ? HitTestMode.Default : HitTestMode.None)
@@ -1158,7 +1238,7 @@ struct Index {
           .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
           .onTouch(() => this.desktopKeyboardFocus = false)
 
-      } else {
+      } else if (!this.replacingConnection) {
         LoginPage({ restoreOnAppear: this.restoreOnAppear,
           onInitialReady: () => this.launchReady = true,
           onConnected: (origin: string, capabilities: InstanceCapabilities) => this.connectedTo(origin, capabilities) })
@@ -1185,6 +1265,10 @@ struct Index {
       if (this.settingsOpen) {
         SettingsPanel({ onClose: () => this.settingsOpen = false }).zIndex(100)
           .transition(floatingSurfaceTransition())
+      }
+      if (this.connectionOpen) {
+        ConnectionPanel({ controller: this.connection, onClose: () => this.closeConnection() })
+          .zIndex(105).transition(floatingSurfaceTransition())
       }
       if (this.aboutOpen) {
         AboutPanel({ onClose: () => this.aboutOpen = false }).zIndex(100)

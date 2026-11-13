@@ -15,7 +15,8 @@ function load(source, dependencies) {
 
 test('an unaccepted edit is invisible to the actual old app pending reader and sender',async t=>{
  const f=await fixture(),values=new Map(),store={get:async(k,d)=>values.get(k)??d,put:async(k,v)=>values.set(k,v),flush:async()=>{}};
- const deps={'@kit.ArkData':{preferences:{getPreferences:async()=>store}},'@kit.ArkTS':{util:{}},'../network/InstanceConfig':{activeInstance:{}}};
+ const deps={'@kit.ArkData':{preferences:{getPreferences:async()=>store}},'@kit.ArkTS':{util:{}},'../network/InstanceConfig':{activeInstance:{}},
+  './ConnectionSelectionStore':{ConnectionSelectionStore:class{}}};
  const current=load(await readFile(new URL('../entry/src/main/ets/common/storage/InstanceStore.ets',import.meta.url),'utf8'),deps);
  const settings=new current.InstanceStore();await settings.initialize({});
  const get=f.transport.getForInstance;f.transport.getForInstance=async(...args)=>args[0]==='/capabilities'?{instanceId:f.instanceId,features:{ragTasks:{supported:true,configured:true,protocolVersion:1,questionEditing:true}}}:get(...args);

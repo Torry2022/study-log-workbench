@@ -20,7 +20,9 @@
         this.text = this.target = content; this.parts = []; this.ends = []; this.cursor = 0;
         this.eligible = status === 'streaming' && motion && !!segmenter; return;
       }
-      if (this.target !== content) {
+      // The final snapshot can confirm a trailing cluster without adding text.
+      const hasFinalTail = status !== 'streaming' && (this.ends.at(-1) || 0) < content.length;
+      if (this.target !== content || hasFinalTail) {
         const append = content.startsWith(this.target), keep = append ? Math.max(0, this.ends.length - 1) : 0;
         const start = this.ends[keep - 1] || 0;
         if (!append) this.parts = [];
@@ -54,7 +56,7 @@
       this.text = this.target.slice(0, end); this.parts = this.parts.filter(part => part.end > end);
       return this.text;
     }
-    get pending() { return this.eligible && this.text !== this.target; }
+    get pending() { return this.parts.length > 0; }
   }
   scope.QaPresentation = QaPresentation;
 })(globalThis);

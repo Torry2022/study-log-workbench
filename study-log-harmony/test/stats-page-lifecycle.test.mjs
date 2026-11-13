@@ -18,8 +18,10 @@ async function fixture() {
   const pageSource = await read('features/stats/StatsPage');
   const begin = pageSource.indexOf('  aboutToAppear()'), end = pageSource.indexOf('  private handlePageScroll(', begin);
   assert.ok(begin >= 0 && end > begin);
+  const labelStart = pageSource.indexOf('  private selectedMonthIndex('), labelEnd = pageSource.indexOf('  private activeDomainCount(', labelStart);
+  assert.ok(labelStart >= 0 && labelEnd > labelStart);
   const notices = [], requests = [], transitions = [];
-  const { Page } = compile(`export class Page { ${pageSource.slice(begin, end)} }`, { appFeedback: { show: (...args) => notices.push(args) } });
+  const { Page } = compile(`export class Page { ${pageSource.slice(begin, end)} ${pageSource.slice(labelStart, labelEnd)} }`, { appFeedback: { show: (...args) => notices.push(args) } });
   const motion = await read('common/ui/WorkspaceMotion'), gateStart = motion.indexOf('export class ResultChangeGate');
   assert.ok(gateStart >= 0);
   const { ResultChangeGate } = compile(motion.slice(gateStart));
@@ -74,6 +76,30 @@ test('actual sidebar and StatsPage watchers preserve the latest month and retry 
   const late = f.transitions.at(-1); assert.ok(late);
   p.aboutToDisappear(); assert.equal(late.current(), false, 'leaving cancels queued result presentation as well as requests');
   f.finish(); assert.equal(p.data.stats.month, '2026-03');
+});
+
+test('failed month selection keeps the displayed label and day count while retry retains its target', async () => {
+  const f = await fixture(), p = f.page;
+  p.aboutToAppear(); f.requests[0].resolve({ months: [
+    { id: '2026-01', label: '2026-01', dayCount: 2 }, { id: '2026-02', label: '2026-02', dayCount: 1 }
+  ] }); await tick();
+  f.requests.at(-1).resolve({ month: '2026-01', stats: { dayCount: 2, topicCount: 4 } }); await tick(); f.finish();
+  assert.equal(p.selectedMonthValue(), '2026-01 · 2 天');
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt === 0) f.choose('2026-02'); else p.refreshRevisionChanged();
+    assert.match(f.requests.at(-1).path, /2026-02/);
+    assert.equal(p.selectedMonthValue(), '2026-02 · 1 天', 'pending selection keeps its existing loading presentation');
+    f.requests.at(-1).reject(Error('synthetic 503')); await tick();
+    assert.equal(p.selectedMonthValue(), '2026-01 · 2 天', 'failed target must not label the retained old result');
+    assert.equal(p.selectedMonthIndex(), 0);
+    assert.equal(p.data.stats.month, '2026-01'); assert.equal(p.data.stats.stats.dayCount, 2); assert.equal(p.data.stats.stats.topicCount, 4);
+    assert.equal(p.data.refreshMonth(), '2026-02');
+  }
+  p.refreshRevisionChanged(); assert.match(f.requests.at(-1).path, /2026-02/);
+  f.requests.at(-1).resolve({ month: '2026-02', stats: { dayCount: 1, topicCount: 1 } }); await tick(); f.finish();
+  assert.equal(p.selectedMonthValue(), '2026-02 · 1 天'); assert.equal(p.selectedMonthIndex(), 1);
+  assert.equal(p.data.stats.month, '2026-02'); assert.equal(p.data.stats.stats.dayCount, 1);
+  p.aboutToDisappear();
 });
 
 test('page disposal and actual revisit entry reject old reads without clearing newer loading state', async () => {

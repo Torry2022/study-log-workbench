@@ -977,12 +977,14 @@ export struct LogsReaderPage {
     if (this.editorReady && this.session.day) {
       try {
         const snapshot = await this.editor.command('snapshot');
+        if (revision !== this.modeRequestRevision) return;
         if (snapshot.documentKey !== this.session.selectedDate) return;
         this.session.text = snapshot.text;
         this.session.editorPending = false;
         this.reportDraft();
         this.previewText = snapshot.text;
       } catch (error) {
+        if (revision !== this.modeRequestRevision) return;
         this.saveError = error instanceof Error ? error.message : '编辑器尚未就绪';
         return;
       }

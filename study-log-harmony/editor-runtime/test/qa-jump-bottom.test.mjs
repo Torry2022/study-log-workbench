@@ -33,7 +33,8 @@ test('native bottom control distinguishes pointer capabilities, focus, completio
   page.readerScrollRemaining = 20; assert.equal(page.scrollToBottomVisible(), false);
   page.readerScrollRemaining = 100; page.data.sessionLoading = true; assert.equal(page.scrollToBottomVisible(), false);
   page.data.sessionLoading = false; page.conversation = false; assert.equal(page.scrollToBottomVisible(), false);
-  page.scrollToBottom(); assert.equal(page.followAnswer, true); assert.equal(page.composerHidden, false); assert.equal(page.answerVersionRevision, 1);
+  page.scrollToBottom(); assert.equal(page.followAnswer, true); assert.equal(page.composerHidden, true);
+  assert.equal(page.returningToBottom, true); assert.equal(page.answerVersionRevision, 1);
 });
 test('late pointer discovery cannot update a disposed page; unavailable device API retains the arrow', async () => {
   let resolve;

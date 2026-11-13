@@ -25,12 +25,15 @@ $devEcoStudio = 'D:\Software\DevEco Studio'
 npm --prefix study-log-web ci
 Set-Location study-log-harmony
 npm ci
+npm --prefix editor-runtime ci
 & (Join-Path $devEcoStudio 'tools\ohpm\bin\ohpm.bat') install
-npm run test:protocol
+npm test
 node (Join-Path $devEcoStudio 'tools\hvigor\bin\hvigorw.js') --mode module -p product=default -p module=entry@default -p buildMode=debug assembleHap --no-daemon
 ```
 
 协议测试会导入相邻 Web 工程的时间和链接实现，因此需要 Web 依赖，不需要先启动 Web 服务。默认 `signingConfigs` 为空，输出为 `entry\build\default\outputs\default\entry-default-unsigned.hap`；构建成功不表示它可以直接安装到真机。
+
+`npm test` 同时运行协议/原生方法测试与 editor-runtime 的纯逻辑回归，不自动启动浏览器。只跑 `test:protocol` 不覆盖编辑器目录中的回底、统计几何等回归；浏览器和设备验收仍需显式执行，不能用纯逻辑通过代替。
 
 编辑器已包含可用的构建产物。修改编辑器源码时，另按 [editor-runtime 说明](editor-runtime/README.md)安装依赖并重新构建，不手改压缩产物。
 

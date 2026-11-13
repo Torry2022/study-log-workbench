@@ -3,6 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test": "npm run test:protocol && npm run test:editor",
+    "test:editor": "npm --prefix editor-runtime test",
     "test:protocol": "node --experimental-strip-types --test test/*.test.mjs"
   },
   "devDependencies": {

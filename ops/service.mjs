@@ -21,7 +21,16 @@ export async function validateServiceEnvironment(environment) {
 export async function runService(command, args, { cwd, env = process.env, stdio = "inherit" } = {}) {
   const data = await validateServiceEnvironment(env);
   const release = await acquireInstanceLock(data, "web-service");
-  await upgradeDefaultPrompts(data);
+  try {
+    await upgradeDefaultPrompts(data);
+    if (env.AI_SETTINGS_ROOT) {
+      try {
+        const { initializeAiSettings } = await import("./ai-settings.mjs");
+        const identity = JSON.parse(await fs.readFile(path.join(data, ".instance.json"), "utf8"));
+        await initializeAiSettings({ root: env.AI_SETTINGS_ROOT, instanceId: identity.id, env });
+      } catch { console.warn("模型设置暂时不可用，基本记录仍可使用。"); }
+    }
+  } catch (error) { await release(); throw error; }
   let child;
   try { child = spawn(command, args, { cwd, env, stdio, windowsHide: true }); }
   catch (error) { await release(); throw error; }

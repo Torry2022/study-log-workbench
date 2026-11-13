@@ -52,6 +52,8 @@ docker compose ps
 
 聊天配置在实例 `.env` 中填写 `CHAT_API_URL`、`CHAT_MODEL`、`CHAT_API_KEY`；接口地址须按提供方填写完整地址。不用 AI 可保持空值。
 
+配置迁移候选提供可选的 `compose.ai-settings.yaml`：部署者先为实例创建仅服务账户可读写的 `config` 私有目录，再将该文件作为 Compose 覆盖文件使用。首次启动会把当前环境中的模型设置整体导入 `config/ai-settings.json`；此后该文件是模型设置的权威来源，直接修改 `.env` 中同名字段不会覆盖它。实例私有目录不可用或配置损坏时，基本记录仍可使用，AI 会报告配置错误，不会回退旧密钥。原有 Compose 不启用此覆盖文件时继续使用原环境配置。此阶段尚未开放远程配置写入或模型探测接口。
+
 日志问答还需要检索服务。生成独立随机 token，将同一个值分别存入实例文件（不写入部署目录 `.env`）：
 
 - 实例 `.env.mcp`：`MCP_HTTP_TOKEN=<随机长token>`。

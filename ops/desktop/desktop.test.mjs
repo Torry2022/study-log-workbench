@@ -11,6 +11,12 @@ import { DesktopManager } from "./manager.mjs";
 import { startLauncher } from "./launcher.mjs";
 import { backupInstance, restoreInstance } from "../archive.mjs";
 import { privateDirectory } from "./security.mjs";
+import { randomUUID } from "node:crypto";
+
+async function configure(manager, values) {
+  const current = await manager.configuration();
+  return manager.configure({ ...values, expectedRevision: current.revision, expectedInstanceId: current.instanceId, operationId: randomUUID() });
+}
 
 async function fixture(t) {
   const base = await fs.mkdtemp(path.join(os.tmpdir(), "study-log-desktop-test-"));
@@ -18,7 +24,7 @@ async function fixture(t) {
   await fs.mkdir(packageRoot);
   const worker = path.join(base, "worker.mjs");
   await fs.writeFile(worker, `import http from 'node:http'; import fs from 'node:fs/promises'; import path from 'node:path';
-    const kind=process.argv[2]; const server=http.createServer(async(req,res)=>{ if(req.url==='/slow'){await new Promise(r=>setTimeout(r,250)); await fs.writeFile(path.join(process.env.LOG_ROOT,'completed'),'done');} res.end('ok'); });
+    const kind=process.argv[2]; const server=http.createServer(async(req,res)=>{ if(req.url==='/slow'){await new Promise(r=>setTimeout(r,250)); await fs.writeFile(path.join(process.env.LOG_ROOT,'completed'),'done');} res.end(req.url==='/test-ai-root' ? process.env.AI_SETTINGS_ROOT || '' : 'ok'); });
     server.listen(Number(kind==='web'?process.env.PORT:process.env.MCP_HTTP_PORT),'127.0.0.1',()=>process.send({type:'ready'}));
     process.on('message',async m=>{if(m.type==='stop'){if(kind==='web'&&await fs.stat(path.join(process.env.LOG_ROOT,'crash-on-stop')).catch(()=>null))process.exit(7);server.close(()=>process.disconnect());}});
     process.on('disconnect',()=>server.close());`);
@@ -41,11 +47,12 @@ test("create/open boundaries, configured password, model key retention and no ra
   assert.equal(parseEnv(await fs.readFile(path.join(root, ".env"), "utf8")).APP_PASSWORD, "synthetic-password");
   await assert.rejects(manager.select({ root, create: true, password: "synthetic-password" }), /空文件夹/);
   await manager.select({ root });
-  await manager.configure({ apiUrl: "https://example.test/v1/chat/completions", model: "synthetic-model", apiKey: "synthetic-key" });
-  assert.deepEqual(await manager.configuration(), { apiUrl: "https://example.test/v1/chat/completions", model: "synthetic-model", hasKey: true });
-  await manager.configure({ apiUrl: "", model: "", apiKey: "" });
+  await configure(manager, { apiUrl: "https://example.test/v1/chat/completions", model: "synthetic-model", apiKey: "synthetic-key" });
+  const summary = await manager.configuration(); assert.equal(summary.endpointDisplay, "https://example.test"); assert.equal(summary.model, "synthetic-model"); assert.equal(summary.hasKey, true);
+  assert.ok(!JSON.stringify(summary).includes("synthetic-key") && !JSON.stringify(summary).includes("/v1/chat"));
+  await configure(manager, { apiUrl: "", model: "", apiKey: "" });
   assert.equal((await manager.configuration()).hasKey, true);
-  await manager.configure({ clearKey: true });
+  await configure(manager, { clearKey: true });
   assert.equal((await manager.configuration()).hasKey, false);
 });
 
@@ -53,26 +60,37 @@ test("model or endpoint changes invalidate model capabilities, while unchanged s
   const { manager, root } = await fixture(t);
   await manager.select({ root, create: true, password: "synthetic-password" });
   const original = { apiUrl: "https://example.test/custom/chat?version=one", model: "synthetic-model", apiKey: "synthetic-key" };
-  await manager.configure(original);
-  const file = path.join(root, ".env");
+  await configure(manager, original);
+  const file = path.join(root, "config", "ai-settings.json");
   const confirm = async () => {
-    await fs.appendFile(file, "\nRAG_AGENT_ENABLED=true\nRAG_AGENT_TOOL_CALLING_VERIFIED=true\nRAG_STATUS_VERIFICATION_ENABLED=true\nRAG_CONTEXT_WINDOW_TOKENS=220000\nUNRELATED_SETTING=synthetic\n");
+    const value = JSON.parse(await fs.readFile(file, "utf8")); Object.assign(value.values, { RAG_AGENT_TOOL_CALLING_VERIFIED: "true", RAG_STATUS_VERIFICATION_ENABLED: "true", RAG_CONTEXT_WINDOW_TOKENS: "220000" }); await fs.writeFile(file, JSON.stringify(value));
   };
   await confirm();
-  await manager.configure({ ...original, model: " synthetic-model ", apiKey: "" });
-  assert.equal(parseEnv(await fs.readFile(file, "utf8")).RAG_AGENT_TOOL_CALLING_VERIFIED, "true");
+  await configure(manager, { apiUrl: "", model: " synthetic-model ", apiKey: "" });
+  assert.equal(JSON.parse(await fs.readFile(file, "utf8")).values.RAG_AGENT_TOOL_CALLING_VERIFIED, "true");
   for (const changed of [{ ...original, model: "new-synthetic-model" }, { ...original, apiUrl: "https://example.test/custom/chat?version=two" }]) {
-    await manager.configure(original); await confirm();
-    await manager.configure(changed);
-    const env = parseEnv(await fs.readFile(file, "utf8"));
+    await configure(manager, original); await confirm();
+    await configure(manager, changed);
+    const env = JSON.parse(await fs.readFile(file, "utf8")).values;
     assert.equal(env.RAG_AGENT_TOOL_CALLING_VERIFIED, "false");
-    assert.equal(env.RAG_AGENT_ENABLED, "true");
     assert.equal(env.RAG_STATUS_VERIFICATION_ENABLED, "false");
     assert.equal(env.RAG_CONTEXT_WINDOW_TOKENS, "");
-    assert.equal(env.UNRELATED_SETTING, "synthetic");
     assert.equal(env.CHAT_API_KEY, "synthetic-key");
     assert.equal(env.CHAT_API_URL, changed.apiUrl); assert.equal(env.CHAT_MODEL, changed.model);
   }
+});
+
+test("removing an already migrated configuration directory never reimports old environment values", async t => {
+  const { manager, root } = await fixture(t);
+  await manager.select({ root, create: true, password: "synthetic-password" });
+  await configure(manager, { apiUrl: "https://new.invalid/chat", model: "new", apiKey: "synthetic-key" });
+  await fs.rename(path.join(root, "config"), path.join(root, "retained-config"));
+  await manager.start();
+  const response = await fetch(new URL("/test-ai-root", manager.url));
+  assert.equal(await response.text(), path.join(root, "config"));
+  await assert.rejects(manager.configuration(), /模型设置文件缺失/);
+  assert.equal(await fs.stat(path.join(root, "config")).catch(() => null), null);
+  await manager.stop();
 });
 
 test("IPC stop drains an actual in-flight write before releasing lock; restart and backup/restore preserve data", async t => {
@@ -279,7 +297,7 @@ test("closing the last stopped launcher page exits automatically; refresh, other
 
 test('history settings preserve model configuration and do not clean existing files',async t=>{
  const {manager,root}=await fixture(t);await manager.select({root,create:true,password:'synthetic-password'});
- assert.deepEqual(await manager.historyConfiguration(),{enabled:true,days:0});await manager.configure({apiUrl:'https://example.test/v1/chat/completions',model:'synthetic',apiKey:'synthetic-key'});
+ assert.deepEqual(await manager.historyConfiguration(),{enabled:true,days:0});await configure(manager,{apiUrl:'https://example.test/v1/chat/completions',model:'synthetic',apiKey:'synthetic-key'});
  await manager.configureHistory({enabled:false,days:30});assert.deepEqual(await manager.historyConfiguration(),{enabled:false,days:30});assert.equal((await manager.configuration()).model,'synthetic');
  await assert.rejects(manager.configureHistory({enabled:true,days:-1}),/无效/);assert.deepEqual(await manager.historyConfiguration(),{enabled:false,days:30});
 });

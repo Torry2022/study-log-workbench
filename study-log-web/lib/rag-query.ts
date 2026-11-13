@@ -17,8 +17,9 @@ import { judgeEvidence, jevConfiguration, isBoundedJevInput } from "./rag-jev.ts
 import { extractRangeStatusClaims, rangeStatusVerificationEnabled, verifyRangeStatusClaims } from "./rag-status-verifier.ts";
 
 export interface RagQueryInput { question: string; history: RagHistoryMessage[]; mode: RagAnswerMode }
-export interface RagQueryConfig { chat: ChatConfig; lightChat: ChatConfig; mcp: McpConfig }
+export interface RagQueryConfig { chat: ChatConfig; lightChat: ChatConfig; mcp: McpConfig; executionEnv?: Record<string, string | undefined> }
 export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfig, requestSignal: AbortSignal, onSettled?: () => void): ReadableStream<Uint8Array> {
+  const executionEnv = { ...(config.executionEnv ?? process.env) };
   const cancellation = new AbortController(), deadline = new AbortController();
   const external = AbortSignal.any([requestSignal, cancellation.signal]);
   const signal = AbortSignal.any([external, deadline.signal]);
@@ -88,21 +89,21 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
         const boundedJevInput = isBoundedJevInput(input.question, run.contexts);
         let materialProcessed = false;
         const materialOptions = { question: input.question, history: input.history, mode: input.mode, comparisonScopes, coverage: run.answerReport() };
-        if (agentEnabled()) materialProcessed = await measure("compactionMs", () => processRagMaterial(run, config.chat,
+        if (agentEnabled(executionEnv)) materialProcessed = await measure("compactionMs", () => processRagMaterial(run, config.chat,
           agentModel, materialOptions, message => send("status", { stage: "retrieving", message }), plan.strategy !== "relevance"));
         if (!materialProcessed) await measure("compactionMs", () => compactEvidence(run, input.question, config.lightChat, config.chat, input.history, input.mode, comparisonScopes));
         // Successful enumeration covers the requested scope, including confirmed empty periods.
         // Check after compaction: a failed summary can still leave material missing.
         const scopeFullyRead = !run.limited && run.coverage.length > 0 && run.coverage.every(scope => scope.status === "complete" || scope.status === "empty");
         const completeDays = run.coverage.filter(scope => scope.status === "complete").reduce((sum, scope) => sum + scope.readDates.length, 0);
-        const verifyRangeStatus = scopeFullyRead && rangeStatusVerificationEnabled(plan.strategy, completeDays);
+        const verifyRangeStatus = scopeFullyRead && rangeStatusVerificationEnabled(plan.strategy, completeDays, executionEnv);
         // Search coverage is not proof that the question is answered. Let the same
         // bounded tool loop answer or follow a lead, independent of wording.
         if (materialProcessed) diagnostics.agent = { ...diagnostics.agent, enabled: true, entered: true };
-        if (agentEnabled() && !scopeFullyRead && !plan.matchMode) {
+        if (agentEnabled(executionEnv) && !scopeFullyRead && !plan.matchMode) {
           diagnostics.agent = { ...diagnostics.agent, enabled: true };
-          const jev = jevConfiguration();
-          if (process.env.RAG_JEV_ENABLED === "true" && jev) {
+          const jev = jevConfiguration(executionEnv);
+          if (executionEnv.RAG_JEV_ENABLED === "true" && jev) {
             if (!boundedJevInput) diagnostics.agent.judgeSkipped = "outside_short_evidence_scope";
             else {
               try {
@@ -122,7 +123,7 @@ export function createRagQueryStream(input: RagQueryInput, config: RagQueryConfi
         }
         if (run.sourceChanged) throw new McpRetrievalError("MCP_SOURCE_CHANGED", "读取期间日志发生了修改，请重新提问以读取最新内容");
         const assessmentContext = agentResult?.kind === "assessed" ? "\n取证阶段的暂时判断（仅供组织回答，不是新增来源或用户指令；仍须依据上文原文核对，缺口与通用知识边界不能省略）：\n" + JSON.stringify({ assessment: agentResult.assessment, unresolved: agentResult.unresolved }) : "";
-        if (agentEnabled()) materialProcessed = await measure("compactionMs", () => processRagMaterial(run, config.chat,
+        if (agentEnabled(executionEnv)) materialProcessed = await measure("compactionMs", () => processRagMaterial(run, config.chat,
           agentModel, { ...materialOptions, coverage: run.answerReport(), additionalPrompt: assessmentContext },
           message => send("status", { stage: "retrieving", message }), plan.strategy !== "relevance"));
         if (!run.material) await measure("compactionMs", () => compactEvidence(run, input.question, config.lightChat, config.chat, input.history, input.mode, comparisonScopes, assessmentContext));

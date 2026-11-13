@@ -10,6 +10,7 @@ import { validateServiceEnvironment } from "../service.mjs";
 import { backupInstance, verifyArchive, restoreInstance } from "../archive.mjs";
 import { atomicPrivateFile, privateDirectory, privateFile, runtimeEnvironment } from "./security.mjs";
 import { desktopOwnership, registerDesktopWorker, recoverDesktopLock } from "./recovery.mjs";
+import { initializeAiSettings, readAiSettings, saveAiSettings, aiSettingsSummary } from "../ai-settings.mjs";
 
 const worker = fileURLToPath(new URL("./worker.mjs", import.meta.url));
 const inside = (root, value) => { const relative = path.relative(root, value); return !relative || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative)); };
@@ -133,43 +134,57 @@ export class DesktopManager {
     } finally { await release(); }
     return this.historyConfiguration();
   }
-  async configuration() {
+  async aiSettingsContext() {
     const env = await this.readEnvironment();
-    return { apiUrl: env.CHAT_API_URL ?? "", model: env.CHAT_MODEL ?? "", hasKey: Boolean(env.CHAT_API_KEY) };
+    const root = path.join(this.root, "config");
+    const marker = path.join(this.root, "data", ".ai-settings-migrated");
+    const settingsFile = path.join(root, "ai-settings.json");
+    await assertNoLinks(marker); await assertNoLinks(settingsFile);
+    const marked = await fs.lstat(marker).catch(error => { if (error.code === "ENOENT") return null; throw error; });
+    const existing = await fs.lstat(settingsFile).catch(error => { if (error.code === "ENOENT") return null; throw error; });
+    if (marked && !existing) throw new Error("模型设置文件缺失，请检查工作台配置");
+    if (!marked) {
+      try { await fs.writeFile(marker, "1\n", { flag: "wx", mode: 0o600 }); }
+      catch (error) { if (error.code !== "EEXIST") throw error; }
+    }
+    await privateDirectory(root);
+    const identity = JSON.parse(await fs.readFile(path.join(this.root, "data", ".instance.json"), "utf8"));
+    await initializeAiSettings({ root, instanceId: identity.id, env });
+    return { root, instanceId: identity.id };
   }
-  async configure({ apiUrl = "", model = "", apiKey, clearKey = false }) {
+  async configuration() {
+    const { root, instanceId } = await this.aiSettingsContext();
+    return aiSettingsSummary(await readAiSettings(root, instanceId));
+  }
+  async configure({ apiUrl = "", model = "", apiKey, clearKey = false, expectedRevision, expectedInstanceId, operationId }) {
     if (!this.root) throw new Error("请先选择保存位置，并创建或打开学习记录");
-    if (this.state !== "stopped") throw new Error("请先停止工作台再修改模型配置");
+    if (!["stopped", "running"].includes(this.state)) throw new Error("工作台正在操作中，请稍后重试");
     if (typeof apiUrl !== "string" || typeof model !== "string" || (apiKey !== undefined && typeof apiKey !== "string")) throw new Error("模型配置格式无效");
     if (apiUrl) {
       let url; try { url = new URL(apiUrl); } catch { throw new Error("请输入完整模型接口地址"); }
       if (!["https:", "http:"].includes(url.protocol) || url.username || url.password || url.hash || /[\s\\]/.test(apiUrl)) throw new Error("模型接口地址无效");
     }
     if (/[\u0000-\u001f\u007f]/.test(model) || apiKey && /[^\x21-\x7e]/.test(apiKey)) throw new Error("模型配置含无效字符");
-    const release = await acquireInstanceLock(path.join(this.root, "data"), "desktop-config");
-    try {
-      const env = await this.readEnvironment();
-      if (env.CHAT_API_URL?.trim() !== apiUrl.trim() || env.CHAT_MODEL?.trim() !== model.trim()) {
-        env.RAG_AGENT_TOOL_CALLING_VERIFIED = "false";
-        env.RAG_STATUS_VERIFICATION_ENABLED = "false";
-        env.RAG_CONTEXT_WINDOW_TOKENS = "";
-      }
-      Object.assign(env, { CHAT_API_URL: apiUrl.trim(), CHAT_MODEL: model.trim() });
-      if (clearKey) env.CHAT_API_KEY = ""; else if (apiKey) env.CHAT_API_KEY = apiKey;
-      await atomicPrivateFile(path.join(this.root, ".env"), serializeEnvironment(env));
-    } finally { await release(); }
-    return this.configuration();
+    const context = await this.aiSettingsContext();
+    if (expectedInstanceId !== context.instanceId) throw new Error("工作台身份已变化，请重新打开设置");
+    const current = await readAiSettings(context.root, context.instanceId);
+    const values = { ...current.values, CHAT_API_URL: apiUrl.trim() || current.values.CHAT_API_URL, CHAT_MODEL: model.trim(), CHAT_API_KEY: apiKey || "" };
+    return saveAiSettings({ ...context, expectedRevision, operationId, values, keyAction: clearKey ? "remove" : apiKey ? "replace" : "keep" });
   }
   async start(onProgress = () => {}) {
     if (this.state === "running") return this.status();
     if (this.state !== "stopped") throw new Error(this.issue || "工作台正在操作中");
     const env = await this.readEnvironment();
+    let settingsRoot = path.join(this.root, "config");
+    try { settingsRoot = (await this.aiSettingsContext()).root; }
+    catch { /* Basic records remain available; the AI reader fails closed. */ }
     const webPort = await availablePort(this.ports.web), mcpPort = await availablePort(this.ports.mcp);
     const data = path.join(this.root, "data");
     const release = await acquireInstanceLock(data, "desktop-services", await desktopOwnership(data));
     this.release = release; this.state = "starting"; this.issue = "";
     const common = { ...env, NODE_ENV: "production", LOG_ROOT: path.join(this.root, "data"), INDEX_ROOT: path.join(this.root, "index"),
       BACKUP_ROOT: path.join(this.root, "backups"), COOKIE_SECURE: "false", NEXT_TELEMETRY_DISABLED: "1" };
+    delete common.AI_SETTINGS_ROOT;
     // Credentials are fresh for this run and travel only through inherited env/IPC.
     const token = crypto.randomBytes(32).toString("base64url");
     try {
@@ -179,7 +194,7 @@ export class DesktopManager {
       this.processes.push(mcp);
       await registerDesktopWorker(data, mcp.child.pid); mcp.child.send({ type: "start" }); await mcp.ready;
       onProgress("interface");
-      const web = launch("web", this.webRoot, { ...common, PORT: String(webPort), HOSTNAME: "127.0.0.1", STUDY_LOG_MCP_URL: `http://127.0.0.1:${mcpPort}/mcp`, STUDY_LOG_MCP_TOKEN: token }, this.workerOptions);
+      const web = launch("web", this.webRoot, { ...common, ...(settingsRoot ? { AI_SETTINGS_ROOT: settingsRoot } : {}), PORT: String(webPort), HOSTNAME: "127.0.0.1", STUDY_LOG_MCP_URL: `http://127.0.0.1:${mcpPort}/mcp`, STUDY_LOG_MCP_TOKEN: token }, this.workerOptions);
       this.processes.push(web);
       await registerDesktopWorker(data, web.child.pid); web.child.send({ type: "start" }); await web.ready;
       this.state = "running"; this.url = `http://127.0.0.1:${webPort}/study-log`;

@@ -8,3 +8,8 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 ipcRenderer.on("workbench:help", () => window.dispatchEvent(new Event("study-log:help")));
+ipcRenderer.on("workbench:settings", () => {
+  const event = new Event("study-log:settings", { cancelable: true });
+  window.dispatchEvent(event);
+  if (!event.defaultPrevented) ipcRenderer.send("workbench:settings-unavailable");
+});

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { getLogRoot } from "./config.ts";
-import { configureRagThinking, getChatConfig, getLightChatConfig } from "./ai-config.ts";
+import { configureRagThinking, getChatConfig, getLightChatConfig, snapshotAiEnvironment } from "./ai-config.ts";
 import { getMcpConfig } from "./mcp-config.ts";
 import { createRagQueryStream, type RagQueryConfig, type RagQueryInput } from "./rag-query.ts";
 import { applyRagTaskResult, ensureRagTaskSessionFormat, inspectRagTaskSession, inspectRagTaskSessions, deletedRagSessionIds, RagSessionConflictError, RagSessionNotFoundError, RagSessionInputError } from "./rag-sessions-store.ts";
@@ -9,9 +9,9 @@ import type { RagTask, RagTaskResult, RagTaskSubmission, RagTaskSummary } from "
 import { parseRagHistory } from "./rag-answer.ts";
 
 export function ragExecutionConfig(): RagQueryConfig {
-  const chat = configureRagThinking(getChatConfig()), lightChat = getLightChatConfig();
+  const env = snapshotAiEnvironment(), chat = configureRagThinking(getChatConfig(env), env), lightChat = getLightChatConfig(env);
   if (lightChat.model === chat.model && chat.thinkingMode) lightChat.thinkingMode = chat.thinkingMode;
-  return { chat, lightChat, mcp: getMcpConfig() };
+  return { chat, lightChat, mcp: getMcpConfig(), executionEnv: env };
 }
 type Execute = (input: RagQueryInput, signal: AbortSignal) => ReadableStream<Uint8Array>;
 const publicValue = (task: TaskRecord): RagTask => {

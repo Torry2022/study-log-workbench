@@ -4,6 +4,8 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { parseEnv } from "node:util";
 import { acquireInstanceLock, assertNoLinks } from "./instance.mjs";
+import { parseAiSettings } from "../study-log-web/lib/ai-settings-schema.mjs";
+import { privateDirectory, privateFile } from "./desktop/security.mjs";
 
 export const MAX_ARCHIVE_BYTES = 20 * 1024 ** 3;
 export const MAX_ARCHIVE_ENTRIES = 100000;
@@ -111,13 +113,13 @@ function entryPath(value) {
     if (!piece || piece === "." || piece === ".." || /[\\<>:"|?*\u0000-\u001f\u007f]/.test(piece) || /[. ]$/.test(piece) || Buffer.byteLength(piece) > 255 ||
       /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9]|conin\$|conout\$)(?:\.|$)/i.test(piece.normalize("NFKC")) || /~\d+(?:\.|$)/.test(piece)) outside();
   }
-  if (value !== ".env" && value !== ".env.mcp" && pieces[0] !== "data" && pieces[0] !== "backups") outside();
+  if (value !== ".env" && value !== ".env.mcp" && value !== "config" && value !== "config/ai-settings.json" && pieces[0] !== "data" && pieces[0] !== "backups") outside();
   if (pieces.some(piece => piece.toLowerCase() === ".instance-operation.lock")) outside();
   return value;
 }
 
 function validateManifest(value, archiveSize) {
-  if (!value || typeof value !== "object" || value.format !== "study-log-instance" || ![1, 2].includes(value.version) || !uuid.test(value.instanceId || "") ||
+  if (!value || typeof value !== "object" || value.format !== "study-log-instance" || ![1, 2, 3].includes(value.version) || !uuid.test(value.instanceId || "") ||
     typeof value.createdAt !== "string" || !Number.isFinite(Date.parse(value.createdAt)) || !Array.isArray(value.entries)) invalid();
   if (value.entries.length > MAX_ARCHIVE_ENTRIES) limits();
   const names = new Map(), aliases = new Set(); let total = 0;
@@ -137,6 +139,8 @@ function validateManifest(value, archiveSize) {
     names.get(".env").size > CONTROL_BYTES || names.get("data/.instance.json").size > CONTROL_BYTES || value.totalBytes !== total || total > archiveSize) invalid();
   if (names.has(".env.mcp") && (names.get(".env.mcp").type !== "file" || names.get(".env.mcp").size > CONTROL_BYTES)) invalid();
   if (value.version === 2 && names.get("data/state/rag-tasks.sqlite")?.type !== "file") invalid();
+  if (value.version === 3 && (names.get("config")?.type !== "directory" || names.get("config/ai-settings.json")?.type !== "file" || names.get("config/ai-settings.json").size > CONTROL_BYTES)) invalid();
+  if (value.version !== 3 && (names.has("config") || names.has("config/ai-settings.json"))) invalid();
   return value;
 }
 
@@ -153,6 +157,7 @@ async function scan(root) {
       for (const name of (await fs.readdir(target)).sort()) {
         // Only the exact lock created by this operation is excluded.
         if (relative === "data" && name === ".instance-operation.lock") continue;
+        if (relative === "config" && name !== "ai-settings.json") continue;
         await visit(`${relative}/${name}`);
       }
     } else {
@@ -166,6 +171,7 @@ async function scan(root) {
   }
   for (const name of [".env", "data", "backups"]) await visit(name);
   if (await exists(path.join(root, ".env.mcp"))) await visit(".env.mcp");
+  if (await exists(path.join(root, "config", "ai-settings.json"))) await visit("config");
   return { entries, snapshots, directories, totalBytes };
 }
 
@@ -184,15 +190,17 @@ async function verifyOpen(archive, sidecar, handle, stat) {
   catch { invalid(); }
   validateManifest(manifest, Number(stat.size));
   if (payloadOffset + manifest.totalBytes !== Number(stat.size)) invalid();
-  let position = payloadOffset, identityBytes, envBytes;
+  let position = payloadOffset, identityBytes, envBytes, aiSettingsBytes;
   for (const entry of manifest.entries) {
     if (entry.type !== "file") continue;
     if (entry.path === ".env") envBytes = await readExact(handle, entry.size, position);
     if (entry.path === "data/.instance.json") identityBytes = await readExact(handle, entry.size, position);
+    if (entry.path === "config/ai-settings.json") aiSettingsBytes = await readExact(handle, entry.size, position);
     if (await streamBytes(handle, position, entry.size) !== entry.sha256) fail("ARCHIVE_FILE_MISMATCH", "归档内文件 SHA-256 校验失败");
     position += entry.size;
   }
   if (readIdentityAndEnvironment(identityBytes, envBytes) !== manifest.instanceId) invalid();
+  if (manifest.version === 3) { try { parseAiSettings(aiSettingsBytes.toString("utf8"), manifest.instanceId); } catch { invalid(); } }
   await unchanged(handle, stat, archive);
   return { manifest, payloadOffset, sha256: external };
 }
@@ -212,7 +220,7 @@ export async function backupInstance(instanceRoot, archivePath, { protectFile } 
     const instanceId = readIdentityAndEnvironment(await controlFile(path.join(root, "data/.instance.json")), await controlFile(path.join(root, ".env")));
     const scanned = await scan(root);
     // Old tools must refuse archives whose restored queue needs normalization.
-    const version = scanned.entries.some(entry => entry.path === "data/state/rag-tasks.sqlite") ? 2 : 1;
+    const version = scanned.entries.some(entry => entry.path === "config/ai-settings.json") ? 3 : scanned.entries.some(entry => entry.path === "data/state/rag-tasks.sqlite") ? 2 : 1;
     const manifest = { format: "study-log-instance", version, createdAt: new Date().toISOString(), instanceId, entries: scanned.entries, totalBytes: scanned.totalBytes };
     validateManifest(manifest, MAX_ARCHIVE_BYTES);
     const bytes = Buffer.from(JSON.stringify(manifest)), header = Buffer.alloc(MAGIC.length + 4);
@@ -313,10 +321,12 @@ export async function restoreInstance(archivePath, targetRoot, { onReserved } = 
       await noLinks(destination);
       if (entry.type === "directory") {
         if (entry.path !== "data") await fs.mkdir(destination, { mode: 0o700 });
+        if (entry.path === "config") await privateDirectory(destination);
         continue;
       }
       const output = await fs.open(destination, "wx", 0o600);
       try {
+        if (entry.path === "config/ai-settings.json") await privateFile(destination);
         const digest = await streamBytes(handle, position, entry.size, chunk => writeAll(output, chunk));
         if (digest !== entry.sha256) fail("ARCHIVE_FILE_MISMATCH", "恢复过程中备份内容发生变化，恢复已停止；目标目录已保留供检查");
         await output.sync();
@@ -325,6 +335,12 @@ export async function restoreInstance(archivePath, targetRoot, { onReserved } = 
     }
     await unchanged(handle, stat, archive);
     await fs.mkdir(path.join(target, "index"), { mode: 0o700 });
+    if (manifest.version === 3) {
+      const file = path.join(target, "config", "ai-settings.json");
+      const settings = parseAiSettings(await fs.readFile(file, "utf8"), manifest.instanceId);
+      settings.revision = 1; settings.operationId = null;
+      await fs.writeFile(file, JSON.stringify(settings) + "\n", { mode: 0o600 });
+    }
     await interruptRestoredTasks(target);
     await fs.unlink(marker); await release();
     return { restored: true, root: target, instanceId: manifest.instanceId, files: manifest.entries.filter(entry => entry.type === "file").length };

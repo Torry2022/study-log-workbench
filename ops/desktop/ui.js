@@ -4,7 +4,7 @@ if (incoming) { sessionStorage.setItem("launcher-token", incoming); history.repl
 const token = sessionStorage.getItem("launcher-token") || "";
 let clientId = crypto.randomUUID();
 const value = id => element(id).value.trim();
-let busy = false, connected = false, state = {}, candidate = null, revision = 0, timer, runAction = "";
+let busy = false, connected = false, state = {}, candidate = null, revision = 0, timer, runAction = "", modelConfig = null;
 function feedback(scope, message = "", error = false) {
   const node = element(scope); node.textContent = message; node.hidden = !message; node.classList.toggle("error", error);
 }
@@ -32,10 +32,10 @@ function render() {
   element("open").hidden = !running || !state.url;
   if (state.url) element("open").href = state.url;
   element("run-help").textContent = running ? `访问地址：${state.url}` : ready ? "保存位置已准备好，可以启动工作台。" : "准备好保存位置后，即可启动工作台。";
-  element("configure").disabled = locked || !stopped || !ready;
-  element("model-help").hidden = ready && stopped;
-  element("model-help").textContent = !stopped ? "停止工作台后可修改模型配置。" : "请先选择保存位置，并创建或打开学习记录。";
-  for (const id of ["apiUrl", "model", "apiKey", "clearKey"]) element(id).disabled = locked || !stopped || !ready;
+  element("configure").disabled = locked || !["stopped", "running"].includes(state.state) || !ready || !modelConfig;
+  element("model-help").hidden = ready && ["stopped", "running"].includes(state.state);
+  element("model-help").textContent = "请先选择保存位置，并创建或打开学习记录。";
+  for (const id of ["apiUrl", "model", "apiKey", "clearKey"]) element(id).disabled = locked || !["stopped", "running"].includes(state.state) || !ready;
   element("backup").disabled = locked || !ready || !["stopped", "running"].includes(state.state);
   element("verify").disabled = locked || !value("archive");
   element("restore").disabled = locked || !stopped || !value("archive") || !value("restoreRoot");
@@ -56,7 +56,7 @@ async function status() {
   if (state.issue) feedback("run-notice", state.issue, true);
   render();
 }
-async function configuration() { const config = await api("configuration"); element("apiUrl").value = config.apiUrl; element("model").value = config.model; element("keyStatus").textContent = config.hasKey ? "已保存 API Key" : "未配置 API Key"; }
+async function configuration() { const config = await api("configuration"); modelConfig = config; element("apiUrl").value = ""; element("apiUrl").placeholder = config.hasEndpoint ? `${config.endpointDisplay || "已设置"}（留空保留原地址）` : "https://example.com/v1/chat/completions"; element("model").value = config.model; element("keyStatus").textContent = config.hasKey ? "已保存 API Key" : "未配置 API Key"; }
 async function run(scope, work, completed = "") {
   if (busy) return;
   const trigger = document.activeElement?.tagName === "BUTTON" ? document.activeElement : null;
@@ -80,7 +80,7 @@ element("start").onclick = async () => {
   try { await run("run-notice", () => api(runAction)); }
   finally { runAction = ""; render(); }
 };
-element("configure").onclick = () => run("model-notice", async () => { await api("configure", { apiUrl: value("apiUrl"), model: value("model"), apiKey: element("apiKey").value, clearKey: element("clearKey").checked }); element("apiKey").value = ""; element("clearKey").checked = false; await configuration(); }, "模型配置已保存。");
+element("configure").onclick = () => run("model-notice", async () => { await api("configure", { apiUrl: value("apiUrl"), model: value("model"), apiKey: element("apiKey").value, clearKey: element("clearKey").checked, expectedRevision: modelConfig.revision, expectedInstanceId: modelConfig.instanceId, operationId: crypto.randomUUID() }); element("apiKey").value = ""; element("clearKey").checked = false; await configuration(); }, "设置已保存，将用于新开始的任务。");
 for (const button of document.querySelectorAll("[data-pick]")) button.onclick = () => run(button.dataset.for === "root" ? "directory-notice" : "backup-notice", async () => { const selected = await api("pick", { mode: button.dataset.pick }); if (!selected.path) return false; element(button.dataset.for).value = selected.path; if (button.dataset.for === "root") await inspect(); });
 element("backup").onclick = () => run("backup-notice", async () => { const selected = await api("pick", { mode: "save" }); if (!selected.path) return false; await api("backup", { archive: selected.path }); element("archive").value = selected.path; }, "备份已保存，工作台已停止。");
 element("verify").onclick = () => run("backup-notice", () => api("verify", { archive: value("archive") }), "备份校验通过。");

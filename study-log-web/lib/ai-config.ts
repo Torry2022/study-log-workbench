@@ -1,3 +1,7 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { readCommittedAiSettings } from "./ai-settings-reader.ts";
+
 export interface ChatConfig {
   /** Request-scoped observer; never persisted in settings. */
   onUsage?: (usage: { inputTokens: number | null; outputTokens: number | null }) => void;
@@ -17,8 +21,22 @@ export function chatContextWindowTokens(config: ChatConfig): number | undefined 
 }
 
 type AiEnvironment = Record<string, string | undefined>;
+/** Read one complete, committed model configuration for a new operation. */
+export function snapshotAiEnvironment(env: AiEnvironment = process.env): AiEnvironment {
+  const root = env.AI_SETTINGS_ROOT;
+  if (!root) return { ...env };
+  try {
+    const logRoot = env.LOG_ROOT;
+    if (!logRoot || !path.isAbsolute(logRoot)) throw new Error("Invalid root");
+    const identity = JSON.parse(readFileSync(path.join(logRoot, ".instance.json"), "utf8"));
+    if (identity.schemaVersion !== 1 || typeof identity.id !== "string") throw new Error("Invalid identity");
+    return { ...env, ...readCommittedAiSettings(root, identity.id) };
+  } catch {
+    throw new ChatConfigurationError([{ field: "AI_SETTINGS", reason: "invalid", message: "模型设置无法读取，请检查工作台配置" }]);
+  }
+}
 export interface ChatConfigIssue {
-  field: "CHAT_API_KEY" | "CHAT_API_URL" | "CHAT_MODEL" | "CHAT_LIGHT_MODEL" | "RAG_CONTEXT_WINDOW_TOKENS" | "RAG_DEEPSEEK_THINKING";
+  field: "AI_SETTINGS" | "CHAT_API_KEY" | "CHAT_API_URL" | "CHAT_MODEL" | "CHAT_LIGHT_MODEL" | "RAG_CONTEXT_WINDOW_TOKENS" | "RAG_DEEPSEEK_THINKING";
   reason: "missing" | "invalid";
   message: string;
 }
@@ -67,12 +85,12 @@ function issuesFor(env: AiEnvironment): ChatConfigIssue[] {
 }
 
 /** Local validation only. HTTP is an explicit administrator choice, including non-loopback proxies. */
-export function inspectChatConfig(env: AiEnvironment = process.env): { configured: boolean; issues: ChatConfigIssue[] } {
+export function inspectChatConfig(env: AiEnvironment = snapshotAiEnvironment()): { configured: boolean; issues: ChatConfigIssue[] } {
   const issues = issuesFor(env);
   return { configured: issues.length === 0, issues };
 }
 
-export function getChatConfig(env: AiEnvironment = process.env): ChatConfig {
+export function getChatConfig(env: AiEnvironment = snapshotAiEnvironment()): ChatConfig {
   const { issues } = inspectChatConfig(env);
   if (issues.length) throw new ChatConfigurationError(issues);
   const contextWindowTokens = env.RAG_CONTEXT_WINDOW_TOKENS?.trim();
@@ -80,7 +98,7 @@ export function getChatConfig(env: AiEnvironment = process.env): ChatConfig {
     ...(contextWindowTokens ? { contextWindowTokens: Number(contextWindowTokens) } : {}) };
 }
 
-export function getLightChatConfig(env: AiEnvironment = process.env): ChatConfig {
+export function getLightChatConfig(env: AiEnvironment = snapshotAiEnvironment()): ChatConfig {
   const config = getChatConfig(env);
   return { ...config, model: env.CHAT_LIGHT_MODEL?.trim() || config.model };
 }
@@ -97,7 +115,7 @@ export function configureRagThinking(config: ChatConfig, env: AiEnvironment = pr
   return { ...config, thinkingMode: mode as "disabled" | "low" };
 }
 
-export function inspectRagChatConfig(env: AiEnvironment = process.env): { configured: boolean; issues: ChatConfigIssue[] } {
+export function inspectRagChatConfig(env: AiEnvironment = snapshotAiEnvironment()): { configured: boolean; issues: ChatConfigIssue[] } {
   const provider = inspectChatConfig(env);
   if (!provider.configured) return provider;
   try {

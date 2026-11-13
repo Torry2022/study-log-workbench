@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { BarChart3, CalendarDays, CircleHelp, ChevronLeft, ChevronRight, FileText, Highlighter, Lightbulb, LogOut, Menu, MessageSquareText, Monitor, Moon, MoreHorizontal, PanelRightOpen, Plus, Search, Star, Sun, Wand2, X } from "lucide-react";
+import { BarChart3, CalendarDays, CircleHelp, ChevronLeft, ChevronRight, FileText, Highlighter, Lightbulb, LogOut, Menu, MessageSquareText, Monitor, Moon, MoreHorizontal, PanelRightOpen, Plus, Search, Settings, Star, Sun, Wand2, X } from "lucide-react";
 import type { WorkspaceView } from "@/hooks/use-log-workspace";
 import type { DaySummary, MonthSummary } from "@/lib/types";
 import { withBasePath } from "@/lib/base-path";
 import { useMobileViewport } from "@/hooks/use-mobile-viewport";
 import { SidebarMonthGroups } from "./SidebarMonthGroups";
 import { HelpDialog } from "./HelpDialog";
+import { SettingsDialog } from "./SettingsDialog";
 import { workspaceShortcutBlocked } from "@/lib/workspace-shortcuts";
 import { BackToTop } from "./BackToTop";
 import { CompactDayNavigator } from "./CompactDayNavigator";
@@ -73,6 +74,7 @@ const themes = [
 export function WorkspaceChrome({ active, view, onView, moduleNavigation, moduleSidebar, ragNavigation, inspector, openAiRequest = 0, inspectorTab, onInspectorTab, months, days, selectedMonth, selectedDate, dayQuery: query, onDayQueryChange: setQuery, selectedLogLabel, loading, error,
   monthsLoading, monthsError, creationBlocked, theme, themePreference = "system", readingMode = false, dayOperationBusy = false, onMonth, onDate, onNewDate, onNewQuestion, onTheme, onLogout, onRetry, onSearchSelect, onSearchChange, children }: WorkspaceChromeProps) {
   const [compact, setCompact] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const showMonthsLoading = useDelayedBusy(monthsLoading && !months.length);
   const showDaysLoading = useDelayedBusy(loading && !days.length);
   const [compactDateSelection, setCompactDateSelection] = useState(0);
@@ -169,7 +171,7 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, module
   useEffect(() => { if (!hasInspector) setPanel(current => current === "writing" ? null : current); }, [hasInspector]);
   useEffect(() => () => { resizeCleanup.current?.(); }, []);
   useEffect(() => {
-    if (!active) { setPanel(null); setThemeOpen(false); setHelpOpen(false); }
+    if (!active) { setPanel(null); setThemeOpen(false); setHelpOpen(false); setSettingsOpen(false); }
     if (!active || (compact && panel !== "navigation")) setDateJumpRequest(0);
   }, [active, compact, panel]);
   useEffect(() => {
@@ -186,6 +188,7 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, module
 
   useEffect(() => {
     const showHelp = () => { if (active && !workspaceShortcutBlocked()) { setPanel(null); setThemeOpen(false); setHelpOpen(true); } };
+    const showSettings = (event: Event) => { event.preventDefault(); if (active && !workspaceShortcutBlocked()) { setPanel(null); setThemeOpen(false); setSettingsOpen(true); } };
     const keydown = (event: KeyboardEvent) => {
       if (!active || workspaceShortcutBlocked(event) || !(event.ctrlKey || event.metaKey)) return;
       const key = event.key.toLowerCase();
@@ -212,8 +215,8 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, module
         })();
       }
     };
-    window.addEventListener("keydown", keydown); window.addEventListener("study-log:help", showHelp);
-    return () => { window.removeEventListener("keydown", keydown); window.removeEventListener("study-log:help", showHelp); };
+    window.addEventListener("keydown", keydown); window.addEventListener("study-log:help", showHelp); window.addEventListener("study-log:settings", showSettings);
+    return () => { window.removeEventListener("keydown", keydown); window.removeEventListener("study-log:help", showHelp); window.removeEventListener("study-log:settings", showSettings); };
   }, [active, compact, readingMode, onView, onNewQuestion]);
 
   function changeCollapsed(value: boolean, target?: "months" | "dates") {
@@ -339,6 +342,7 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, module
         <button className={`button secondary app-nav-link${view === "favorites" ? " active" : ""}`} type="button" aria-current={view === "favorites" ? "page" : undefined} onClick={() => void switchView("favorites")}><Star size={16} />收藏</button>
         <button className={`button secondary app-nav-link${view === "qa" ? " active" : ""}`} type="button" aria-current={view === "qa" ? "page" : undefined} onClick={() => void switchView("qa")}><MessageSquareText size={16} />问答</button>
         <button className={`button secondary app-nav-link${view === "stats" ? " active" : ""}`} type="button" aria-current={view === "stats" ? "page" : undefined} onClick={() => void switchView("stats")}><BarChart3 size={16} />统计</button>
+        <button className="button icon-only" type="button" onClick={() => setSettingsOpen(true)} aria-label="打开设置" title="设置"><Settings size={17} /></button>
         <div className="theme-menu" ref={themeMenu} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setThemeOpen(false); }}>
           <button className="button icon-only" ref={themeButton} type="button" onClick={() => setThemeOpen(value => !value)} aria-label="切换主题模式" aria-expanded={themeOpen} title="切换主题模式">{themePreference === "system" ? <Monitor size={17} /> : theme === "dark" ? <Moon size={17} /> : <Sun size={17} />}</button>
           {themeOpen && <div className="theme-popover" role="group" aria-label="主题模式">{themes.map(({ value, label, Icon }) => <button key={value} className={themePreference === value ? "active" : ""} type="button" aria-pressed={themePreference === value} onClick={() => chooseTheme(value)}><Icon size={15} />{label}{value === "system" && <small>{theme === "dark" ? "夜间" : "日间"}</small>}</button>)}</div>}
@@ -410,10 +414,12 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, module
     {compact && panel === "account" && <div className="mobile-sheet-backdrop" onClick={() => setPanel(null)}><section ref={account} className="mobile-action-sheet mobile-account-sheet" role="dialog" aria-modal="true" aria-label="应用设置" onClick={event => event.stopPropagation()}>
       <div className="mobile-sheet-header"><strong>应用设置</strong><button type="button" onClick={() => setPanel(null)} aria-label="关闭应用设置"><X size={18} /></button></div>
       <div className="mobile-theme-options" role="group" aria-label="主题模式">{themes.map(({ value, label, Icon }) => <button key={value} className={themePreference === value ? "active" : ""} type="button" aria-pressed={themePreference === value} onClick={() => chooseTheme(value)}><Icon size={18} />{label.replace("模式", "")}</button>)}</div>
+      <button className="button secondary full" type="button" onClick={() => { setPanel(null); setSettingsOpen(true); }}><Settings size={18} />设置</button>
       {hasInspector && <button className="button secondary full" type="button" onClick={() => openPanel("writing")}><PanelRightOpen size={18} />AI 工具</button>}
       <button className="button secondary full" type="button" onClick={() => { setPanel(null); setHelpOpen(true); }}><CircleHelp size={18} />使用帮助</button>
       <button className="mobile-logout" type="button" onClick={() => { setPanel(null); onLogout(); }}><LogOut size={18} />退出登录</button>
     </section></div>}
     {helpOpen && active && <HelpDialog onClose={() => setHelpOpen(false)} />}
+    {settingsOpen && active && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
   </main>;
 }

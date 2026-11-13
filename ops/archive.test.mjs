@@ -8,9 +8,26 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { initialize, acquireInstanceLock } from "./instance.mjs";
 import { backupInstance, restoreInstance, verifyArchive, MAX_ARCHIVE_BYTES, MAX_ARCHIVE_ENTRIES, MAX_MANIFEST_BYTES } from "./archive.mjs";
+import { initializeAiSettings, saveAiSettings, readAiSettings } from "./ai-settings.mjs";
 
 const magic = Buffer.from("STUDY-LOG-INSTANCE\0V1\n");
 const sha = value => crypto.createHash("sha256").update(value).digest("hex");
+test("full backup retains private AI settings, excludes lock state and resets operation identity on restore", async t => {
+  const { root, archive, target } = await fixture(t);
+  const config = path.join(root, "config"); await fs.mkdir(config);
+  const instance = JSON.parse(await fs.readFile(path.join(root, "data", ".instance.json"), "utf8"));
+  const initial = await initializeAiSettings({ root: config, instanceId: instance.id, env: { CHAT_API_URL: "https://synthetic.invalid/chat", CHAT_MODEL: "synthetic", CHAT_API_KEY: "synthetic-key" } });
+  await saveAiSettings({ root: config, instanceId: instance.id, expectedRevision: 1, operationId: crypto.randomUUID(), keyAction: "keep", values: initial.values });
+  await backupInstance(root, archive);
+  const verified = await verifyArchive(archive);
+  assert.equal(verified.manifest.version, 3);
+  assert.ok(verified.manifest.entries.some(entry => entry.path === "config/ai-settings.json"));
+  assert.ok(!verified.manifest.entries.some(entry => entry.path.includes("ai-settings-lock")));
+  await restoreInstance(archive, target);
+  const restored = await readAiSettings(path.join(target, "config"), instance.id);
+  assert.equal(restored.values.CHAT_API_KEY, "synthetic-key"); assert.equal(restored.revision, 1); assert.equal(restored.operationId, null);
+  await assert.rejects(restoreInstance(archive, target), { code: "RESTORE_TARGET_EXISTS" });
+});
 async function fixture(t) {
   const base = await fs.mkdtemp(path.join(os.tmpdir(), "workbench-archive-test-"));
   t.after(async () => {

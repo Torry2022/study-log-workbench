@@ -36,7 +36,8 @@ async function prepare(name, configured = false) {
   const instance = path.join(root, name), manager = new DesktopManager({ packageRoot: payload, node: process.execPath }), password = `Synthetic-${randomUUID()}`;
   managers.push(manager); await manager.select({ root: instance, create: true, password });
   if (configured) {
-    await manager.configure({ apiUrl: `http://127.0.0.1:${model.address().port}/chat`, model: 'synthetic-windows-protection-model', apiKey: 'synthetic-windows-key' });
+    const current = await manager.configuration();
+    await manager.configure({ apiUrl: `http://127.0.0.1:${model.address().port}/chat`, model: 'synthetic-windows-protection-model', apiKey: 'synthetic-windows-key', expectedRevision: current.revision, expectedInstanceId: current.instanceId, operationId: randomUUID() });
     await fs.appendFile(path.join(instance, '.env'), '\nRAG_AGENT_ENABLED=false\nRAG_AGENT_TOOL_CALLING_VERIFIED=false\nRAG_JEV_ENABLED=false\n');
   }
   return { instance, manager, password };

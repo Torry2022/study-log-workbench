@@ -54,10 +54,12 @@ export async function packageWindows(output, { cache = path.join(repository, ".l
     await fs.cp(path.join(repository, "study-log-mcp", name), path.join(output, "mcp", name), { recursive: true, dereference: true, filter: safeCopy });
   }
   await fs.cp(path.join(repository, "prompts"), path.join(output, "prompts"), { recursive: true });
-  for (const name of ["instance.mjs", "service.mjs", "archive.mjs", "welcome-log.md"]) {
+  for (const name of ["instance.mjs", "service.mjs", "archive.mjs", "ai-settings.mjs", "welcome-log.md"]) {
     await fs.mkdir(path.join(output, "ops"), { recursive: true });
     await fs.copyFile(path.join(repository, "ops", name), path.join(output, "ops", name));
   }
+  await fs.mkdir(path.join(output, "study-log-web", "lib"), { recursive: true });
+  await fs.copyFile(path.join(repository, "study-log-web", "lib", "ai-settings-schema.mjs"), path.join(output, "study-log-web", "lib", "ai-settings-schema.mjs"));
   await fs.mkdir(path.join(output, "ops", "desktop"));
   for (const name of ["worker.mjs", "security.mjs", "windows-system.mjs", "recovery.mjs", "manager.mjs", "launcher.mjs", "index.html", "ui.js", "ui.css"]) {
     await fs.copyFile(path.join(repository, "ops", "desktop", name), path.join(output, "ops", "desktop", name));

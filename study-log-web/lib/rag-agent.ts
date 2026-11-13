@@ -13,7 +13,7 @@ import { buildRagMessages, mapRagCitationLabels, NO_LOG_EVIDENCE } from "./rag-a
 import type { RagAnswerMode, RagHistoryMessage } from "./rag-types.ts";
 
 /** Tool use is an explicitly verified model capability, independent of provider identity. */
-export function agentEnabled(env = process.env): boolean {
+export function agentEnabled(env: Record<string, string | undefined> = process.env): boolean {
   return (env.RAG_AGENT_ENABLED === undefined || env.RAG_AGENT_ENABLED === "true") && env.RAG_AGENT_TOOL_CALLING_VERIFIED === "true";
 }
 export function createAgentModel(config: ChatConfig, transport: typeof fetch = fetch,

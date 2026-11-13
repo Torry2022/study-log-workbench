@@ -1,0 +1,11 @@
+# Optional overlay. Prepare INSTANCE_ROOT/config with private permissions first.
+services:
+  web:
+    environment:
+      AI_SETTINGS_ROOT: /instance/config
+    volumes:
+      - type: bind
+        source: ${INSTANCE_ROOT:?Set absolute INSTANCE_ROOT}/config
+        target: /instance/config
+        bind:
+          create_host_path: false

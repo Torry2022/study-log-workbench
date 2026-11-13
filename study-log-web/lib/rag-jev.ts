@@ -6,7 +6,7 @@ export type EvidenceJudgment = { support: "supported" | "missing" | "uncertain";
 export function isBoundedJevInput(question: string, contexts: RagRetrievedContext[]): boolean {
   return question.length <= 240 && contexts.length <= 4 && contexts.reduce((sum, item) => sum + item.content.length, 0) <= 2400;
 }
-export function jevConfiguration(env: NodeJS.ProcessEnv = process.env) {
+export function jevConfiguration(env: Record<string, string | undefined> = process.env) {
   const provider = env.RAG_JEV_PROVIDER || "typesafe";
   if (provider !== "typesafe" && provider !== "vercel") return undefined;
   const apiKey = provider === "vercel" ? env.AI_GATEWAY_API_KEY : env.TYPESAFE_API_KEY;

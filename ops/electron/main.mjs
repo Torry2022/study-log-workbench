@@ -132,6 +132,9 @@ function trusted(event) {
   } catch { return false; }
 }
 ipcMain.on('workbench:close', event => { if (trusted(event)) win.close(); });
+ipcMain.on('workbench:settings-unavailable', event => {
+  if (trusted(event)) void dialog.showMessageBox(win, { type: 'info', title: '模型设置', message: '当前服务器暂不支持查看模型设置', detail: '请联系服务器维护者。' });
+});
 
 function titlebarTrusted(event) {
   return win && event.sender === win.webContents && event.senderFrame === win.webContents.mainFrame
@@ -322,18 +325,14 @@ ipcMain.handle('settings:read', event => {
 ipcMain.handle('settings:save', async (event, value) => {
   if (!settingsTrusted(event) || finishing || pendingAction) throw Error('当前无法保存');
   if (!value || typeof value.apiUrl !== 'string' || typeof value.model !== 'string'
-    || typeof value.apiKey !== 'string' || typeof value.clearKey !== 'boolean') throw Error('模型配置格式无效');
+    || typeof value.apiKey !== 'string' || typeof value.clearKey !== 'boolean' || !Number.isSafeInteger(value.expectedRevision)
+    || typeof value.expectedInstanceId !== 'string' || typeof value.operationId !== 'string') throw Error('模型配置格式无效');
   if (value.apiUrl) {
     const url = new URL(value.apiUrl);
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.hash || /[\s\\]/.test(value.apiUrl)) throw Error('模型接口地址无效');
   }
   if (/[\u0000-\u001f\u007f]/.test(value.model) || value.apiKey && /[^\x21-\x7e]/.test(value.apiKey)) throw Error('模型配置含无效字符');
-  const config = { apiUrl: value.apiUrl, model: value.model, apiKey: value.apiKey, clearKey: value.clearKey };
-  const current = await manager.configuration();
-  if (!settingsTrusted(event) || finishing || pendingAction) throw Error('当前无法保存');
-  if (config.apiUrl === current.apiUrl && config.model === current.model && !config.apiKey && !(config.clearKey && current.hasKey)) return;
-  pendingAction = async () => { await manager.configure(config); };
-  settingsWindow.close(); win.close();
+  return manager.configure(value);
 });
 ipcMain.handle('history:read', event => {
   if (!settingsTrusted(event, 'history.html')) throw Error('无效窗口');
@@ -426,7 +425,7 @@ function menu() {
       { label: '打开已有学习记录…', enabled: active.mode === 'local', click: () => void selectExisting().catch(reportError) },
       { label: '打开保存文件夹', enabled: active.mode === 'local', click: () => { if (manager.root) void shell.openPath(manager.root); } },
       { type: 'separator' },
-      { label: '模型设置…', enabled: active.mode === 'local', click: () => void settings().catch(reportError) },
+      { label: '模型设置…', click: () => active.mode === 'local' ? void settings().catch(reportError) : workspaceView?.webContents.send('workbench:settings') },
       { label: '日志历史版本…', enabled: active.mode === 'local', click: () => void settings('history').catch(reportError) },
       { type: 'separator' },
       { label: '创建完整备份…', enabled: active.mode === 'local', click: () => void backup().catch(reportError) },

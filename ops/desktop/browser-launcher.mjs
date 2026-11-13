@@ -77,7 +77,11 @@ try {
   await page.unroute("**/api/pick");
   await page.locator("#start").click(); await expect(page.locator("#state")).toHaveText("正在运行", { timeout: 60000 });
   await expect(page.locator("#start")).toHaveText("停止工作台"); await expect(page.locator("#start")).toBeEnabled();
-  await expect(page.locator("#root")).toBeDisabled(); await expect(page.locator("#configure")).toBeDisabled();
+  await expect(page.locator("#root")).toBeDisabled(); await expect(page.locator("#configure")).toBeEnabled();
+  await page.getByText("模型配置（可选）", { exact: true }).click();
+  await page.getByLabel("模型名称").fill("synthetic-running-model");
+  await page.locator("#configure").click(); await expect(page.locator("#model-notice")).toContainText("新开始的任务");
+  assert.equal((await manager.configuration()).model, "synthetic-running-model");
   assert.equal((await page.request.get(await page.locator("#open").getAttribute("href"))).status(), 200);
   await shot("wide-dark-running");
   await page.locator("#start").click(); await expect(page.locator("#state")).toHaveText("未运行", { timeout: 60000 });

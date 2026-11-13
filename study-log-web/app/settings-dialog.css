@@ -1,0 +1,16 @@
+.settings-dialog { width: min(680px, calc(100vw - 48px)); height: min(620px, calc(100dvh - 48px)); }
+.settings-dialog-content { display: block; padding: 24px; }
+.settings-dialog-content > section { max-width: 600px; margin: 0 auto; }
+.settings-dialog-content h3 { color: var(--ink); font-size: 15px; }
+.settings-intro, .settings-maintenance, .settings-legacy p { margin: 8px 0 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.settings-summary { margin: 20px 0 0; }
+.settings-summary > div { display: grid; grid-template-columns: minmax(110px, 1fr) minmax(0, 2fr); gap: 16px; align-items: baseline; padding: 12px 0; border-bottom: 1px solid var(--hairline); font-size: 14px; }
+.settings-summary dt { color: var(--muted); }
+.settings-summary dd { min-width: 0; margin: 0; color: var(--ink); overflow-wrap: anywhere; }
+.settings-maintenance { margin-top: 20px; }
+@media (max-width: 700px) {
+  .settings-dialog-backdrop { padding: var(--safe-area-top) var(--safe-area-right) var(--safe-area-bottom) var(--safe-area-left); }
+  .settings-dialog { width: 100%; height: min(620px, var(--mobile-viewport-height, 100dvh)); max-height: var(--mobile-viewport-height, 100dvh); border-radius: 0; }
+  .settings-dialog-content { padding: 20px max(16px, var(--safe-area-right)) calc(20px + var(--safe-area-bottom)) max(16px, var(--safe-area-left)); }
+  .settings-summary > div { grid-template-columns: minmax(90px, 1fr) minmax(0, 2fr); }
+}

@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { requireAuth } from "@/lib/auth";
-import { ChatConfigurationError, getChatConfig, getLightChatConfig, configureRagThinking } from "@/lib/ai-config";
+import { ChatConfigurationError, getChatConfig, getLightChatConfig, configureRagThinking, snapshotAiEnvironment } from "@/lib/ai-config";
 import { getMcpConfig, McpConfigurationError } from "@/lib/mcp-config";
 import { parseRagHistory } from "@/lib/rag-answer";
 import { createRagQueryStream } from "@/lib/rag-query";
@@ -28,11 +28,11 @@ export async function POST(request: NextRequest) {
     const question = typeof body?.question === "string" ? body.question.trim() : "";
     if (!question || question.length > 2000) return fail("问题必须为 1 至 2000 字", 400, "RAG_INVALID_INPUT");
     if (body.mode !== undefined && body.mode !== "logs_only" && body.mode !== "logs_and_general") return fail("回答模式无效", 400, "RAG_INVALID_INPUT");
-    const chat = configureRagThinking(getChatConfig()), lightChat = getLightChatConfig();
+    const env = snapshotAiEnvironment(), chat = configureRagThinking(getChatConfig(env), env), lightChat = getLightChatConfig(env);
     // Same-model understanding/compaction belongs to this RAG request too.
     // An independently selected light model keeps its own provider defaults.
     if (lightChat.model === chat.model && chat.thinkingMode) lightChat.thinkingMode = chat.thinkingMode;
-    const config = { chat, lightChat, mcp: getMcpConfig() };
+    const config = { chat, lightChat, mcp: getMcpConfig(), executionEnv: env };
     const tasks = currentRagTaskRuntime();
     const lease = tasks?.store.legacy(tasks.owner);
     if (tasks && !lease) return fail("问答正在执行，请稍后重试", 429, "RAG_BUSY");

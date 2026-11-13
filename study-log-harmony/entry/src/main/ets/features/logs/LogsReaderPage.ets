@@ -2690,6 +2690,7 @@ export struct LogsReaderPage {
           if (this.isWide()) {
             BackToTopControl({ visible: !this.sourceMode && this.previewOffset > 8,
               progress: this.previewProgress, scrollOffset: this.previewOffset,
+              holdWhileFocused: !this.splitMode,
               onBackToTop: () => this.returnToTop() })
               .margin({ right: 14, bottom: 14 }).zIndex(3)
           }

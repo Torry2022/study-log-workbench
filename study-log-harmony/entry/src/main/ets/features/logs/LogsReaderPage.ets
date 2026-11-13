@@ -2522,6 +2522,40 @@ export struct LogsReaderPage {
         this.heading()
         Stack({ alignContent: Alignment.TopEnd }) {
           Row() {
+            Row() {
+              Stack({ alignContent: Alignment.TopEnd }) {
+              ContentRefresh({ refreshEnabled: !this.sourceMode && !this.session.isDirty() &&
+                !this.documents.dayRequestLoading && !this.documents.saving, refreshId: 'logs_content_refresh',
+                onRefresh: () => this.refreshCurrentDay(this.session.selectedDate), content: () => {
+                this.previewReader()
+              } }).width('100%').height('100%')
+              if (!this.previewText.trim() && this.readerReady) {
+                Column({ space: 8 }) {
+                  SymbolGlyph($r('sys.symbol.doc_text')).fontSize(20).fontColor([$r('app.color.muted_soft')])
+                  Text('暂无正文').fontSize(13).fontColor($r('app.color.muted'))
+                }.width('100%').height('100%').justifyContent(FlexAlign.Center)
+                  .backgroundColor($r('app.color.canvas')).hitTestBehavior(HitTestMode.None)
+              }
+              if (!this.readerReady && !this.renderedPreviewDate && !this.sourceMode) {
+                Column() {
+                  LoadingProgress().width(26).height(26).color($r('app.color.primary'))
+                }.width('100%').height('100%').justifyContent(FlexAlign.Center)
+                  .backgroundColor($r('app.color.canvas')).zIndex(2)
+                  .hitTestBehavior(HitTestMode.None)
+              }
+              if (this.isWide() && !this.reading.logsReadingMode && !this.sourceMode && !this.splitMode &&
+                this.readerReady && this.renderedPreviewDate === this.session.selectedDate) {
+                Column() { this.readingModeEntryButton() }
+                  .width(36).height(36).margin({ top: 16, right: 16 }).zIndex(3)
+              }
+              }.layoutWeight(1).height('100%')
+              if (this.showDesktopOutline()) {
+                Column() { this.desktopOutline(true) }.width(224).height('100%')
+              }
+            }.width(this.isWide() && this.splitMode ? '50%' :
+              (this.sourceMode || this.splitMode && !this.isWide() ? 0 : '100%'))
+              .height('100%').visibility(this.sourceMode || this.splitMode && !this.isWide() ?
+                Visibility.None : Visibility.Visible)
             Column() {
               if (this.pendingImageCount > 0) {
                 Row({ space: 8 }) {
@@ -2557,42 +2591,8 @@ export struct LogsReaderPage {
               .width(this.isWide() && this.splitMode ? '50%' : (this.sourceMode || this.splitMode ? '100%' : 0))
               .height('100%')
               .visibility(this.sourceMode || this.splitMode ? Visibility.Visible : Visibility.None)
-              .border({ width: { right: this.isWide() && this.splitMode ? 1 : 0 },
+              .border({ width: { left: this.isWide() && this.splitMode ? 1 : 0 },
                 color: $r('app.color.hairline') })
-            Row() {
-              Stack({ alignContent: Alignment.TopEnd }) {
-              ContentRefresh({ refreshEnabled: !this.sourceMode && !this.session.isDirty() &&
-                !this.documents.dayRequestLoading && !this.documents.saving, refreshId: 'logs_content_refresh',
-                onRefresh: () => this.refreshCurrentDay(this.session.selectedDate), content: () => {
-                this.previewReader()
-              } }).width('100%').height('100%')
-              if (!this.previewText.trim() && this.readerReady) {
-                Column({ space: 8 }) {
-                  SymbolGlyph($r('sys.symbol.doc_text')).fontSize(20).fontColor([$r('app.color.muted_soft')])
-                  Text('暂无正文').fontSize(13).fontColor($r('app.color.muted'))
-                }.width('100%').height('100%').justifyContent(FlexAlign.Center)
-                  .backgroundColor($r('app.color.canvas')).hitTestBehavior(HitTestMode.None)
-              }
-              if (!this.readerReady && !this.renderedPreviewDate && !this.sourceMode) {
-                Column() {
-                  LoadingProgress().width(26).height(26).color($r('app.color.primary'))
-                }.width('100%').height('100%').justifyContent(FlexAlign.Center)
-                  .backgroundColor($r('app.color.canvas')).zIndex(2)
-                  .hitTestBehavior(HitTestMode.None)
-              }
-              if (this.isWide() && !this.reading.logsReadingMode && !this.sourceMode && !this.splitMode &&
-                this.readerReady && this.renderedPreviewDate === this.session.selectedDate) {
-                Column() { this.readingModeEntryButton() }
-                  .width(36).height(36).margin({ top: 16, right: 16 }).zIndex(3)
-              }
-              }.layoutWeight(1).height('100%')
-              if (this.showDesktopOutline()) {
-                Column() { this.desktopOutline(true) }.width(224).height('100%')
-              }
-            }.width(this.isWide() && this.splitMode ? '50%' :
-              (this.sourceMode || this.splitMode && !this.isWide() ? 0 : '100%'))
-              .height('100%').visibility(this.sourceMode || this.splitMode && !this.isWide() ?
-                Visibility.None : Visibility.Visible)
           }.width('100%').height('100%')
           if (!this.readFailed && (this.documents.dayRequestLoading || this.logNavigation.daysLoading ||
             !this.sourceMode && this.renderedPreviewDate.length > 0 && !this.readerReady)) {

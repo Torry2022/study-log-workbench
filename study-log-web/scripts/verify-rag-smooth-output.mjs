@@ -146,9 +146,23 @@ try {
 
     await page.emulateMedia({reducedMotion:'no-preference'});await fresh();const backgroundTask=await send();await write(backgroundTask,burst);
     await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));});
+    await write(backgroundTask,'后台接收的真实尾段。');
+    const backgroundSession = new URL(page.url()).searchParams.get('session');
+    const instanceId = JSON.parse(await fs.readFile(path.join(data, '.instance.json'), 'utf8')).id;
+    const headers = { 'X-Study-Log-Instance': instanceId };
+    const received = await until(async () => {
+      const listed = await page.request.get(`${base}/api/rag/tasks?sessionId=${backgroundSession}`, { headers });
+      assert.equal(listed.status(), 200);
+      const task = (await listed.json()).tasks.find(item => item.sessionId === backgroundSession && item.state === 'running');
+      if (!task) return '';
+      const response = await page.request.get(`${base}/api/rag/tasks/${task.id}`, { headers });
+      assert.equal(response.status(), 200);
+      return (await response.json()).task.partial;
+    }, value => value.includes(burst) && value.includes('后台接收的真实尾段。'));
+    assert.ok(received.includes(burst), 'the hidden task continues receiving content on the server');
+    await page.evaluate(()=>{delete document.hidden;document.dispatchEvent(new Event('visibilitychange'));});
     await expect(page.locator('.rag-answer')).toContainText(burst);
-    await write(backgroundTask,'后台接收的真实尾段。');await expect(page.locator('.rag-answer')).toContainText('后台接收的真实尾段。');
-    await page.evaluate(()=>{delete document.hidden;document.dispatchEvent(new Event('visibilitychange'));});finish(backgroundTask);
+    await expect(page.locator('.rag-answer')).toContainText('后台接收的真实尾段。');finish(backgroundTask);
     await expect(page.getByRole('button',{name:'停止生成',exact:true})).toHaveCount(0);record(`${engine}: synthetic page visibility lifecycle flushes without replaying a backlog`);
 
     await fresh();const cancelled=await send();await capture();await write(cancelled,burst);

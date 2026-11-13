@@ -643,7 +643,7 @@ export struct LogsReaderPage {
     const navigation = stage < 8 ? toolbarActionWidth('上一篇') - 4 : 32;
     let required = 2 * (width < 440 ? 8 : 16) + this.headerDateWidth + 2 * navigation + 24 + 3 * gap;
     if (this.statsReturnAvailable) required += (stage < 8 ? toolbarActionWidth('返回统计') : 32) + gap;
-    required += stage >= 14 ? 40 : 3 * (stage < 7 ? toolbarActionWidth('浏览') : 40) + 6;
+    required += stage >= 14 ? 40 : 3 * (stage < 7 ? toolbarActionWidth('浏览') : 34) + 6;
     required += (stage < 6 ? toolbarActionWidth('保存中') : 40) + 40;
     let count = 3;
     const labels = ['刷新中', '导出', '历史版本', '删除'];

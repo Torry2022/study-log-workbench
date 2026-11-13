@@ -31,8 +31,8 @@ export struct LogDisplayModeControl {
         }
       }.justifyContent(FlexAlign.Center)
     }
-    .width(this.showLabels ? toolbarActionWidth('浏览') : 40)
-    .height(34).padding({ left: 10, right: 10 }).borderRadius(6)
+    .width(this.showLabels ? toolbarActionWidth('浏览') : 34)
+    .height(34).padding({ left: this.showLabels ? 10 : 0, right: this.showLabels ? 10 : 0 }).borderRadius(6)
     .backgroundColor(Color.Transparent)
     .accessibilityText(label).bindTips(this.showLabels ? undefined : label, WORKSPACE_TIPS)
     .onClick(() => this.onMode(mode)).id(`log_mode_${mode}`)
@@ -78,7 +78,7 @@ export struct LogDisplayModeControl {
           this.modeButton('source', '源码', $r('app.media.edit_3'))
           this.modeButton('split', '分屏', $r('app.media.tab_file_text'))
         }.height(40).padding(2)
-      }.width(3 * (this.showLabels ? toolbarActionWidth('浏览') : 40) + 6)
+      }.width(3 * (this.showLabels ? toolbarActionWidth('浏览') : 34) + 6)
         .height(40).backgroundColor($r('app.color.surface_soft'))
         .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8)
     }

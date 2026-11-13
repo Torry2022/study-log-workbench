@@ -498,10 +498,18 @@ export struct LogsReaderPage {
     return true;
   }
 
+  private returnToTop(): void {
+    this.previewTopRequest++;
+    const key = this.session.selectedDate;
+    if (this.splitMode && this.isWide() && key) {
+      this.editorSplitScrollRequest = JSON.stringify({ key: key, progress: 0, sequence: ++this.splitScrollSequence });
+    }
+  }
+
   private handleLogKey(event: KeyEvent): boolean {
     if (this.shortcutBlocked() || this.selectedModule !== 0) return false;
     if (workspaceKey(event, KeyCode.KEYCODE_DPAD_UP, false, false, true)) {
-      this.previewTopRequest++;
+      this.returnToTop();
       return true;
     }
     if (workspaceKey(event, KeyCode.KEYCODE_S, true)) {
@@ -2682,7 +2690,7 @@ export struct LogsReaderPage {
           if (this.isWide()) {
             BackToTopControl({ visible: !this.sourceMode && this.previewOffset > 8,
               progress: this.previewProgress, scrollOffset: this.previewOffset,
-              onBackToTop: () => this.previewTopRequest++ })
+              onBackToTop: () => this.returnToTop() })
               .margin({ right: 14, bottom: 14 }).zIndex(3)
           }
         }.layoutWeight(1).height('100%')

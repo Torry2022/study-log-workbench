@@ -55,3 +55,30 @@ test('only wide split owns the source left divider and retains the workspace bot
   assert.match(source, /\.margin\(\{ right: 14, bottom: 14 \}\)\.zIndex\(3\)/);
   assert.match(source, /splitScrollEnabled: this\.splitMode && this\.isWide\(\)/);
 });
+
+test('workspace return-to-top resets both panes only in wide split', () => {
+  const method = source.match(/private returnToTop\(\): void \{([\s\S]+?)\n  \}/);
+  assert.ok(method);
+  assert.match(source, /onBackToTop: \(\) => this\.returnToTop\(\)/);
+  const returnToTop = new Function(method[1]);
+  for (const [wide, split, key] of [[true, true, 'current'], [true, false, 'current'], [false, true, 'current'], [true, true, '']]) {
+    const page = {
+      isLargeWorkspace: () => wide,
+      isWide: () => wide,
+      splitMode: split,
+      logSession: { editorDocumentKey: key },
+      session: { selectedDate: key },
+      previewTopRequest: 3,
+      splitScrollSequence: 8,
+      editorSplitScrollRequest: ''
+    };
+    returnToTop.call(page);
+    assert.equal(page.previewTopRequest, 4);
+    if (wide && split && key) {
+      assert.deepEqual(JSON.parse(page.editorSplitScrollRequest), { key, progress: 0, sequence: 9 });
+    } else {
+      assert.equal(page.editorSplitScrollRequest, '');
+      assert.equal(page.splitScrollSequence, 8);
+    }
+  }
+});

@@ -699,7 +699,7 @@ export struct QaPage {
                   }
                   .width(42).height(42).padding(0).borderRadius(6).clip(true)
                   .id('qa_send')
-                  .backgroundColor($r('app.color.primary'))
+                  .backgroundColor(this.data.sending ? $r('app.color.surface_dark') : $r('app.color.primary'))
                   .fontColor(Color.White)
                   .opacity(this.data.sending && (this.data.receivedDone || !!this.data.pendingWrite) ||
                     !this.data.sending && (this.data.sessionLoading || this.data.question.trim().length === 0) ? 0.58 : 1)

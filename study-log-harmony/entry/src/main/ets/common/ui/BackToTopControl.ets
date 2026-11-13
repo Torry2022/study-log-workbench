@@ -5,6 +5,7 @@ export struct BackToTopControl {
   @Prop @Watch('scrollChanged') visible: boolean = false;
   @Prop @Watch('scrollChanged') scrollOffset: number = 0;
   @Prop progress: number = 0;
+  @Prop @Watch('scrollChanged') holdWhileFocused: boolean = true;
   onBackToTop: () => void = () => {};
   @State private idle: boolean = false;
   @State private hovered: boolean = false;
@@ -29,7 +30,7 @@ export struct BackToTopControl {
   private scrollChanged(): void {
     this.clearIdleTimer();
     this.idle = false;
-    if (this.visible && !this.hovered && !this.focused) {
+    if (this.visible && !this.hovered && !(this.holdWhileFocused && this.focused)) {
       this.idleTimer = setTimeout(() => {
         this.idleTimer = -1;
         this.idle = true;
@@ -38,7 +39,7 @@ export struct BackToTopControl {
   }
 
   private shown(): boolean {
-    return this.visible && (!this.idle || this.hovered || this.focused);
+    return this.visible && (!this.idle || this.hovered || (this.holdWhileFocused && this.focused));
   }
 
   private normalizedProgress(): number {

@@ -60,6 +60,7 @@ test('workspace return-to-top resets both panes only in wide split', () => {
   const method = source.match(/private returnToTop\(\): void \{([\s\S]+?)\n  \}/);
   assert.ok(method);
   assert.match(source, /onBackToTop: \(\) => this\.returnToTop\(\)/);
+  assert.match(source, /holdWhileFocused: !this\.splitMode,/);
   const returnToTop = new Function(method[1]);
   for (const [wide, split, key] of [[true, true, 'current'], [true, false, 'current'], [false, true, 'current'], [true, true, '']]) {
     const page = {

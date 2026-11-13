@@ -17,8 +17,10 @@ const env = { ...process.env, STUDY_LOG_DESKTOP_PROFILE: profile }; delete env.E
 let app, page; const report = { checks: [], errors: [], installed: false, paidCalls: 0 };
 try {
   app = await electron.launch({ executablePath: exe, args: [], env, timeout: 60000 });
-  page = await workspacePage(app); page.on('pageerror', error => report.errors.push(error.message));
+  page = await workspacePage(app); page.on('pageerror', error => report.errors.push(error.message)); await page.emulateMedia({ reducedMotion: 'reduce' });
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1600, 900));
+  await page.getByText('2026-07', { exact: true }).click();
+  await expect(page.locator('.reader .markdown-preview')).toContainText('第二天');
   await expect(page.locator('.reader .markdown-preview')).toBeVisible();
   await page.getByRole('button', { name: '分屏', exact: true }).click();
   const preview = page.locator('.mode-split > .reader-preview-pane'), editor = page.locator('.mode-split > .source-workspace'), scroll = editor.locator('.cm-scroller');
@@ -37,6 +39,7 @@ try {
   const current = await page.locator('.reader-toolbar-log').innerText();
   await page.locator('.reader-navigator-desktop .day-nav-button:not([disabled])').first().click();
   await expect.poll(() => page.locator('.reader-toolbar-log').innerText()).not.toBe(current);
+  await expect(page.locator('.workspace-transition-snapshot')).toHaveCount(0);
   assert.ok((await preview.boundingBox()).x < (await editor.boundingBox()).x);
   report.checks.push('wide: split order, boundary, bidirectional scroll, mode and document switching');
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1100, 900));

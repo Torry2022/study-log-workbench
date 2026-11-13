@@ -44,13 +44,14 @@ test('native split order and widths preserve independent and narrow-window modes
     assert.equal(evaluate(previewVisibility, wide, sourceMode, splitMode), pv);
   }
 });
-test('only wide split owns the source left divider and moves the preview floating control', () => {
+test('only wide split owns the source left divider and retains the workspace bottom-right control', () => {
   const border = source.slice(sourceStart).match(/\.border\(\{\s*width: \{ left: ([^}]+)\}/);
   assert.ok(border);
   for (const [wide, split, expected] of [[true, true, 1], [true, false, 0], [false, true, 0]]) {
     assert.equal(evaluate(border[1], wide, false, split), expected);
   }
   assert.doesNotMatch(source.slice(sourceStart, sourceStart + 4400), /right: this\.isWide\(\) && this\.splitMode \? 1/);
-  assert.match(source, /\.position\(\{ right: this\.splitMode \? '50%' : 0, bottom: 0 \}\)/);
+  assert.doesNotMatch(source, /\.position\(\{ right: this\.splitMode \? '50%' : 0, bottom: 0 \}\)/);
+  assert.match(source, /\.margin\(\{ right: 14, bottom: 14 \}\)\.zIndex\(3\)/);
   assert.match(source, /splitScrollEnabled: this\.splitMode && this\.isWide\(\)/);
 });

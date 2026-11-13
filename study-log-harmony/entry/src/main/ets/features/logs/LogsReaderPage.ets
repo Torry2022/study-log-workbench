@@ -2682,7 +2682,6 @@ export struct LogsReaderPage {
               progress: this.previewProgress, scrollOffset: this.previewOffset,
               onBackToTop: () => this.previewTopRequest++ })
               .margin({ right: 14, bottom: 14 }).zIndex(3)
-              .position({ right: this.splitMode ? '50%' : 0, bottom: 0 })
           }
         }.layoutWeight(1).height('100%')
         if (this.isWide()) {

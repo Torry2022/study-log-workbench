@@ -40,7 +40,18 @@ try {
   await page.locator('[name=key]').fill('synthetic-key'); await page.locator('[name=model]').fill('synthetic-model');
   await page.screenshot({ path: path.join(evidence, 'ai.png') });
   await page.getByRole('button', { name: '保存并开始使用' }).click().catch(error => { if (!page.isClosed()) throw error; });
-  await workspace();
+  const desktop = await workspace();
+  await app.evaluate(({ BrowserWindow, webContents }) => { BrowserWindow.getAllWindows().find(item => item.isVisible()).setSize(1600, 900); webContents.getAllWebContents().find(item => /^https?:/.test(item.getURL())).setZoomFactor(1.25); });
+  await desktop.waitForTimeout(500);
+  const geometry = await desktop.locator('.reader-log-controls').evaluate(controls => {
+    const rect = controls.getBoundingClientRect(); const groups = [...controls.children].filter(item => item.getClientRects().length);
+    const gap = (parseFloat(getComputedStyle(controls).columnGap) || 0) * (controls.offsetWidth ? rect.width / controls.offsetWidth : 1);
+    return { available: rect.width, right: rect.right, viewport: innerWidth, required: groups.reduce((sum, item) => sum + item.getBoundingClientRect().width, 0) + gap * Math.max(0, groups.length - 1) };
+  });
+  assert.ok(geometry.required <= geometry.available + 1, `Zoomed Electron toolbar overflows: ${JSON.stringify(geometry)}`);
+  assert.ok(geometry.right <= geometry.viewport + 1, `Zoomed Electron toolbar exceeds viewport: ${JSON.stringify(geometry)}`);
+  await desktop.screenshot({ path: path.join(evidence, 'workspace-zoom.png') });
+  await app.evaluate(({ webContents }) => webContents.getAllWebContents().find(item => /^https?:/.test(item.getURL())).setZoomFactor(1));
   const saved = JSON.parse(await fs.readFile(path.join(root, 'config/ai-settings.json'), 'utf8'));
   assert.equal(saved.values.CHAT_API_URL, 'https://api.deepseek.com/chat/completions'); assert.equal(saved.values.CHAT_MODEL, 'synthetic-model'); assert.equal(saved.values.CHAT_API_KEY, 'synthetic-key');
   await close();

@@ -14,8 +14,10 @@ export function fitLogToolbar(controls: HTMLElement) {
   for (let count = 0; count <= steps.length; count++) {
     controls.dataset.toolbarLayout = steps.slice(0, count).join(" ");
     const groups = [...controls.children].filter(element => element.getClientRects().length);
-    const gap = parseFloat(getComputedStyle(controls).columnGap) || 0;
+    const available = controls.getBoundingClientRect().width;
+    const scale = controls.offsetWidth ? available / controls.offsetWidth : 1;
+    const gap = (parseFloat(getComputedStyle(controls).columnGap) || 0) * scale;
     const required = groups.reduce((width, element) => width + element.getBoundingClientRect().width, 0) + gap * Math.max(0, groups.length - 1);
-    if (required <= controls.clientWidth + 0.5) break;
+    if (required <= available + 0.5) break;
   }
 }

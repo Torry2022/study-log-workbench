@@ -21,9 +21,11 @@ export function CompactDayNavigator({ sidebar, marker, selectedDate, previousDat
     const update = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
-        const rect = sidebar.current?.getBoundingClientRect();
+        const element = sidebar.current;
+        const rect = element?.getBoundingClientRect();
         const visible = marker.current && marker.current.getBoundingClientRect().top <= 0;
-        setPosition(visible && rect ? { left: rect.left + 12, width: rect.width - 24 } : null);
+        const scale = rect && element?.offsetWidth ? rect.width / element.offsetWidth : 1;
+        setPosition(visible && rect ? { left: rect.left / scale + 12, width: rect.width / scale - 24 } : null);
         if (!visible) setOpen(false);
       });
     };

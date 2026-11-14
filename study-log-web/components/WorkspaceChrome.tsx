@@ -92,18 +92,31 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, module
   useEffect(() => {
     if (!hasInspector || !active) return;
     const inspectorElement = writingPanel.current;
+    const workspace = inspectorElement?.closest<HTMLElement>(".workspace");
     const topbar = inspectorElement?.closest(".app-shell")?.querySelector(".topbar");
-    if (!inspectorElement || !topbar) return;
+    if (!inspectorElement || !workspace || !topbar) return;
+    const visualViewport = compact ? window.visualViewport : null;
     const updateHeight = () => {
-      // The desktop topbar scrolls away; subtract only its still-visible portion.
-      const visible = Math.max(0, Math.min(window.innerHeight, topbar.getBoundingClientRect().bottom));
-      inspectorElement.style.setProperty("--inspector-topbar-visible", `${visible}px`);
+      // The desktop inspector sticks at the viewport top after its grid scrolls past it.
+      const viewportHeight = visualViewport?.height ?? window.innerHeight;
+      const bounds = workspace.getBoundingClientRect();
+      const visible = compact ? 0 : Math.max(0, Math.min(viewportHeight, bounds.top));
+      const scale = workspace.offsetWidth ? bounds.width / workspace.offsetWidth : 1;
+      inspectorElement.style.setProperty("--inspector-available-height", `${(viewportHeight - visible) / scale}px`);
     };
     updateHeight();
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(topbar);
     window.addEventListener("scroll", updateHeight, { passive: true });
     window.addEventListener("resize", updateHeight);
-    return () => { window.removeEventListener("scroll", updateHeight); window.removeEventListener("resize", updateHeight); };
-  }, [hasInspector, active]);
+    visualViewport?.addEventListener("resize", updateHeight);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("scroll", updateHeight);
+      window.removeEventListener("resize", updateHeight);
+      visualViewport?.removeEventListener("resize", updateHeight);
+    };
+  }, [hasInspector, active, compact]);
   const [helpOpen, setHelpOpen] = useState(false);
   const [newDateFocus, setNewDateFocus] = useState(0);
   const shortcutPending = useRef(false);

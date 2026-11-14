@@ -1,7 +1,7 @@
 /* Layout and controls follow the theme-aware inspector. */
 .public-reading-shell .workspace.with-writing { grid-template-columns: 260px minmax(0, 1fr) var(--inspector-width, 52px); }
 .public-reading-shell .workspace.with-writing.sidebar-collapsed { grid-template-columns: 52px minmax(0, 1fr) var(--inspector-width, 52px); }
-.writing-inspector { position: sticky; top: 0; align-self: start; height: calc(100svh - var(--inspector-topbar-visible, 64px)); max-height: calc(100svh - var(--inspector-topbar-visible, 64px)); min-width: 0; border-left: 1px solid var(--hairline); background: var(--canvas); color: var(--body); }
+.writing-inspector { position: sticky; top: 0; align-self: start; height: var(--inspector-available-height, calc(100svh - 64px)); max-height: var(--inspector-available-height, calc(100svh - 64px)); min-width: 0; border-left: 1px solid var(--hairline); background: var(--canvas); color: var(--body); }
 .writing-inspector:not(.expanded) { background: var(--surface-soft); }
 .writing-inspector-content:not([hidden]) { height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr); }
 .writing-inspector :is(.writing-panel, .highlight-panel) { overscroll-behavior-y: contain; }
@@ -40,7 +40,7 @@
 }
 @media (max-width: 1023px) {
   .public-reading-shell .workspace.with-writing, .public-reading-shell .workspace.with-writing.sidebar-collapsed { grid-template-columns: minmax(0, 1fr); }
-  .writing-inspector { position: fixed; inset: 0 0 0 auto; z-index: 92; width: min(420px, 94vw); height: var(--mobile-viewport-height, 100dvh); max-height: var(--mobile-viewport-height, 100dvh); visibility: hidden; pointer-events: none; }
+  .writing-inspector { position: fixed; inset: 0 0 0 auto; z-index: 92; width: min(420px, 94vw); height: var(--inspector-available-height, 100dvh); max-height: var(--inspector-available-height, 100dvh); visibility: hidden; pointer-events: none; }
   .writing-inspector.mobile-open { visibility: visible; pointer-events: auto; }
 }
 

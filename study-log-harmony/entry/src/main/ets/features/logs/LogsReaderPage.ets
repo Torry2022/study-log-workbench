@@ -129,7 +129,9 @@ export struct LogsReaderPage {
   private desktopOutlineScroller: Scroller = new Scroller();
   @State private headerWidth: number = 600;
   @State private headerDateWidth: number = 190;
-  @State private toolbarStage: number = 14;
+  @State private toolbarHeaderActions: string[] = [];
+  @State private toolbarLabelGroups: string[] = [];
+  @State private toolbarModesExpanded: boolean = false;
   private toolbarMotionWidth: number = -1;
   @State private toolbarActionWidths: number[] = [];
   @State private sourceMode: boolean = false;
@@ -646,40 +648,54 @@ export struct LogsReaderPage {
     });
   }
 
-  private toolbarRequiredWidth(stage: number, width: number): number {
-    const gap = width < 440 ? 4 : 8;
-    const navigation = stage < 8 ? toolbarActionWidth('上一篇') - 4 : 32;
-    let required = 2 * (width < 440 ? 8 : 16) + this.headerDateWidth + 2 * navigation + 24 + 3 * gap;
-    if (this.statsReturnAvailable) required += (stage < 8 ? toolbarActionWidth('返回统计') : 32) + gap;
-    required += stage >= 14 ? 40 : 3 * (stage < 7 ? toolbarActionWidth('浏览') : 34) + 6;
-    required += (stage < 6 ? toolbarActionWidth('保存中') : 40) + 40;
-    let count = 3;
-    const labels = ['刷新中', '导出', '历史版本', '删除'];
-    for (let index = 0; index < labels.length; index++) {
-      if (stage >= 13 - index) continue;
-      required += stage < 5 - index ? toolbarActionWidth(labels[index]) : 40;
-      count++;
+  private iconHeaderWidth(): number {
+    const gap = this.headerWidth < 440 ? 4 : 8;
+    return (this.headerWidth < 440 ? 16 : 32) + this.headerDateWidth + 80 +
+      (this.statsReturnAvailable ? 32 + gap : 0) + 8 + 5 * gap + 108 + 80;
+  }
+
+  private toolbarActionPriority(): string[] {
+    const actions = ['refresh', 'export', 'backup', 'delete'];
+    return this.sourceMode || this.splitMode ? actions.concat(['link', 'image', 'discard', 'find']) : actions;
+  }
+
+  private toolbarLabelCost(group: string): number {
+    if (group === 'navigation') {
+      return 2 * (toolbarActionWidth('上一篇') - 4 - 32) +
+        (this.statsReturnAvailable ? toolbarActionWidth('返回统计') - 32 : 0);
     }
-    if ((this.sourceMode || this.splitMode) && stage < 9) {
-      for (const label of ['内部链接', '插入图片', '放弃修改', '查找替换']) {
-        required += stage < 1 ? toolbarActionWidth(label) : 40;
-        count++;
-      }
-    }
-    return required + (count - 1) * gap;
+    if (group === 'mode') return 3 * (toolbarActionWidth('浏览') - 34);
+    const labels: Record<string, string> = { 'save': '保存中', 'refresh': '刷新中', 'export': '导出', 'backup': '历史版本',
+      'delete': '删除', 'link': '内部链接', 'image': '插入图片', 'discard': '放弃修改', 'find': '查找替换' };
+    return toolbarActionWidth(labels[group]) - 40;
   }
 
   private updateToolbarWidth(width: number): void {
     if (this.toolbarMotionWidth >= 0) width = this.toolbarMotionWidth;
     this.headerWidth = width;
-    for (let stage = 0; stage <= 14; stage++) {
-      // Keep the established upgrade margin; shrink immediately before overlap.
-      const margin = stage < this.toolbarStage ? 12 : 0;
-      if (this.toolbarRequiredWidth(stage, width) + margin <= width || stage === 14) {
-        this.toolbarStage = stage;
-        return;
+    const priority = this.toolbarActionPriority();
+    const actions: string[] = [];
+    const labels: string[] = [];
+    let required = this.iconHeaderWidth();
+    const expanded = width >= required + (this.toolbarModesExpanded ? 0 : 12);
+    const iconWidth = 40 + (width < 440 ? 4 : 8);
+    // Reuse the personal client's per-action plan: fit icons before adding priority labels.
+    for (const action of expanded ? priority : []) {
+      if (width < required + iconWidth + (this.toolbarHeaderActions.includes(action) ? 0 : 12)) break;
+      required += iconWidth;
+      actions.push(action);
+    }
+    if (expanded && actions.length === priority.length) {
+      for (const group of ['navigation', 'mode', 'save'].concat(priority)) {
+        const cost = this.toolbarLabelCost(group);
+        if (width < required + cost + (this.toolbarLabelGroups.includes(group) ? 0 : 12)) break;
+        required += cost;
+        labels.push(group);
       }
     }
+    this.toolbarModesExpanded = expanded;
+    this.toolbarHeaderActions = actions;
+    this.toolbarLabelGroups = labels;
   }
 
   private desktopActionSlotWidth(action: string, label: string): number {
@@ -694,22 +710,19 @@ export struct LogsReaderPage {
   }
 
   private showToolbarLabels(group: string = 'mode'): boolean {
-    const groups = ['editor', 'delete', 'backup', 'export', 'refresh', 'save', 'mode', 'navigation'];
-    const priority = groups.indexOf(group);
-    return priority >= 0 && this.toolbarStage < priority + 1;
+    return this.toolbarLabelGroups.includes(group);
   }
 
   private expandedModeSelector(): boolean {
-    return this.isWide() && this.toolbarStage < 14;
+    return this.isWide() && this.toolbarModesExpanded;
   }
 
   private documentActionsInHeader(action: string): boolean {
-    const priority = ['refresh', 'export', 'backup', 'delete'].indexOf(action);
-    return this.isWide() && priority >= 0 && this.toolbarStage < 13 - priority;
+    return this.isWide() && this.toolbarHeaderActions.includes(action);
   }
 
-  private editorActionsInHeader(): boolean {
-    return this.isWide() && this.toolbarStage < 9 && (this.sourceMode || this.splitMode);
+  private editorActionsInHeader(action: string): boolean {
+    return this.isWide() && (this.sourceMode || this.splitMode) && this.toolbarHeaderActions.includes(action);
   }
 
   private showDesktopOutline(): boolean {
@@ -1687,9 +1700,11 @@ export struct LogsReaderPage {
       } else {
         this.desktopMoreItem($r('app.media.edit_3'), '编辑', this.editorReady && (this.sourceMode || this.splitMode),
           () => this.formatMenuOpen = true, true)
-        if ((this.sourceMode || this.splitMode) && !this.editorActionsInHeader()) {
+        if ((this.sourceMode || this.splitMode) && !this.editorActionsInHeader('link')) {
           this.desktopMoreItem($r('app.media.link_2'), '内部链接', this.editorReady && !this.linkOpening,
             () => this.openLink())
+        }
+        if ((this.sourceMode || this.splitMode) && !this.editorActionsInHeader('find')) {
           this.desktopMoreItem($r('app.media.search'), '查找替换', this.editorReady,
             () => this.editor.command('find'))
         }
@@ -1702,9 +1717,11 @@ export struct LogsReaderPage {
           () => this.pendingOutlineOpen = true)
         this.desktopMoreItem($r('app.media.panel_right_open'), 'AI 工具', !!this.session.day,
           () => this.openAiTools())
-        if (!this.editorActionsInHeader()) {
+        if (!this.editorActionsInHeader('image')) {
           this.desktopMoreItem($r('app.media.upload'), '插入图片', !!this.session.day && !this.imageBusy,
             () => this.insertImages())
+        }
+        if (!this.editorActionsInHeader('discard')) {
           this.desktopMoreItem($r('app.media.eye'), '放弃修改', this.editorReady && this.session.isDirty(),
             () => this.discardDraft())
         }
@@ -1892,19 +1909,25 @@ export struct LogsReaderPage {
   @Builder
   private editorActions() {
     Row({ space: this.headerWidth < 440 ? 4 : 8 }) {
-      if (this.editorActionsInHeader()) {
+      if (this.editorActionsInHeader('link')) {
         ToolbarAction({ label: '内部链接', icon: $r('app.media.link_2'), iconSize: 15,
-          showLabel: this.showToolbarLabels('editor'), available: this.editorReady && !this.linkOpening,
-          onAction: () => this.openLink() })
+          showLabel: this.showToolbarLabels('link'), available: this.editorReady && !this.linkOpening,
+          onAction: () => this.openLink() }).id('log_action_link')
+      }
+      if (this.editorActionsInHeader('image')) {
         ToolbarAction({ label: '插入图片', icon: $r('app.media.upload'), iconSize: 15,
-          showLabel: this.showToolbarLabels('editor'), busy: this.imageBusy, available: !!this.session.day && this.editorReady,
-          onAction: () => this.insertImages() })
+          showLabel: this.showToolbarLabels('image'), busy: this.imageBusy, available: !!this.session.day && this.editorReady,
+          onAction: () => this.insertImages() }).id('log_action_image')
+      }
+      if (this.editorActionsInHeader('discard')) {
         ToolbarAction({ label: '放弃修改', icon: $r('app.media.eye'), iconSize: 15,
-          showLabel: this.showToolbarLabels('editor'), available: this.editorReady && this.session.isDirty(),
-          onAction: () => this.discardDraft() })
+          showLabel: this.showToolbarLabels('discard'), available: this.editorReady && this.session.isDirty(),
+          onAction: () => this.discardDraft() }).id('log_action_discard')
+      }
+      if (this.editorActionsInHeader('find')) {
         ToolbarAction({ label: '查找替换', icon: $r('app.media.search'), iconSize: 15,
-          showLabel: this.showToolbarLabels('editor'), available: this.editorReady,
-          onAction: () => this.editor.command('find') })
+          showLabel: this.showToolbarLabels('find'), available: this.editorReady,
+          onAction: () => this.editor.command('find') }).id('log_action_find')
       }
       LogDisplayModeControl({ sourceMode: this.sourceMode, splitMode: this.splitMode,
         expanded: this.expandedModeSelector(), showLabels: this.showToolbarLabels('mode'),
@@ -2024,7 +2047,7 @@ export struct LogsReaderPage {
   private statsReturnButton() {
     if (this.statsReturnAvailable) {
       ToolbarAction({ label: '返回统计', useSymbol: true, symbol: $r('sys.symbol.chevron_left'),
-        showLabel: this.isWide() && this.toolbarStage < 8, controlHeight: 32, iconWidth: 32,
+        showLabel: this.isWide() && this.showToolbarLabels('navigation'), controlHeight: 32, iconWidth: 32,
         onAction: this.onReturnStats }).id('log_return_stats')
     }
   }

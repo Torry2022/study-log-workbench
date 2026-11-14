@@ -22,7 +22,7 @@ function PasswordDialog({ action, onCancel, onConfirm }: { action: Action; onCan
   </form></div>, document.body);
 }
 
-export function RemoteAiSettings({ initial, onDirty }: { initial: RemoteAiSummary; onDirty: (value: boolean) => void }) {
+export function RemoteAiSettings({ initial, onDirty, onSaved = () => {} }: { initial: RemoteAiSummary; onDirty: (value: boolean) => void; onSaved?: () => void | Promise<void> }) {
   const [saved, setSaved] = useState(initial), [provider, setProvider] = useState<"deepseek" | "custom">(!initial.hasEndpoint ? "deepseek" : initial.provider);
   const [endpoint, setEndpoint] = useState(""), [model, setModel] = useState(initial.model), [lightModel, setLightModel] = useState(initial.lightModel || "");
   const [key, setKey] = useState(""), [removeKey, setRemoveKey] = useState(false), [requiresEndpoint, setRequiresEndpoint] = useState(false);
@@ -63,7 +63,7 @@ export function RemoteAiSettings({ initial, onDirty }: { initial: RemoteAiSummar
       if (!live.current || turn !== generation.current) return;
       if (latest.instanceId !== saved.instanceId) throw Error();
       let previous: { operationId?: string; expectedRevision?: number } | null = null; try { previous = JSON.parse(sessionStorage.getItem(receiptKey) || "null"); } catch { /* Ignore malformed local state. */ }
-      if ((pending && latest.operationId === pending.payload.operationId) || previous?.operationId && latest.operationId === previous.operationId) { receipt(null); setNeedsReview(false); setSaved(latest); setPending(null); setEndpoint(""); setKey(""); setRemoveKey(false); setRequiresEndpoint(false); onDirty(false); setNotice("已确认设置保存成功。"); return; }
+      if ((pending && latest.operationId === pending.payload.operationId && latest.revision > Number(pending.payload.expectedRevision)) || previous?.operationId && latest.operationId === previous.operationId && latest.revision > Number(previous.expectedRevision)) { receipt(null); setNeedsReview(false); setSaved(latest); setPending(null); setEndpoint(""); setKey(""); setRemoveKey(false); setRequiresEndpoint(false); onDirty(false); setNotice("已确认设置保存成功。"); await onSaved(); return; }
       if (!pending && previous && latest.revision === previous.expectedRevision) { receipt(null); setUnresolvedReceipt(false); setNotice("上次设置尚未保存，请重新填写需要修改的内容。"); }
       else if (previous && latest.revision !== previous.expectedRevision && latest.operationId !== previous.operationId) { setUnresolvedReceipt(true); setNotice("上次保存结果无法确认，请核对当前设置。"); }
       if (latest.revision !== saved.revision) { setKey(""); setRemoveKey(false); setModels([]); setChecked(false); setPreview(null); if (provider === "custom" && !endpoint.trim()) setRequiresEndpoint(true); setPending(null); setNotice("设置已在另一处更新。请核对地址并重新填写密钥，其他填写内容仍保留。"); }
@@ -83,8 +83,8 @@ export function RemoteAiSettings({ initial, onDirty }: { initial: RemoteAiSummar
         setPending({ action: "restore", payload: operation }); receipt({ action: "restore", operationId: operation.operationId, expectedRevision: operation.expectedRevision });
         const result = await requestJson<RemoteAiSummary>("/api/settings/ai", { method: "PUT", signal: controller.signal, body: JSON.stringify({ ...operation, password }) });
         if (!live.current || turn !== generation.current) return;
-        if (result.instanceId !== saved.instanceId || result.operationId !== operation.operationId) { setNeedsReview(true); setNotice("暂时无法确认保存结果，请核对最新设置。"); return; }
-        receipt(null); setNeedsReview(false); setSaved(result); setProvider(result.provider); setModel(result.model); setLightModel(result.lightModel || ""); setCapacity(result.contextWindowTokens || ""); setThinking(result.thinking || ""); setCapacityTouched(false); setThinkingTouched(false); setTargetChanged(false); setEndpoint(""); setKey(""); setRemoveKey(false); setPending(null); setPreview(null); onDirty(false); setNotice("设置已保存，将用于新开始的任务。");
+        if (result.instanceId !== saved.instanceId || result.operationId !== operation.operationId || !Number.isSafeInteger(result.revision) || result.revision <= Number(operation.expectedRevision)) { setNeedsReview(true); setNotice("暂时无法确认保存结果，请核对最新设置。"); return; }
+        receipt(null); setNeedsReview(false); setSaved(result); setProvider(result.provider); setModel(result.model); setLightModel(result.lightModel || ""); setCapacity(result.contextWindowTokens || ""); setThinking(result.thinking || ""); setCapacityTouched(false); setThinkingTouched(false); setTargetChanged(false); setEndpoint(""); setKey(""); setRemoveKey(false); setPending(null); setPreview(null); onDirty(false); setNotice("设置已保存，将用于新开始的任务。"); await onSaved();
       } else {
         const values = draft();
         if (action === "save") {
@@ -92,8 +92,8 @@ export function RemoteAiSettings({ initial, onDirty }: { initial: RemoteAiSummar
           receipt({ action: "save", operationId: operation.operationId, expectedRevision: operation.expectedRevision });
           const result = await requestJson<RemoteAiSummary>("/api/settings/ai", { method: "PUT", signal: controller.signal, body: JSON.stringify({ ...operation, password }) });
           if (!live.current || turn !== generation.current) return;
-          if (result.instanceId !== saved.instanceId || result.operationId !== operation.operationId) { setNeedsReview(true); setNotice("暂时无法确认保存结果，请核对最新设置。"); return; }
-          receipt(null); setNeedsReview(false); setSaved(result); setCapacity(result.contextWindowTokens || ""); setThinking(result.thinking || ""); setCapacityTouched(false); setThinkingTouched(false); setTargetChanged(false); setEndpoint(""); setKey(""); setRemoveKey(false); setRequiresEndpoint(false); setPending(null); onDirty(false); setNotice("设置已保存，将用于新开始的任务。");
+          if (result.instanceId !== saved.instanceId || result.operationId !== operation.operationId || !Number.isSafeInteger(result.revision) || result.revision <= Number(operation.expectedRevision)) { setNeedsReview(true); setNotice("暂时无法确认保存结果，请核对最新设置。"); return; }
+          receipt(null); setNeedsReview(false); setSaved(result); setCapacity(result.contextWindowTokens || ""); setThinking(result.thinking || ""); setCapacityTouched(false); setThinkingTouched(false); setTargetChanged(false); setEndpoint(""); setKey(""); setRemoveKey(false); setRequiresEndpoint(false); setPending(null); onDirty(false); setNotice("设置已保存，将用于新开始的任务。"); await onSaved();
         } else {
           if (values.keyAction === "remove") throw Error("请先填写密钥后再检查。");
           if (action === "test" && !values.model) throw Error("请先填写模型名称。");

@@ -27,7 +27,7 @@ export function FeatureAvailability({ title, description, messages = [], dark = 
       <details>
         <summary>检查说明</summary>
         <div className="feature-availability-details">
-          <p>可在设置中查看 AI 服务配置；如果由部署者维护，请联系工作台维护者。处理后点击“重新检查”。</p>
+          <p>可在设置中查看 AI 服务配置；如果由部署者维护，请联系工作台维护者。保存设置后会更新功能状态，也可点击“重新检查”。</p>
           {messages.length > 0 && <ul>{[...new Set(messages.filter(Boolean).map(readable))].map(message => <li key={message}>{message}</li>)}</ul>}
           <button type="button" disabled={busy} onClick={onCheck}><RefreshCw size={13} aria-hidden="true" />{busy ? "检查中…" : "重新检查"}</button>
         </div>

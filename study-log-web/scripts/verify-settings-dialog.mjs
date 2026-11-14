@@ -67,6 +67,13 @@ try {
           if (mobile) { await page.getByRole('button', { name: '更多设置' }).click(); await page.getByRole('button', { name: '设置', exact: true }).click(); }
           else await page.getByRole('button', { name: '打开设置' }).click();
           const dialog = page.getByRole('dialog', { name: '设置', exact: true });
+          if (!mobile) {
+            await expect(dialog.getByRole('button', { name: '学习记录', exact: true })).toHaveAttribute('aria-current', 'page');
+            await expect(dialog.getByRole('heading', { name: '学习记录', exact: true })).toBeVisible();
+          }
+          await dialog.getByRole('button', { name: '关于与连接详情', exact: true }).click();
+          await expect(dialog).toContainText(`${new URL(url).origin}/study-log`);
+          if (mobile) await dialog.getByRole('button', { name: '设置', exact: true }).click();
           await dialog.getByRole('button', { name: 'AI 服务' }).click();
           return dialog;
         };
@@ -102,7 +109,10 @@ try {
     else await chooser.locator('[value=remote]').check();
     if (await chooser.getByRole('button', { name: '继续', exact: true }).isVisible()) await chooser.getByRole('button', { name: '继续', exact: true }).click();
     await chooser.locator('[name=origin]').fill(`http://127.0.0.1:${port}`);
-    await chooser.locator('[name=localHttp]').check();
+    await expect(chooser.locator('[name=localHttp]')).toBeHidden();
+    await chooser.getByText('连接选项', { exact: true }).click();
+    await chooser.getByText('允许局域网 HTTP 连接', { exact: true }).click();
+    await expect(chooser.locator('[name=localHttp]')).toBeChecked();
     await chooser.locator('[name=password]').fill('synthetic-password');
     await chooser.getByRole('button', { name: '连接服务器', exact: true }).click().catch(error => { if (!chooser.isClosed()) throw error; });
     await expect.poll(() => desktop.context().pages().some(page => page.url().startsWith(url)), { timeout: 60000 }).toBe(true);
@@ -110,6 +120,10 @@ try {
     await expect(page.locator('.workspace')).toBeVisible({ timeout: 60000 });
     const openMenu = () => desktop.evaluate(({ Menu }) => { const item = Menu.getApplicationMenu().items[0].submenu.items.find(item => item.label === '模型设置…'); if (!item.enabled) throw Error('Settings menu disabled'); item.click(); });
     await openMenu(); await expect(page.getByRole('dialog', { name: '设置', exact: true })).toBeVisible();
+    const desktopDialog = page.getByRole('dialog', { name: '设置', exact: true });
+    await desktopDialog.getByRole('button', { name: '关于与连接详情', exact: true }).click();
+    await expect(desktopDialog).toContainText('桌面版本');
+    await expect(desktopDialog).toContainText(await desktop.evaluate(({ app }) => app.getVersion()));
     await page.getByRole('button', { name: '关闭设置' }).click();
     await expect(page.getByRole('dialog', { name: '设置', exact: true })).toBeHidden();
     await desktop.evaluate(({ dialog, ipcMain }) => { dialog.showMessageBox = async (_owner, options) => { globalThis.testSettingsFallback = options.message; return { response: 0 }; }; ipcMain.on('workbench:settings-unavailable', event => { globalThis.testSettingsSender = event.senderFrame.url; }); });

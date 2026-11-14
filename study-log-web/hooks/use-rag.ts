@@ -1,5 +1,7 @@
 "use client";
 
+import { useAiSettingsRefresh } from "./use-ai-settings-refresh";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ConfirmationOptions } from "@/components/ConfirmDialog";
 import { ApiRequestError, requestJson } from "@/lib/client-http";
@@ -118,6 +120,7 @@ export function useRag(options: Options) {
     const timer = setTimeout(() => { void refreshList(controller.signal).catch(failure => { if (!controller.signal.aborted) setHistoryError(failure instanceof TypeError ? "历史问答暂时无法更新，请检查连接后重试" : failure.message); }).finally(() => { if (!controller.signal.aborted) setLoading(false); }); }, query ? 150 : 0);
     return () => { clearTimeout(timer); controller.abort(); };
   }, [options.active, options.visible, query, refreshList, historyRevision]);
+  useAiSettingsRefresh(options.active && options.visible, refreshConfiguration);
   useEffect(() => { if (options.active && options.visible) void refreshConfiguration(); }, [options.active, options.visible, refreshConfiguration]);
   const install = useCallback((value: SessionState) => {
     const previous = states.current.get(selectedId.current);

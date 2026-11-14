@@ -137,7 +137,7 @@ ipcMain.on('workbench:settings-unavailable', event => {
 });
 ipcMain.handle('workbench:context', event => {
   if (!trusted(event)) throw Error('无效窗口');
-  return { mode: active.mode, root: active.mode === 'local' ? manager.root : '' };
+  return { mode: active.mode, root: active.mode === 'local' ? manager.root : '', appVersion: app.getVersion() };
 });
 ipcMain.handle('workbench:configuration', event => {
   if (!trusted(event) || active.mode !== 'local' || manager.state !== 'running') throw Error('当前无法读取本地模型设置');

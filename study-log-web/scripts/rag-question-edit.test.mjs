@@ -10,12 +10,14 @@ import * as versions from '../lib/rag-answer-versions.ts';
 import * as taskTypes from '../lib/rag-task-types.ts';
 import * as times from '../lib/rag-message-time.ts';
 
+const settingsSource = await fs.readFile(new URL('../hooks/use-ai-settings-refresh.ts', import.meta.url), 'utf8');
 const source = await fs.readFile(new URL('../hooks/use-rag.ts', import.meta.url), 'utf8');
 
 // Run the actual retained-view hook. Layout/focus remain browser acceptance gates.
 function fixture({ newSession = false, taskSupported = true } = {}) {
   const id = randomUUID(), requests = [], removed = [], clients = [], routes = [], allocatedIds = [], legacyRequests = [], slots = [], effects = new Map();
   let instanceId = randomUUID();
+  let capabilityReads = 0;
   let cursor = 0, readError, readGate, capabilityGate, capabilityError;
   const saved = { id, title: '合成会话', messageCount: 2, version: 'a'.repeat(64), answerMode: 'logs_only',
     createdAt: '2026-10-22T01:00:00Z', updatedAt: '2026-10-22T01:00:00Z',
@@ -47,6 +49,7 @@ function fixture({ newSession = false, taskSupported = true } = {}) {
   }
   const requestJson = async path => {
     if (path === '/api/capabilities') {
+      capabilityReads++;
       const gate = capabilityGate; capabilityGate = undefined;
       if (gate) { gate.start(); await gate.wait; }
       if (capabilityError) throw capabilityError;
@@ -63,14 +66,18 @@ function fixture({ newSession = false, taskSupported = true } = {}) {
     }
     throw Error('Unexpected request: ' + path);
   };
-  const dependencies = { react, '@/lib/rag-history': history, '@/lib/client-http': { ApiRequestError, requestJson },
+  const window = Object.assign(new EventTarget(), { localStorage: storage(), sessionStorage: storage() });
+  const settingsModule = { exports: {} };
+  runInNewContext(ts.transpileModule(settingsSource, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText,
+    { module: settingsModule, exports: settingsModule.exports, require: () => react, window });
+  const dependencies = { './use-ai-settings-refresh': settingsModule.exports, react, '@/lib/rag-history': history, '@/lib/client-http': { ApiRequestError, requestJson },
     '@/lib/rag-client': { clientUuid: () => { const value = randomUUID(); allocatedIds.push(value); return value; }, async requestRagStream(input) { assert.equal(taskSupported, false, 'task-capable servers must not use legacy generation'); legacyRequests.push(clone(input)); } },
     '@/lib/rag-task-client': { ...taskHelpers, RagTaskClient: Client }, '@/lib/rag-answer-versions': versions,
     '@/lib/rag-task-types': taskTypes, '@/lib/rag-message-time': times };
   const module = { exports: {} };
   runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText,
     { module, exports: module.exports, require: name => { if (!(name in dependencies)) throw Error(name); return dependencies[name]; },
-      window: { localStorage: storage(), sessionStorage: storage(), addEventListener() {}, removeEventListener() {} },
+      window,
       AbortController, setTimeout, clearTimeout, console });
   let ui;
   const flushEffects = () => { const pending = [...effects.values()]; effects.clear(); for (const effect of pending) effect(); };
@@ -80,7 +87,7 @@ function fixture({ newSession = false, taskSupported = true } = {}) {
     createdAt: '2026-10-22T02:00:00Z', updatedAt: '2026-10-22T02:00:00Z', revision: 1,
     question: '修改问题', editMessageId: 'question', questionMessageId: undefined, replaceLast: false,
     mode: 'logs_only', state: 'failed', saveState: 'pending', partial: '', stage: '', error: '合成失败', saveError: '', result: null, ...values });
-  return { saved, requests, removed, options, clients, routes, allocatedIds, legacyRequests, setInstance(value) { instanceId = value; }, task, render, settle, flushEffects, ApiRequestError, failRead(error) { readError = error; }, get ui() { return ui; },
+  return { saved, requests, removed, options, settingsSaved() { window.dispatchEvent(new Event('study-log:ai-settings-saved')); }, get capabilityReads() { return capabilityReads; }, clients, routes, allocatedIds, legacyRequests, setInstance(value) { instanceId = value; }, task, render, settle, flushEffects, ApiRequestError, failRead(error) { readError = error; }, get ui() { return ui; },
     failCapabilities(error) { capabilityError = error; },
     holdCapabilities() { let release, start; const started = new Promise(resolve => start = resolve), wait = new Promise(resolve => release = resolve);
       capabilityGate = { start, wait }; return { started, release }; },
@@ -421,4 +428,15 @@ test('question editing shares the readiness gate and rejects a handler captured 
   f.ui.beginQuestionEdit('question'); f.render(); f.ui.changeQuestionEdit('新实例修改稿'); f.render();
   await staleEditSubmit(); assert.equal(f.requests.length, 0); assert.equal(f.allocatedIds.length, 0);
   await f.ui.sendQuestionEdit(); assert.equal(f.requests.length, 1); assert.equal(f.requests[0].question, '新实例修改稿');
+});
+
+
+test('confirmed settings refresh active Q&A without replacing its draft and detach on hide', async t => {
+  const f = fixture(); t.after(() => f.dispose()); await f.settle();
+  f.ui.setQuestion('保存设置期间保留的问题草稿'); f.render();
+  const before = f.capabilityReads; f.settingsSaved(); await f.settle();
+  assert.equal(f.capabilityReads, before + 1);
+  assert.equal(f.ui.question, '保存设置期间保留的问题草稿');
+  f.options.visible = false; await f.settle(); const hidden = f.capabilityReads;
+  f.settingsSaved(); await f.settle(); assert.equal(f.capabilityReads, hidden);
 });

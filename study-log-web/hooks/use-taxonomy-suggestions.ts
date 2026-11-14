@@ -1,5 +1,7 @@
 "use client";
 
+import { useAiSettingsRefresh } from "./use-ai-settings-refresh";
+
 import { useEffect, useRef, useState } from "react";
 import { requestJson } from "@/lib/client-http";
 import type { Taxonomy, TaxonomyCatalogItem } from "@/lib/stats-types";
@@ -43,6 +45,7 @@ export function useTaxonomySuggestions(options: Options) {
       if (!controller.signal.aborted) setConfigurationError(error instanceof Error ? error.message : "读取 AI 配置失败");
     } finally { if (configurationRef.current === controller) { configurationRef.current = null; setConfigurationLoading(false); } }
   }
+  useAiSettingsRefresh(options.active && options.visible, refreshConfiguration);
   useEffect(() => {
     if (options.active && options.visible) void refreshConfiguration();
     return () => { cancel(); configurationRef.current?.abort(); configurationRef.current = null; };

@@ -17,6 +17,17 @@ try {
   const page = await workspacePage(app), root = JSON.parse(await fs.readFile(path.join(profile, 'desktop.json'), 'utf8')).root;
   await page.getByRole('button', { name: '今天', exact: true }).click();
   const editor = page.locator('.cm-content[contenteditable=true]').first(); await editor.click(); await page.keyboard.insertText('未保存的合成材料');
+  const material = page.getByPlaceholder('粘贴笔记、代码片段、课程内容或项目进展');
+  if (!await material.isVisible()) await page.getByRole('button', { name: 'AI生成', exact: true }).first().click();
+  await material.fill('本机设置返回后保留的材料');
+  await page.getByRole('button', { name: '打开 AI 设置', exact: true }).first().click();
+  const featureDialog = page.getByRole('dialog', { name: '设置', exact: true });
+  await featureDialog.getByLabel('模型', { exact: true }).fill('feature-local-model');
+  let capabilityReads = 0; page.on('request', request => { if (request.url().endsWith('/api/capabilities')) capabilityReads++; });
+  await featureDialog.getByRole('button', { name: '保存设置', exact: true }).click();
+  await expect(featureDialog).toBeHidden(); await expect(material).toHaveValue('本机设置返回后保留的材料');
+  assert.equal((await readAiSettings(path.join(root, 'config'))).values.CHAT_MODEL, 'feature-local-model');
+  await expect.poll(() => capabilityReads).toBeGreaterThanOrEqual(2);
   await app.evaluate(({ Menu }) => Menu.getApplicationMenu().items[0].submenu.items.find(item => item.label === '模型设置…').click());
   const dialog = page.getByRole('dialog', { name: '设置', exact: true });
   await expect(dialog.getByRole('combobox').first()).toBeVisible();

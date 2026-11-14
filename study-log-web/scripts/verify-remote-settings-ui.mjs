@@ -30,7 +30,7 @@ for (const [engineName, engine] of [['chromium', chromium], ['webkit', webkit]])
       await dialog.getByLabel('模型', { exact: true }).fill('unsaved-model');
       const content = dialog.locator('.settings-dialog-content');
       await content.evaluate(element => { element.scrollTop = element.scrollHeight; });
-      await dialog.getByRole('button', { name: '外观与阅读' }).click();
+      await dialog.getByRole('button', { name: '外观', exact: true }).click();
       await expect.poll(() => content.evaluate(element => element.scrollTop)).toBe(0);
       await dialog.getByRole('button', { name: 'AI 服务' }).click();
       await expect(dialog.getByLabel('模型', { exact: true })).toHaveValue('unsaved-model');
@@ -48,6 +48,37 @@ for (const [engineName, engine] of [['chromium', chromium], ['webkit', webkit]])
       await page.unroute('**/api/settings/ai'); await dialog.getByRole('button', { name: '关闭设置' }).click(); await page.getByRole('button', { name: '放弃并关闭' }).click(); await expect(dialog).toBeHidden();
       await page.getByRole('button', { name: '打开设置' }).click(); await dialog.getByRole('button', { name: 'AI 服务' }).click(); await dialog.getByRole('button', { name: '核对最新设置' }).click(); await expect(dialog.getByRole('status')).toContainText('已确认设置保存成功');
       await page.waitForTimeout(250); await page.screenshot({ path: path.join(root, 'settings.png') });
+      await dialog.getByRole('button', { name: '关闭设置' }).click(); await expect(dialog).toBeHidden();
+      const material = page.getByPlaceholder('粘贴笔记、代码片段、课程内容或项目进展');
+      if (!await material.isVisible()) await page.getByRole('button', { name: 'AI生成', exact: true }).first().click();
+      await material.fill('保存设置后保留的合成学习材料');
+      await page.getByRole('button', { name: '打开 AI 设置', exact: true }).first().click();
+      await expect(dialog.getByLabel('模型', { exact: true })).toHaveValue('lost-response-model');
+      let readiness = 'normal', capabilityReads = 0, updates = 0;
+      await page.route('**/api/capabilities', async route => {
+        capabilityReads++;
+        if (readiness === 'fail') return route.fulfill({ status: 503, json: { error: 'synthetic-readiness-failure' } });
+        const response = await route.fetch(), json = await response.json();
+        if (readiness === 'ready') { json.features.aiWriting.configured = true; json.aiConfiguration.provider.configured = true; json.aiConfiguration.provider.issues = []; json.aiConfiguration.writing = { configured: true, issues: [] }; }
+        await route.fulfill({ response, json });
+      });
+      await page.route('**/api/settings/ai', async route => { if (route.request().method() === 'PUT') updates++; await route.continue(); });
+      const saveModel = async model => {
+        await dialog.getByLabel('模型', { exact: true }).fill(model);
+        await dialog.getByRole('button', { name: '保存设置', exact: true }).click();
+        const prompt = page.getByRole('dialog', { name: '确认工作台密码' });
+        await prompt.getByLabel('访问密码').fill(password); await prompt.getByRole('button', { name: '确认', exact: true }).click();
+      };
+      readiness = 'fail'; await saveModel('saved-but-readiness-failed');
+      await expect(dialog.getByRole('alert')).toContainText('设置已保存，功能状态暂未更新');
+      await expect(dialog).toBeVisible(); assert.equal(updates, 1);
+      await expect(dialog.getByLabel('模型', { exact: true })).toBeEnabled();
+      readiness = 'ready'; const before = capabilityReads; await saveModel('feature-return-model');
+      await expect(dialog).toBeHidden(); await expect(material).toHaveValue('保存设置后保留的合成学习材料');
+      await expect.poll(() => capabilityReads - before).toBeGreaterThanOrEqual(2);
+      assert.equal(updates, 2); await expect(page.getByRole('button', { name: '生成日志草稿', exact: true })).toBeEnabled();
+      await page.screenshot({ path: path.join(root, 'feature-return.png') });
+      await page.unroute('**/api/capabilities'); await page.unroute('**/api/settings/ai');
     } finally { await browser.close(); }
   } finally { server.kill(); }
 }

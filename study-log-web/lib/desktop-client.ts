@@ -1,7 +1,7 @@
 declare global {
   interface Window { studyLogDesktop?: {
     close: () => void;
-    context: () => Promise<{ mode: "local" | "remote"; root: string }>;
+    context: () => Promise<{ mode: "local" | "remote"; root: string; appVersion?: string }>;
     configuration: () => Promise<DesktopAiConfiguration>;
     configure: (value: DesktopAiUpdate) => Promise<DesktopAiConfiguration>;
     probe: (value: { action: "models" | "test"; apiUrl: string; model: string; apiKey: string; expectedRevision: number; expectedInstanceId: string }) => Promise<{ models?: string[]; ok?: boolean; cancelled?: boolean }>;

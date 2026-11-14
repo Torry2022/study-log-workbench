@@ -1,5 +1,6 @@
 "use client";
 
+import { useAiSettingsRefresh } from "./use-ai-settings-refresh";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { requestJson } from "@/lib/client-http";
 import type { HighlightedLog } from "@/lib/ai-highlighting";
@@ -55,6 +56,7 @@ export function useHighlighting(options: Options) {
     if (pending) feedback("已取消标注，当前编辑草稿保持不变。", "warning");
   }
   function closeReview() { cancel(); reviewRef.current = null; setReview(null); }
+  useAiSettingsRefresh(options.active, refreshConfiguration);
   useEffect(() => {
     if (options.active) void refreshConfiguration();
     return () => configurationRef.current?.abort();

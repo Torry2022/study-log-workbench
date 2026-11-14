@@ -75,6 +75,7 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, module
   monthsLoading, monthsError, creationBlocked, theme, themePreference = "system", readingMode = false, dayOperationBusy = false, onMonth, onDate, onNewDate, onNewQuestion, onTheme, onLogout, onRetry, onSearchSelect, onSearchChange, children }: WorkspaceChromeProps) {
   const [compact, setCompact] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsFromFeature, setSettingsFromFeature] = useState(false);
   const [settingsPage, setSettingsPage] = useState<"menu" | "ai">("menu");
   const showMonthsLoading = useDelayedBusy(monthsLoading && !months.length);
   const showDaysLoading = useDelayedBusy(loading && !days.length);
@@ -202,7 +203,7 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, module
 
   useEffect(() => {
     const showHelp = () => { if (active && !workspaceShortcutBlocked()) { setPanel(null); setThemeOpen(false); setHelpOpen(true); } };
-    const showSettings = (event: Event) => { event.preventDefault(); const fromFeature = event instanceof CustomEvent && event.detail === "feature"; if (active && (fromFeature || !workspaceShortcutBlocked())) { if (!fromFeature) setPanel(null); setThemeOpen(false); setSettingsPage("ai"); setSettingsOpen(true); } };
+    const showSettings = (event: Event) => { event.preventDefault(); const fromFeature = event instanceof CustomEvent && event.detail === "feature"; if (active && (fromFeature || !workspaceShortcutBlocked())) { if (!fromFeature) setPanel(null); setThemeOpen(false); setSettingsFromFeature(fromFeature); setSettingsPage("ai"); setSettingsOpen(true); } };
     const keydown = (event: KeyboardEvent) => {
       if (!active || workspaceShortcutBlocked(event) || !(event.ctrlKey || event.metaKey)) return;
       const key = event.key.toLowerCase();
@@ -356,7 +357,7 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, module
         <button className={`button secondary app-nav-link${view === "favorites" ? " active" : ""}`} type="button" aria-current={view === "favorites" ? "page" : undefined} onClick={() => void switchView("favorites")}><Star size={16} />收藏</button>
         <button className={`button secondary app-nav-link${view === "qa" ? " active" : ""}`} type="button" aria-current={view === "qa" ? "page" : undefined} onClick={() => void switchView("qa")}><MessageSquareText size={16} />问答</button>
         <button className={`button secondary app-nav-link${view === "stats" ? " active" : ""}`} type="button" aria-current={view === "stats" ? "page" : undefined} onClick={() => void switchView("stats")}><BarChart3 size={16} />统计</button>
-        <button className="button icon-only" type="button" onClick={() => { setSettingsPage("menu"); setSettingsOpen(true); }} aria-label="打开设置" title="设置"><Settings size={17} /></button>
+        <button className="button icon-only" type="button" onClick={() => { setSettingsFromFeature(false); setSettingsPage("menu"); setSettingsOpen(true); }} aria-label="打开设置" title="设置"><Settings size={17} /></button>
         <div className="theme-menu" ref={themeMenu} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setThemeOpen(false); }}>
           <button className="button icon-only" ref={themeButton} type="button" onClick={() => setThemeOpen(value => !value)} aria-label="切换主题模式" aria-expanded={themeOpen} title="切换主题模式">{themePreference === "system" ? <Monitor size={17} /> : theme === "dark" ? <Moon size={17} /> : <Sun size={17} />}</button>
           {themeOpen && <div className="theme-popover" role="group" aria-label="主题模式">{themes.map(({ value, label, Icon }) => <button key={value} className={themePreference === value ? "active" : ""} type="button" aria-pressed={themePreference === value} onClick={() => chooseTheme(value)}><Icon size={15} />{label}{value === "system" && <small>{theme === "dark" ? "夜间" : "日间"}</small>}</button>)}</div>}
@@ -428,12 +429,12 @@ export function WorkspaceChrome({ active, view, onView, moduleNavigation, module
     {compact && panel === "account" && <div className="mobile-sheet-backdrop" onClick={() => setPanel(null)}><section ref={account} className="mobile-action-sheet mobile-account-sheet" role="dialog" aria-modal="true" aria-label="应用设置" onClick={event => event.stopPropagation()}>
       <div className="mobile-sheet-header"><strong>应用设置</strong><button type="button" onClick={() => setPanel(null)} aria-label="关闭应用设置"><X size={18} /></button></div>
       <div className="mobile-theme-options" role="group" aria-label="主题模式">{themes.map(({ value, label, Icon }) => <button key={value} className={themePreference === value ? "active" : ""} type="button" aria-pressed={themePreference === value} onClick={() => chooseTheme(value)}><Icon size={18} />{label.replace("模式", "")}</button>)}</div>
-      <button className="button secondary full" type="button" onClick={() => { setPanel(null); setSettingsPage("menu"); setSettingsOpen(true); }}><Settings size={18} />设置</button>
+      <button className="button secondary full" type="button" onClick={() => { setPanel(null); setSettingsFromFeature(false); setSettingsPage("menu"); setSettingsOpen(true); }}><Settings size={18} />设置</button>
       {hasInspector && <button className="button secondary full" type="button" onClick={() => openPanel("writing")}><PanelRightOpen size={18} />AI 工具</button>}
       <button className="button secondary full" type="button" onClick={() => { setPanel(null); setHelpOpen(true); }}><CircleHelp size={18} />使用帮助</button>
       <button className="mobile-logout" type="button" onClick={() => { setPanel(null); onLogout(); }}><LogOut size={18} />退出登录</button>
     </section></div>}
     {helpOpen && active && <HelpDialog onClose={() => setHelpOpen(false)} />}
-    {settingsOpen && active && <SettingsDialog initialPage={settingsPage} themePreference={themePreference} onTheme={onTheme} onClose={() => setSettingsOpen(false)} />}
+    {settingsOpen && active && <SettingsDialog initialPage={settingsPage} returnOnSave={settingsFromFeature} themePreference={themePreference} onTheme={onTheme} onClose={() => setSettingsOpen(false)} />}
   </main>;
 }

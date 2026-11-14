@@ -5,7 +5,7 @@ import type { DesktopAiConfiguration, DesktopAiUpdate } from "@/lib/desktop-clie
 import { ConfirmDialog } from "./ConfirmDialog";
 import { AiSettingsPreview } from "./AiSettingsPreview";
 
-export function LocalAiSettings({ initial, onDirty }: { initial: DesktopAiConfiguration; onDirty: (value: boolean) => void }) {
+export function LocalAiSettings({ initial, onDirty, onSaved = () => {} }: { initial: DesktopAiConfiguration; onDirty: (value: boolean) => void; onSaved?: () => void | Promise<void> }) {
   const [saved, setSaved] = useState(initial);
   const [provider, setProvider] = useState(!initial.hasEndpoint ? "deepseek" : initial.provider);
   const [apiUrl, setApiUrl] = useState("");
@@ -44,9 +44,9 @@ export function LocalAiSettings({ initial, onDirty }: { initial: DesktopAiConfig
     try {
       const result = await window.studyLogDesktop.configure(operation);
       if (!live.current) return;
-      if (result.instanceId !== operation.expectedInstanceId || result.operationId !== operation.operationId) throw Error("保存结果待核对");
+      if (result.instanceId !== operation.expectedInstanceId || result.operationId !== operation.operationId || !Number.isSafeInteger(result.revision) || result.revision <= Number(operation.expectedRevision)) throw Error("保存结果待核对");
       receipt(null); setNeedsReview(false); setSaved(result); setCapacity(result.contextWindowTokens || ""); setThinking(result.thinking || ""); setCapacityTouched(false); setThinkingTouched(false); setTargetChanged(false); setApiUrl(""); setApiKey(""); setClearKey(false); setPending(null); setRequiresEndpoint(false); onDirty(false);
-      setNotice("设置已保存，将用于新开始的任务。");
+      setNotice("设置已保存，将用于新开始的任务。"); await onSaved();
     } catch (error) { if (live.current) { setNeedsReview(true); setNotice(String(error).includes("另一处更新") ? "设置已在另一处更新，请核对最新设置。填写内容仍保留。" : "暂时无法确认保存结果，填写内容仍保留。请核对最新设置或重试。"); } }
     finally { if (live.current) setBusy(false); }
   }
@@ -55,8 +55,9 @@ export function LocalAiSettings({ initial, onDirty }: { initial: DesktopAiConfig
     try {
       const latest = await window.studyLogDesktop!.configuration();
       if (!live.current) return;
+      if (latest.instanceId !== saved.instanceId) throw Error();
       let previous: { operationId?: string; expectedRevision?: number } | null = null; try { previous = JSON.parse(sessionStorage.getItem(receiptKey) || "null"); } catch { /* Ignore malformed local state. */ }
-      if (pending && latest.operationId === pending.payload.operationId || previous?.operationId && latest.operationId === previous.operationId) { receipt(null); setNeedsReview(false); setSaved(latest); setPending(null); setApiUrl(""); setApiKey(""); setClearKey(false); setRequiresEndpoint(false); onDirty(false); setNotice("已确认设置保存成功。"); return; }
+      if (pending && latest.operationId === pending.payload.operationId && latest.revision > Number(pending.payload.expectedRevision) || previous?.operationId && latest.operationId === previous.operationId && latest.revision > Number(previous.expectedRevision)) { receipt(null); setNeedsReview(false); setSaved(latest); setPending(null); setApiUrl(""); setApiKey(""); setClearKey(false); setRequiresEndpoint(false); onDirty(false); setNotice("已确认设置保存成功。"); await onSaved(); return; }
       if (!pending && previous && latest.revision === previous.expectedRevision) { receipt(null); setUnresolvedReceipt(false); setNotice("上次设置尚未保存，请重新填写需要修改的内容。"); }
       else if (previous && latest.revision !== previous.expectedRevision && latest.operationId !== previous.operationId) { setUnresolvedReceipt(true); setNotice("上次保存结果无法确认，请核对当前设置。"); }
       if (latest.revision !== saved.revision) { setApiKey(""); setClearKey(false); setModels([]); setChecked(false); setPreview(null); if (provider === "custom" && !apiUrl.trim()) setRequiresEndpoint(true); setPending(null); setNotice("设置已在另一处更新。请核对地址并重新填写密钥，其他填写内容仍保留。"); }
@@ -89,8 +90,8 @@ export function LocalAiSettings({ initial, onDirty }: { initial: DesktopAiConfig
     if (pending && pending.action !== "restore") { setNotice("上次保存结果尚待核对，请先读取最新设置。"); return; }
     const operation = pending?.payload || { expectedInstanceId: saved.instanceId, expectedRevision: preview.revision, operationId: crypto.randomUUID(), previewId: preview.previewId };
     setPending({ action: "restore", payload: operation }); receipt({ operationId: operation.operationId, expectedRevision: operation.expectedRevision }); setBusy(true);
-    try { const result = await window.studyLogDesktop.deploymentRestore(operation); if (!live.current) return; if (result.instanceId !== saved.instanceId || result.operationId !== operation.operationId) throw Error();
-      receipt(null); setNeedsReview(false); setSaved(result); setProvider(result.provider); setModel(result.model); setLightModel(result.lightModel || ""); setCapacity(result.contextWindowTokens || ""); setThinking(result.thinking || ""); setCapacityTouched(false); setThinkingTouched(false); setTargetChanged(false); setApiUrl(""); setApiKey(""); setClearKey(false); setPending(null); setPreview(null); onDirty(false); setNotice("设置已保存，将用于新开始的任务。");
+    try { const result = await window.studyLogDesktop.deploymentRestore(operation); if (!live.current) return; if (result.instanceId !== saved.instanceId || result.operationId !== operation.operationId || !Number.isSafeInteger(result.revision) || result.revision <= Number(operation.expectedRevision)) throw Error();
+      receipt(null); setNeedsReview(false); setSaved(result); setProvider(result.provider); setModel(result.model); setLightModel(result.lightModel || ""); setCapacity(result.contextWindowTokens || ""); setThinking(result.thinking || ""); setCapacityTouched(false); setThinkingTouched(false); setTargetChanged(false); setApiUrl(""); setApiKey(""); setClearKey(false); setPending(null); setPreview(null); onDirty(false); setNotice("设置已保存，将用于新开始的任务。"); await onSaved();
     } catch { if (live.current) { setNeedsReview(true); setNotice("暂时无法确认保存结果，请核对最新设置。"); } } finally { if (live.current) setBusy(false); }
   }
   return <><form className="settings-form" onSubmit={submit}>

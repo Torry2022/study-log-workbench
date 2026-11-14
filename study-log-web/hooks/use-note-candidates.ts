@@ -1,5 +1,6 @@
 "use client";
 
+import { useAiSettingsRefresh } from "./use-ai-settings-refresh";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ConfirmationOptions } from "@/components/ConfirmDialog";
 import { ApiRequestError, requestJson } from "@/lib/client-http";
@@ -58,6 +59,7 @@ export function useNoteCandidates(options: Options) {
   }, []);
   function cancel() { request.current?.abort(); request.current = null; setBusy(null); setStatus(""); }
   function discard() { cancel(); savingSnapshot.current = null; setRetrySave(false); setFiles([]); setCandidates([]); setDocuments([]); setWarnings([]); setError(""); setModel(""); setOpen(false); }
+  useAiSettingsRefresh(options.active && open, refreshConfiguration);
   useEffect(() => {
     if (options.active) setError(value => value === "登录已过期，请重新登录" ? "" : value);
     if (options.active && open) void refreshConfiguration();

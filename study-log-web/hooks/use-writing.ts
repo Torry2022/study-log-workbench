@@ -1,5 +1,6 @@
 "use client";
 
+import { useAiSettingsRefresh } from "./use-ai-settings-refresh";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ConfirmationOptions } from "@/components/ConfirmDialog";
 import { ApiRequestError, requestJson } from "@/lib/client-http";
@@ -68,6 +69,7 @@ export function useWriting(options: Options) {
     setInstruction(""); setMaterial(""); setOutput(""); setOutputDate("");
     setMaterialWarnings([]); setGenerationWarnings([]); setStatus("");
   }
+  useAiSettingsRefresh(options.active, refreshConfiguration);
   useEffect(() => {
     if (options.active) void refreshConfiguration();
     return () => { configurationRequest.current?.abort(); };

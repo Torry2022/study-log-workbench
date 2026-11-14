@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { readCommittedAiSettings } from "./ai-settings-reader.ts";
+import { readAiSettingsRecord } from "./ai-settings-reader.ts";
+import { remoteEndpointAllowed } from "./ai-outbound.ts";
 
 export interface ChatConfig {
   /** Request-scoped observer; never persisted in settings. */
@@ -13,6 +14,8 @@ export interface ChatConfig {
   model: string;
   /** Complete OpenAI-compatible chat/completions endpoint; never expanded. */
   baseUrl: string;
+  /** Frozen deployer policy for a remotely editable target; absent for deployment-managed targets. */
+  outboundPolicy?: Record<string, string | undefined>;
 }
 
 export function chatContextWindowTokens(config: ChatConfig): number | undefined {
@@ -24,13 +27,14 @@ type AiEnvironment = Record<string, string | undefined>;
 /** Read one complete, committed model configuration for a new operation. */
 export function snapshotAiEnvironment(env: AiEnvironment = process.env): AiEnvironment {
   const root = env.AI_SETTINGS_ROOT;
-  if (!root) return { ...env };
+  if (!root) return { ...env, __STUDY_LOG_DEPLOYMENT_ENDPOINT: env.CHAT_API_URL || "" };
   try {
     const logRoot = env.LOG_ROOT;
     if (!logRoot || !path.isAbsolute(logRoot)) throw new Error("Invalid root");
     const identity = JSON.parse(readFileSync(path.join(logRoot, ".instance.json"), "utf8"));
     if (identity.schemaVersion !== 1 || typeof identity.id !== "string") throw new Error("Invalid identity");
-    return { ...env, ...readCommittedAiSettings(root, identity.id) };
+    const record = readAiSettingsRecord(root, identity.id);
+    return { ...env, ...record.values, __STUDY_LOG_PERSISTED_THINKING: "true", __STUDY_LOG_REMOTE_MANAGED: record.remoteManaged ? "true" : "false", __STUDY_LOG_DEPLOYMENT_ENDPOINT: env.CHAT_API_URL || "" };
   } catch {
     throw new ChatConfigurationError([{ field: "AI_SETTINGS", reason: "invalid", message: "模型设置无法读取，请检查工作台配置" }]);
   }
@@ -94,7 +98,12 @@ export function getChatConfig(env: AiEnvironment = snapshotAiEnvironment()): Cha
   const { issues } = inspectChatConfig(env);
   if (issues.length) throw new ChatConfigurationError(issues);
   const contextWindowTokens = env.RAG_CONTEXT_WINDOW_TOKENS?.trim();
-  return { apiKey: env.CHAT_API_KEY!.trim(), model: env.CHAT_MODEL!.trim(), baseUrl: env.CHAT_API_URL!.trim(),
+  const baseUrl = env.CHAT_API_URL!.trim();
+  // A target introduced through remote settings remains constrained even if it
+  // is later removed from the allowlist. Existing deployment targets retain
+  // their established behavior until explicitly added to that list.
+  const outboundPolicy = env.__STUDY_LOG_REMOTE_MANAGED === "true" || env.AI_SETTINGS_REMOTE_WRITE_ENABLED === "true" && (baseUrl !== (env.__STUDY_LOG_DEPLOYMENT_ENDPOINT || "") || remoteEndpointAllowed(baseUrl, env)) ? { AI_SETTINGS_ALLOWED_ENDPOINTS: env.AI_SETTINGS_ALLOWED_ENDPOINTS } : undefined;
+  return { apiKey: env.CHAT_API_KEY!.trim(), model: env.CHAT_MODEL!.trim(), baseUrl, ...(outboundPolicy ? { outboundPolicy } : {}),
     ...(contextWindowTokens ? { contextWindowTokens: Number(contextWindowTokens) } : {}) };
 }
 
@@ -108,6 +117,7 @@ export function configureRagThinking(config: ChatConfig, env: AiEnvironment = pr
   const mode = env.RAG_DEEPSEEK_THINKING?.trim();
   if (!mode) return config;
   const endpoint = new URL(config.baseUrl);
+  if (env.__STUDY_LOG_PERSISTED_THINKING === "true" && ["disabled", "low"].includes(mode) && (endpoint.protocol !== "https:" || endpoint.hostname !== "api.deepseek.com" || !["deepseek-flash", "deepseek-v4-pro"].includes(config.model))) return config;
   if (!["disabled", "low"].includes(mode) || endpoint.protocol !== "https:" || endpoint.hostname !== "api.deepseek.com" ||
     !["deepseek-flash", "deepseek-v4-pro"].includes(config.model)) {
     throw new ChatConfigurationError([{ field: "RAG_DEEPSEEK_THINKING", reason: "invalid", message: "RAG_DEEPSEEK_THINKING 仅支持官方 DeepSeek Flash/Pro 的 disabled 或 low" }]);

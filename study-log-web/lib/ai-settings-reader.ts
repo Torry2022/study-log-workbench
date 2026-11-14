@@ -3,7 +3,7 @@ import path from "node:path";
 import { aiSettingsIdPattern as id, parseAiSettings } from "./ai-settings-schema.mjs";
 
 /** Read the committed file once; never return a partial or malformed record. */
-export function readAiSettingsRecord(root: string, instanceId: string): { instanceId: string; revision: number; operationId: string | null; values: Record<string, string> } {
+export function readAiSettingsRecord(root: string, instanceId: string): { instanceId: string; revision: number; operationId: string | null; remoteManaged?: boolean; values: Record<string, string> } {
   if (!path.isAbsolute(root) || !id.test(instanceId)) throw new Error("模型设置路径或工作台身份无效");
   const file = path.join(path.resolve(root), "ai-settings.json");
   let current = path.parse(file).root;

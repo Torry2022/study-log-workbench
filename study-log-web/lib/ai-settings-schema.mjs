@@ -8,6 +8,7 @@ export function parseAiSettings(bytes, expectedInstanceId) {
   try { value = JSON.parse(bytes); } catch { throw new Error("Invalid AI settings"); }
   if (!value || value.schemaVersion !== 1 || !aiSettingsIdPattern.test(value.instanceId || "") ||
       !Number.isSafeInteger(value.revision) || value.revision < 1 ||
+      (value.remoteManaged !== undefined && typeof value.remoteManaged !== "boolean") ||
       (value.operationId !== null && !aiSettingsIdPattern.test(value.operationId || "")) ||
       !value.values || typeof value.values !== "object" || Array.isArray(value.values) ||
       Object.keys(value.values).some(key => !aiSettingsFields.includes(key)) ||

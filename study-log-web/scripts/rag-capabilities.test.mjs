@@ -7,6 +7,7 @@ import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import * as config from '../lib/ai-config.ts';
+import * as outbound from '../lib/ai-outbound.ts';
 const require=createRequire(import.meta.url);
 
 test('actual capabilities handler disables only RAG for invalid thinking and reports safe diagnostics',async t=>{
@@ -19,8 +20,9 @@ test('actual capabilities handler disables only RAG for invalid thinking and rep
   const source=await fs.readFile(new URL('../app/api/capabilities/route.ts',import.meta.url),'utf8');
   const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,esModuleInterop:true}}).outputText;
   const exports={};
-  runInNewContext(code,{exports,require:name=>{
+  runInNewContext(code,{exports,process,require:name=>{
     if(name==='@/lib/ai-config')return config;
+    if(name==='@/lib/ai-outbound')return outbound;
     if(name==='@/lib/auth')return {requireAuth:()=>null};
     if(name==='@/lib/rag-task-runtime')return {currentRagTaskRuntime:()=>undefined};
     if(name==='@/lib/config')return {getLogRoot:()=>root};

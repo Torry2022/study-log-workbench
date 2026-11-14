@@ -79,6 +79,7 @@ export function aiSettingsSummary(settings) {
   let endpointDisplay = "";
   try { endpointDisplay = new URL(settings.values.CHAT_API_URL).origin; } catch { /* Preserve invalid legacy config privately. */ }
   return { instanceId: settings.instanceId, revision: settings.revision, operationId: settings.operationId,
+    provider: settings.values.CHAT_API_URL === "https://api.deepseek.com/chat/completions" ? "deepseek" : "custom",
     endpointDisplay, hasEndpoint: Boolean(settings.values.CHAT_API_URL), model: settings.values.CHAT_MODEL,
     hasKey: Boolean(settings.values.CHAT_API_KEY), lightModel: settings.values.CHAT_LIGHT_MODEL,
     contextWindowTokens: settings.values.RAG_CONTEXT_WINDOW_TOKENS,
@@ -86,10 +87,11 @@ export function aiSettingsSummary(settings) {
     toolCallingVerified: settings.values.RAG_AGENT_TOOL_CALLING_VERIFIED === "true",
     statusVerificationEnabled: settings.values.RAG_STATUS_VERIFICATION_ENABLED === "true" };
 }
-export async function saveAiSettings({ root, instanceId, expectedRevision, operationId, values, keyAction }) {
+export async function saveAiSettings({ root, instanceId, expectedRevision, operationId, values, keyAction, remoteManaged, contextWindowConfirmed = false, beforeCommit }) {
   if (!identityPattern.test(instanceId || "") || !operationPattern.test(operationId || "") || !Number.isSafeInteger(expectedRevision))
     fail("AI_SETTINGS_INPUT", "模型设置请求无效");
   return withSettingsLock(root, async () => {
+    if (beforeCommit) await beforeCommit();
     const current = await readAiSettings(root, instanceId);
     if (current.operationId === operationId) return aiSettingsSummary(current);
     if (current.revision !== expectedRevision) fail("AI_SETTINGS_CONFLICT", "模型设置已在另一处更新");
@@ -114,22 +116,25 @@ export async function saveAiSettings({ root, instanceId, expectedRevision, opera
     }
     if (v.RAG_CONTEXT_WINDOW_TOKENS && (!Number.isSafeInteger(Number(v.RAG_CONTEXT_WINDOW_TOKENS)) || Number(v.RAG_CONTEXT_WINDOW_TOKENS) <= 98304))
       fail("AI_SETTINGS_INPUT", "上下文容量必须是大于 98304 的整数");
-    if (v.RAG_DEEPSEEK_THINKING) {
+    if (v.RAG_DEEPSEEK_THINKING && v.RAG_DEEPSEEK_THINKING !== current.values.RAG_DEEPSEEK_THINKING) {
       let endpoint; try { endpoint = new URL(v.CHAT_API_URL); } catch { fail("AI_SETTINGS_INPUT", "推理选项与接口不匹配"); }
       if (endpoint.protocol !== "https:" || endpoint.hostname !== "api.deepseek.com" ||
           !["deepseek-flash", "deepseek-v4-pro"].includes(v.CHAT_MODEL) || !["disabled", "low"].includes(v.RAG_DEEPSEEK_THINKING))
         fail("AI_SETTINGS_INPUT", "推理选项与接口或模型不匹配");
     }
-    if (endpointChanged || v.CHAT_MODEL.trim() !== current.values.CHAT_MODEL.trim() || keyAction !== "keep") {
+    const modelChanged = v.CHAT_MODEL.trim() !== current.values.CHAT_MODEL.trim();
+    if (endpointChanged || modelChanged || keyAction !== "keep") {
       v.RAG_AGENT_TOOL_CALLING_VERIFIED = "false";
       v.RAG_STATUS_VERIFICATION_ENABLED = "false";
-      v.RAG_CONTEXT_WINDOW_TOKENS = "";
+      if ((endpointChanged || modelChanged) && !contextWindowConfirmed) v.RAG_CONTEXT_WINDOW_TOKENS = "";
     } else {
       // Verification results are maintained only by their trusted checks.
       v.RAG_AGENT_TOOL_CALLING_VERIFIED = current.values.RAG_AGENT_TOOL_CALLING_VERIFIED;
       v.RAG_STATUS_VERIFICATION_ENABLED = current.values.RAG_STATUS_VERIFICATION_ENABLED;
     }
-    const next = { schemaVersion: 1, instanceId, revision: current.revision + 1, operationId, values: v };
+    const managed = remoteManaged === undefined ? Boolean(current.remoteManaged && !(endpointChanged && keyAction !== "keep")) : remoteManaged;
+    const next = { schemaVersion: 1, instanceId, revision: current.revision + 1, operationId, remoteManaged: managed, values: v };
+    if (beforeCommit) await beforeCommit();
     await atomicPrivateFile(target(root), JSON.stringify(next) + "\n");
     return aiSettingsSummary(next);
   });

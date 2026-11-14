@@ -79,7 +79,7 @@ function isActiveOwner(payload: unknown): payload is { sub: "owner"; exp: number
     && value.exp > Math.floor(Date.now() / 1000);
 }
 
-function isCookieAuthenticated(request: NextRequest): boolean {
+export function isCookieAuthenticated(request: NextRequest): boolean {
   const token = request.cookies.get(COOKIE_NAME)?.value;
   if (!token) return false;
   const payload = readSignedPayload(token);
@@ -87,7 +87,7 @@ function isCookieAuthenticated(request: NextRequest): boolean {
     && !("aud" in payload);
 }
 
-function isAppTokenAuthenticated(request: NextRequest): boolean {
+export function isAppTokenAuthenticated(request: NextRequest): boolean {
   const authorization = request.headers.get("authorization") || "";
   const match = authorization.match(/^Bearer\s+(.+)$/i);
   if (!match) return false;

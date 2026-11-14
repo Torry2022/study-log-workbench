@@ -8,6 +8,7 @@ import { ChatConfigurationError, inspectChatConfig, inspectRagChatConfig, snapsh
 import { inspectWritingPrompts } from "@/lib/ai-prompts";
 import { inspectMcpConfig } from "@/lib/mcp-config";
 import { currentRagTaskRuntime } from "@/lib/rag-task-runtime";
+import { remoteEndpointAllowed } from "@/lib/ai-outbound";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,12 +28,16 @@ export async function GET(request: NextRequest) {
       provider = { configured: false, issues: error.issues }; ragProvider = provider;
     }
     const templates = await inspectWritingPrompts();
+    const settingsReadable = provider.issues.every(issue => issue.field !== "AI_SETTINGS");
+    let targetsConfigured = false;
+    try { const targets = JSON.parse(process.env.AI_SETTINGS_ALLOWED_ENDPOINTS || "[]"); targetsConfigured = Array.isArray(targets) && targets.some(value => typeof value === "string" && remoteEndpointAllowed(value)); } catch { /* Invalid policy keeps settings read-only. */ }
+    const settingsWritable = settingsReadable && Boolean(process.env.AI_SETTINGS_ROOT) && process.env.AI_SETTINGS_REMOTE_WRITE_ENABLED === "true" && targetsConfigured;
     return NextResponse.json({
       instanceId: instance.id,
       apiContractVersion: 1,
       serverVersion: packageInfo.version,
-      settings: { ai: { protocolVersion: 1, readable: provider.issues.every(issue => issue.field !== "AI_SETTINGS"), writable: false,
-        reason: provider.issues.some(issue => issue.field === "AI_SETTINGS") ? "config_unavailable" : "deployment_managed", reauthRequired: true } },
+      settings: { ai: { protocolVersion: 1, readable: settingsReadable, writable: settingsWritable,
+        reason: !settingsReadable ? "config_unavailable" : settingsWritable ? "enabled" : "deployment_managed", reauthRequired: true } },
       aiConfiguration: { provider, templates },
       features: {
         ragTasks: { supported: true, configured: Boolean(currentRagTaskRuntime()), protocolVersion: 1, questionEditing: true },

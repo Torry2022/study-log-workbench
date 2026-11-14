@@ -52,7 +52,24 @@ docker compose ps
 
 聊天配置在实例 `.env` 中填写 `CHAT_API_URL`、`CHAT_MODEL`、`CHAT_API_KEY`；接口地址须按提供方填写完整地址。不用 AI 可保持空值。
 
-配置迁移候选提供可选的 `compose.ai-settings.yaml`：部署者先为实例创建仅服务账户可读写的 `config` 私有目录，再将该文件作为 Compose 覆盖文件使用。首次启动会把当前环境中的模型设置整体导入 `config/ai-settings.json`；此后该文件是模型设置的权威来源，直接修改 `.env` 中同名字段不会覆盖它。实例私有目录不可用或配置损坏时，基本记录仍可使用，AI 会报告配置错误，不会回退旧密钥。原有 Compose 不启用此覆盖文件时继续使用原环境配置。此阶段尚未开放远程配置写入或模型探测接口。
+### 允许从工作台设置 AI 服务
+
+支持此功能的版本附带 `compose.ai-settings.yaml`。部署者可先使用这个覆盖文件启用实例私有配置，再决定是否允许通过工作台修改。先备份实例，按实际 `INSTANCE_ROOT` 创建 `config`，所有者为服务 UID/GID 1000，目录权限为 0700。首次启动会把实例环境中的模型设置导入私有文件，之后应用从该文件读取当前设置。实例 `.env` 中的模型值作为部署配置，更新后可重建容器，在“设置 → AI 服务”核对并恢复。
+
+如需在 Web、Windows 远程模式和鸿蒙中修改，在**实例** `.env` 中填写以下三项。浏览器访问地址取协议、主机及实际端口。允许的模型接口逐项填写完整 HTTPS 地址，路径和查询一起参与匹配。把原有模型凭据保留在实例私有配置中。
+
+```dotenv
+AI_SETTINGS_REMOTE_WRITE_ENABLED=true
+AI_SETTINGS_PUBLIC_ORIGIN=https://log.example.com
+AI_SETTINGS_ALLOWED_ENDPOINTS='["https://api.deepseek.com/chat/completions"]'
+```
+
+```sh
+docker compose -f compose.yaml -f compose.ai-settings.yaml config --quiet
+docker compose -f compose.yaml -f compose.ai-settings.yaml up -d --force-recreate web
+```
+
+远程修改默认关闭。启用后，知道工作台访问密码的人可以修改这个实例共用的 AI 设置，每次操作均需重新确认密码。DeepSeek 预设支持读取模型，自定义服务可手动填写模型名称。尝试生成由用户发起，按服务商规则计费。远程修改的模型地址使用部署时允许的 HTTPS 目标及公网 DNS；已有部署的私有模型服务可继续由部署者维护。关闭远程修改时保留覆盖文件和允许列表，可继续使用已保存的远程配置。
 
 日志问答还需要检索服务。生成独立随机 token，将同一个值分别存入实例文件（不写入部署目录 `.env`）：
 
@@ -89,7 +106,7 @@ location /study-log {
 
 ## 连接 Windows 和鸿蒙
 
-浏览器使用完整地址 `https://你的域名/study-log`。Windows 在“文件 → 使用方式…”选择“连接服务器”；鸿蒙在登录页填写服务器地址和实例访问密码。地址填写规则以客户端提示为准，通常填写 `https://你的域名`，客户端使用固定的 `/study-log` 路径。
+浏览器使用完整地址 `https://你的域名/study-log`。Windows 在“文件 → 使用方式…”选择“连接工作台”。鸿蒙在首次连接页填写工作台地址和访问密码，稍后也可从“设置 → 学习记录”更换连接。地址通常填写 `https://你的域名`，客户端会使用 `/study-log` 路径。
 
 三个入口连接同一实例时共用学习记录；Windows 的“本地使用”仍是另一份学习记录，切换不会上传或同步。`127.0.0.1` 在手机上表示手机本身，不能用服务器的回环地址连接。没有域名时可先通过 SSH 转发试用浏览器，不因此开放明文公网服务；局域网 HTTP 仅用于明确启用的测试连接。
 

@@ -1,6 +1,7 @@
 import { AiChatError, readChatUsage } from "./ai-chat.ts";
 import type { ChatConfig } from "./ai-config.ts";
 import { chatThinkingParameters } from "./ai-config.ts";
+import { remoteSafeFetch } from "./ai-outbound.ts";
 import type { RagPromptMessage } from "./rag-types.ts";
 
 // Wire bytes include SSE envelopes and non-answer deltas (e.g. reasoning).
@@ -15,7 +16,8 @@ export async function streamRagAnswer(config: ChatConfig, messages: RagPromptMes
   const invalid = () => new AiChatError("AI_INVALID_STREAM", "模型返回了无效的流式响应，请重试");
   try {
     signal.throwIfAborted();
-    const response = await fetch(config.baseUrl, { method: "POST", redirect: "error", signal, headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` }, body: JSON.stringify({ model: config.model, messages, temperature: 0.2, stream: true, ...chatThinkingParameters(config) }) });
+    const transport = config.outboundPolicy ? (url: string, init: RequestInit) => remoteSafeFetch(url, init, config.outboundPolicy) : fetch;
+    const response = await transport(config.baseUrl, { method: "POST", redirect: "error", signal, headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` }, body: JSON.stringify({ model: config.model, messages, temperature: 0.2, stream: true, ...chatThinkingParameters(config) }) });
     if (!response.ok) {
       await response.body?.cancel();
       if (response.status === 429) throw new AiChatError("AI_RATE_LIMITED", "模型服务请求过于频繁，请稍后重试", 429);

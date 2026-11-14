@@ -2,6 +2,7 @@ import { streamText, isStepCount, jsonSchema, tool, type LanguageModel, type Lan
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { ChatConfig } from "./ai-config.ts";
 import { chatThinkingParameters } from "./ai-config.ts";
+import { remoteSafeFetch } from "./ai-outbound.ts";
 import type { McpConfig } from "./mcp-config.ts";
 import { AiChatError, readChatUsage } from "./ai-chat.ts";
 import { EvidenceRun, collectRagEvidence } from "./rag-evidence.ts";
@@ -25,8 +26,9 @@ export function createAgentModel(config: ChatConfig, transport: typeof fetch = f
     fetch: async (_url, init) => {
       const callId = ++call;
       onUsage?.(callId, { inputTokens: null, outputTokens: null });
-      const response = await transport(config.baseUrl, { ...init, redirect: "error",
-        ...(config.thinkingMode ? { body: JSON.stringify({ ...JSON.parse(String(init?.body)), ...thinking }) } : {}) });
+      const request = { ...init, redirect: "error" as const,
+        ...(config.thinkingMode ? { body: JSON.stringify({ ...JSON.parse(String(init?.body)), ...thinking }) } : {}) };
+      const response = config.outboundPolicy ? await remoteSafeFetch(config.baseUrl, request, config.outboundPolicy) : await transport(config.baseUrl, request);
       if (!onUsage || !response.ok || !response.body || !response.headers.get("content-type")?.startsWith("text/event-stream")) return response;
       // The provider adapter emits SDK usage only when its stream flushes. Observe
       // usage frames as they arrive so a later error or abort cannot erase them.

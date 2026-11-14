@@ -1,5 +1,6 @@
 import type { ChatConfig } from "./ai-config.ts";
 import { chatThinkingParameters } from "./ai-config.ts";
+import { remoteSafeFetch } from "./ai-outbound.ts";
 
 export class AiChatError extends Error {
   readonly code: string;
@@ -17,7 +18,8 @@ export async function requestChat(config: ChatConfig, messages: ChatMessage[], o
   const signal = options.signal ? AbortSignal.any([options.signal, deadline.signal]) : deadline.signal;
   try {
     signal.throwIfAborted();
-    const response = await fetch(config.baseUrl, {
+    const transport = config.outboundPolicy ? (url: string, init: RequestInit) => remoteSafeFetch(url, init, config.outboundPolicy) : fetch;
+    const response = await transport(config.baseUrl, {
       method: "POST", redirect: "error", signal,
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` },
       body: JSON.stringify({ model: config.model, messages, temperature: options.temperature ?? 0.3, stream: false,

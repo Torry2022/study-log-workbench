@@ -38,7 +38,7 @@ if (process.env.STUDY_LOG_DESKTOP_PROFILE) {
   app.setPath('userData', process.env.STUDY_LOG_DESKTOP_PROFILE);
 }
 const payload = app.isPackaged ? path.join(process.resourcesPath, 'payload') : repository;
-const { DesktopManager, availablePort } = await import(pathToFileURL(path.join(payload, 'ops/desktop/manager.mjs')));
+const { DesktopManager, availablePort, probeAiDraft } = await import(pathToFileURL(path.join(payload, 'ops/desktop/manager.mjs')));
 const { privateDirectory, atomicPrivateFile } = await import(pathToFileURL(path.join(payload, 'ops/desktop/security.mjs')));
 const manager = new DesktopManager({ packageRoot: payload,
   ...(app.isPackaged ? { node: path.join(payload, 'runtime/node.exe') } : {
@@ -135,6 +135,42 @@ ipcMain.on('workbench:close', event => { if (trusted(event)) win.close(); });
 ipcMain.on('workbench:settings-unavailable', event => {
   if (trusted(event)) void dialog.showMessageBox(win, { type: 'info', title: '模型设置', message: '当前服务器暂不支持查看模型设置', detail: '请联系服务器维护者。' });
 });
+ipcMain.handle('workbench:context', event => {
+  if (!trusted(event)) throw Error('无效窗口');
+  return { mode: active.mode, root: active.mode === 'local' ? manager.root : '' };
+});
+ipcMain.handle('workbench:configuration', event => {
+  if (!trusted(event) || active.mode !== 'local' || manager.state !== 'running') throw Error('当前无法读取本地模型设置');
+  return manager.configuration();
+});
+ipcMain.handle('workbench:configure', async (event, value) => {
+  if (!trusted(event) || active.mode !== 'local') throw Error('当前无法修改本地模型设置');
+  return saveConfiguration(value);
+});
+ipcMain.handle('workbench:probe', async (event, value) => {
+  if (!trusted(event) || active.mode !== 'local' || manager.state !== 'running') throw Error('当前无法检查本地模型设置');
+  if (value?.action === 'test') { const choice = await dialog.showMessageBox(win, { type: 'question', title: '尝试生成', message: '生成检查会发送简短请求，并可能产生模型费用。', buttons: ['取消', '继续检查'], defaultId: 0, cancelId: 0 }); if (choice.response !== 1 || !trusted(event)) return { cancelled: true }; }
+  const controller = new AbortController(), sender = event.sender, cancel = () => controller.abort(); sender.once('destroyed', cancel);
+  try { return await manager.probe({ ...value, signal: controller.signal }); } finally { sender.removeListener('destroyed', cancel); }
+});
+ipcMain.handle('workbench:deployment-preview', event => {
+  if (!trusted(event) || active.mode !== 'local' || manager.state !== 'running') throw Error('当前无法读取部署配置');
+  return manager.deploymentPreview();
+});
+ipcMain.handle('workbench:deployment-restore', async (event, value) => {
+  if (!trusted(event) || active.mode !== 'local' || manager.state !== 'running' || finishing || pendingAction) throw Error('当前无法恢复部署配置');
+  return manager.restoreDeployment(value);
+});
+ipcMain.handle('workbench:settings-action', async (event, action) => {
+  if (!trusted(event)) throw Error('无效窗口');
+  if (action === 'connection') return connection();
+  if (active.mode !== 'local') throw Error('请在工作台服务器上管理学习记录');
+  if (action === 'backup') return backup();
+  if (action === 'restore') return restore();
+  if (action === 'history') return settings('history');
+  if (action === 'folder') return shell.openPath(manager.root);
+  throw Error('操作无效');
+});
 
 function titlebarTrusted(event) {
   return win && event.sender === win.webContents && event.senderFrame === win.webContents.mainFrame
@@ -191,6 +227,23 @@ ipcMain.handle('connection:cancel', event => {
   if (!connectionTrusted(event)) throw Error('无效窗口');
   connectionWindow.close();
 });
+ipcMain.handle('connection:defer', async event => {
+  if (!connectionTrusted(event) || win || finishing || pendingAction) throw Error('当前无法暂缓连接');
+  savedPreferences = { ...savedPreferences, mode: 'pending', usageConfirmed: true };
+  await savePreferences();
+});
+ipcMain.handle('connection:theme', async (event, value) => {
+  if (!connectionTrusted(event) || !['system', 'light', 'dark'].includes(value)) throw Error('外观设置无效');
+  savedPreferences = { ...savedPreferences, themePreference: value };
+  await savePreferences(); nativeTheme.themeSource = value;
+});
+ipcMain.handle('connection:probe', async (event, value) => {
+  if (!connectionTrusted(event) || win || !value || typeof value !== 'object') throw Error('当前无法检查模型设置');
+  const owner = connectionWindow;
+  if (value.action === 'test') { const choice = await dialog.showMessageBox(owner, { type: 'question', title: '尝试生成', message: '生成检查会发送简短请求，并可能产生模型费用。', buttons: ['取消', '继续检查'], defaultId: 0, cancelId: 0 }); if (choice.response !== 1 || !connectionTrusted(event) || owner !== connectionWindow) return { cancelled: true }; }
+  const controller = new AbortController(), cancel = () => controller.abort(); owner.once('closed', cancel);
+  try { return await probeAiDraft({ ...value, signal: controller.signal }); } finally { owner.removeListener('closed', cancel); }
+});
 ipcMain.handle('connection:pick-directory', async event => {
   if (!connectionTrusted(event) || finishing || pendingAction || nextConnection) return { error: '请等待当前操作完成。' };
   const current = connectionWindow;
@@ -208,10 +261,12 @@ ipcMain.handle('connection:read', async event => {
   const inspected = await manager.inspect(connectionLocal.root);
   if (inspected.kind === 'new' && !connectionLocal.create) { inspected.kind = 'invalid'; inspected.message = '没有找到原有学习记录，请重新选择文件夹。'; }
   const assets = app.isPackaged ? path.join(payload, 'web/public') : path.join(repository, 'study-log-web/public');
-  return { kind: inspected.kind, error: inspected.message, logos: { light: pathToFileURL(path.join(assets, 'app-logo-light.svg')).href, dark: pathToFileURL(path.join(assets, 'app-logo-dark.svg')).href }, mode: win ? active.mode : savedPreferences.mode || 'local', origin: savedPreferences.remote?.origin || '', localHttp: savedPreferences.remote?.localHttp || false, root: connectionLocal.root };
+  return { firstRun: !win && (savedPreferences.mode === 'pending' || savedPreferences.usageConfirmed !== true && !savedPreferences.root && !savedPreferences.remote), pending: savedPreferences.mode === 'pending', themePreference: savedPreferences.themePreference || 'system', kind: inspected.kind, error: inspected.message, logos: { light: pathToFileURL(path.join(assets, 'app-logo-light.svg')).href, dark: pathToFileURL(path.join(assets, 'app-logo-dark.svg')).href }, mode: win ? active.mode : savedPreferences.mode === 'pending' ? 'remote' : savedPreferences.mode || 'local', origin: savedPreferences.remote?.origin || '', localHttp: savedPreferences.remote?.localHttp || false, root: connectionLocal.root };
 });
 ipcMain.handle('connection:select', async (event, value) => {
   if (!connectionTrusted(event) || finishing || pendingAction || nextConnection) return { error: '请等待当前操作完成。' };
+  const owner = connectionWindow, stillCurrent = () => owner === connectionWindow && !owner.isDestroyed() && !quitting && !startupCancelled;
+  const previousPreferences = { ...savedPreferences };
   try {
     let target;
     if (value?.mode === 'local') {
@@ -219,18 +274,41 @@ ipcMain.handle('connection:select', async (event, value) => {
       if (inspected.kind === 'invalid') throw Error(inspected.message);
       if (inspected.kind === 'new' && !connectionLocal.create) throw Error('没有找到原有学习记录，请重新选择文件夹。');
       target = { mode: 'local', ...connectionLocal };
+      if (value.ai && (connectionLocal.create && inspected.kind === 'new' || connectionLocal.createdByAttempt && inspected.kind === 'existing')) {
+        const { provider, endpoint, model, key } = value.ai;
+        if (!['deepseek', 'custom'].includes(provider) || typeof endpoint !== 'string' || typeof model !== 'string' || typeof key !== 'string') throw Error('模型配置格式无效');
+        const apiUrl = provider === 'deepseek' ? 'https://api.deepseek.com/chat/completions' : endpoint.trim();
+        if (apiUrl) { let url; try { url = new URL(apiUrl); } catch { throw Error('请输入完整模型接口地址'); }
+          if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.hash || /[\s\\]/.test(apiUrl)) throw Error('模型接口地址无效'); }
+        if (/[\u0000-\u001f\u007f]/.test(model) || key && /[^\x21-\x7e]/.test(key)) throw Error('模型配置含无效字符');
+        target.initialAi = { apiUrl, model: model.trim(), apiKey: key };
+      }
     }
     else {
       if (value?.mode !== 'remote') throw Error('请选择使用方式');
       const result = await connectServer(value);
+      if (!stillCurrent()) return { error: '连接已取消。' };
       target = { mode: 'remote', origin: result.origin, instanceId: result.instanceId, localHttp: value.localHttp === true };
       await session.fromPartition(remotePartition(target)).cookies.set({ url: result.origin, name: 'study_log_session', value: result.cookie,
         path: '/', expirationDate: result.expirationDate, httpOnly: true, secure: result.origin.startsWith('https:'), sameSite: 'lax' });
+      if (!stillCurrent()) return { error: '连接已取消。' };
     }
-    savedPreferences.usageConfirmed = true;
-    connectionWindow.submitted = true; connectionWindow.close();
-    if (win) { nextConnection = target; win.close(); }
-    else { try { await openConnection(target); } catch (error) { await connection(error.message); } }
+    if (!stillCurrent()) return { error: '连接已取消。' };
+    if (win) { savedPreferences.usageConfirmed = true; owner.submitted = true; owner.close(); nextConnection = target; win.close(); }
+    else {
+      savedPreferences.usageConfirmed = true;
+      try {
+        await openConnection(target);
+        if (!stillCurrent()) return { error: '连接已取消。' };
+        owner.submitted = true; owner.close();
+      } catch (error) {
+        if (target.mode === 'local' && connectionLocal.create && manager.root === target.root) connectionLocal = { ...connectionLocal, create: false, createdByAttempt: true };
+        savedPreferences = previousPreferences; await savePreferences().catch(() => {});
+        hideStartup(); await manager.shutdown().catch(() => {});
+        if (stillCurrent()) { owner.show(); owner.focus(); }
+        return { error: error.message || '打开工作台失败，请重试。' };
+      }
+    }
     return { ok: true };
   } catch (error) { return { error: error.message }; }
 });
@@ -246,7 +324,7 @@ async function connection(message = '') {
   nativeTheme.on('updated', updateBackground);
   current.once('closed', () => nativeTheme.removeListener('updated', updateBackground));
   current.webContents.on('will-navigate', e => e.preventDefault()); current.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  current.on('closed', () => { connectionWindow = null; if (!current.submitted && !win) { quitting = true; app.quit(); } });
+  current.on('closed', () => { connectionWindow = null; if (!current.submitted && !win) { startupCancelled = true; app.quit(); } });
   await loadDesktopPage(current, 'connection.html');
   current.show(); hideStartup();
   if (message) current.webContents.send('connection:notice', message);
@@ -263,7 +341,7 @@ async function openConnection(target) {
     await openWorkspace(null, false, remote);
   } else {
     if (Number.isInteger(savedPreferences.webPort) && savedPreferences.webPort >= 1024 && savedPreferences.webPort <= 65535) manager.ports.web = await availablePort(savedPreferences.webPort).catch(() => 0);
-    await openWorkspace(target.root || savedPreferences.root || path.join(app.getPath('userData'), 'instance'), target.root ? target.create === true : !savedPreferences.root);
+    await openWorkspace(target.root || savedPreferences.root || path.join(app.getPath('userData'), 'instance'), target.root ? target.create === true : !savedPreferences.root, null, target.initialAi, target.createdByAttempt);
   }
 }
 async function migration() {
@@ -322,8 +400,8 @@ ipcMain.handle('settings:read', event => {
   if (!settingsTrusted(event)) throw Error('无效窗口');
   return manager.configuration();
 });
-ipcMain.handle('settings:save', async (event, value) => {
-  if (!settingsTrusted(event) || finishing || pendingAction) throw Error('当前无法保存');
+async function saveConfiguration(value) {
+  if (finishing || pendingAction) throw Error('当前无法保存');
   if (!value || typeof value.apiUrl !== 'string' || typeof value.model !== 'string'
     || typeof value.apiKey !== 'string' || typeof value.clearKey !== 'boolean' || !Number.isSafeInteger(value.expectedRevision)
     || typeof value.expectedInstanceId !== 'string' || typeof value.operationId !== 'string') throw Error('模型配置格式无效');
@@ -333,6 +411,10 @@ ipcMain.handle('settings:save', async (event, value) => {
   }
   if (/[\u0000-\u001f\u007f]/.test(value.model) || value.apiKey && /[^\x21-\x7e]/.test(value.apiKey)) throw Error('模型配置含无效字符');
   return manager.configure(value);
+}
+ipcMain.handle('settings:save', async (event, value) => {
+  if (!settingsTrusted(event)) throw Error('当前无法保存');
+  return saveConfiguration(value);
 });
 ipcMain.handle('history:read', event => {
   if (!settingsTrusted(event, 'history.html')) throw Error('无效窗口');
@@ -425,7 +507,7 @@ function menu() {
       { label: '打开已有学习记录…', enabled: active.mode === 'local', click: () => void selectExisting().catch(reportError) },
       { label: '打开保存文件夹', enabled: active.mode === 'local', click: () => { if (manager.root) void shell.openPath(manager.root); } },
       { type: 'separator' },
-      { label: '模型设置…', click: () => active.mode === 'local' ? void settings().catch(reportError) : workspaceView?.webContents.send('workbench:settings') },
+      { label: '模型设置…', click: () => workspaceView?.webContents.send('workbench:settings') },
       { label: '日志历史版本…', enabled: active.mode === 'local', click: () => void settings('history').catch(reportError) },
       { type: 'separator' },
       { label: '创建完整备份…', enabled: active.mode === 'local', click: () => void backup().catch(reportError) },
@@ -473,7 +555,7 @@ async function finishWindow() {
   app.quit();
 }
 
-async function openWorkspace(root, createDefault = false, remote = null) {
+async function openWorkspace(root, createDefault = false, remote = null, initialAi = null, createdByAttempt = false) {
   await showStartup(Boolean(remote));
   if (startupCancelled) return;
   active = remote || { mode: 'local' };
@@ -481,6 +563,10 @@ async function openWorkspace(root, createDefault = false, remote = null) {
     const inspected = await manager.inspect(root); performance.mark('desktop:instance-inspected');
     if (inspected.kind === 'new' && !createDefault) throw Error('没有找到上次使用的学习记录，请检查文件夹是否被移动或删除。');
     await manager.select({ root, create: createDefault && inspected.kind === 'new', password: crypto.randomBytes(24).toString('base64url') });
+    if (initialAi && (createDefault && inspected.kind === 'new' || createdByAttempt && inspected.kind === 'existing')) {
+      const current = await manager.configuration();
+      await manager.configure({ ...initialAi, expectedRevision: current.revision, expectedInstanceId: current.instanceId, operationId: crypto.randomUUID() });
+    }
     performance.mark('desktop:instance-selected');
     await manager.start(stage => setStartupMessage(stage === 'records' ? '正在读取学习记录…' : '正在载入界面…'));
     performance.mark('desktop:services');
@@ -609,12 +695,18 @@ else {
     }
     catch (error) { if (error.code !== 'ENOENT') throw Error('无法读取上次使用的保存位置，请检查本地配置。'); }
     preferencesLoaded = true;
+    if (['system', 'light', 'dark'].includes(savedPreferences.themePreference)) nativeTheme.themeSource = savedPreferences.themePreference;
     if (startupCancelled) return;
-    if (savedPreferences.usageConfirmed !== true || (!savedPreferences.root && !savedPreferences.remote)) { await connection(); return; }
-    if (savedPreferences.mode === 'remote') {
+    if (savedPreferences.mode === 'pending' || (!savedPreferences.root && !savedPreferences.remote)) { await connection(); return; }
+    const previousConfirmation = savedPreferences.usageConfirmed;
+    savedPreferences.usageConfirmed = true;
+    if (savedPreferences.mode === 'remote' || !savedPreferences.mode && !savedPreferences.root && savedPreferences.remote) {
       try { await openConnection(savedPreferences.remote); }
-      catch { await connection('请重新连接服务器。原有本地学习记录仍保留。'); }
-    } else await openConnection({ mode: 'local' });
+      catch { savedPreferences.usageConfirmed = previousConfirmation; await connection('请重新连接服务器。原有本地学习记录仍保留。'); }
+    } else {
+      try { await openConnection({ mode: 'local' }); }
+      catch { savedPreferences.usageConfirmed = previousConfirmation; await connection('无法打开上次使用的学习记录，请重新选择文件夹。'); }
+    }
   } catch (error) {
     if (startupCancelled) return;
     await reportError(error); await manager.shutdown(); quitting = true; app.quit();

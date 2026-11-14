@@ -11,10 +11,38 @@ import { backupInstance, verifyArchive, restoreInstance } from "../archive.mjs";
 import { atomicPrivateFile, privateDirectory, privateFile, runtimeEnvironment } from "./security.mjs";
 import { desktopOwnership, registerDesktopWorker, recoverDesktopLock } from "./recovery.mjs";
 import { initializeAiSettings, readAiSettings, saveAiSettings, aiSettingsSummary } from "../ai-settings.mjs";
+import { aiSettingsFields } from "../../study-log-web/lib/ai-settings-schema.mjs";
+import { remoteSafeFetch } from "../../study-log-web/lib/ai-outbound.mjs";
 
 const worker = fileURLToPath(new URL("./worker.mjs", import.meta.url));
 const inside = (root, value) => { const relative = path.relative(root, value); return !relative || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative)); };
 const errorText = "上次运行未正常结束，暂时无法打开。请按维护说明检查服务和文件状态，不要删除学习记录。";
+
+/** Local, explicit user-initiated check. It never includes learning records. */
+export async function probeAiDraft({ action, endpoint, model, key, signal, transport = fetch }) {
+  if (!['models', 'test'].includes(action) || typeof endpoint !== 'string' || typeof model !== 'string' || typeof key !== 'string' || !key || /[^\x21-\x7e]/.test(key)) throw Error('请填写有效的服务地址和 API Key');
+  let url; try { url = new URL(endpoint); } catch { throw Error('请输入完整接口地址'); }
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.hash || /[\s\\]/.test(endpoint)) throw Error('模型接口地址无效');
+  if (action === 'models' && endpoint !== 'https://api.deepseek.com/chat/completions') throw Error('此服务请手动填写模型名称');
+  if (action === 'test' && (!model.trim() || /[\u0000-\u001f\u007f]/.test(model))) throw Error('请填写有效的模型名称');
+  const target = action === 'models' ? 'https://api.deepseek.com/models' : endpoint;
+  let response;
+  try { response = await transport(target, { method: action === 'models' ? 'GET' : 'POST', redirect: 'error', signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000), headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    ...(action === 'test' ? { body: JSON.stringify({ model: model.trim(), messages: [{ role: 'user', content: '请回复 OK。' }], max_tokens: 8, stream: false }) } : {}) }); }
+  catch { throw Error('无法连接模型服务，请检查配置后重试'); }
+  if (!response.ok || !response.body) { await response.body?.cancel(); throw Error('模型服务未通过检查，请核对配置'); }
+  const reader = response.body.getReader(), chunks = []; let size = 0;
+  try { while (true) { const { done, value } = await reader.read(); if (done) break; size += value.byteLength; if (size > 262144) throw Error('模型服务返回内容过长'); chunks.push(value); } }
+  catch (error) { if (error?.message === '模型服务返回内容过长') throw error; throw Error('模型服务响应中断，请重试'); }
+  finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
+  let result; try { result = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks))); } catch { throw Error('模型服务返回了无效响应'); }
+  if (action === 'models') {
+    if (!Array.isArray(result?.data)) throw Error('模型服务返回了无效模型列表');
+    return { models: result.data.slice(0, 200).map(item => item?.id).filter(id => typeof id === 'string' && id.length > 0 && id.length <= 128 && !/[\u0000-\u001f\u007f]/.test(id)) };
+  }
+  if (typeof result?.choices?.[0]?.message?.content !== 'string' || !result.choices[0].message.content.trim()) throw Error('模型没有返回有效内容');
+  return { ok: true };
+}
 
 export async function availablePort(preferred = 0) {
   const server = net.createServer();
@@ -59,6 +87,7 @@ export class DesktopManager {
     this.packageRoot = path.resolve(packageRoot); this.webRoot = webRoot; this.mcpRoot = mcpRoot;
     this.workerOptions = { node, worker: customWorker }; this.ports = { web: webPort, mcp: mcpPort };
     this.root = null; this.state = "stopped"; this.issue = ""; this.processes = []; this.url = null; this.queue = Promise.resolve();
+    this.deploymentAi = null; this.deploymentPreviewId = null; this.aiOutboundPolicy = {};
   }
   status() { return { state: this.state, root: this.root, url: this.url, issue: this.issue }; }
   operation(work) {
@@ -116,7 +145,7 @@ export class DesktopManager {
       await this.readEnvironment();
       const release = await acquireInstanceLock(path.join(root, "data"), "desktop-open"); await release();
     } catch (error) { this.root = old; throw error; }
-    this.issue = ""; return this.status();
+    this.deploymentAi = null; this.deploymentPreviewId = null; this.issue = ""; return this.status();
   }
   async historyConfiguration() {
     const env = await this.readEnvironment();
@@ -156,10 +185,10 @@ export class DesktopManager {
     const { root, instanceId } = await this.aiSettingsContext();
     return aiSettingsSummary(await readAiSettings(root, instanceId));
   }
-  async configure({ apiUrl = "", model = "", apiKey, clearKey = false, expectedRevision, expectedInstanceId, operationId }) {
+  async configure({ apiUrl = "", model = "", lightModel, contextWindowTokens, thinking, apiKey, clearKey = false, expectedRevision, expectedInstanceId, operationId }) {
     if (!this.root) throw new Error("请先选择保存位置，并创建或打开学习记录");
     if (!["stopped", "running"].includes(this.state)) throw new Error("工作台正在操作中，请稍后重试");
-    if (typeof apiUrl !== "string" || typeof model !== "string" || (apiKey !== undefined && typeof apiKey !== "string")) throw new Error("模型配置格式无效");
+    if (typeof apiUrl !== "string" || typeof model !== "string" || (lightModel !== undefined && typeof lightModel !== "string") || (contextWindowTokens !== undefined && typeof contextWindowTokens !== "string") || (thinking !== undefined && typeof thinking !== "string") || (apiKey !== undefined && typeof apiKey !== "string")) throw new Error("模型配置格式无效");
     if (apiUrl) {
       let url; try { url = new URL(apiUrl); } catch { throw new Error("请输入完整模型接口地址"); }
       if (!["https:", "http:"].includes(url.protocol) || url.username || url.password || url.hash || /[\s\\]/.test(apiUrl)) throw new Error("模型接口地址无效");
@@ -168,13 +197,39 @@ export class DesktopManager {
     const context = await this.aiSettingsContext();
     if (expectedInstanceId !== context.instanceId) throw new Error("工作台身份已变化，请重新打开设置");
     const current = await readAiSettings(context.root, context.instanceId);
-    const values = { ...current.values, CHAT_API_URL: apiUrl.trim() || current.values.CHAT_API_URL, CHAT_MODEL: model.trim(), CHAT_API_KEY: apiKey || "" };
-    return saveAiSettings({ ...context, expectedRevision, operationId, values, keyAction: clearKey ? "remove" : apiKey ? "replace" : "keep" });
+    const values = { ...current.values, CHAT_API_URL: apiUrl.trim() || current.values.CHAT_API_URL, CHAT_MODEL: model.trim(), CHAT_LIGHT_MODEL: lightModel === undefined ? current.values.CHAT_LIGHT_MODEL : lightModel.trim(), RAG_CONTEXT_WINDOW_TOKENS: contextWindowTokens === undefined ? current.values.RAG_CONTEXT_WINDOW_TOKENS : contextWindowTokens.trim(), RAG_DEEPSEEK_THINKING: thinking === undefined ? current.values.RAG_DEEPSEEK_THINKING : thinking, CHAT_API_KEY: apiKey || "" };
+    return saveAiSettings({ ...context, expectedRevision, operationId, values, keyAction: clearKey ? "remove" : apiKey ? "replace" : "keep", contextWindowConfirmed: contextWindowTokens !== undefined });
+  }
+  async probe({ action, apiUrl = "", model = "", apiKey = "", expectedRevision, expectedInstanceId, signal }) {
+    const context = await this.aiSettingsContext();
+    if (expectedInstanceId !== context.instanceId) throw new Error("工作台身份已变化，请重新打开设置");
+    const current = await readAiSettings(context.root, context.instanceId);
+    if (expectedRevision !== current.revision) throw new Error("模型设置已在另一处更新，请核对最新设置");
+    const endpoint = apiUrl.trim() || current.values.CHAT_API_URL;
+    if (!apiKey && endpoint !== current.values.CHAT_API_URL) throw new Error("更换接口地址后请重新填写密钥");
+    const transport = current.remoteManaged && endpoint === current.values.CHAT_API_URL ? (url, init) => remoteSafeFetch(url, init, this.aiOutboundPolicy) : fetch;
+    const result = await probeAiDraft({ action, endpoint, model, key: apiKey || current.values.CHAT_API_KEY, signal, transport });
+    const latest = await this.aiSettingsContext();
+    if (latest.instanceId !== context.instanceId || latest.root !== context.root) throw new Error("工作台身份已变化，请重新打开设置");
+    if ((await readAiSettings(context.root, context.instanceId)).revision !== current.revision) throw new Error("模型设置已在另一处更新，请重新检查");
+    return result;
+  }
+  async deploymentPreview() {
+    if (!this.deploymentAi || !this.deploymentPreviewId) throw new Error("工作台尚未启动");
+    const context = await this.aiSettingsContext(), current = await readAiSettings(context.root, context.instanceId);
+    return { ...aiSettingsSummary({ instanceId: context.instanceId, revision: current.revision, operationId: null, values: this.deploymentAi }), previewId: this.deploymentPreviewId };
+  }
+  async restoreDeployment({ expectedInstanceId, expectedRevision, operationId, previewId }) {
+    if (!this.deploymentAi || previewId !== this.deploymentPreviewId) throw new Error("部署配置已变化，请重新核对");
+    const context = await this.aiSettingsContext(); if (context.instanceId !== expectedInstanceId) throw new Error("工作台身份已变化，请重新打开设置");
+    return saveAiSettings({ ...context, expectedRevision, operationId, values: { ...this.deploymentAi }, keyAction: this.deploymentAi.CHAT_API_KEY ? "replace" : "remove", remoteManaged: false });
   }
   async start(onProgress = () => {}) {
     if (this.state === "running") return this.status();
     if (this.state !== "stopped") throw new Error(this.issue || "工作台正在操作中");
     const env = await this.readEnvironment();
+    this.deploymentAi = Object.fromEntries(aiSettingsFields.map(field => [field, env[field] || ""])); this.deploymentPreviewId = crypto.randomUUID();
+    this.aiOutboundPolicy = { AI_SETTINGS_ALLOWED_ENDPOINTS: env.AI_SETTINGS_ALLOWED_ENDPOINTS };
     let settingsRoot = path.join(this.root, "config");
     try { settingsRoot = (await this.aiSettingsContext()).root; }
     catch { /* Basic records remain available; the AI reader fails closed. */ }

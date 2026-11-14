@@ -1,0 +1,70 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
+
+const repo = path.resolve(import.meta.dirname, '../..');
+const { _electron: electron, expect } = createRequire(path.join(repo, 'study-log-web/package.json'))('@playwright/test');
+const executablePath = createRequire(import.meta.url)('electron');
+const evidence = path.join(process.env.TEMP || process.env.TMP || repo, `study-log-first-run-${Date.now()}`);
+await fs.mkdir(evidence, { recursive: true });
+let app;
+const launch = async profile => {
+  const env = { ...process.env, STUDY_LOG_DESKTOP_PROFILE: profile }; delete env.ELECTRON_RUN_AS_NODE;
+  app = await electron.launch({ executablePath, args: [path.join(repo, 'ops/electron')], env, timeout: 60000 });
+};
+const chooser = async () => { await expect.poll(() => app.context().pages().some(p => !p.isClosed() && p.url().includes('connection.html'))).toBe(true); return app.context().pages().find(p => !p.isClosed() && p.url().includes('connection.html')); };
+const workspace = async () => { await expect.poll(() => app.context().pages().some(p => !p.isClosed() && /^https?:/.test(p.url())), { timeout: 60000 }).toBe(true); const p = app.context().pages().find(p => !p.isClosed() && /^https?:/.test(p.url())); await expect(p.locator('.workspace')).toBeVisible({ timeout: 60000 }); return p; };
+const close = async () => { if (!app) return; const closed = app.waitForEvent('close', { timeout: 60000 }); await app.evaluate(({ app }) => app.quit()); await closed; app = null; };
+try {
+  const profile = path.join(evidence, 'profile'), root = path.join(evidence, 'records'); await fs.mkdir(root);
+  await launch(profile); let page = await chooser();
+  await expect(page.getByRole('heading', { name: '选择使用方式' })).toBeVisible();
+  await page.screenshot({ path: path.join(evidence, 'mode.png') });
+  await page.getByText('在这台电脑使用', { exact: false }).click();
+  await expect(page.getByRole('heading', { name: '把记录存在哪里？' })).toBeVisible();
+  await app.evaluate(({ dialog }, root) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [root] }); }, root);
+  await page.getByRole('button', { name: '选择文件夹' }).click();
+  await page.getByRole('button', { name: '继续', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '让 AI 帮你整理记录' })).toBeVisible();
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('connection.html')).setContentSize(420, 320));
+  for (const selector of ['#key-help', '[name=model]', '#skip', 'button[type=submit]']) {
+    const element = page.locator(selector); await element.scrollIntoViewIfNeeded();
+    const bounds = await element.evaluate(node => { const rect = node.getBoundingClientRect(); return { top: rect.top, bottom: rect.bottom, height: innerHeight }; });
+    assert.ok(bounds.top >= 0 && bounds.bottom <= bounds.height, `${selector} is clipped: ${JSON.stringify(bounds)}`);
+  }
+  await page.locator('[name=model]').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: path.join(evidence, 'ai-short.png') });
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(window => window.webContents.getURL().includes('connection.html')).setContentSize(640, 520));
+  await page.locator('[name=key]').fill('synthetic-key'); await page.locator('[name=model]').fill('synthetic-model');
+  await page.screenshot({ path: path.join(evidence, 'ai.png') });
+  await page.getByRole('button', { name: '保存并开始使用' }).click().catch(error => { if (!page.isClosed()) throw error; });
+  await workspace();
+  const saved = JSON.parse(await fs.readFile(path.join(root, 'config/ai-settings.json'), 'utf8'));
+  assert.equal(saved.values.CHAT_API_URL, 'https://api.deepseek.com/chat/completions'); assert.equal(saved.values.CHAT_MODEL, 'synthetic-model'); assert.equal(saved.values.CHAT_API_KEY, 'synthetic-key');
+  await close();
+  const prefsPath = path.join(profile, 'desktop.json'), prefs = JSON.parse(await fs.readFile(prefsPath, 'utf8')); delete prefs.usageConfirmed; await fs.writeFile(prefsPath, JSON.stringify(prefs));
+  await launch(profile); await workspace(); assert.equal(app.context().pages().some(p => p.url().includes('connection.html')), false);
+  assert.equal(JSON.parse(await fs.readFile(prefsPath, 'utf8')).usageConfirmed, true); await close();
+  const deferred = path.join(evidence, 'deferred'); await launch(deferred); page = await chooser();
+  await page.locator('.choice').filter({ hasText: '连接工作台' }).click(); await page.getByRole('button', { name: '稍后连接' }).click();
+  await expect(page.getByRole('heading', { name: '连接你的工作台' })).toBeVisible();
+  await page.getByRole('button', { name: '本机设置' }).click(); await page.locator('#local-theme').selectOption('dark');
+  await expect(page.locator('#notice')).toContainText('外观已保存'); await close();
+  await launch(deferred); page = await chooser(); await expect(page.getByRole('heading', { name: '连接你的工作台' })).toBeVisible();
+  await page.getByRole('button', { name: '本机设置' }).click(); await expect(page.locator('#local-theme')).toHaveValue('dark');
+  await close();
+  const failureProfile = path.join(evidence, 'failure'), failureRoot = path.join(evidence, 'retry-records'); await fs.mkdir(failureRoot);
+  await launch(failureProfile); page = await chooser();
+  await page.getByText('在这台电脑使用', { exact: false }).click();
+  await app.evaluate(({ dialog }, root) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [root] }); }, failureRoot);
+  await page.getByRole('button', { name: '选择文件夹' }).click(); await page.getByRole('button', { name: '继续' }).click();
+  await page.locator('[name=model]').fill('retry-model');
+  await app.evaluate(async (_electron, moduleUrl) => { const vm = process.getBuiltinModule('vm'); const { DesktopManager } = await new vm.Script(`import(${JSON.stringify(moduleUrl)})`, { importModuleDynamically: vm.constants.USE_MAIN_CONTEXT_DEFAULT_LOADER }).runInThisContext(); const start = DesktopManager.prototype.start; let fail = true; DesktopManager.prototype.start = function (...args) { if (fail) { fail = false; throw Error('合成启动失败'); } return start.apply(this, args); }; }, pathToFileURL(path.join(repo, 'ops/desktop/manager.mjs')).href);
+  await page.getByRole('button', { name: '保存并开始使用' }).click(); await expect(page.locator('#notice')).toContainText('合成启动失败');
+  await expect(page.locator('[name=model]')).toHaveValue('retry-model');
+  await page.getByRole('button', { name: '保存并开始使用' }).click().catch(error => { if (!page.isClosed()) throw error; }); await workspace();
+  assert.equal(JSON.parse(await fs.readFile(path.join(failureRoot, 'config/ai-settings.json'), 'utf8')).values.CHAT_MODEL, 'retry-model');
+  await close(); console.log(`First-run smoke passed: ${evidence}`);
+} finally { if (app) await close().catch(() => {}); }

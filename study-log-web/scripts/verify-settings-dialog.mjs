@@ -36,6 +36,15 @@ try {
         await page.getByLabel('访问密码').fill('synthetic-password');
         await page.getByRole('button', { name: '登录', exact: true }).click();
         await expect(page.locator('.workspace')).toBeVisible();
+        if (name === 'chromium' && !mobile && colorScheme === 'light') {
+          const material = page.getByPlaceholder('粘贴笔记、代码片段、课程内容或项目进展');
+          if (!await material.isVisible()) await page.getByRole('button', { name: 'AI生成', exact: true }).first().click();
+          await material.fill('需要保留的合成学习材料');
+          await page.getByRole('button', { name: '打开 AI 设置' }).first().click();
+          const featureSettings = page.getByRole('dialog', { name: '设置', exact: true }); await expect(featureSettings).toBeVisible();
+          await featureSettings.getByRole('button', { name: '关闭设置' }).click(); await expect(featureSettings).toBeHidden();
+          await expect(material).toHaveValue('需要保留的合成学习材料');
+        }
         if (!mobile) {
           await page.getByRole('button', { name: '源码', exact: true }).click();
           const editor = page.locator('.source-workspace:not(.source-workspace-hidden) .cm-content[contenteditable=true]');
@@ -57,7 +66,9 @@ try {
         const open = async () => {
           if (mobile) { await page.getByRole('button', { name: '更多设置' }).click(); await page.getByRole('button', { name: '设置', exact: true }).click(); }
           else await page.getByRole('button', { name: '打开设置' }).click();
-          return page.getByRole('dialog', { name: '设置', exact: true });
+          const dialog = page.getByRole('dialog', { name: '设置', exact: true });
+          await dialog.getByRole('button', { name: 'AI 服务' }).click();
+          return dialog;
         };
         let dialog = await open();
         await expect(dialog).toContainText('synthetic-model');
@@ -81,13 +92,15 @@ try {
   }
   const repo = path.resolve(webRoot, '..');
   const requireElectron = createRequire(path.join(repo, 'ops/electron/package.json'));
-  const env = { ...process.env, STUDY_LOG_DESKTOP_PROFILE: path.join(evidence, 'desktop-profile') };
+  const env = { ...process.env, STUDY_LOG_DESKTOP_PROFILE: path.join(process.env.TEMP || process.env.TMP || evidence, `settings-desktop-${Date.now()}`) };
   delete env.ELECTRON_RUN_AS_NODE;
   const desktop = await electron.launch({ executablePath: requireElectron('electron'), args: [path.join(repo, 'ops/electron')], env, timeout: 60000 });
   try {
     await expect.poll(() => desktop.context().pages().some(page => page.url().includes('connection.html'))).toBe(true);
     const chooser = desktop.context().pages().find(page => page.url().includes('connection.html'));
-    await chooser.locator('[value=remote]').check();
+    if (await chooser.getByRole('heading', { name: '选择使用方式' }).isVisible()) await chooser.locator('.choice').filter({ hasText: '连接工作台' }).click();
+    else await chooser.locator('[value=remote]').check();
+    if (await chooser.getByRole('button', { name: '继续', exact: true }).isVisible()) await chooser.getByRole('button', { name: '继续', exact: true }).click();
     await chooser.locator('[name=origin]').fill(`http://127.0.0.1:${port}`);
     await chooser.locator('[name=localHttp]').check();
     await chooser.locator('[name=password]').fill('synthetic-password');

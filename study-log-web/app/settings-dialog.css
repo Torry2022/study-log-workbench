@@ -1,4 +1,12 @@
-.settings-dialog { width: min(680px, calc(100vw - 48px)); height: min(620px, calc(100dvh - 48px)); }
+.settings-dialog-backdrop { z-index: 115; }
+body:has(.settings-dialog-backdrop) .confirmation-backdrop { z-index: 120; }
+.settings-dialog { width: min(1000px, calc(100vw - 48px)); height: min(720px, calc(100dvh - 48px)); container-type: inline-size; }
+.settings-dialog-layout { display: grid; grid-template-columns: 208px minmax(0, 1fr); min-height: 0; }
+.settings-nav { padding: 16px 12px; border-right: 1px solid var(--hairline); }
+.settings-nav button { width: 100%; display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 8px 12px; border: 0; border-radius: var(--radius-md); color: var(--ink); background: transparent; text-align: left; cursor: pointer; font: inherit; }
+.settings-nav button[aria-current="page"] { background: var(--surface-soft); color: var(--primary); }
+.settings-nav button span { display: none; margin-left: auto; }
+.settings-back { display: none; }
 .settings-dialog-content { display: block; padding: 24px; }
 .settings-dialog-content > section { max-width: 600px; margin: 0 auto; }
 .settings-dialog-content h3 { color: var(--ink); font-size: 15px; }
@@ -8,6 +16,41 @@
 .settings-summary dt { color: var(--muted); }
 .settings-summary dd { min-width: 0; margin: 0; color: var(--ink); overflow-wrap: anywhere; }
 .settings-maintenance { margin-top: 20px; }
+.settings-help { margin-top: 16px; color: var(--body); font-size: 13px; line-height: 1.6; }
+.settings-help summary { cursor: pointer; }
+.settings-help p { margin: 8px 0; color: var(--muted); }
+.settings-help a { color: var(--primary); }
+.settings-path { overflow-wrap: anywhere; color: var(--muted); font-size: 13px; }
+.settings-action-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+.settings-form .settings-action-list { margin-top: 0; }
+.settings-inline-action { margin-top: 16px; }
+.settings-theme { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+.settings-theme [aria-pressed="true"] { border-color: var(--primary); color: var(--primary); }
+.settings-form { display: grid; gap: 16px; margin-top: 20px; }
+.settings-form label { display: grid; gap: 8px; font-size: 14px; }
+.settings-form input:not([type="checkbox"]), .settings-form select { width: 100%; min-height: 40px; border: 1px solid var(--hairline); border-radius: var(--radius-md); background: var(--canvas); color: var(--ink); padding: 8px 12px; font: inherit; }
+.settings-form .settings-check { display: flex; align-items: center; }
+.settings-model-row { display: flex; align-items: flex-end; gap: 8px; flex-wrap: wrap; }
+.settings-model-row label { flex: 1 1 220px; min-width: 0; }
+.settings-form details label { margin-top: 16px; }
+.settings-form summary { cursor: pointer; }
+.settings-notice { margin: 0; color: var(--muted); }
+.settings-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding-top: 16px; border-top: 1px solid var(--hairline); }
+.settings-preview { padding-top: 16px; border-top: 1px solid var(--hairline); }
+.settings-preview .settings-summary { margin: 8px 0 16px; }
+.settings-password { width: min(440px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; padding: 20px; }
+.settings-password h3 { margin: 0; }.settings-password p { color: var(--muted); }.settings-password label { display: grid; gap: 8px; }
+.settings-password input { width: 100%; min-height: 40px; padding: 8px 12px; border: 1px solid var(--hairline); border-radius: var(--radius-md); background: var(--canvas); color: var(--ink); font: inherit; }
+.settings-password .settings-actions { margin-top: 20px; }
+@container (max-width: 839px) {
+  .settings-dialog-layout { grid-template-columns: minmax(0, 1fr); }
+  .settings-nav { border-right: 0; }
+  .settings-nav button span { display: inline; }
+  .settings-nav button[aria-current="page"] { background: transparent; color: var(--ink); }
+  .settings-dialog:not([data-page="menu"]) .settings-nav { display: none; }
+  .settings-dialog[data-page="menu"] .settings-dialog-content { display: none; }
+  .settings-back { display: inline-flex; margin-bottom: 20px; }
+}
 @media (max-width: 700px) {
   .settings-dialog-backdrop { padding: var(--safe-area-top) var(--safe-area-right) var(--safe-area-bottom) var(--safe-area-left); }
   .settings-dialog { width: 100%; height: min(620px, var(--mobile-viewport-height, 100dvh)); max-height: var(--mobile-viewport-height, 100dvh); border-radius: 0; }

@@ -23,10 +23,11 @@ export function FeatureAvailability({ title, description, messages = [], dark = 
     <div className="feature-availability-body">
       <strong>{title}</strong>
       <p>{description}</p>
+      <button type="button" onClick={() => window.dispatchEvent(new CustomEvent("study-log:settings", { detail: "feature", cancelable: true }))}>打开 AI 设置</button>
       <details>
         <summary>检查说明</summary>
         <div className="feature-availability-details">
-          <p>Windows 桌面端本地使用：打开“文件 → 模型设置”。浏览器本地启动入口：打开“模型配置”。连接服务器：请服务器管理员检查配置或服务版本。处理后点击“重新检查”。</p>
+          <p>可在设置中查看 AI 服务配置；如果由部署者维护，请联系工作台维护者。处理后点击“重新检查”。</p>
           {messages.length > 0 && <ul>{[...new Set(messages.filter(Boolean).map(readable))].map(message => <li key={message}>{message}</li>)}</ul>}
           <button type="button" disabled={busy} onClick={onCheck}><RefreshCw size={13} aria-hidden="true" />{busy ? "检查中…" : "重新检查"}</button>
         </div>

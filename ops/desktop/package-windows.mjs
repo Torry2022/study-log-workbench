@@ -60,6 +60,8 @@ export async function packageWindows(output, { cache = path.join(repository, ".l
   }
   await fs.mkdir(path.join(output, "study-log-web", "lib"), { recursive: true });
   await fs.copyFile(path.join(repository, "study-log-web", "lib", "ai-settings-schema.mjs"), path.join(output, "study-log-web", "lib", "ai-settings-schema.mjs"));
+  await fs.copyFile(path.join(repository, "study-log-web", "lib", "ai-outbound.mjs"), path.join(output, "study-log-web", "lib", "ai-outbound.mjs"));
+  await fs.cp(path.join(repository, "study-log-web", "node_modules", "undici"), path.join(output, "study-log-web", "node_modules", "undici"), { recursive: true, dereference: true });
   await fs.mkdir(path.join(output, "ops", "desktop"));
   for (const name of ["worker.mjs", "security.mjs", "windows-system.mjs", "recovery.mjs", "manager.mjs", "launcher.mjs", "index.html", "ui.js", "ui.css"]) {
     await fs.copyFile(path.join(repository, "ops", "desktop", name), path.join(output, "ops", "desktop", name));

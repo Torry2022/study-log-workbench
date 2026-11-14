@@ -5,6 +5,9 @@ import { appFeedback } from '../../common/ui/AppFeedback';
 import { EDITOR_SIZES, READING_SCALES, workspacePreferences } from '../../common/storage/WorkspacePreferences';
 import { WorkspaceBreakpoint } from '../../common/AppConfig';
 import { workspaceSerifFamily } from '../../common/ui/Typography';
+import { SegmentIndicator } from '../../common/ui/SegmentIndicator';
+import { InteractiveSurface, animateHover } from '../../common/ui/InteractiveSurface';
+import { AiSettingsStatus } from './AiSettingsStatus';
 
 @Component
 export struct SettingsPanel {
@@ -16,6 +19,8 @@ export struct SettingsPanel {
   @State private wrapSwitch: boolean = true;
   @State private historySwitch: boolean = true;
   @State private busy: boolean = false;
+  @State private section: string = 'reading';
+  @State private hoveredSection: string = '';
   onClose: () => void = () => {};
 
   aboutToAppear(): void { this.syncSwitches(); }
@@ -58,6 +63,19 @@ export struct SettingsPanel {
   }
 
   @Builder
+  private sectionButton(section: string, label: string) {
+    Button({ type: ButtonType.Normal }) {
+      Text(label).fontFamily('HarmonyOS Sans SC').fontSize(14).fontWeight(FontWeight.Medium)
+        .fontColor(this.section === section ? $r('app.color.ink') : $r('app.color.muted'))
+    }.layoutWeight(1).height(44).padding(0).borderRadius(6)
+      .backgroundColor(Color.Transparent)
+      .attributeModifier(new InteractiveSurface(Color.Transparent, this.hoveredSection === section, this.section === section))
+      .onHover((hover: boolean) => animateHover(this.getUIContext(), () => this.hoveredSection = hover ? section : ''))
+      .accessibilityText(label).id(`settings_section_${section}`)
+      .onClick(() => this.section = section)
+  }
+
+  @Builder
   private label(title: string, detail: string) {
     Column({ space: 4 }) {
       Text(title).fontSize(14).fontColor($r('app.color.ink'))
@@ -76,8 +94,20 @@ export struct SettingsPanel {
             symbol: $r('sys.symbol.xmark'), controlHeight: 36, iconWidth: 36,
             onAction: this.onClose }).id('settings_close')
         }.width('100%').padding(16).flexShrink(0).border({ width: { bottom: 1 }, color: $r('app.color.hairline') })
+        Stack() {
+          SegmentIndicator({ selected: this.section === 'reading' ? 0 : 1, count: 2 })
+          Row() {
+            this.sectionButton('reading', '阅读与编辑')
+            this.sectionButton('ai', 'AI 服务')
+          }.width('100%').padding(3)
+        }.height(50).margin({ left: 16, right: 16, top: 16 }).flexShrink(0)
+          .backgroundColor($r('app.color.surface_soft')).borderRadius(8)
+          .border({ width: 1, color: $r('app.color.hairline') })
         Scroll() {
           Column({ space: 16 }) {
+            if (this.section === 'ai') {
+              AiSettingsStatus()
+            } else {
             Text('阅读与编辑').fontSize(12).fontWeight(FontWeight.Medium).fontColor($r('app.color.muted')).width('100%')
             Row({ space: 16 }) {
               this.label('正文字号', '按比例调整阅读正文和标题，不改变导航与按钮。')
@@ -112,14 +142,17 @@ export struct SettingsPanel {
                   if (value !== this.rememberSearch) this.changeHistory(value);
                 })
             }.width('100%').id('settings_history_row')
+            }
           }.width('100%').padding(16).alignItems(HorizontalAlign.Start).enabled(!this.busy)
         }.width('100%').flexShrink(1).align(Alignment.TopStart).scrollBar(BarState.Auto)
+        if (this.section === 'reading') {
         Row({ space: 12 }) {
           Text('设置自动保存，仅对本机生效。').layoutWeight(1).fontSize(12).fontColor($r('app.color.muted'))
           ToolbarAction({ label: '恢复默认', showIcon: false, available: !this.busy, onAction: () => this.reset() })
             .id('settings_reset')
         }.width('100%').padding(16).flexShrink(0).id('settings_footer')
           .border({ width: { top: 1 }, color: $r('app.color.hairline') })
+        }
       }.width('90%').constraintSize({ maxWidth: 600, maxHeight: '82%' })
         .backgroundColor($r('app.color.canvas')).borderRadius(12)
         .border({ width: 1, color: $r('app.color.hairline') })

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
@@ -9,12 +10,16 @@ const require = createRequire(new URL("../../study-log-web/package.json", import
 const { chromium, expect } = require("@playwright/test");
 const evidence = path.resolve(process.argv[2] || ".local/desktop-browser");
 const packageRoot = path.resolve(process.argv[3]);
+const sourceMode = process.argv[4] === "source";
 const implementation = process.argv[4] === "package" ? path.join(packageRoot, "ops", "desktop") : path.resolve("ops/desktop");
 const { startLauncher } = await import(pathToFileURL(path.join(implementation, "launcher.mjs")));
 const { DesktopManager } = await import(pathToFileURL(path.join(implementation, "manager.mjs")));
 await fs.mkdir(evidence, { recursive: true });
 const synthetic = await fs.mkdtemp(path.join(os.tmpdir(), "study-log-desktop-browser-"));
-const manager = new DesktopManager({ packageRoot });
+const manager = new DesktopManager({ packageRoot, ...(sourceMode ? {
+  webRoot: path.join(packageRoot, "study-log-web"), mcpRoot: path.join(packageRoot, "study-log-mcp"),
+  node: path.join(packageRoot, ".local/windows-runtime/node-v22.23.3-win-x64/node.exe"),
+} : {}) });
 const launcher = await startLauncher({ packageRoot, manager, stateRoot: path.join(synthetic, "state"), openBrowser: false,
   assetsRoot: path.resolve("study-log-web/public"), iconFile: path.resolve("study-log-web/app/icon.svg") });
 const browser = await chromium.launch({ headless: true });
@@ -63,14 +68,29 @@ try {
     await second.locator("#select").click(); await expect(second.locator("#current")).toHaveText("保存位置已就绪。");
   } finally { await other.close(); await second.close(); }
   passed.push("Unselected, empty/new, nonempty unrelated, existing-but-unopened and ready directories gate actions; picker and typed paths agree");
-  await page.getByText("模型配置（可选）", { exact: true }).click();
-  await page.getByLabel("模型接口地址").fill("https://example.invalid/v1/chat/completions");
+  const aiSection = page.getByText("AI 服务", { exact: true });
+  await aiSection.click();
+  await expect(page.getByLabel("服务商")).toHaveValue("deepseek");
+  await expect(page.getByLabel("完整接口地址")).toBeHidden();
+  await page.getByLabel("服务商").selectOption("custom");
+  await page.getByLabel("完整接口地址").fill("https://example.invalid/v1/chat/completions?profile=private-synthetic");
   await page.getByLabel("模型名称").fill("synthetic-model");
   await page.getByLabel("API Key", { exact: true }).fill("synthetic-browser-key");
-  await page.locator("#configure").click(); await expect(page.locator("#keyStatus")).toHaveText("已保存 API Key");
+  await page.getByText("更多选项", { exact: true }).click();
+  await page.getByLabel("轻量任务模型").fill("synthetic-light");
+  // Commit through the launcher, then drop only the response received by the page.
+  await page.route("**/api/configure", async route => {
+    const committed = await route.fetch();
+    assert.equal(committed.status(), 200);
+    await route.abort();
+  }, { times: 1 });
+  await page.locator("#configure").click(); await expect(page.locator("#keyStatus")).toHaveText("API Key 已设置");
   await expect(page.locator("#apiKey")).toHaveValue("");
+  await expect(page.locator("#model-notice")).toContainText("新开始的任务");
+  assert.equal((await manager.configuration()).lightModel, "synthetic-light");
+  assert.equal(await page.locator("#provider option").first().textContent(), "沿用当前服务（https://example.invalid）");
   await page.reload(); await expect(page.locator("#current")).toHaveText("保存位置已就绪。");
-  await expect(page.locator("#keyStatus")).toHaveText("已保存 API Key");
+  await expect(page.locator("#keyStatus")).toHaveText("API Key 已设置");
   await page.route("**/api/pick", route => route.fulfill({ contentType: "application/json", body: '{"path":""}' }));
   await page.getByRole("button", { name: "选择目录", exact: true }).click();
   await expect(page.locator("#start")).toBeEnabled(); await expect(page.locator("#root")).toHaveValue(selectedRoot);
@@ -78,17 +98,31 @@ try {
   await page.locator("#start").click(); await expect(page.locator("#state")).toHaveText("正在运行", { timeout: 60000 });
   await expect(page.locator("#start")).toHaveText("停止工作台"); await expect(page.locator("#start")).toBeEnabled();
   await expect(page.locator("#root")).toBeDisabled(); await expect(page.locator("#configure")).toBeEnabled();
-  await page.getByText("模型配置（可选）", { exact: true }).click();
+  await aiSection.click();
+  await page.getByLabel("服务商").selectOption("deepseek");
+  await page.locator("#configure").click();
+  await expect(page.locator("#model-notice")).toContainText("对应的 API Key");
+  assert.equal((await manager.configuration()).endpointDisplay, "https://example.invalid");
+  await page.getByLabel("服务商").selectOption("keep");
   await page.getByLabel("模型名称").fill("synthetic-running-model");
+  const earlier = await manager.configuration();
+  await manager.configure({ model: "synthetic-other-editor", expectedInstanceId: earlier.instanceId,
+    expectedRevision: earlier.revision, operationId: randomUUID() });
+  await page.locator("#configure").click();
+  await expect(page.getByRole("button", { name: "核对最新设置" })).toBeVisible();
+  await expect(page.getByLabel("模型名称")).toHaveValue("synthetic-running-model");
+  await page.getByRole("button", { name: "核对最新设置" }).click();
+  await expect(page.getByLabel("模型名称")).toHaveValue("synthetic-running-model");
   await page.locator("#configure").click(); await expect(page.locator("#model-notice")).toContainText("新开始的任务");
   assert.equal((await manager.configuration()).model, "synthetic-running-model");
+  assert.equal((await manager.configuration()).lightModel, "synthetic-light");
   assert.equal((await page.request.get(await page.locator("#open").getAttribute("href"))).status(), 200);
   await shot("wide-dark-running");
   await page.locator("#start").click(); await expect(page.locator("#state")).toHaveText("未运行", { timeout: 60000 });
   await expect(page.locator("#stop, #exit")).toHaveCount(0); await expect(page.locator("#run-notice")).toBeHidden();
   await expect(page.locator("#start")).toBeEnabled(); await shot("wide-dark-ready");
   assert.equal(await fs.stat(path.join(selectedRoot, "data", ".instance-operation.lock")).catch(() => null), null);
-  passed.push("Actual packaged Web/MCP start, HTTP 200, running controls, graceful stop and lock release; no duplicate stop notification");
+  passed.push(`Actual ${sourceMode ? "source" : "packaged"} Web/MCP start, HTTP 200, running controls, graceful stop and lock release; no duplicate stop notification`);
   for (const theme of ["light", "dark"]) {
     await page.emulateMedia({ colorScheme: theme }); await page.setViewportSize({ width: 390, height: 844 });
     await page.locator("details").evaluateAll(nodes => nodes.forEach(node => node.open = true));

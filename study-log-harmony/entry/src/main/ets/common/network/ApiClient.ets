@@ -99,7 +99,9 @@ export class ApiClient {
   patch<T>(path: string, body: object): Promise<T> { return this.request<T>(path, 'PATCH', body); }
   delete<T>(path: string, body?: object): Promise<T> { return this.request<T>(path, 'DELETE', body); }
 
-  getForInstance<T>(path: string, instanceId: string): Promise<T> { return this.read<T>(path, undefined, instanceId); }
+  getForInstance<T>(path: string, instanceId: string, cancellation?: ReadCancellation): Promise<T> {
+    return this.read<T>(path, cancellation, instanceId);
+  }
   postForInstance<T>(path: string, body: object, instanceId: string): Promise<T> { return this.request<T>(path, 'POST', body, undefined, instanceId); }
   deleteForInstance<T>(path: string, instanceId: string): Promise<T> { return this.request<T>(path, 'DELETE', undefined, undefined, instanceId); }
 

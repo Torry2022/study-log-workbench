@@ -8,7 +8,7 @@ const base=new URL('../entry/src/main/ets/common/network/',import.meta.url);
 async function compile(name){return ts.transpileModule(await readFile(new URL(name+'.ets',base),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText}
 const api=await compile('ApiClient'),cancelCode=await compile('ReadCancellation');let reasonCode='';try{reasonCode=await compile('ReadFailure')}catch{}
 function harness(results){
- let calls=0,closed=0,binding=0;const logs=[];class ApiError extends Error{constructor(message,statusCode,code=''){super(message);this.statusCode=statusCode;this.code=code}}
+ let calls=0,closed=0,binding=0;const logs=[],requests=[];class ApiError extends Error{constructor(message,statusCode,code=''){super(message);this.statusCode=statusCode;this.code=code}}
  const reasons={exports:{}};runInNewContext(reasonCode,{module:reasons,exports:reasons.exports});const cancellation={exports:{}};runInNewContext(cancelCode,{module:cancellation,exports:cancellation.exports,Error});
  const m={exports:{}};
  runInNewContext(api,{module:m,exports:m.exports,Error,SyntaxError,JSON,Date,setTimeout,clearTimeout,require(name){
@@ -17,10 +17,10 @@ function harness(results){
   if(name==='../AppConfig')return{API_BASE_URL:'https://synthetic.invalid',API_MODE:'production'};
   if(name==='./RequestPolicy')return{ApiMode:{PRODUCTION:'production'},RequestPolicy:{mode:x=>x,assertNetworkAllowed(){}},RequestPolicyError:class extends Error{}};
   if(name==='@kit.PerformanceAnalysisKit')return{hilog:{error:(...x)=>logs.push(x)}};
-  if(name==='@kit.RemoteCommunicationKit')return{rcp:{Request:class{},createSession:()=>{let reject;return{fetch:async()=>{calls++;const r=results.shift();if(r.hang)return new Promise((_resolve,fail)=>reject=fail);if(r.error)throw r.error;return{statusCode:r.status||200,toString:()=>r.body||'{}'}},close(){closed++},cancel(){reject?.({code:1007900042})}}}}};
+  if(name==='@kit.RemoteCommunicationKit')return{rcp:{Request:class{constructor(url,method,headers){requests.push({url,method,headers});}},createSession:()=>{let reject;return{fetch:async()=>{calls++;const r=results.shift();if(r.hang)return new Promise((_resolve,fail)=>reject=fail);if(r.error)throw r.error;return{statusCode:r.status||200,toString:()=>r.body||'{}'}},close(){closed++},cancel(){reject?.({code:1007900042})}}}}};
   return{};
  }});
- return{client:new m.exports.ApiClient(),ApiError:m.exports.ApiError||ApiError,ReadCancellation:cancellation.exports.ReadCancellation,calls:()=>calls,closed:()=>closed,logs};
+ return{client:new m.exports.ApiClient(),ApiError:m.exports.ApiError||ApiError,ReadCancellation:cancellation.exports.ReadCancellation,calls:()=>calls,closed:()=>closed,logs,requests};
 }
 for(const failure of [502,503,504,1007900035,1007900028,1007900007])test(`native GET recovers after ${failure}`,async()=>{
  const first=failure<1000?{status:failure}:{error:{code:failure}};const h=harness([first,{body:'{"value":"recovered"}'}]);
@@ -28,6 +28,16 @@ for(const failure of [502,503,504,1007900035,1007900028,1007900007])test(`native
 });
 test('native instance-bound reads use the same recovery budget',async()=>{
  const h=harness([{status:502},{body:'{"tasks":[]}'}]);assert.equal((await h.client.getForInstance('/rag/tasks','synthetic')).tasks.length,0);assert.equal(h.calls(),2);
+});
+test('read-only AI settings send bound Bearer GET and support owner cancellation without retrying configuration errors',async()=>{
+ const h=harness([{hang:true},{status:503,body:'{"code":"AI_CONFIGURATION_INVALID","error":"synthetic config failure"}'}]);
+ h.client.setToken('synthetic-auth');const c=new h.ReadCancellation();
+ const work=h.client.getForInstance('/settings/ai','synthetic-instance',c);c.cancel();
+ await assert.rejects(work,/取消/);assert.equal(h.calls(),1);assert.equal(h.closed(),1);
+ assert.equal(h.requests[0].method,'GET');assert.equal(h.requests[0].headers.authorization,'Bearer synthetic-auth');
+ assert.equal(h.requests[0].headers['X-Study-Log-Instance'],'synthetic-instance');
+ await assert.rejects(h.client.getForInstance('/settings/ai','synthetic-instance'),error=>error.code==='AI_CONFIGURATION_INVALID');
+ assert.equal(h.calls(),2,'configuration failure is left to explicit retry');
 });
 for(const code of [1007900060,999])test(`native code ${code} is not automatically retried`,async()=>{
  const h=harness([{error:{code}}]);await assert.rejects(h.client.get('/favorites'));assert.equal(h.calls(),1);

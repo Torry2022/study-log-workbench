@@ -2,6 +2,14 @@ export interface FeatureCapability { supported: boolean; configured: boolean; }
 export interface TaskCapability extends FeatureCapability { protocolVersion: number; questionEditing?: boolean; }
 export interface AiProviderConfiguration { configured: boolean; }
 export interface AiConfiguration { provider: AiProviderConfiguration; }
+export interface AiSettingsCapability {
+  protocolVersion: number;
+  readable: boolean;
+  writable: boolean;
+  reason: string;
+  reauthRequired: boolean;
+}
+export interface InstanceSettingsCapabilities { ai?: AiSettingsCapability; }
 export interface InstanceFeatures {
   aiWriting: FeatureCapability;
   aiHighlighting: FeatureCapability;
@@ -15,6 +23,7 @@ export interface InstanceCapabilities {
   apiContractVersion: number;
   features: InstanceFeatures;
   aiConfiguration?: AiConfiguration;
+  settings?: InstanceSettingsCapabilities;
 }
 
 // The setting is an origin. The application owns the fixed /study-log/api prefix.

@@ -944,6 +944,7 @@ struct Index {
       // Force the old feature components to unmount before mounting B's controllers/drafts.
       this.replacingConnection = true;
       this.connected = false;
+      this.settingsOpen = false;
       if (previousCredential) TokenStore.removeCredential(previousCredential);
     } finally {
       if (credentialId && !committed) await TokenStore.removeCredential(credentialId);

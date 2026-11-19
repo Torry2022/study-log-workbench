@@ -29,8 +29,11 @@ export interface InstanceCapabilities {
 
 // The setting is an origin. The application owns the fixed /study-log/api prefix.
 export function normalizeInstanceOrigin(input: string, allowLocalHttp: boolean = false): string {
-  const match = /^(https?):\/\/([a-zA-Z0-9.-]+|\[::1\])(?::(\d{1,5}))?(?:\/study-log)?\/?$/.exec(input.trim());
-  if (!match) throw new Error('请输入 HTTPS 服务器地址，可包含 /study-log，不含账号或查询参数');
+  const match = /^([a-zA-Z]+):\/\/([a-zA-Z0-9.-]+|\[::1\])(?::(\d{1,5}))?(?:\/study-log)?\/?$/.exec(input.trim());
+  const scheme = match ? match[1].toLowerCase() : '';
+  if (!match || (scheme !== 'http' && scheme !== 'https')) {
+    throw new Error('请输入 HTTPS 服务器地址，可包含 /study-log，不含账号或查询参数');
+  }
   const host = match[2].toLowerCase();
   if (host.startsWith('.') || host.endsWith('.') || host.includes('..')) throw new Error('服务器地址无效');
   const port = match[3] ? Number(match[3]) : 0;
@@ -40,8 +43,8 @@ export function normalizeInstanceOrigin(input: string, allowLocalHttp: boolean =
   const local = host === 'localhost' || host === '[::1]' || (ipv4 && (Number(octets[0]) === 127 ||
     Number(octets[0]) === 10 || (Number(octets[0]) === 192 && Number(octets[1]) === 168) ||
     (Number(octets[0]) === 172 && Number(octets[1]) >= 16 && Number(octets[1]) <= 31)));
-  if (match[1] === 'http' && (!allowLocalHttp || !local)) throw new Error('HTTP 仅允许明确启用的本地或局域网测试地址');
-  return `${match[1]}://${host}${port && !((match[1] === 'https' && port === 443) || (match[1] === 'http' && port === 80)) ? ':' + port : ''}`;
+  if (scheme === 'http' && (!allowLocalHttp || !local)) throw new Error('HTTP 仅允许明确启用的本地或局域网测试地址');
+  return `${scheme}://${host}${port && !((scheme === 'https' && port === 443) || (scheme === 'http' && port === 80)) ? ':' + port : ''}`;
 }
 
 function validFeature(feature: FeatureCapability): boolean {

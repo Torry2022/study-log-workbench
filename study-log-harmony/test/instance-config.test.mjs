@@ -11,6 +11,10 @@ const capabilities = { instanceId: identity, apiContractVersion: 1, features: {
 test('accept only a canonical origin and explicitly allowed local HTTP', () => {
   assert.equal(normalizeInstanceOrigin(' https://SERVER.example:443/study-log/ '), 'https://server.example');
   assert.equal(normalizeInstanceOrigin('https://server.example:8443'), 'https://server.example:8443');
+  assert.equal(normalizeInstanceOrigin('HtTPS://SERVER.example:443/study-log'), 'https://server.example');
+  assert.equal(normalizeInstanceOrigin('HTTP://127.0.0.1:34318', true), 'http://127.0.0.1:34318');
+  assert.throws(() => normalizeInstanceOrigin('HTTP://127.0.0.1:34318'));
+  assert.throws(() => normalizeInstanceOrigin('HTTP://SERVER.example', true));
   for (const input of ['https://user:pass@server.example', 'https://server.example/other',
     'https://server.example?token=a', 'https://server.example/#fragment', 'https://server.example:65536',
     'http://server.example', 'http://10.evil.example', 'http://192.168.evil.example', 'http://172.32.0.1',

@@ -3,7 +3,7 @@ import { common } from '@kit.AbilityKit';
 import { fileIo, picker } from '@kit.CoreFileKit';
 import { droppedFileUris } from '../../../common/files/DroppedFiles';
 import { ApiError, apiClient, ApiUploadFile } from '../../../common/network/ApiClient';
-import { activeInstance } from '../../../common/network/InstanceConfig';
+import { activeInstance, InstanceCapabilities } from '../../../common/network/InstanceConfig';
 import { StudyNoteBatchResponse, StudyNoteBatchRequest, StudyNoteBatchItem, StudyNoteCandidate, StudyNoteCandidateResponse, StudyNoteFacet } from '../NoteModels';
 import { cacheImportUri, NoteImportFile } from '../../../common/files/NoteImportFile';
 import { WorkspaceBreakpoint } from '../../../common/AppConfig';
@@ -114,11 +114,13 @@ class CandidateBatch implements StudyNoteBatchRequest {
 @Component
 export struct NoteCandidateExtractor {
   @Consume('workspaceBreakpoint') private workspaceBreakpoint: WorkspaceBreakpoint;
+  @Consume('workspaceAiCapabilities') private aiCapabilities: InstanceCapabilities | undefined;
   @Prop initialFiles: NoteImportFile[] = [];
   @Prop tagOptions: StudyNoteFacet[] = [];
   @Prop @Watch('importRevisionChanged') importRevision: number = 0;
   @Prop initialMessage: string = '';
   onClose: () => void = () => {};
+  onOpenAiSettings: () => void = () => {};
   @Prop @Watch('requestNew') newRevision: number = 0;
   onRegisterBack: (back: () => void) => void = () => {};
   onNew: () => void = () => {};
@@ -486,7 +488,7 @@ export struct NoteCandidateExtractor {
         }.justifyContent(FlexAlign.Center)
       }.width(this.workspaceBreakpoint === WorkspaceBreakpoint.COMPACT ? '100%' : 112).height(40).padding(0).backgroundColor($r('app.color.primary'))
         .borderRadius(8).shadow({ radius: 0 }).enabled(this.files.length > 0 && !this.saving && !this.loading &&
-          !!activeInstance.capabilities?.features.aiNoteExtraction.configured)
+          !!this.aiCapabilities?.features.aiNoteExtraction.configured)
         .accessibilityText(this.files.length > 0 ? '提取候选' : '提取候选，请先选择文档')
         .onClick(() => this.confirmExtract())
         .id('note_extract_action')
@@ -584,8 +586,11 @@ export struct NoteCandidateExtractor {
           .border({ width: { bottom: 1 }, color: $r('app.color.hairline') })
         }
         this.materials()
-        if (!activeInstance.capabilities?.features.aiNoteExtraction.configured) {
-          Text('尚未配置随记提取模型').fontSize(12).fontColor($r('app.color.muted'))
+        if (!this.aiCapabilities?.features.aiNoteExtraction.configured) {
+          Row({ space: 8 }) {
+            Text('随记提取服务待配置。').fontSize(12).fontColor($r('app.color.muted')).layoutWeight(1)
+            ToolbarAction({ label: '设置 AI 服务', showIcon: false, controlHeight: 36, onAction: this.onOpenAiSettings })
+          }.width('100%')
         }
         InlineStatus({ text: this.message, error: true })
         InlineStatus({ text: this.warning, error: false })

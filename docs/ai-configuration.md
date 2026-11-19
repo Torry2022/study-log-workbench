@@ -2,7 +2,7 @@
 
 日志生成、重点标注和随记候选已接入，均需审阅后显式保存。`/api/capabilities` 需要认证，`aiConfiguration` 仅报告本地配置和模板检查结果；不会探测供应商、消耗费用或返回配置值，也不保证供应商当前可用。`features` 的 `supported` 另行表示功能是否实现。
 
-实例 `.env` 中显式填写以下变量，保存后重启该实例：
+Windows 本地工作台可从“文件 → 模型设置…”打开 AI 服务设置。自行部署的工作台可由部署者设置下列环境变量，或启用[实例私有配置](../deploy/README.md#允许从工作台设置-ai-服务)。使用环境变量的实例在重启后加载配置。启用私有配置的实例首次从环境导入，之后在工作台保存的配置用于新开始的任务。
 
 ```dotenv
 CHAT_API_URL=https://your-provider.example/v1/chat/completions
@@ -12,7 +12,7 @@ CHAT_API_KEY=replace-with-your-key
 
 地址是完整的 OpenAI 兼容聊天接口地址，不会自动追加路径。可显式使用 HTTP 代理；是否加密取决于管理员填写的地址。不得在地址中嵌入用户名、密码或片段。可选 `CHAT_LIGHT_MODEL` 指定轻量任务模型，空值使用 `CHAT_MODEL`。没有内置供应商、模型或个人环境变量回退。
 
-问答可选 `RAG_DEEPSEEK_THINKING=disabled` 或 `low`，仅适用于 HTTPS 官方 `api.deepseek.com` 的 `deepseek-flash`、`deepseek-v4-pro`。留空沿用供应商默认行为；不会自动关闭思考或更换模型。`disabled` 发送 `thinking.type=disabled`，不发送无效的 `reasoning_effort=none`；`low` 发送 `thinking.type=enabled` 和 `reasoning_effort=low`。普通问答最终生成与 SDK 工具循环使用相同参数。此设置不改变轻量规划、材料压缩、会话标题或其他模块的 AI 调用；代理接口不凭模型名推断兼容性，显式配置不支持的组合时问答返回配置错误，不静默忽略。保存后重启实例生效，现有桌面模型设置窗口仍只管理地址、模型和密钥。参数依据：[DeepSeek 思考模式](https://api-docs.deepseek.com/guides/thinking_mode/)。
+问答可在兼容目标的高级设置中调整思考模式，使用环境变量时对应 `RAG_DEEPSEEK_THINKING=disabled` 或 `low`。适用于 HTTPS 官方 `api.deepseek.com` 的 `deepseek-flash`、`deepseek-v4-pro`。留空沿用供应商默认行为。`disabled` 发送 `thinking.type=disabled`，`low` 发送 `thinking.type=enabled` 和 `reasoning_effort=low`。普通问答最终生成与 SDK 工具循环使用相同参数。轻量规划、材料压缩、会话标题和其他模块继续使用各自的参数。显式配置不兼容的目标会在问答中提示检查设置。 [DeepSeek 思考模式](https://api-docs.deepseek.com/guides/thinking_mode/)
 
 Agent 不按供应商地址或模型名启用。`RAG_AGENT_TOOL_CALLING_VERIFIED=true` 仍需显式确认；`RAG_AGENT_ENABLED` 未设置或为 true 时允许按需运行，false 关闭，其他值不启用。新实例总开关为 true、能力确认为 false；已有实例不自动改写。材料充分时首个 SDK 调用可直接答复，实际补查或超限材料处理才计为进入 Agent；完整范围已读且材料容纳得下、以及字面查找继续直接生成。Jev 不自动启用，DeepSeek 只是验收样本。
 

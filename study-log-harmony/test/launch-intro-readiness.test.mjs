@@ -17,7 +17,7 @@ async function restore(saved, token = '') {
   const module = { exports: {} };
   runInNewContext(code, {
     module, exports: module.exports,
-    instanceStore: { async initialize() {}, async restore() { return saved; } },
+    instanceStore: { async initialize() {}, async restore() { return saved; }, async connectionDeferred() { return false; } },
     activeInstance: { activate() {} },
     TokenStore: { async read() { return token; }, async clear() {} },
     apiClient: { setToken() {}, async get() { return { instanceId: 'synthetic' }; } },
@@ -29,6 +29,7 @@ async function restore(saved, token = '') {
   Object.assign(login, {
     generation: 0, ready: false, restoreOnAppear: true,
     observeTopInset: async () => {},
+    onBackHandler: () => {},
     getUIContext: () => ({ getHostContext: () => ({}) }),
     onInitialReady: () => calls.push('intro-ready'),
     onConnected: () => calls.push('connected')

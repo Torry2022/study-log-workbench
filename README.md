@@ -47,9 +47,9 @@ v0.2.2 提供 Windows 安装包、服务器部署文件和供自行签名的鸿�
 
 下载 [Windows x64 安装包](https://github.com/Torry2022/study-log-workbench/releases/download/v0.2.2/study-log-desktop-0.2.2-x64-setup.exe)，可用[发布页](https://github.com/Torry2022/study-log-workbench/releases/tag/v0.2.2)提供的 SHA-256 文件核对下载。
 
-1. 安装桌面试用包，首次打开选择“本地使用”，确认保存位置。
+1. 首次打开，选择“在这台电脑使用”，再选择保存记录的文件夹。
 2. 点击“今天”，写下学习内容并保存。
-3. 需要 AI 时再到“文件 → 模型设置…”配置。需要独立备份时使用“文件 → 创建完整备份…”。
+3. 可以在首次引导中设置 AI，也可以稍后从“文件 → 模型设置…”打开。完整备份也在“文件”菜单中。
 
 使用示例仅在新建工作台时提供，介绍基本操作和推荐的 Markdown 写法。你可以直接编辑它，也可以删除后开始写自己的记录。
 

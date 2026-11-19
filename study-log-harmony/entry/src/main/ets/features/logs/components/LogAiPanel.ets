@@ -36,6 +36,7 @@ export struct LogAiPanel {
   @State private instructionHasText: boolean = false;
   @State private materialHasText: boolean = false;
   onClose: () => void = () => {};
+  onOpenAiSettings: () => void = () => {};
   onImport: () => void = () => {};
   onGenerate: () => void = () => {};
   onHighlight: () => void = () => {};
@@ -174,6 +175,9 @@ export struct LogAiPanel {
             if (this.message) {
               Text(this.message).fontSize(12).lineHeight(19).fontColor($r('app.color.muted')).width('100%')
             }
+            if (!this.generateConfigured) {
+              ToolbarAction({ label: '设置 AI 服务', showIcon: false, controlHeight: 36, onAction: this.onOpenAiSettings })
+            }
             }.width('100%').id('log_ai_generate_context').onAreaChange(() => this.formKeyboard.reveal(this.getUIContext()))
             this.label('生成草稿')
             TextArea({ text: this.output, placeholder: this.busy ? '正在生成，请稍候…' : '生成的草稿将在这里显示' })
@@ -194,6 +198,9 @@ export struct LogAiPanel {
               .border({ width: 1, color: $r('app.color.hairline') })
             this.action(() => this.busy ? '标注中' : '标注重点', $r('app.media.edit_3'),
               () => this.ready && this.highlightConfigured && !this.busy && this.canHighlight, this.onHighlight)
+            if (!this.highlightConfigured) {
+              ToolbarAction({ label: '设置 AI 服务', showIcon: false, controlHeight: 36, onAction: this.onOpenAiSettings })
+            }
             Text('标注结果会先进入差异查看，确认后只替换当前编辑草稿，不会自动保存到 Markdown 文件。')
               .width('100%').fontSize(12).lineHeight(19).fontColor($r('app.color.muted'))
           }

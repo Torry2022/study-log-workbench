@@ -34,6 +34,16 @@ export class InstanceStore {
     this.commit(saved, capabilities);
   }
 
+  async connectionDeferred(): Promise<boolean> {
+    return await this.store?.get('connection-deferred', false) === true;
+  }
+
+  async setConnectionDeferred(value: boolean): Promise<void> {
+    if (!this.store) throw new Error('连接设置尚未初始化');
+    await this.store.put('connection-deferred', value);
+    await this.store.flush();
+  }
+
   async prepare(origin: string, capabilities: InstanceCapabilities, localHttp: boolean): Promise<SavedInstance> {
     if (!this.store) throw new Error('连接设置尚未初始化');
     const key = `instance:${origin}:${capabilities.instanceId}`;
@@ -53,6 +63,17 @@ export class InstanceStore {
   async readQaPending(namespace: string): Promise<string> {
     if (!this.store) throw new Error('连接设置尚未初始化');
     return await this.store.get(`rag-pending-v2:${namespace}`, '[]') as string;
+  }
+
+  async readAiSettingsPending(namespace: string): Promise<string> {
+    if (!this.store) throw new Error('连接设置尚未初始化');
+    return await this.store.get(`ai-settings-pending:${namespace}`, '') as string;
+  }
+
+  async writeAiSettingsPending(namespace: string, raw: string): Promise<void> {
+    if (!this.store) throw new Error('连接设置尚未初始化');
+    await this.store.put(`ai-settings-pending:${namespace}`, raw);
+    await this.store.flush();
   }
 
   async writeQaPending(namespace: string, raw: string): Promise<void> {

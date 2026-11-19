@@ -3,7 +3,7 @@ import { appFeedback, FeedbackTone } from '../../common/ui/AppFeedback';
 import { AppDropdown, SearchField } from '../../common/ui/FormControls';
 import { EmptyState, InlineStatus, LoadFailure } from '../../common/ui/FeedbackStates';
 import { apiClient } from '../../common/network/ApiClient';
-import { activeInstance } from '../../common/network/InstanceConfig';
+import { activeInstance, InstanceCapabilities } from '../../common/network/InstanceConfig';
 import { WorkspaceBreakpoint } from '../../common/AppConfig';
 import { workspaceSerifFamily } from '../../common/ui/Typography';
 import { TaxonomyCatalogItem, TaxonomySuggestion } from './TaxonomyModels';
@@ -14,6 +14,8 @@ import { taxonomyDraftStore } from './TaxonomyDraftStore';
 export struct TaxonomyManagerPage {
   @Consume('workspaceBreakpoint') private workspaceBreakpoint: WorkspaceBreakpoint;
   onBack: () => void = () => {};
+  @Consume('workspaceAiCapabilities') private aiCapabilities: InstanceCapabilities | undefined;
+  onOpenAiSettings: () => void = () => {};
   onSaved: () => void = () => {};
   onStateChange: (dirty: boolean, busy: boolean) => void = () => {};
   private alive: boolean = false;
@@ -149,7 +151,7 @@ export struct TaxonomyManagerPage {
 
   private pendingItems(): TaxonomyCatalogItem[] { return this.filteredItems().filter((item: TaxonomyCatalogItem) => !this.data.explicitMapping(item)); }
 
-  private editable(): boolean { return !!activeInstance.capabilities?.features.aiTaxonomy.configured || this.data.classificationAvailable(); }
+  private editable(): boolean { return !!this.aiCapabilities?.features.aiTaxonomy.configured || this.data.classificationAvailable(); }
 
   private requestSuggestions(): void {
     if (!activeInstance.capabilities?.features.aiTaxonomy.configured) return;
@@ -322,7 +324,7 @@ export struct TaxonomyManagerPage {
             }
             .width('100%').height(40).fontColor($r('app.color.ink')).backgroundColor($r('app.color.canvas'))
             .border({ width: 1, color: $r('app.color.hairline') }).borderRadius(8)
-            .enabled(!!activeInstance.capabilities?.features.aiTaxonomy.configured && !this.data.suggestionBusy &&
+            .enabled(!!this.aiCapabilities?.features.aiTaxonomy.configured && !this.data.suggestionBusy &&
               !this.data.busy && this.pendingItems().length > 0 && this.pendingItems().length <= 200 &&
               !this.data.hasChanges())
             .onClick(() => this.requestSuggestions()).id('taxonomy_suggest')
@@ -330,8 +332,14 @@ export struct TaxonomyManagerPage {
               Text(this.data.suggestionMessage).fontSize(11).fontColor(this.data.suggestionError ?
                 $r('app.color.error') : $r('app.color.muted'))
             }
-            if (!activeInstance.capabilities?.features.aiTaxonomy.configured) {
-              Text(this.data.classificationAvailable() ? '尚未配置模型，已有分类仍可手动调整' : '配置模型后，可由 AI 整理领域；记录天数、小节数量、日历和高频主题仍可查看').fontSize(11).fontColor($r('app.color.muted'))
+            if (!this.aiCapabilities?.features.aiTaxonomy.configured) {
+              Row({ space: 8 }) {
+                Text(this.data.classificationAvailable() ? '已有分类可手动调整。' : '配置模型后可由 AI 整理学习领域。')
+                  .fontSize(12).fontColor($r('app.color.muted')).layoutWeight(1)
+                Button('设置 AI 服务', { type: ButtonType.Normal }).height(36).padding({ left: 8, right: 8 })
+                  .borderRadius(8).fontSize(13).fontColor($r('app.color.primary_active'))
+                  .backgroundColor(Color.Transparent).onClick(this.onOpenAiSettings)
+              }.width('100%')
             } else if (!this.data.savedTaxonomy.domains.some((domain: string) => domain !== '其他')) {
               Text('点击 AI 整理分类，由已有小节提出领域和归类').fontSize(11).fontColor($r('app.color.muted'))
             } else if (this.data.hasChanges()) {

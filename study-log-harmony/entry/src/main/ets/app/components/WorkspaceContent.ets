@@ -1,5 +1,5 @@
 import { WorkspaceModuleState } from '../WorkspaceModuleState';
-import { activeInstance } from '../../common/network/InstanceConfig';
+import { InstanceCapabilities } from '../../common/network/InstanceConfig';
 import { QaPage } from '../../features/qa/QaPage';
 import { QaNavigationController } from '../../features/qa/QaNavigationController';
 import { RagSessionSummary } from '../../features/qa/QaModels';
@@ -20,6 +20,7 @@ import { appFeedback } from '../../common/ui/AppFeedback';
 // Five module slots remain mounted, following the original Index.workspaceContent.
 @Component
 export struct WorkspaceContent {
+  @Consume('workspaceAiCapabilities') private aiCapabilities: InstanceCapabilities | undefined;
   @ObjectLink modules: WorkspaceModuleState;
   @ObjectLink qaNavigation: QaNavigationController;
   @ObjectLink favoritesData: FavoritesController;
@@ -36,6 +37,7 @@ export struct WorkspaceContent {
   onFavorite: (favorite: FavoriteHeading) => void = () => {};
   onStatsEntry: (entry: StatsEntry) => void = () => {};
   onCloseTaxonomy: () => void = () => {};
+  onOpenAiSettings: () => void = () => {};
   onWorkspaceKey: (event: KeyEvent) => boolean = () => false;
   onBeforeQaSessionChange: () => Promise<void> = async () => {};
   onQaSessionReady: () => void = () => {};
@@ -51,7 +53,8 @@ export struct WorkspaceContent {
             themePreference: this.themePreference,
             navigationRequestRevision: this.modules.qaRequestRevision, discardRevision: this.modules.qaDiscardRevision,
             questionFocusRevision: this.modules.qaQuestionFocusRevision, topRevision: this.modules.topRequests[3],
-            configured: !!activeInstance.capabilities?.features.rag.configured,
+            configured: !!this.aiCapabilities?.features.rag.configured,
+            onOpenAiSettings: this.onOpenAiSettings,
             onSessionsChange: (sessions: RagSessionSummary[]) => this.qaNavigation.acceptQaNavigation(sessions),
             onTaskSessionsChange: (sessions: RagSessionSummary[]) => this.qaNavigation.acceptQaTaskNavigation(sessions),
             onSessionsError: (message: string) => this.qaNavigation.qaNavigationError = message,
@@ -73,6 +76,7 @@ export struct WorkspaceContent {
         .zIndex((this.selectedModule === 3) ? 1 : 0)
       Row() {
           NotesPage({ workspaceActive: (this.selectedModule === 1),
+            onOpenAiSettings: this.onOpenAiSettings,
             onPrepareConnection: (prepare: () => void) => this.modules.prepareNotesConnection = prepare,
             navigationYear: this.modules.noteYearFilter, navigationTag: this.modules.noteTagFilter,
             navigationNewRevision: this.modules.noteNewRevision, discardRevision: this.modules.noteDiscardRevision,
@@ -128,7 +132,8 @@ export struct WorkspaceContent {
               onOpenEntry: (entry: StatsEntry) => this.onStatsEntry(entry) })
               .width('100%').height('100%')
             if (this.wide && this.modules.taxonomyOpen) {
-              WorkspaceTaxonomyPage({ modules: this.modules, onBack: () => this.onCloseTaxonomy() }).width('100%').height('100%').transition(secondaryPageTransition())
+              WorkspaceTaxonomyPage({ modules: this.modules, onBack: () => this.onCloseTaxonomy(), onOpenAiSettings: this.onOpenAiSettings })
+                .width('100%').height('100%').transition(secondaryPageTransition())
             }
           }.layoutWeight(1).height('100%')
       }.width('100%').height('100%').backgroundColor($r('app.color.canvas'))
@@ -145,9 +150,10 @@ export struct WorkspaceContent {
 export struct WorkspaceTaxonomyPage {
   @ObjectLink modules: WorkspaceModuleState;
   onBack: () => void = () => {};
+  onOpenAiSettings: () => void = () => {};
 
   build() {
-    TaxonomyManagerPage({ onBack: () => this.onBack(),
+    TaxonomyManagerPage({ onBack: () => this.onBack(), onOpenAiSettings: this.onOpenAiSettings,
       onStateChange: (dirty: boolean, busy: boolean) => {
         this.modules.taxonomyDirty = dirty; this.modules.taxonomyBusy = busy;
       },

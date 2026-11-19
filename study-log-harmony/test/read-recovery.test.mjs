@@ -17,7 +17,7 @@ function harness(results){
   if(name==='../AppConfig')return{API_BASE_URL:'https://synthetic.invalid',API_MODE:'production'};
   if(name==='./RequestPolicy')return{ApiMode:{PRODUCTION:'production'},RequestPolicy:{mode:x=>x,assertNetworkAllowed(){}},RequestPolicyError:class extends Error{}};
   if(name==='@kit.PerformanceAnalysisKit')return{hilog:{error:(...x)=>logs.push(x)}};
-  if(name==='@kit.RemoteCommunicationKit')return{rcp:{Request:class{constructor(url,method,headers){requests.push({url,method,headers});}},createSession:()=>{let reject;return{fetch:async()=>{calls++;const r=results.shift();if(r.hang)return new Promise((_resolve,fail)=>reject=fail);if(r.error)throw r.error;return{statusCode:r.status||200,toString:()=>r.body||'{}'}},close(){closed++},cancel(){reject?.({code:1007900042})}}}}};
+  if(name==='@kit.RemoteCommunicationKit')return{rcp:{Request:class{constructor(url,method,headers,body){requests.push({url,method,headers,body});}},createSession:()=>{let reject;return{fetch:async()=>{calls++;const r=results.shift();if(r.hang)return new Promise((_resolve,fail)=>reject=fail);if(r.error)throw r.error;return{statusCode:r.status||200,toString:()=>r.body||'{}'}},close(){closed++},cancel(){reject?.({code:1007900042})}}}}};
   return{};
  }});
  return{client:new m.exports.ApiClient(),ApiError:m.exports.ApiError||ApiError,ReadCancellation:cancellation.exports.ReadCancellation,calls:()=>calls,closed:()=>closed,logs,requests};
@@ -38,6 +38,17 @@ test('read-only AI settings send bound Bearer GET and support owner cancellation
  assert.equal(h.requests[0].headers['X-Study-Log-Instance'],'synthetic-instance');
  await assert.rejects(h.client.getForInstance('/settings/ai','synthetic-instance'),error=>error.code==='AI_CONFIGURATION_INVALID');
  assert.equal(h.calls(),2,'configuration failure is left to explicit retry');
+});
+
+test('native bound settings PUT and POST serialize exact secret payload once and cancel through the owner without retry',async()=>{
+ for(const method of ['putForInstance','postForInstance']){
+  const h=harness([{hang:true}]),c=new h.ReadCancellation();h.client.setToken('synthetic-auth');
+  const payload={expectedInstanceId:'synthetic-instance',password:'synthetic-confirmation',keyAction:'replace',key:'synthetic-key'};
+  const work=h.client[method]('/settings/ai',payload,'synthetic-instance',c);c.cancel();await assert.rejects(work,/取消/);
+  assert.equal(h.calls(),1);assert.equal(h.closed(),1);assert.equal(h.requests[0].method,method==='putForInstance'?'PUT':'POST');
+  assert.equal(h.requests[0].headers.authorization,'Bearer synthetic-auth');assert.equal(h.requests[0].headers['X-Study-Log-Instance'],'synthetic-instance');
+  assert.deepEqual(JSON.parse(h.requests[0].body),payload);assert.equal(h.logs.length,0);
+ }
 });
 for(const code of [1007900060,999])test(`native code ${code} is not automatically retried`,async()=>{
  const h=harness([{error:{code}}]);await assert.rejects(h.client.get('/favorites'));assert.equal(h.calls(),1);

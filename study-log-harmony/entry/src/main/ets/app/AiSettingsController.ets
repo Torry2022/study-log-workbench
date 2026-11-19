@@ -8,15 +8,20 @@ export class AiSettingsController {
   loading: boolean = false;
   support: AiSettingsSupport = 'legacy';
   summary?: AiSettingsSummary;
+  readiness?: InstanceCapabilities;
   error: string = '';
+  writable: boolean = false;
+  private onLoaded: (summary: AiSettingsSummary) => void;
   private revision: number = 0;
   private cancellation?: ReadCancellation;
   private transport: ApiClient;
   private capabilities: () => InstanceCapabilities | undefined;
 
-  constructor(transport: ApiClient, capabilities: () => InstanceCapabilities | undefined) {
+  constructor(transport: ApiClient, capabilities: () => InstanceCapabilities | undefined,
+    onLoaded: (summary: AiSettingsSummary) => void = () => {}) {
     this.transport = transport;
     this.capabilities = capabilities;
+    this.onLoaded = onLoaded;
   }
 
   dispose(): void { this.revision++; this.cancellation?.cancel(); this.loading = false; }
@@ -29,7 +34,9 @@ export class AiSettingsController {
     const current = (): boolean => revision === this.revision && binding === this.transport.getConnectionBinding();
     const initial = this.capabilities();
     this.summary = undefined;
+    this.readiness = undefined;
     this.error = '';
+    this.writable = false;
     this.loading = true;
     try {
       if (!initial) throw new Error('请先连接工作台');
@@ -38,11 +45,14 @@ export class AiSettingsController {
       if (!validCapabilities(capabilities) || capabilities.instanceId !== initial.instanceId) {
         throw new Error('工作台身份已变化，请重新连接');
       }
+      this.readiness = capabilities;
       this.support = aiSettingsSupport(capabilities);
+      this.writable = this.support === 'readable' && capabilities.settings?.ai?.writable === true && capabilities.settings?.ai?.reauthRequired === true;
       if (this.support !== 'readable') return;
       const response = await this.transport.getForInstance<AiSettingsSummary>('/settings/ai', initial.instanceId, cancellation);
       if (!current()) return;
       this.summary = parseAiSettingsSummary(response, initial.instanceId);
+      this.onLoaded(this.summary);
     } catch (error) {
       if (!current()) return;
       if (error instanceof ApiError && error.code === 'AI_SETTINGS_INSTANCE_CHANGED') {

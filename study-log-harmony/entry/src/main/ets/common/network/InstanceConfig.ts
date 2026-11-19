@@ -24,6 +24,7 @@ export interface InstanceCapabilities {
   features: InstanceFeatures;
   aiConfiguration?: AiConfiguration;
   settings?: InstanceSettingsCapabilities;
+  serverVersion?: string;
 }
 
 // The setting is an origin. The application owns the fixed /study-log/api prefix.

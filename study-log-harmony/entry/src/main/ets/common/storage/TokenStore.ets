@@ -1,6 +1,7 @@
 import { asset } from '@kit.AssetStoreKit';
 import { util } from '@kit.ArkTS';
 import { activeInstance } from '../network/InstanceConfig';
+import { BusinessError } from '@kit.BasicServicesKit';
 
 const encoder: util.TextEncoder = new util.TextEncoder();
 const decoder: util.TextDecoder = new util.TextDecoder('utf-8');
@@ -32,6 +33,16 @@ export class TokenStore {
     const query: asset.AssetMap = new Map();
     query.set(asset.Tag.ALIAS, bytes('public-token-' + id));
     try { await asset.remove(query); } catch (_) { /* Removing a missing credential is idempotent. */ }
+  }
+
+  static async removeCredentialStrict(id: string): Promise<void> {
+    if (!id) throw new Error('没有可断开的工作台凭据');
+    const query: asset.AssetMap = new Map();
+    query.set(asset.Tag.ALIAS, bytes('public-token-' + id));
+    try { await asset.remove(query); }
+    catch (error) {
+      if ((error as BusinessError).code !== asset.ErrorCode.NOT_FOUND) throw new Error('本机连接凭据移除失败，请重试；当前工作台仍保留');
+    }
   }
   static async read(): Promise<string> {
     const query: asset.AssetMap = new Map();

@@ -1,4 +1,5 @@
 import { BackToTopControl } from '../../common/ui/BackToTopControl';
+import { ToolbarAction } from '../../common/ui/ToolbarAction';
 import { EmptyState, InlineStatus, LoadFailure } from '../../common/ui/FeedbackStates';
 import { ModulePageHeader } from '../../common/ui/WorkspaceChrome';
 import { KeyCode, inputDevice } from '@kit.InputKit';
@@ -90,6 +91,7 @@ export struct QaPage {
   onCitation: (date: string, heading: string, headingIndex: number) => void = () => {};
   onScrollStateChange: (scrolled: boolean) => void = () => {};
   onOpenLog: () => void = () => {};
+  onOpenAiSettings: () => void = () => {};
   @State private data: QaSessionController = new QaSessionController(apiClient, {
     onSessionsChange: (sessions: RagSessionSummary[]) => this.onSessionsChange(sessions),
     onTasksChange: (sessions: RagSessionSummary[]) => this.onTaskSessionsChange(sessions),
@@ -672,8 +674,11 @@ export struct QaPage {
                   .onKeyEvent((event: KeyEvent) => textNavigationKey(event))
 
                 if (!this.configured) {
-                  Text('尚未配置问答模型，仍可查看已有历史。')
-                    .fontSize(11).fontColor($r('app.color.muted')).width('100%')
+                  Row({ space: 8 }) {
+                    Text('问答服务待配置，可查看历史。')
+                      .fontSize(12).fontColor($r('app.color.muted')).layoutWeight(1)
+                    ToolbarAction({ label: '设置 AI 服务', showIcon: false, controlHeight: 36, onAction: this.onOpenAiSettings })
+                  }.width('100%')
                 }
 
                 Row({ space: 8 }) {

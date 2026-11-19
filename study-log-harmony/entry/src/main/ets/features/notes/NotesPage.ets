@@ -52,6 +52,7 @@ export struct NotesPage {
   onNavigationDataChange: (years: StudyNoteFacet[], tags: StudyNoteFacet[], total: number) => void = () => {};
   onScrollStateChange: (scrolled: boolean) => void = () => {};
   onOpenLog: () => void = () => {};
+  onOpenAiSettings: () => void = () => {};
   onEditorBusyChange: (busy: boolean) => void = () => {};
   private extractorBack: () => void = () => {};
   onDirtyChange: (dirty: boolean) => void = () => {};
@@ -612,6 +613,7 @@ export struct NotesPage {
           Column() {
             if (this.noteEditor.editing) this.editor()
             else NoteCandidateExtractor({ tagOptions: this.data.availableTags, importRevision: this.extractRevision,
+              onOpenAiSettings: this.onOpenAiSettings,
               newRevision: this.navigationNewRevision, onRegisterBack: (back: () => void) => this.extractorBack = back,
               onNew: () => this.closeExtraction(false, true),
               onBusyChange: (busy: boolean) => this.onEditorBusyChange(busy || this.extracting),

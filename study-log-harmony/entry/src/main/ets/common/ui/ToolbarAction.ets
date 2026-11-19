@@ -17,6 +17,7 @@ export struct ToolbarAction {
   @Prop symbol: Resource = $r('sys.symbol.plus');
   @Prop iconWidth: number = 40;
   @Prop iconSize: number = 18;
+  @Prop symbolSize: number = 18;
   @Prop controlHeight: number = 40;
   @Prop useSymbol: boolean = false;
   @Prop active: boolean = false;
@@ -42,7 +43,7 @@ export struct ToolbarAction {
           LoadingProgress().width(18).height(18)
             .color(this.primary ? $r('app.color.on_primary') : $r('app.color.body'))
         } else if (this.showIcon && this.useSymbol) {
-          SymbolGlyph(this.symbol).fontSize(18)
+          SymbolGlyph(this.symbol).fontSize(this.symbolSize)
             .fontColor([this.contentColor()])
         } else if (this.showIcon) {
           Image(this.icon).width(this.iconSize).height(this.iconSize).objectFit(ImageFit.Contain)

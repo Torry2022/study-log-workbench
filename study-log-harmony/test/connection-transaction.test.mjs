@@ -21,6 +21,17 @@ async function load(file, deps = {}, extra = {}) {
   return module.exports;
 }
 const { ReadCancellation } = await load('common/network/ReadCancellation');
+const { SettingsConfirmation } = await load('app/SettingsConfirmation');
+
+function confirmationFixture(dialogs) {
+  let confirmation;
+  confirmation = new SettingsConfirmation(() => dialogs.push({
+    title: confirmation.title, message: confirmation.message,
+    primaryButton: { action: () => confirmation.settle(false) },
+    secondaryButton: { action: () => confirmation.settle(true) }
+  }), () => {});
+  return confirmation;
+}
 const { ConnectionController } = await load('app/ConnectionController', {
   '../common/network/ReadCancellation': { ReadCancellation }
 });
@@ -140,8 +151,106 @@ async function host(file, names, globals) {
   return new module.exports.Host();
 }
 
+async function strictTokenFixture() {
+  const assets = new Map(); let failure;
+  const alias = query => new TextDecoder().decode(query.get('alias'));
+  const asset = { Tag: { ALIAS: 'alias', SECRET: 'secret', RETURN_TYPE: 'return', ACCESSIBILITY: 'access', SYNC_TYPE: 'sync' },
+    ReturnType: { ALL: 1 }, Accessibility: { DEVICE_FIRST_UNLOCKED: 1 }, SyncType: { NEVER: 0 }, ErrorCode: { NOT_FOUND: 24000002 },
+    query: async query => assets.has(alias(query)) ? [assets.get(alias(query))] : [],
+    add: async value => assets.set(alias(value), value),
+    remove: async query => { if (failure) throw failure; assets.delete(alias(query)); } };
+  const { TokenStore } = await load('common/storage/TokenStore', { '@kit.AssetStoreKit': { asset },
+    '@kit.ArkTS': { util: { generateRandomUUID: randomUUID,
+      TextEncoder: class { encodeInto(value) { return new TextEncoder().encode(value); } },
+      TextDecoder: class { decodeToString(value) { return new TextDecoder().decode(value); } } } },
+    '../network/InstanceConfig': { activeInstance } });
+  return { TokenStore, assets, fail: value => failure = value };
+}
+
+test('explicit credential removal uses the captured alias, tolerates only native NOT_FOUND and exposes real failures', async () => {
+  const f = await strictTokenFixture(); activeInstance.activate('https://a.example', first, capabilities(first));
+  await f.TokenStore.write('synthetic-a'); activeInstance.activate('https://b.example', second, capabilities(second));
+  await f.TokenStore.write('synthetic-b'); await f.TokenStore.removeCredentialStrict(first);
+  assert.equal(f.assets.has('public-token-' + first), false); assert.equal(await f.TokenStore.read(), 'synthetic-b');
+  f.fail(Object.assign(Error('synthetic missing'), { code: 24000002 })); await f.TokenStore.removeCredentialStrict(first);
+  for (const code of [24000001, 24000004, 24000005]) {
+    f.fail(Object.assign(Error('synthetic asset failure'), { code }));
+    await assert.rejects(f.TokenStore.removeCredentialStrict(second), /凭据移除失败/);
+    assert.ok(f.assets.has('public-token-' + second));
+  }
+});
+
+async function disconnectFixture(t, fault = '') {
+  const { store, values } = await storageFixture(t), credentials = await strictTokenFixture();
+  const old = { origin: 'https://a.example', namespace: first, instanceId: first, credentialId: '33333333-3333-3333-3333-333333333333', localHttp: false };
+  store.commit(old, capabilities(first)); await credentials.TokenStore.write('synthetic-a-token');
+  let token = 'synthetic-a-token', binding = 'A:1', faulty = true, invalidations = 0;
+  const dialogs = [], feedback = [], logs = new Map(), notes = new Map();
+  const page = await host('pages/Index', ['connectionCanLeave', 'preserveConnectionDraft', 'disconnectConnection'], {
+    activeInstance, instanceStore: store, TokenStore: credentials.TokenStore,
+    apiClient: { getConnectionBinding: () => binding, setToken: value => { token = value; binding += ':changed'; } },
+    AlertDialog: { show: dialog => dialogs.push(dialog) }, appFeedback: { show: (message, kind) => feedback.push({ message, kind }) },
+    logDraftStore: { save: draft => {
+      if (fault === 'log-storage' && faulty) throw Error('synthetic log failure');
+      logs.set(draft.namespace, draft); if (fault === 'late-preservation') queueMicrotask(() => binding = 'changed-after-preservation');
+    }, clear: namespace => logs.delete(namespace) }
+  });
+  Object.assign(page, { connected: true, settingsOpen: true, disconnecting: false, connectionOpen: false,
+    settingsConfirmation: confirmationFixture(dialogs),
+    modules: { qaDirty: true, notesDirty: true, prepareNotesConnection: () => {
+      if (fault === 'notes' && faulty) throw Error('synthetic note failure'); notes.set(first, 'synthetic note');
+    } },
+    captureDraft: async strict => { assert.equal(strict, true); if (fault === 'snapshot' && faulty) throw Error('synthetic snapshot failure');
+      return { namespace: first, text: 'synthetic log', date: '2026-01-02' }; },
+    invalidateModules: () => invalidations++ });
+  if (fault === 'credential') credentials.fail(Object.assign(Error('synthetic asset failure'), { code: 24000001 }));
+  return { page, store, values, credentials, old, dialogs, feedback, logs, notes,
+    token: () => token, invalidations: () => invalidations, binding: value => binding = value,
+    recover: () => { faulty = false; credentials.fail(undefined); } };
+}
+
+test('actual disconnect protects A on draft or credential failures, then retry removes only the credential and retains address/drafts', async t => {
+  for (const fault of ['snapshot', 'notes', 'log-storage', 'credential']) {
+    const f = await disconnectFixture(t, fault);
+    const work = f.page.disconnectConnection(); assert.equal(f.dialogs.length, 1);
+    assert.match(f.dialogs[0].message, /问答编辑将放弃/); f.dialogs[0].secondaryButton.action(); await work;
+    assert.equal(f.page.connected, true, fault); assert.equal(f.page.settingsOpen, true, fault);
+    assert.equal(f.token(), 'synthetic-a-token', fault); assert.equal(f.invalidations(), 0, fault);
+    assert.equal(await f.credentials.TokenStore.read(), 'synthetic-a-token'); assert.deepEqual(await f.store.restore(), f.old);
+    assert.equal(await f.store.connectionDeferred(), false); assert.equal(f.feedback.at(-1).kind, 'error');
+    f.recover(); const retry = f.page.disconnectConnection(); f.dialogs.at(-1).secondaryButton.action(); await retry;
+    assert.equal(f.page.connected, false); assert.equal(f.page.restoreOnAppear, false); assert.equal(f.page.settingsOpen, false);
+    assert.equal(f.credentials.assets.size, 0); assert.equal(f.token(), ''); assert.equal(activeInstance.namespace, '');
+    assert.equal(f.logs.get(first).text, 'synthetic log'); assert.equal(f.notes.get(first), 'synthetic note');
+    assert.deepEqual(await f.store.restore(), f.old); assert.equal(await f.store.connectionDeferred(), true);
+    assert.equal(f.page.disconnecting, false); assert.equal(f.feedback.at(-1).kind, 'success');
+  }
+});
+
+test('actual disconnect cancellation, busy protection and changed source do not remove credentials or unmount A', async t => {
+  for (const action of ['cancel', 'busy', 'changed', 'late-preservation']) {
+    const f = await disconnectFixture(t, action); if (action === 'busy') f.page.modules.qaBusy = true;
+    const work = f.page.disconnectConnection();
+    if (action !== 'busy') {
+      if (action === 'changed') { f.binding('different-session'); f.dialogs[0].secondaryButton.action(); }
+      else if (action === 'late-preservation') f.dialogs[0].secondaryButton.action();
+      else f.dialogs[0].primaryButton.action();
+    }
+    await work; assert.equal(f.page.connected, true); assert.equal(f.token(), 'synthetic-a-token'); assert.equal(f.invalidations(), 0);
+    assert.equal(await f.credentials.TokenStore.read(), 'synthetic-a-token'); assert.equal(await f.store.connectionDeferred(), false);
+  }
+});
+
+test('a failed pending-choice write cannot reactivate a removed credential or claim disconnect failed while still authenticated', async t => {
+  const f = await disconnectFixture(t); f.store.setConnectionDeferred = async () => { throw Error('synthetic preference failure'); };
+  const work = f.page.disconnectConnection(); f.dialogs[0].secondaryButton.action(); await work;
+  assert.equal(f.page.connected, false); assert.equal(f.page.restoreOnAppear, false); assert.equal(f.token(), '');
+  assert.equal(f.credentials.assets.size, 0); assert.deepEqual(await f.store.restore(), f.old);
+  assert.equal(f.feedback.at(-1).kind, 'warning'); assert.match(f.feedback.at(-1).message, /已断开.*选择未能保存/);
+});
+
 test('actual Index commit protects A across credential, editor, note and pointer failures; retry and same-address isolation succeed', async t => {
-  for (const fault of ['credential', 'snapshot', 'notes', 'log-storage', 'rename', 'stale']) {
+  for (const fault of ['credential', 'snapshot', 'notes', 'log-storage', 'rename', 'stale', 'late-preservation']) {
     const { store, values, files } = await storageFixture(t);
     const assets = new Map(), aliasOf = query => new TextDecoder().decode(query.get('alias'));
     let failCredential = false, invalidateStage = false, bindingValid = true;
@@ -163,10 +272,12 @@ test('actual Index commit protects A across credential, editor, note and pointer
     await TokenStore.write('synthetic-a-token');
     let token = 'synthetic-a-token', faultActive = true;
     const drafts = new Map(), noteDrafts = new Map();
-    const page = await host('pages/Index', ['connectionCanLeave', 'commitConnection'], {
+    const page = await host('pages/Index', ['connectionCanLeave', 'preserveConnectionDraft', 'commitConnection'], {
       activeInstance, instanceStore: store, TokenStore, apiClient: { setToken: value => token = value },
       logDraftStore: { save: draft => { if (fault === 'log-storage' && faultActive) throw Error('synthetic log storage failure');
-        drafts.set(draft.namespace, draft); }, clear: namespace => drafts.delete(namespace) }
+        drafts.set(draft.namespace, draft);
+        if (fault === 'late-preservation' && faultActive) queueMicrotask(() => bindingValid = false);
+      }, clear: namespace => drafts.delete(namespace) }
     });
     page.modules = { qaDirty: true, notesDirty: true, prepareNotesConnection: () => {
       if (fault === 'notes' && faultActive) throw Error('synthetic note storage failure');
@@ -207,6 +318,7 @@ test('actual confirmation reports same-address identity changes and does not dis
   const page = await host('pages/Index', ['connectionCanLeave', 'confirmConnection'], {
     activeInstance, AlertDialog: { show: options => dialogs.push(options) }
   });
+  page.settingsConfirmation = confirmationFixture(dialogs);
   page.modules = { qaDirty: true, notesDirty: true };
   const result = page.confirmConnection({ ...candidate, origin: activeInstance.origin });
   assert.equal(dialogs[0].title, '工作台身份已变化'); assert.match(dialogs[0].message, /问答编辑将放弃/);
@@ -307,8 +419,13 @@ test('source panel wiring keeps A mounted, protects drafts before commit and rou
   const commitStart = index.indexOf('  private async commitConnection('), commitEnd = index.indexOf('  private updateBreakpoint(', commitStart);
   assert.ok(commitStart >= 0 && commitEnd > commitStart);
   const commit = index.slice(commitStart, commitEnd);
-  assert.ok(commit.indexOf('captureDraft(true)') < commit.indexOf('instanceStore.commit('));
-  assert.ok(commit.indexOf('prepareNotesConnection?.()') < commit.indexOf('instanceStore.commit('));
+  assert.ok(commit.indexOf('await this.preserveConnectionDraft(current)') < commit.indexOf('instanceStore.commit('));
+  const preservationStart = index.indexOf('  private async preserveConnectionDraft(');
+  const preservationEnd = index.indexOf('  private async disconnectConnection(', preservationStart);
+  assert.ok(preservationStart >= 0 && preservationEnd > preservationStart);
+  const preservation = index.slice(preservationStart, preservationEnd);
+  assert.match(preservation, /await this.captureDraft\(true\)/);
+  assert.ok(preservation.indexOf('prepareNotesConnection?.()') < preservation.indexOf('logDraftStore.save(draft)'));
   assert.match(commit, /if \(credentialId && !committed\) await TokenStore.removeCredential\(credentialId\)/);
   assert.match(commit, /this\.replacingConnection = true;\s*this\.connected = false;/);
   assert.match(index, /else if \(!this\.replacingConnection\) \{\s*LoginPage\(/);
@@ -319,4 +436,36 @@ test('source panel wiring keeps A mounted, protects drafts before commit and rou
   assert.ok(leaveStart >= 0 && leaveEnd > leaveStart);
   assert.match(notes.slice(leaveStart, leaveEnd), /noteEditor\.draft\(this\.draftNamespace\)/);
   assert.doesNotMatch(notes.slice(leaveStart, leaveEnd), /noteEditor\.draft\(activeInstance\.namespace\)/);
+});
+
+
+test('disconnected desktop menus expose usable common actions and keep document commands disabled', async () => {
+  class DesktopMenuEntry {
+    constructor(id, label, enabled = true, checked = false, shortcut = '') { Object.assign(this, { id, label, enabled, checked, shortcut }); }
+  }
+  const focus = [];
+  const page = await host('pages/Index', ['windowMenuEntries', 'executeWindowMenu'], { DesktopMenuEntry,
+    focusControl: { requestFocus: id => focus.push(id) } });
+  Object.assign(page, { connected: false, themePreference: 'system',
+    desktopCommands: { entries: () => { throw Error('document page is not mounted'); } } });
+  assert.equal(page.windowMenuEntries('文件')[0].id, 'connect');
+  assert.equal(page.windowMenuEntries('文件')[0].enabled, true);
+  assert.equal(page.windowMenuEntries('编辑').find(item => item.id === 'settings').enabled, true);
+  assert.equal(page.windowMenuEntries('编辑').find(item => item.id === 'undo').enabled, false);
+  assert.equal(page.windowMenuEntries('视图').find(item => item.id === 'theme_system').checked, true);
+  assert.equal(page.windowMenuEntries('帮助')[0].enabled, true);
+  page.executeWindowMenu('connect');
+  assert.deepEqual(focus, ['login_origin_input']);
+  assert.equal(page.windowMenuEntries('文件')[0].enabled, true);
+});
+
+test('settings Back cancels connection editing; Close cancels and closes the entire settings surface', async () => {
+  const page = await host('app/components/SettingsPanel', ['requestBack', 'requestClose'], {});
+  let cancelled = 0, closed = 0;
+  Object.assign(page, { changingConnection: true, connection: { committing: false },
+    onCancelConnection: () => cancelled++, onClose: () => closed++ });
+  page.requestBack(); assert.equal(cancelled, 1); assert.equal(closed, 0);
+  page.requestClose(); assert.equal(cancelled, 2); assert.equal(closed, 1);
+  page.connection.committing = true; page.requestClose();
+  assert.equal(cancelled, 2); assert.equal(closed, 1);
 });

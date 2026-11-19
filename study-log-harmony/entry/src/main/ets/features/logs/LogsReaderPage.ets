@@ -4,7 +4,7 @@ import { WorkspaceSidebarState } from '../../app/WorkspaceSidebarState';
 import { WorkspaceReadingState } from '../../app/WorkspaceReadingState';
 import { WorkspaceBreakpoint, READING_MAX_WIDTH } from '../../common/AppConfig';
 import { apiClient, ApiError, ApiUploadFile } from '../../common/network/ApiClient';
-import { activeInstance } from '../../common/network/InstanceConfig';
+import { activeInstance, InstanceCapabilities } from '../../common/network/InstanceConfig';
 import { EmptyState, LoadFailure } from '../../common/ui/FeedbackStates';
 import { MarkdownReader } from '../../common/ui/MarkdownReader';
 import { workspaceSansFamily } from '../../common/ui/Typography';
@@ -75,6 +75,8 @@ export struct LogsReaderPage {
   onDraftChange: (namespace: string, draft: PreservedLogDraft | undefined) => void = () => {};
   onCaptureDraft: (capture: (strict?: boolean) => Promise<PreservedLogDraft | undefined>) => void = () => {};
   onRegisterDesktopCommands: (commands: DesktopLogCommands) => void = () => {};
+  @Consume('workspaceAiCapabilities') private aiCapabilities: InstanceCapabilities | undefined;
+  onOpenAiSettings: () => void = () => {};
   initialDraft: PreservedLogDraft | undefined = undefined;
   @ObjectLink session: LogSession;
   @ObjectLink logNavigation: LogNavigationController;
@@ -2509,14 +2511,15 @@ export struct LogsReaderPage {
       onMaterial: (value: string) => this.ai.material = value,
       onOutput: (value: string) => this.ai.output = value,
       busy: this.ai.busy, importing: this.ai.importing, ready: !!this.session.day,
-      generateConfigured: this.ai.generationConfigured(activeInstance.capabilities),
-      highlightConfigured: !!activeInstance.capabilities?.features.aiHighlighting.configured,
+      generateConfigured: this.ai.generationConfigured(this.aiCapabilities),
+      highlightConfigured: !!this.aiCapabilities?.features.aiHighlighting.configured,
+      onOpenAiSettings: this.onOpenAiSettings,
       canHighlight: !!this.session.text.trim(),
       canApply: !!this.ai.output.trim() && this.ai.outputDate === this.session.selectedDate,
       message: this.ai.message || (this.aiMode === 'generate' &&
-        !this.ai.generationConfigured(activeInstance.capabilities) || this.aiMode === 'highlight' &&
-        !activeInstance.capabilities?.features.aiHighlighting.configured ?
-        (this.aiMode === 'generate' ? '尚未配置日志生成模型' : '尚未配置重点标注模型') : ''),
+        !this.ai.generationConfigured(this.aiCapabilities) || this.aiMode === 'highlight' &&
+        !this.aiCapabilities?.features.aiHighlighting.configured ?
+        (this.aiMode === 'generate' ? '日志生成服务待配置' : '重点标注服务待配置') : ''),
       desktop: this.isWide(), onClose: () => this.closeAiTools(),
       onImport: () => this.importAiMaterial(),
       onGenerate: () => this.ai.generate(this.session.selectedDate),

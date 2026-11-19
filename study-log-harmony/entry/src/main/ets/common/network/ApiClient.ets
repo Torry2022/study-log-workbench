@@ -102,7 +102,8 @@ export class ApiClient {
   getForInstance<T>(path: string, instanceId: string, cancellation?: ReadCancellation): Promise<T> {
     return this.read<T>(path, cancellation, instanceId);
   }
-  postForInstance<T>(path: string, body: object, instanceId: string): Promise<T> { return this.request<T>(path, 'POST', body, undefined, instanceId); }
+  postForInstance<T>(path: string, body: object, instanceId: string, cancellation?: ReadCancellation): Promise<T> { return this.request<T>(path, 'POST', body, cancellation, instanceId); }
+  putForInstance<T>(path: string, body: object, instanceId: string, cancellation?: ReadCancellation): Promise<T> { return this.request<T>(path, 'PUT', body, cancellation, instanceId); }
   deleteForInstance<T>(path: string, instanceId: string): Promise<T> { return this.request<T>(path, 'DELETE', undefined, undefined, instanceId); }
 
   cancelStream(): void {

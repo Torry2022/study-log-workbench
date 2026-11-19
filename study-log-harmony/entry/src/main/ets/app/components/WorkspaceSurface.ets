@@ -79,6 +79,7 @@ export struct WorkspaceSurface {
   onSelect: (index: number) => void = () => {};
   @Link navigationCommands: WorkspaceNavigationCommands;
   onCloseTaxonomy: () => void = () => {};
+  onOpenAiSettings: () => void = () => {};
   onContentArea: (area: Area) => void = () => {};
   onWorkspaceArea: (area: Area) => void = () => {};
 
@@ -315,6 +316,7 @@ export struct WorkspaceSurface {
       onFavorite: (favorite: FavoriteHeading) => this.navigationCommands.favorite(favorite),
       onStatsEntry: (entry: StatsEntry) => this.navigationCommands.statsEntry(entry),
       onCloseTaxonomy: () => this.onCloseTaxonomy(),
+      onOpenAiSettings: this.onOpenAiSettings,
       logContent: (): void => this.logContent() })
   }
 
@@ -400,7 +402,8 @@ export struct WorkspaceSurface {
       }
       if (!this.wide && this.modules.taxonomyOpen) {
         WorkspaceTaxonomyPage({ modules: this.modules,
-          onBack: () => this.onCloseTaxonomy() }).width('100%').height('100%').zIndex(7).transition(secondaryPageTransition())
+          onBack: () => this.onCloseTaxonomy(), onOpenAiSettings: this.onOpenAiSettings })
+          .width('100%').height('100%').zIndex(7).transition(secondaryPageTransition())
       }
       this.navigationOverlay()
       this.searchOverlay()

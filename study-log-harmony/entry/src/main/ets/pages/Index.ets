@@ -42,17 +42,21 @@ import { ImagePreview } from '../common/ui/ImagePreview';
 import { appFeedback } from '../common/ui/AppFeedback';
 import { workspacePreferences } from '../common/storage/WorkspacePreferences';
 import { SettingsPanel } from '../app/components/SettingsPanel';
+import { SettingsConfirmation } from '../app/SettingsConfirmation';
+import { SettingsConfirmDialog } from '../app/components/SettingsConfirmDialog';
 import { AboutPanel } from '../app/components/AboutPanel';
 import { HelpPanel } from '../app/components/HelpPanel';
 import { LaunchIntro } from '../app/components/LaunchIntro';
 import { KeyCode } from '@kit.InputKit';
 import { workspaceKey } from '../common/ui/WorkspaceKeys';
 import { revealPanel, floatingSurfaceTransition } from '../common/ui/WorkspaceMotion';
+import { AppModalFrame } from '../common/ui/AppModalFrame';
 
 @Entry
 @Component
 struct Index {
   @Provide('workspaceBreakpoint') private workspaceBreakpoint: WorkspaceBreakpoint = WorkspaceBreakpoint.COMPACT;
+  @Provide('workspaceAiCapabilities') private workspaceAiCapabilities: InstanceCapabilities | undefined = undefined;
   @State private logSession: LogSession = new LogSession();
   @State private logLoadingHint: LoadingHintPlacement = new LoadingHintPlacement();
   @State private workspaceCommands: WorkspaceNavigationCommands = new WorkspaceNavigationCommands();
@@ -71,6 +75,7 @@ struct Index {
   @State private desktopKeyboardFocus: boolean = false;
   @State private compactSettingsOpen: boolean = false;
   @State private connected: boolean = false;
+  @State private disconnecting: boolean = false;
   @State private launchCoverVisible: boolean = true;
   @State private launchReady: boolean = false;
   @State private selectedModule: number = 0;
@@ -87,6 +92,15 @@ struct Index {
   @StorageLink('previewImageSource') private previewImageSource: string = '';
   @State private imagePreviewOpacity: number = 0;
   @State private settingsOpen: boolean = false;
+  @State private settingsInitialSection: string = 'menu';
+  private settingsBack: () => void = () => { this.settingsOpen = false; };
+  private firstConnectionBack: () => boolean = () => false;
+  private settingsConfirmation: SettingsConfirmation = new SettingsConfirmation((): void => this.settingsDialog.open(), (): void => this.settingsDialog.close());
+  private settingsDialog: CustomDialogController = new CustomDialogController({
+    builder: SettingsConfirmDialog({ confirmation: this.settingsConfirmation }), customStyle: true,
+    autoCancel: true, cancel: () => this.settingsConfirmation.settle(false)
+  });
+  private connectionReturnsToSettings: boolean = false;
   @State private connectionOpen: boolean = false;
   @State private replacingConnection: boolean = false;
   @State private connection: ConnectionController = this.createConnectionController();
@@ -361,7 +375,7 @@ struct Index {
     commands.help = (): void => { if (active()) this.openHelp(); };
     commands.theme = (value: string): void => { if (active()) this.setTheme(value); };
     commands.changeServer = (): void => {
-      if (!active() || this.connectionOpen) return;
+      if (!active() || this.connectionOpen || this.disconnecting) return;
       this.connection = this.createConnectionController();
       this.connectionOpen = true;
     };
@@ -781,7 +795,7 @@ struct Index {
     this.removeUnauthorizedHandler = apiClient.setUnauthorizedHandler(() => { this.expireSession(); });
   }
 
-  aboutToDisappear(): void { this.connectionOpen = false; this.connection.dispose(); this.invalidateModules(); this.removeUnauthorizedHandler(); appFeedback.detach(); }
+  aboutToDisappear(): void { this.settingsConfirmation.settle(false); this.connectionOpen = false; this.connection.dispose(); this.invalidateModules(); this.removeUnauthorizedHandler(); appFeedback.detach(); }
 
   private async expireSession(): Promise<void> {
     if (this.expiring) return;
@@ -864,6 +878,8 @@ struct Index {
     }
     if (revision !== activeInstance.revision) return;
     this.resetModules();
+    this.settingsInitialSection = 'menu';
+    this.workspaceAiCapabilities = activeInstance.capabilities;
     this.connected = true;
     this.search.restoreSearchHistory();
     this.favoritesData.load();
@@ -886,13 +902,20 @@ struct Index {
         } finally {
           this.replacingConnection = false;
           this.connectionOpen = false;
+          this.connectionReturnsToSettings = false;
         }
       }
     });
   }
 
   private closeConnection(): void {
-    if (this.connection.cancel()) this.connectionOpen = false;
+    if (!this.connection.cancel()) return;
+    this.connectionOpen = false;
+    if (this.connectionReturnsToSettings) {
+      this.settingsInitialSection = 'records';
+      this.settingsOpen = true;
+      this.connectionReturnsToSettings = false;
+    }
   }
 
   private connectionCanLeave(): void {
@@ -907,16 +930,11 @@ struct Index {
     const replaced = candidate.origin === activeInstance.origin &&
       candidate.capabilities.instanceId !== activeInstance.capabilities?.instanceId;
     const qaDraft = this.modules.qaDirty || this.modules.qaPending || this.modules.qaEditDirty;
-    return new Promise<boolean>((resolve) => {
-      AlertDialog.show({ title: replaced ? '工作台身份已变化' : '切换工作台',
-        message: `${candidate.origin}\n${replaced ? '此地址已是另一个工作台，原草稿不会带入。' : ''}` +
+    return this.settingsConfirmation.ask(replaced ? '工作台身份已变化' : '切换工作台',
+        `${candidate.origin}\n${replaced ? '此地址已是另一个工作台，原草稿不会带入。' : ''}` +
           '\n当前日志和随记草稿将保留在此设备，返回原工作台可继续编辑。' +
           (qaDraft ? '\n尚未提交或尚未保存的问答编辑将放弃，请先确认已保留需要的内容。' : ''),
-        autoCancel: false,
-        primaryButton: { value: '取消', action: () => resolve(false) },
-        secondaryButton: { value: '确认切换', action: () => resolve(true) },
-        cancel: () => resolve(false) });
-    });
+        '确认切换');
   }
 
   private async commitConnection(candidate: ConnectionCandidate, current: () => boolean): Promise<void> {
@@ -929,14 +947,8 @@ struct Index {
       if (!current()) throw new Error('工作台已变化，请重试');
       credentialId = await TokenStore.stage(candidate.token);
       if (!current()) throw new Error('工作台已变化，请重试');
-      this.connectionCanLeave();
-      const draft = await this.captureDraft(true);
+      await this.preserveConnectionDraft(current);
       if (!current()) throw new Error('工作台已变化，请重试');
-      this.connectionCanLeave();
-      if (this.modules.notesDirty && !this.modules.prepareNotesConnection) throw new Error('随记尚未就绪，请重试');
-      this.modules.prepareNotesConnection?.();
-      if (draft) logDraftStore.save(draft);
-      else logDraftStore.clear(namespace);
       saved.credentialId = credentialId;
       instanceStore.commit(saved, candidate.capabilities);
       committed = true;
@@ -949,6 +961,51 @@ struct Index {
     } finally {
       if (credentialId && !committed) await TokenStore.removeCredential(credentialId);
     }
+  }
+
+  private async preserveConnectionDraft(current: () => boolean): Promise<void> {
+    const namespace = activeInstance.namespace;
+    this.connectionCanLeave();
+    const draft = await this.captureDraft(true);
+    if (!current()) throw new Error('工作台已变化，请重试');
+    this.connectionCanLeave();
+    if (this.modules.notesDirty && !this.modules.prepareNotesConnection) throw new Error('随记尚未就绪，请重试');
+    this.modules.prepareNotesConnection?.();
+    if (draft) logDraftStore.save(draft);
+    else logDraftStore.clear(namespace);
+  }
+
+  private async disconnectConnection(): Promise<void> {
+    if (!this.connected || this.disconnecting || this.connectionOpen) return;
+    const binding = apiClient.getConnectionBinding();
+    const credential = activeInstance.credentialId || activeInstance.namespace;
+    const current = (): boolean => this.connected && binding === apiClient.getConnectionBinding();
+    this.disconnecting = true;
+    try {
+      this.connectionCanLeave();
+      const accepted = await this.settingsConfirmation.ask('断开当前工作台',
+        '断开后需重新输入访问密码。工作台地址、日志和随记草稿保留在此设备。' +
+          ((this.modules.qaDirty || this.modules.qaPending || this.modules.qaEditDirty) ? '\n尚未提交或尚未保存的问答编辑将放弃，请确认已保留需要的内容。' : ''),
+        '断开连接', '保持连接');
+      if (!accepted || !current()) return;
+      await this.preserveConnectionDraft(current);
+      if (!current()) return;
+      await TokenStore.removeCredentialStrict(credential);
+      if (!current()) return;
+      apiClient.setToken('');
+      this.invalidateModules();
+      this.connected = false; this.settingsOpen = false; this.settingsInitialSection = 'menu';
+      this.restoreOnAppear = false;
+      activeInstance.activate('', '');
+      try {
+        await instanceStore.setConnectionDeferred(true);
+        appFeedback.show('已断开工作台，地址和本机草稿已保留', 'success');
+      } catch (_) {
+        appFeedback.show('已断开；待连接选择未能保存，下次启动需重新输入密码', 'warning');
+      }
+    } catch (error) {
+      if (current()) appFeedback.show(error instanceof Error ? error.message : '断开未完成，当前工作台仍保留', 'error');
+    } finally { this.disconnecting = false; }
   }
 
   private updateBreakpoint(width: number): void {
@@ -975,13 +1032,21 @@ struct Index {
   }
 
   private windowMenuEntries(menu: string): DesktopMenuEntry[] {
-    const available = this.connected && !this.previewImageSource && !this.connectionOpen && !this.settingsOpen &&
+    const available = !this.launchCoverVisible && !this.disconnecting &&
+      !this.previewImageSource && !this.connectionOpen && !this.settingsOpen &&
       !this.aboutOpen && !this.helpOpen;
     if (menu === '帮助') return [
       new DesktopMenuEntry('help', '使用说明与快捷键', available, false, 'F1'),
       new DesktopMenuEntry('about', '关于学习日志工作台', available)
     ];
-    const entries = this.desktopCommands.entries(menu);
+    if (!this.connected && menu === '文件') return [
+      new DesktopMenuEntry('connect', '连接工作台…', available)
+    ];
+    const entries = this.connected ? this.desktopCommands.entries(menu) : menu === '编辑' ? [
+      new DesktopMenuEntry('undo', '撤销', false, false, 'Ctrl+Z'),
+      new DesktopMenuEntry('redo', '重做', false, false, 'Ctrl+Shift+Z'),
+      new DesktopMenuEntry('find', '查找与替换', false, false, 'Ctrl+F')
+    ] : [];
     const items = entries.map((entry: DesktopMenuEntry) => new DesktopMenuEntry(entry.id, entry.label,
       available && entry.enabled, available && entry.checked, entry.shortcut));
     if (menu === '编辑') items.push(new DesktopMenuEntry('settings', '设置', available));
@@ -996,6 +1061,7 @@ struct Index {
     const enabled = ['文件', '编辑', '视图', '帮助'].flatMap((menu: string) => this.windowMenuEntries(menu))
       .some((entry: DesktopMenuEntry) => entry.id === id && entry.enabled);
     if (enabled && id.startsWith('theme_')) this.setTheme(id.slice(6));
+    else if (enabled && id === 'connect') focusControl.requestFocus('login_origin_input');
     else if (enabled && id === 'settings') this.settingsOpen = true;
     else if (enabled && id === 'about') this.aboutOpen = true;
     else if (enabled && id === 'help') this.openHelp();
@@ -1057,10 +1123,11 @@ struct Index {
 
   private dismissTopLayer(): boolean {
     if (this.connectionOpen) { this.closeConnection(); return true; }
-    if (this.settingsOpen) { this.settingsOpen = false; return true; }
+    if (this.settingsOpen) { this.settingsBack(); return true; }
     if (this.aboutOpen) { this.aboutOpen = false; return true; }
     if (this.helpOpen) { this.helpOpen = false; return true; }
     if (this.previewImageSource) { this.closeImagePreview(); return true; }
+    if (!this.connected && this.firstConnectionBack()) return true;
     if (this.desktopThemeOpen) { this.desktopThemeOpen = false; return true; }
     if (this.topMoreOpen) { this.topMoreOpen = false; return true; }
     if (this.compactSettingsOpen) { this.compactSettingsOpen = false; return true; }
@@ -1099,7 +1166,7 @@ struct Index {
     }
     if (event.keyCode === KeyCode.KEYCODE_ALT_LEFT || event.keyCode === KeyCode.KEYCODE_ALT_RIGHT) {
       if (event.type === KeyType.Down) this.altPressedAlone = true;
-      else if (this.altPressedAlone && this.desktopWindowChrome && this.connected && !this.desktopMenuOpen &&
+      else if (this.altPressedAlone && this.desktopWindowChrome && !this.launchCoverVisible && !this.desktopMenuOpen &&
         !this.workspaceShortcutBlocked()) {
         this.altPressedAlone = false;
         this.menuFocusRevision++;
@@ -1109,7 +1176,15 @@ struct Index {
     }
     if (event.type !== KeyType.Down) return false;
     this.altPressedAlone = false;
-    if (!this.connected || this.desktopMenuOpen) return false;
+    if (this.launchCoverVisible || this.desktopMenuOpen) return false;
+    if (!this.connected) {
+      if (workspaceKey(event, KeyCode.KEYCODE_ESCAPE)) return this.dismissTopLayer();
+      if (workspaceKey(event, KeyCode.KEYCODE_F1)) { this.openHelp(); return true; }
+      if (workspaceKey(event, KeyCode.KEYCODE_F10) && this.desktopWindowChrome) {
+        this.menuFocusRevision++; return true;
+      }
+      return false;
+    }
     this.desktopKeyboardFocus = true;
     if (workspaceKey(event, KeyCode.KEYCODE_ESCAPE)) {
       return this.dismissTopLayer();
@@ -1173,9 +1248,49 @@ struct Index {
     return `${value.getFullYear()}-${(value.getMonth() + 1).toString().padStart(2, '0')}-${value.getDate().toString().padStart(2, '0')}`;
   }
 
+  private openAiSettings(): void {
+    if (!this.connected || this.settingsOpen) return;
+    this.settingsInitialSection = 'ai';
+    this.settingsOpen = true;
+  }
+
+  @Builder
+  private settingsModal() {
+    AppModalFrame({ content: (): void => this.settingsContent() })
+      .onKeyEvent((event: KeyEvent) => this.handleWorkspaceKey(event))
+  }
+
+  @Builder
+  private settingsContent() {
+    SettingsPanel({ connected: this.connected, disconnecting: this.disconnecting, initialSection: this.settingsInitialSection,
+      changingConnection: this.connectionOpen && this.connectionReturnsToSettings, connection: this.connection,
+      onCancelConnection: () => this.closeConnection(),
+      onAiSaved: () => {
+        this.workspaceAiCapabilities = activeInstance.capabilities;
+        if (this.settingsInitialSection === 'ai') {
+          this.settingsOpen = false;
+          this.settingsInitialSection = 'menu';
+          appFeedback.show('AI 设置已保存', 'success');
+        }
+      },
+      onBackHandler: (back: () => void) => this.settingsBack = back,
+      onTheme: (value: string) => this.setTheme(value),
+      onDisconnect: () => { void this.disconnectConnection(); },
+      onConnect: () => {
+        if (this.connected) {
+          this.connectionReturnsToSettings = true;
+          this.workspaceCommands.changeServer();
+        } else {
+          this.settingsOpen = false;
+        }
+      },
+      onClose: () => { this.settingsOpen = false; this.settingsInitialSection = 'menu'; } })
+  }
+
   @Builder
   private logContent() {
         LogsReaderPage({ session: this.logSession, logLoadingHint: $logLoadingHint,
+          onOpenAiSettings: () => this.openAiSettings(),
           statsReturnAvailable: this.modules.statsReturnAvailable, onReturnStats: () => this.requestModule(4),
           onWorkspaceKey: (event: KeyEvent) => this.handleWorkspaceKey(event),
           newLogDate: $newLogDate, calendarMode: $calendarMode, calendarOpen: $calendarOpen,
@@ -1233,6 +1348,7 @@ struct Index {
           onSelect: (index: number) => this.requestModule(index, false, false, () => {}, ''),
           navigationCommands: $workspaceCommands,
           onCloseTaxonomy: () => this.confirmTaxonomyLeave(() => {}),
+          onOpenAiSettings: () => this.openAiSettings(),
           onContentArea: (area: Area) => this.workspaceNavigationView?.workspaceAreaChanged(area),
           onWorkspaceArea: (area: Area) => this.workspaceCommands.readingOrigin(area) })
           .width('100%').height('100%')
@@ -1240,7 +1356,9 @@ struct Index {
           .onTouch(() => this.desktopKeyboardFocus = false)
 
       } else if (!this.replacingConnection) {
-        LoginPage({ restoreOnAppear: this.restoreOnAppear,
+        LoginPage({ restoreOnAppear: this.restoreOnAppear, entryBusy: this.disconnecting,
+          onOpenLocalSettings: () => { this.settingsInitialSection = 'menu'; this.settingsOpen = true; },
+          onBackHandler: (back: () => boolean) => this.firstConnectionBack = back,
           onInitialReady: () => this.launchReady = true,
           onConnected: (origin: string, capabilities: InstanceCapabilities) => this.connectedTo(origin, capabilities) })
       }
@@ -1263,11 +1381,12 @@ struct Index {
             onReady: () => this.revealImagePreview(), onClose: () => this.closeImagePreview() })
         }.width('100%').height('100%').opacity(this.imagePreviewOpacity).zIndex(110)
       }
-      if (this.settingsOpen) {
-        SettingsPanel({ onClose: () => this.settingsOpen = false }).zIndex(100)
-          .transition(floatingSurfaceTransition())
-      }
-      if (this.connectionOpen) {
+      Column().width(0).height(0)
+        .bindContentCover(this.settingsOpen && (!this.connectionOpen || this.connectionReturnsToSettings), this.settingsModal(), {
+          transition: floatingSurfaceTransition(), backgroundColor: Color.Transparent, enableSafeArea: true,
+          onWillDismiss: () => this.settingsBack()
+        })
+      if (this.connectionOpen && !this.connectionReturnsToSettings) {
         ConnectionPanel({ controller: this.connection, onClose: () => this.closeConnection() })
           .zIndex(105).transition(floatingSurfaceTransition())
       }

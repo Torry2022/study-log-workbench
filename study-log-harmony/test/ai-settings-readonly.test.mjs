@@ -48,6 +48,23 @@ test('settings extension is optional and safely blocks only unsupported settings
   }
 });
 
+test('readiness uses this validated read rather than the saved model fields or an older connection snapshot', async () => {
+  const initial = caps(settings), f = fixture(initial);
+  const refreshed = { ...initial, aiConfiguration: { provider: { configured: true } },
+    features: { ...features, aiTaxonomy: { supported: true, configured: true } } };
+  f.transport.get = async () => refreshed;
+  await f.data.load(true);
+  assert.equal(f.data.summary.hasKey, true);
+  assert.equal(f.data.readiness.aiConfiguration.provider.configured, true);
+  assert.equal(f.data.readiness.features.aiTaxonomy.configured, true);
+  assert.equal(f.data.readiness.features.rag.configured, false);
+  assert.equal(f.data.readiness.features.aiWriting.configured, false);
+  f.transport.get = async () => ({ ...refreshed, instanceId: second });
+  await f.data.load(true);
+  assert.equal(f.data.readiness, undefined); assert.equal(f.data.summary, undefined);
+  assert.match(f.data.error, /身份已变化/);
+});
+
 test('parse the actual ac099b7 server summary for instance and deployment without retaining keys, paths or extra fields', () => {
   const server = execFileSync('git', ['show', 'ac099b7:study-log-web/lib/ai-settings-reader.ts'], { encoding: 'utf8' });
   const start = server.indexOf('export function summarizeAiSettings('); assert.ok(start >= 0);
@@ -125,15 +142,20 @@ test('503 is not empty/unconfigured, identity change is explicit, and retry can 
   assert.match(f.data.error, /身份已变化/); assert.equal(f.data.summary, undefined);
 });
 
-test('actual native settings only mount read status on selection; lifecycle cancels it and exposes no editable secret or paid action', async () => {
+test('actual native read status stays read-only; edits require a distinct capability-gated entry and lifecycle ownership', async () => {
   const panel = await readFile(new URL('../entry/src/main/ets/app/components/SettingsPanel.ets', import.meta.url), 'utf8');
   const status = await readFile(new URL('../entry/src/main/ets/app/components/AiSettingsStatus.ets', import.meta.url), 'utf8');
   const index = await readFile(new URL('../entry/src/main/ets/pages/Index.ets', import.meta.url), 'utf8');
-  assert.match(panel, /section: string = 'reading'/);
-  assert.match(panel, /if \(this\.section === 'ai'\) \{\s*AiSettingsStatus\(\)/);
-  for (const item of ['settings_reading_size', 'settings_editor_size', 'settings_editor_wrap', 'settings_search_history', 'settings_reset']) assert.ok(panel.includes(item), item);
-  assert.match(status, /aboutToAppear\(\): void \{ this\.data\.load\(\); \}/);
-  assert.match(status, /aboutToDisappear\(\): void \{ this\.data\.dispose\(\); \}/);
+  assert.match(panel, /section: string = 'menu'/);
+  assert.match(panel, /this\.currentSection\(\) === 'ai' && this.aiEditor.editing\)/);
+  assert.match(panel, /AiSettingsStatus\(\{ data: this\.ai/);
+  assert.match(status, /if \(this.data.writable\) \{[\s\S]*?'settings_ai_edit'/);
+  for (const item of ['reading_size', 'editor_size']) assert.match(panel, new RegExp(`, '${item}'\\)`));
+  assert.match(panel, /\.id\('settings_' \+ key\)/);
+  for (const item of ['settings_editor_wrap', 'settings_search_history', 'settings_reset']) assert.ok(panel.includes(item), item);
+  assert.match(panel, /if \(section === 'ai' && !this\.aiLoaded\) \{ this\.aiLoaded = true; this\.ai\.load\(true\); \}/);
+  assert.match(panel, /aboutToDisappear\(\): void \{ this\.focusRevision\+\+; this\.ai\.dispose\(\)/);
+  assert.match(status, /@ObjectLink data: AiSettingsController/);
   assert.doesNotMatch(status, /TextInput|setToken|\.post\(|\.put\(|apiKey|尝试生成|保存设置/);
   assert.match(index, /this\.replacingConnection = true;\s*this\.connected = false;\s*this\.settingsOpen = false;/);
 });

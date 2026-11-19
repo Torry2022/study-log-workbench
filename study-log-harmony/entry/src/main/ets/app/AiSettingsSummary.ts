@@ -13,6 +13,7 @@ export function aiSettingsSupport(capabilities?: InstanceCapabilities): AiSettin
 export interface AiSettingsSummary {
   instanceId: string;
   revision: number | null;
+  operationId?: string | null;
   provider: string;
   endpointDisplay: string;
   hasEndpoint: boolean;
@@ -40,9 +41,13 @@ export function parseAiSettingsSummary(value: AiSettingsSummary, instanceId: str
     (value.endpointDisplay !== '' && !/^https?:\/\/(?:[a-zA-Z0-9.-]+|\[[a-fA-F0-9:]+\])(?::\d{1,5})?$/.test(value.endpointDisplay))) {
     throw new Error('模型设置响应无效，请重新读取');
   }
-  return { instanceId: value.instanceId, revision: value.revision, provider: value.provider,
+  if (value.operationId !== undefined && value.operationId !== null &&
+    !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(value.operationId)) throw new Error('模型设置操作身份无效');
+  const result: AiSettingsSummary = { instanceId: value.instanceId, revision: value.revision, provider: value.provider,
     endpointDisplay: value.endpointDisplay, hasEndpoint: value.hasEndpoint, model: value.model,
     hasKey: value.hasKey, lightModel: value.lightModel, contextWindowTokens: value.contextWindowTokens,
     thinking: value.thinking, toolCallingVerified: value.toolCallingVerified,
     statusVerificationEnabled: value.statusVerificationEnabled, source: value.source };
+  if (value.operationId !== undefined) result.operationId = value.operationId;
+  return result;
 }

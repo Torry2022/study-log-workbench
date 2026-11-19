@@ -7,6 +7,8 @@ RUN npm ci --include=dev --registry=https://registry.npmjs.org
 FROM dependencies AS builder
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY study-log-web/ ./
+COPY ops/instance.mjs ops/ai-settings.mjs ops/welcome-log.md /build/ops/
+COPY ops/desktop/security.mjs ops/desktop/windows-system.mjs /build/ops/desktop/
 RUN npm run build
 
 FROM ${NODE_IMAGE} AS runner

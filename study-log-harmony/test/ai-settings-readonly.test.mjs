@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-import { execFileSync } from 'node:child_process';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { aiSettingsFields } from '../../study-log-web/lib/ai-settings-schema.mjs';
+import { summarizeAiSettings } from '../../study-log-web/lib/ai-settings-reader.ts';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { aiSettingsSupport, parseAiSettingsSummary } from '../entry/src/main/ets/app/AiSettingsSummary.ts';
@@ -65,18 +68,17 @@ test('readiness uses this validated read rather than the saved model fields or a
   assert.match(f.data.error, /身份已变化/);
 });
 
-test('parse the actual ac099b7 server summary for instance and deployment without retaining keys, paths or extra fields', () => {
-  const server = execFileSync('git', ['show', 'ac099b7:study-log-web/lib/ai-settings-reader.ts'], { encoding: 'utf8' });
-  const start = server.indexOf('export function summarizeAiSettings('); assert.ok(start >= 0);
-  const record = { instanceId: first, revision: 3, operationId: null, values: {
-    CHAT_API_URL: 'https://provider.invalid/private/path?token=synthetic-private-query', CHAT_MODEL: 'synthetic-main', CHAT_API_KEY: 'synthetic-secret' } };
-  const exports = { exports: {} };
-  runInNewContext(ts.transpileModule(server.slice(start), { compilerOptions: { module: ts.ModuleKind.CommonJS,
-    target: ts.ScriptTarget.ES2022 } }).outputText,
-    { module: exports, exports: exports.exports, URL, readAiSettingsRecord: () => record });
-  for (const env of [{ AI_SETTINGS_ROOT: '/synthetic' }, record.values]) {
-    const produced = exports.exports.summarizeAiSettings(first, env);
-    const parsed = parseAiSettingsSummary({ ...produced, key: 'synthetic-secret', endpoint: record.values.CHAT_API_URL }, first);
+test('parse the server summary for instance and deployment without retaining keys, paths or extra fields', async t => {
+  const root = await mkdtemp(path.join(tmpdir(), 'study-log-ai-summary-'));
+  const file = path.join(root, 'ai-settings.json');
+  t.after(async () => { await rm(file, { force: true }); await rm(root, { recursive: true }); });
+  const values = Object.fromEntries(aiSettingsFields.map(field => [field, '']));
+  Object.assign(values, { CHAT_API_URL: 'https://provider.invalid/private/path?token=synthetic-private-query',
+    CHAT_MODEL: 'synthetic-main', CHAT_API_KEY: 'synthetic-secret' });
+  await writeFile(file, JSON.stringify({ schemaVersion: 1, instanceId: first, revision: 3, operationId: null, values }));
+  for (const env of [{ AI_SETTINGS_ROOT: root }, values]) {
+    const produced = summarizeAiSettings(first, env);
+    const parsed = parseAiSettingsSummary({ ...produced, key: 'synthetic-secret', endpoint: values.CHAT_API_URL }, first);
     assert.equal(parsed.model, summary.model); assert.equal(parsed.endpointDisplay, summary.endpointDisplay);
     assert.equal(parsed.hasKey, true); assert.equal(parsed.source, env.AI_SETTINGS_ROOT ? 'instance' : 'deployment');
     assert.equal(parsed.revision, env.AI_SETTINGS_ROOT ? 3 : null);

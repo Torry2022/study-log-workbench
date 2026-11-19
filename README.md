@@ -41,11 +41,11 @@ Windows 本地模式把记录保存在这台电脑。选择连接服务器后，
 
 工作台按单使用者设计，源码采用 [MIT 许可证](LICENSE)。
 
-v0.2.2 提供 Windows 安装包、服务器部署文件和供自行签名的鸿蒙 HAP。各平台的更新内容见[版本说明](deploy/RELEASE-NOTES.md)。鸿蒙客户端的后续修订包见[发布记录](https://github.com/Torry2022/study-log-workbench/releases)。
+v0.3.0 提供 Windows 安装包、服务器部署文件和供自行签名的鸿蒙 HAP。各平台的更新内容见[版本说明](deploy/RELEASE-NOTES.md)。鸿蒙客户端的后续修订包见[发布记录](https://github.com/Torry2022/study-log-workbench/releases)。
 
 ### Windows：本地使用
 
-下载 [Windows x64 安装包](https://github.com/Torry2022/study-log-workbench/releases/download/v0.2.2/study-log-desktop-0.2.2-x64-setup.exe)，可用[发布页](https://github.com/Torry2022/study-log-workbench/releases/tag/v0.2.2)提供的 SHA-256 文件核对下载。
+下载 [Windows x64 安装包](https://github.com/Torry2022/study-log-workbench/releases/download/v0.3.0/study-log-desktop-0.3.0-x64-setup.exe)，可用[发布页](https://github.com/Torry2022/study-log-workbench/releases/tag/v0.3.0)提供的 SHA-256 文件核对下载。
 
 1. 首次打开，选择“在这台电脑使用”，再选择保存记录的文件夹。
 2. 点击“今天”，写下学习内容并保存。
@@ -57,7 +57,7 @@ v0.2.2 提供 Windows 安装包、服务器部署文件和供自行签名的鸿�
 
 ### 服务器：使用预构建镜像
 
-在 Linux amd64 主机上安装 Docker 和 Docker Compose，然后下载[服务器部署配置包](https://github.com/Torry2022/study-log-workbench/releases/download/v0.2.2/study-log-server-0.2.2.zip)（或使用 `deploy/` 中的文件）。按[部署指南](deploy/README.md)拉取公开镜像、初始化并启动服务。
+在 Linux amd64 主机上安装 Docker 和 Docker Compose，然后下载[服务器部署配置包](https://github.com/Torry2022/study-log-workbench/releases/download/v0.3.0/study-log-server-0.3.0.zip)（或使用 `deploy/` 中的文件）。按[部署指南](deploy/README.md)拉取公开镜像、初始化并启动服务。
 
 请使用同一版本配套的镜像、Compose 示例和[版本说明](deploy/RELEASE-NOTES.md)。首次部署先确认本机能够访问，再按需要配置模型、HTTPS 和其他客户端。服务器和域名由部署者准备。
 

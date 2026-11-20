@@ -681,7 +681,7 @@ export struct LogsReaderPage {
     let required = this.iconHeaderWidth();
     const expanded = width >= required + (this.toolbarModesExpanded ? 0 : 12);
     const iconWidth = 40 + (width < 440 ? 4 : 8);
-    // Reuse the personal client's per-action plan: fit icons before adding priority labels.
+    // Fit action icons before adding labels in priority order.
     for (const action of expanded ? priority : []) {
       if (width < required + iconWidth + (this.toolbarHeaderActions.includes(action) ? 0 : 12)) break;
       required += iconWidth;

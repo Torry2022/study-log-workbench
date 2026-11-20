@@ -21,11 +21,11 @@
 
 **阅读 · 浅色模式**：从左侧日期和主题找到记录，通过右侧目录浏览当天内容。
 
-![学习日志阅读界面：左侧按月份、日期和主题查找，中间展示笔记，右侧显示目录](docs/images/learning-log-light.png)
+![学习日志阅读界面：左侧按月份、日期和主题查找，中间展示笔记，右侧显示目录](.github/readme/learning-log-light.png)
 
 **分屏编辑 · 深色模式**：Markdown 源码与预览并排展示，边写边查看排版。
 
-![深色模式下的分屏编辑：Markdown 源码与渲染后的笔记并排展示](docs/images/markdown-split-dark.png)
+![深色模式下的分屏编辑：Markdown 源码与渲染后的笔记并排展示](.github/readme/markdown-split-dark.png)
 
 ## 选择使用方式
 
@@ -33,7 +33,7 @@
 
 | 方式 | 适合谁 | 从哪里开始 |
 | --- | --- | --- |
-| Windows 桌面端本地使用 | 在这台电脑上离线记录 | [桌面端使用说明](docs/windows-desktop.md) |
+| Windows 桌面端本地使用 | 在这台电脑上离线记录 | [桌面端使用说明](ops/desktop/README.md) |
 | 自部署服务器 | 希望浏览器、Windows 和鸿蒙访问同一份学习记录 | [预构建镜像 + Docker Compose 部署指南](deploy/README.md) |
 | 鸿蒙客户端 | 用鸿蒙手机、平板或 PC 连接已有服务器 | [鸿蒙构建、签名与连接说明](study-log-harmony/README.md) |
 
@@ -41,7 +41,7 @@ Windows 本地模式把记录保存在这台电脑。选择连接服务器后，
 
 工作台按单使用者设计，源码采用 [MIT 许可证](LICENSE)。
 
-v0.3.0 提供 Windows 安装包、服务器部署文件和供自行签名的鸿蒙 HAP。各平台的更新内容见[版本说明](deploy/RELEASE-NOTES.md)。鸿蒙客户端的后续修订包见[发布记录](https://github.com/Torry2022/study-log-workbench/releases)。
+v0.3.0 提供 Windows 安装包、服务器部署文件和供自行签名的鸿蒙 HAP。各平台的更新内容见[版本说明](deploy/RELEASE-NOTES.md)。
 
 ### Windows：本地使用
 
@@ -69,13 +69,13 @@ v0.3.0 提供 Windows 安装包、服务器部署文件和供自行签名的鸿�
 - **完整备份**包含学习记录、附件、配置和明文密钥，适合另存到受保护的磁盘或设备。恢复时选择新目录，保留原有学习记录。
 - **导出**用于取出已保存的内容；需要连同配置一起保存或搬迁工作台时，请使用完整备份。
 
-备份、恢复和搬迁的具体操作见[备份与恢复](docs/backup-restore.md)。搬迁后，本地与服务器上的记录仍各自保存。
+Windows 的备份、恢复和搬迁操作见[桌面端使用说明](ops/desktop/README.md#备份与恢复)，服务器操作见[部署指南](deploy/README.md#停止备份和恢复)。搬迁后，本地与服务器上的记录仍各自保存。
 
 ## 配置与开发
 
-AI 接口、个人写作方案及只读检索配置见[AI 配置](docs/ai-configuration.md)和[部署说明](docs/deployment.md)。关键词检索可独立使用，向量和重排服务按需配置。
+服务器的 AI 接口与只读检索配置见[部署指南](deploy/README.md#可选模型和日志问答)。关键词检索可独立使用，向量和重排服务按需配置。
 
-自行构建 Windows 桌面端可参阅[桌面构建说明](docs/windows-desktop.md#开发与验收)。
+自行构建 Windows 桌面端可参阅[桌面端使用说明](ops/desktop/README.md#从源码构建)。
 
 从源码运行需要 Node.js 22.13 或更新版本。以下为 Windows PowerShell 示例，在仓库根目录执行：
 
@@ -86,6 +86,6 @@ npm run build
 node ops/run-web.mjs start "D:\workbench-instance" 3560
 ```
 
-初始化时，指定一个新目录，或使用已有的学习记录目录。从该目录的 `.env` 文件读取 `APP_PASSWORD`，启动后访问 `http://127.0.0.1:3560/study-log`。其他系统及 Docker 源码构建见[开发部署说明](docs/deployment.md)。
+初始化时，指定一个新目录，或使用已有的学习记录目录。从该目录的 `.env` 文件读取 `APP_PASSWORD`，启动后访问 `http://127.0.0.1:3560/study-log`。Docker 部署见[服务器部署指南](deploy/README.md)。
 
-源码按 `study-log-web/`、`study-log-mcp/`、`study-log-harmony/` 和 `ops/` 组织。参考[架构](docs/architecture.md)、[接口契约](docs/api-contract.md)、[设计规范](DESIGN.md)及[发布与验收流程](docs/releasing.md)。依赖声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+源码按 `study-log-web/`、`study-log-mcp/`、`study-log-harmony/` 和 `ops/` 组织。界面实现遵循[设计规范](DESIGN.md)，依赖声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

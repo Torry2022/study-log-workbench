@@ -68,19 +68,11 @@ export async function packageWindows(output, { cache = path.join(repository, ".l
   }
   await fs.copyFile(path.join(repository, "LICENSE"), path.join(output, "LICENSE"));
   await fs.copyFile(path.join(repository, "THIRD_PARTY_NOTICES.md"), path.join(output, "THIRD_PARTY_NOTICES.md"));
-  const guides = ["windows-portable.md", "maintenance.md", "backup-restore.md", "ai-configuration.md", "notes-storage.md"];
-  await fs.mkdir(path.join(output, "docs"));
-  for (const name of guides) {
-    const source = await fs.readFile(path.join(repository, "docs", name), "utf8");
-    // Keep operational links usable offline without bundling development history.
-    const offline = source.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (link, label, target) =>
-      /^(?:https?:|#)/.test(target) || guides.includes(target.split("#")[0]) ? link : `${label}（源码仓库文档：${target}）`);
-    await fs.writeFile(path.join(output, "docs", name), offline);
-  }
+  await fs.copyFile(path.join(repository, "ops", "desktop", "README.md"), path.join(output, "使用说明.md"));
   // Script host starts Node invisibly: no terminal remains open while using the UI.
   const launcher = 'Set shell = CreateObject("WScript.Shell")\r\nSet fso = CreateObject("Scripting.FileSystemObject")\r\nroot = fso.GetParentFolderName(WScript.ScriptFullName)\r\nshell.Run Chr(34) & root & "\\runtime\\node.exe" & Chr(34) & " " & Chr(34) & root & "\\ops\\desktop\\launcher.mjs" & Chr(34), 0, False\r\n';
   await fs.writeFile(path.join(output, "启动学习日志.vbs"), Buffer.from("\ufeff" + launcher, "utf16le"));
-  await fs.writeFile(path.join(output, "使用说明.txt"), "双击“启动学习日志.vbs”，在本地页面选择保存位置并设置密码。无需安装 Node 或 Docker。\r\n程序目录与保存位置须分开；没有模型也能使用日志。默认仅本机访问。\r\n在启动页面点击“停止工作台”，等待按钮恢复为“启动工作台”后关闭页面。仅关闭浏览器不会停止服务。\r\n若系统禁用 Windows Script Host，可运行 runtime\\node.exe ops\\desktop\\launcher.mjs。\r\n不要删除异常退出后保留的运行锁；先确认服务状态并检查文件状态。\r\n备份含配置和密钥，请存放在可信位置；恢复到新的目录。\r\n本机使用说明：docs\\windows-portable.md；异常退出处理：docs\\maintenance.md；备份恢复：docs\\backup-restore.md。可用文本编辑器打开。\r\n");
+  await fs.writeFile(path.join(output, "使用说明.txt"), "双击“启动学习日志.vbs”，在本地页面选择保存位置并设置密码。程序已包含运行环境。\r\n程序目录与记录保存位置分别选择；日志功能可独立使用，模型服务按需配置。默认仅本机访问。\r\n在启动页面点击“停止工作台”，等待按钮恢复为“启动工作台”后关闭页面。\r\n系统关闭 Windows Script Host 时，可运行 runtime\\node.exe ops\\desktop\\launcher.mjs。\r\n异常退出后再次打开启动页，按页面提示核对服务与保存状态。\r\n完整说明见同目录的“使用说明.md”。\r\n");
   const version = JSON.parse(await fs.readFile(path.join(repository, "study-log-web", "package.json"), "utf8"));
   await fs.writeFile(path.join(output, "package-manifest.json"), JSON.stringify({ format: "study-log-windows", version: version.version, platform: "win32-x64", node: runtime,
     nodeSource: `https://nodejs.org/dist/v${runtime.version}/`, builtAt: new Date().toISOString(), webBuild: (await fs.readFile(path.join(standalone, ".next-build-cache", "BUILD_ID"), "utf8")).trim() }, null, 2));

@@ -207,7 +207,7 @@ test("rejects malformed semantic plans", () => {
 });
 
 test("enumerated abbreviated days keep every date and separate nonadjacent scopes", () => {
-  const plan = planRagRetrieval("2026年10月1日、2日和3日，通用版问答检索分别改了什么？");
+  const plan = planRagRetrieval("2026年10月1日、2日和3日，问答检索分别改了什么？");
   assert.equal(plan.strategy, "timeline_summary");
   assert.deepEqual(plan.ranges, [1, 2, 3].map(day => ({ dateFrom: `2026-10-0${day}`, dateTo: `2026-10-0${day}` })));
   assert.deepEqual(planRagRetrieval("比较2026年10月1日、3日和5日").ranges,

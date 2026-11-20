@@ -1,4 +1,4 @@
-// Personal ab3e7b0 layout regressions, adapted to the public app and real session storage.
+// Verify layout regressions with real session storage and synthetic content.
 // Uses a fresh synthetic instance and no model requests. Run after the production build.
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';

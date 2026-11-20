@@ -1,4 +1,4 @@
-// Adapted from personal 918a05c: public instance initialization, MCP API and model configuration.
+// Verify live follow with a synthetic instance, MCP API and model configuration.
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';

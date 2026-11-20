@@ -32,4 +32,4 @@ await withInstanceLock(data, async () => {
   await fs.writeFile(path.join(data, "assets/demo.svg"), '<svg xmlns="http://www.w3.org/2000/svg" width="480" height="160" viewBox="0 0 480 160"><rect width="480" height="160" fill="#faf9f5"/><rect x="30" y="50" width="160" height="60" rx="8" fill="#cc785c"/><path d="M200 80H280" stroke="#141413" stroke-width="3"/><rect x="290" y="50" width="160" height="60" rx="8" fill="#e8e0d2"/></svg>', { flag: "wx" });
   await fs.writeFile(path.join(data, "assets/broken.png"), "synthetic-invalid-image", { flag: "wx" });
 });
-console.log("Synthetic fixture created; no personal data used.");
+console.log("Synthetic fixture created.");

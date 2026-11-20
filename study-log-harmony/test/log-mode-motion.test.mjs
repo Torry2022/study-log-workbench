@@ -5,7 +5,6 @@ import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
 const ts = createRequire(new URL('../../study-log-web/package.json', import.meta.url))('typescript');
 const base = new URL('../entry/src/main/ets/', import.meta.url);
-const personal = false;
 const read = async path => (await readFile(new URL(path + '.ets', base), 'utf8')).replace(/\r\n/g, '\n');
 const tick = () => new Promise(resolve => setImmediate(resolve));
 function deferred() { let resolve, reject; const promise = new Promise((ok, fail) => { resolve = ok; reject = fail; }); return { promise, resolve, reject }; }
@@ -32,37 +31,29 @@ async function fixture(from = 'source', wide = true, options = {}) {
     capture: () => { captures++; return options.capture ? options.capture.promise : Promise.resolve(pixel); },
     fade: (update, finish) => { fades.push('fade'); update(); finish(); }
   });
-  const pageSource = await read(personal ? 'features/logs/LogsPage' : 'features/logs/LogsReaderPage');
-  const names = personal ? ['setDisplayMode', 'settleModeOnNextFrame', 'flushEditor'] : ['switchMode', 'settleModeOnNextFrame'];
+  const pageSource = await read('features/logs/LogsReaderPage');
+  const names = ['switchMode', 'settleModeOnNextFrame'];
   const { Page } = compile('export class Page { ' + names.map(name => method(pageSource, name)).join('\n') + ' }', {
     FrameAction: class { constructor(fn) { this.fn = fn; } }
   });
   const page = new Page(), day = { date: '2026-08-01' };
   const session = { day, selectedDate: day.date, text: '原合成正文', editorDocumentKey: 'editor:1', editorPending: false };
-  const rootSource = await read('pages/Index');
-  const { Root } = personal ? compile('export class Root { ' +
-    ['beginLogModeTransition', 'logReaderSettled'].map(name => method(rootSource, name)).join('\n') + ' }',
-    { WorkspaceTab: { LOGS: 0 } }) : { Root: class {} };
-  const root = Object.assign(new Root(), { selectedTab: 0, isLargeWorkspace: () => wide, workspaceTransition: transition,
-    readingTransition: { animating: false }, coverWorkspaceTransition: kind => transition.cover(kind),
-    finishWorkspaceTransition: kind => transition.finish(kind) });
   Object.assign(page, {
     sourceMode: from === 'source', splitMode: from === 'split', modeRequestRevision: 0, modeLayoutRevision: 0,
     editorLifecycleRevision: 0, continuation: { continuationBusy: false }, logSession: session, session,
     documents: { loading: false, dayRequestLoading: false }, logNavigation: { daysLoading: false },
     editorReady: true, editor: { ready: true, loadedDocumentKey: day.date,
       command: async command => command === 'snapshot' ? options.snapshot ? options.snapshot() :
-        { documentKey: personal ? 'editor:1' : day.date, text: session.text } : {} },
+        { documentKey: day.date, text: session.text } : {} },
     workspaceTransition: transition, isWide: () => wide, isLargeWorkspace: () => wide, selectedTab: () => 0,
-    onBeforeModeChange: () => root.beginLogModeTransition(), onReaderSettled: kind => root.logReaderSettled(kind),
     getUIContext: () => ({ postFrameCallback: action => frames.push(action.fn) }),
     updateToolbarWidth() {}, onDirtyChange() {}, isDirty: () => false, reportDraft() {},
     message: (error, fallback) => error.message || fallback, previewText: session.text, headerWidth: 1000, desktopToolbarWidth: 1000
   });
   return { page, transition, pixel, session, frames, fades, timers, captures: () => captures, releases: () => releases,
-    invoke: mode => personal ? page.setDisplayMode(mode) : page.switchMode(mode === 'source', mode === 'split'),
+    invoke: mode => page.switchMode(mode === 'source', mode === 'split'),
     frame: () => frames.splice(0).forEach(fn => fn()),
-    viewportReady: () => personal ? root.logReaderSettled('viewport') : transition.finish('mode'),
+    viewportReady: () => transition.finish('mode'),
     async covered() { await tick(); if (transition.snapshot) transition.rendered(); await tick(); }
   };
 }
@@ -95,11 +86,11 @@ test('reselecting the unchanged mode cancels pending capture and releases its la
 test('a superseded mode snapshot cannot replace the text published by the newer mode', async () => {
   const old = deferred(); let count = 0;
   const f = await fixture('source', true, { snapshot: () => ++count === 1 ? old.promise :
-    Promise.resolve({ documentKey: personal ? 'editor:1' : '2026-08-01', text: '新合成正文' }) });
+    Promise.resolve({ documentKey: '2026-08-01', text: '新合成正文' }) });
   const first = f.invoke('preview'); await tick();
   const second = f.invoke('split'); await f.covered(); await second;
   f.frame(); f.viewportReady(); assert.equal(f.session.text, '新合成正文');
-  old.resolve({ documentKey: personal ? 'editor:1' : '2026-08-01', text: '旧合成正文' }); await first;
+  old.resolve({ documentKey: '2026-08-01', text: '旧合成正文' }); await first;
   assert.equal(f.session.text, '新合成正文');
   assert.equal(f.page.splitMode, true);
 });
@@ -107,7 +98,7 @@ test('a superseded mode snapshot cannot replace the text published by the newer 
 test('a superseded snapshot failure cannot flash an error over the newer mode', async () => {
   const old = deferred(); let count = 0;
   const f = await fixture('source', true, { snapshot: () => ++count === 1 ? old.promise :
-    Promise.resolve({ documentKey: personal ? 'editor:1' : '2026-08-01', text: '新合成正文' }) });
+    Promise.resolve({ documentKey: '2026-08-01', text: '新合成正文' }) });
   const first = f.invoke('preview'); await tick();
   const second = f.invoke('split'); await f.covered(); await second; f.frame(); f.viewportReady();
   old.reject(Error('obsolete snapshot failure')); await first;

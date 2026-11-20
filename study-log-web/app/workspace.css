@@ -1016,7 +1016,7 @@
   .public-reading-shell .sidebar-section.grow { grid-template-rows: none; }
 }
 
-/* Compact log date navigation, migrated from the personal Web workspace. */
+/* Compact log date navigation. */
 .sidebar-days-end-marker {
   width: 1px;
   height: 1px;

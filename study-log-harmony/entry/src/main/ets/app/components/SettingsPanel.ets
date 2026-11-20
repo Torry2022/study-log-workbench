@@ -393,7 +393,7 @@ export struct SettingsPanel {
     Column({ space: 16 }) {
       Row({ space: 12 }) {
         AppLogo({ iconSize: 40, cornerRadius: 8 })
-        Column() { this.label('学习日志工作台', '通用版') }.layoutWeight(1)
+        Column() { this.label('学习日志工作台', 'HarmonyOS 客户端') }.layoutWeight(1)
       }.width('100%').padding({ top: 4, bottom: 4 })
       Column() {
         Row({ space: 12 }) {

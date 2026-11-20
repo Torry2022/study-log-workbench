@@ -302,7 +302,7 @@ html.reading-mode-transition .workspace { transition: none; }
 /* CodeMirror supplies its own scrolling element. */
 .cm-scroller { scrollbar-gutter: stable; }
 
-/* Shared workspace motion, ported from the verified personal workspace. */
+/* Shared workspace motion. */
 .motion-segmented {
   --segment-count: 2;
   --segment-index: 0;

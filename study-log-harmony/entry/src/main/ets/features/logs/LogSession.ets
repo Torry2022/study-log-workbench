@@ -1,6 +1,6 @@
 import { DayEntry } from './LogModels';
 
-// Migrated from the personal LogSession. Transport and editor readiness remain outside this state.
+// Transport and editor readiness remain outside this state.
 @Observed
 export class LogSession {
   day: DayEntry | undefined = undefined;
@@ -23,7 +23,7 @@ export class LogSession {
     this.text = text;
     this.editorPending = false;
     this.editorInitialText = text;
-    // Public SourceEditorSession owns the date key and explicit same-document replacement.
+// SourceEditorSession owns the date key and explicit same-document replacement.
   }
 
   clearDocument(): void {

@@ -25,7 +25,7 @@ function loginErrorMessage(error: Object, fallback: string): string {
     case 'HTTP 仅允许明确启用的本地或局域网测试地址':
     case '服务器连接信息已变化，请重新输入密码连接':
     case '服务器登录响应无效':
-    case '服务器不支持当前公开版接口':
+    case '服务器不支持当前客户端接口':
       return error.message;
     default:
       return fallback;

@@ -2,7 +2,7 @@ import { StudyNoteFacet } from '../features/notes/NoteModels';
 import { MonthSummary } from '../features/logs/LogModels';
 import { LoadingHintPlacement } from '../common/ui/LoadingHintAnchor';
 
-// Index owns module navigation and leave-guard state, as in the personal workspace.
+// Index owns module navigation and leave-guard state.
 // A shared observed record keeps the navigation and mounted module content on the same state.
 @Observed
 export class WorkspaceModuleState {

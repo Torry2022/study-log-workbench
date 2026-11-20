@@ -474,7 +474,7 @@ test('regeneration keeps question identity and the previous answer across runtim
   assert.ok((await other.list(original.id)).some(task => task.id === created.id));
 });
 
-// Adapted from personal 8f89245: retries carry causal identity, never a text heuristic.
+// Retries carry causal identity rather than a text heuristic.
 for (const state of ['failed', 'interrupted', 'cancelled']) for (const replaceLast of [false, true]) {
   test(`explicit ${state} retry preserves ${replaceLast ? 'replacement' : 'append'} question identity`, async () => {
     const originalSession = replaceLast ? await createRagSession({ id: uuid(), mutationId: uuid(), baseVersion: null, answerMode: 'logs_only', messages: pair('重复问题') }) : null;

@@ -66,6 +66,7 @@ test('the provider-neutral verifier preserves model settings and returns a filte
   assert.equal(received.options.responseFormat, 'json_object');
   assert.equal(received.options.timeoutMs, 20_000);
   assert.match(received.messages[0].content, /不能把曾失败或待验证自动延续/);
+  assert.match(received.messages[0].content, /不同项目、版本、环境/);
 });
 
 test('range status verification uses an explicit provider-neutral switch for complete long summaries', () => {

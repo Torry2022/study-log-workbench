@@ -18,7 +18,7 @@ export class ConnectionProbe {
       throw new Error('服务器登录响应无效');
     }
     const capabilities = await this.request<InstanceCapabilities>(origin, '/capabilities', login.token, '', cancellation);
-    if (!validCapabilities(capabilities)) throw new Error('服务器不支持当前公开版接口');
+    if (!validCapabilities(capabilities)) throw new Error('服务器不支持当前客户端接口');
     return { origin, localHttp: input.localHttp, token: login.token, capabilities };
   }
 

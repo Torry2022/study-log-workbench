@@ -1,7 +1,7 @@
 import { BottomNavigation } from './WorkspaceNavigation';
 import { WorkspaceTransitionCoordinator } from '../WorkspaceTransitionCoordinator';
 
-// Layout ownership follows Index.workspace in the personal client; feature content stays in its slots.
+// Layout ownership follows Index.workspace; feature content stays in its slots.
 @Component
 export struct WorkspaceFrame {
   @Prop wide: boolean = false;

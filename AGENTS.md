@@ -9,7 +9,7 @@
 - Preserve behavior with focused tests. For Web code run typecheck, production build and relevant browser checks. Test actual entrypoints and lifecycle wiring, not just copied components.
 - Commit each independently verified outcome with its related tests and documentation. Review staged files and scan credentials before committing. Do not rewrite history.
 - Do not operate on any personal or production instance as a side effect of this project.
-- Keep docs/implementation-status.md and docs/architecture.md consistent with the implementation. Never mark an unexecuted check passed.
+- Keep README files, deployment guidance and release notes consistent with the implementation. Never mark an unexecuted check passed.
 
 ## Design decisions and evaluation
 

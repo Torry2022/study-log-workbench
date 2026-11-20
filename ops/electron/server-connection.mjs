@@ -34,6 +34,6 @@ export async function connectServer(value) {
  let capabilities;
  try { const result = await fetch(origin + '/study-log/api/capabilities',{redirect:'error',signal:AbortSignal.timeout(10000),headers:{cookie}}); capabilities=result.ok ? await result.json() : null; }
  catch { throw Error('无法读取服务器信息，请稍后重试。'); }
- if (!checkCapabilities(capabilities)) throw Error('服务器不支持当前公开版接口。');
+ if (!checkCapabilities(capabilities)) throw Error('服务器不支持当前客户端接口。');
  return {origin,instanceId:capabilities.instanceId,cookie:cookie.slice(cookie.indexOf('=')+1),expirationDate:maxAge > 0 ? Date.now()/1000 + maxAge : undefined};
 }

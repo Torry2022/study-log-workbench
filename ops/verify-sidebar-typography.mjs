@@ -1,4 +1,4 @@
-// Adapted from personal 82a4ee8; public instance, split CSS, no Wiki or real data.
+// Verify sidebar typography against split CSS and synthetic data.
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';

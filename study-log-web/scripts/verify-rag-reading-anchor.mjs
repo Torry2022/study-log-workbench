@@ -1,4 +1,4 @@
-// Adapted from the personal edition: public instance initialization, MCP API and model configuration.
+// Verify reading anchors with a synthetic instance, MCP API and model configuration.
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';

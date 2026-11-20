@@ -1,4 +1,4 @@
-// Adapted from the personal edition: isolated public instance and model configuration.
+// Use an isolated synthetic instance and model configuration.
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';

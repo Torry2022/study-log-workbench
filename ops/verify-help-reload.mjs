@@ -1,4 +1,4 @@
-// Adapted from personal f106965 / d6d1cdf browser checks; only synthetic public instances.
+// Browser checks use a synthetic instance.
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';

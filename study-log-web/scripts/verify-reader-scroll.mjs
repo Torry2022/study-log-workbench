@@ -1,4 +1,4 @@
-// Adapted from personal 830dd33: isolated public fixtures, PUT API and public reading labels.
+// Verify reader scrolling with synthetic fixtures and the PUT API.
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
